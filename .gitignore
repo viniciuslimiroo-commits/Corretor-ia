@@ -1,0 +1,22 @@
+# Segredos - NUNCA versionar
+**/fal_key.txt
+**/.env
+**/.env.local
+**/.env*.local
+
+# Next.js / Node
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/*.tsbuildinfo
+web/next-env.d.ts
+npm-debug.log*
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Ativos de teste grandes (regeneráveis, não precisam de versionamento)
+docs/pedra-teardown/fotos-teste/*.jpg
+docs/pipeline-teste/resultados/*.jpg
