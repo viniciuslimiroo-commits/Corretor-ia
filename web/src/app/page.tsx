@@ -59,7 +59,16 @@ export default function Home() {
     setFoto(arquivo);
     setResultado(null);
     setErro(null);
+    if (preview) URL.revokeObjectURL(preview);
     setPreview(arquivo ? URL.createObjectURL(arquivo) : null);
+  }
+
+  function removerFoto() {
+    if (preview) URL.revokeObjectURL(preview);
+    setFoto(null);
+    setPreview(null);
+    setResultado(null);
+    setErro(null);
   }
 
   async function sair() {
@@ -158,15 +167,26 @@ export default function Home() {
       </div>
 
       <div className="mt-8 flex flex-col gap-4">
-        <label className="w-fit cursor-pointer rounded border px-4 py-2 hover:bg-neutral-100">
-          {foto ? `📷 ${foto.name}` : "📷 Escolher foto"}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={aoEscolherFoto}
-            className="hidden"
-          />
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="w-fit cursor-pointer rounded border px-4 py-2 hover:bg-neutral-100">
+            {foto ? `📷 ${foto.name}` : "📷 Escolher foto"}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={aoEscolherFoto}
+              className="hidden"
+            />
+          </label>
+          {foto && (
+            <button
+              onClick={removerFoto}
+              className="rounded border px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100"
+              title="Remover foto"
+            >
+              ✕ Remover
+            </button>
+          )}
+        </div>
 
         <select
           className="w-fit rounded border px-3 py-2"
