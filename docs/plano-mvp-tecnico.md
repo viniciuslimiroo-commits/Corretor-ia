@@ -25,30 +25,35 @@ falta empacotar em produto.
 - **Fila:** nenhuma no MVP — chamada de IA é síncrona (~10s), não precisa de worker
   separado ainda. Adicionar BullMQ/Redis só se o volume exigir (fase 2+)
 
-## Sprint 0 — Fundação (2-3 dias)
+## Sprint 0 — Fundação (2-3 dias) — ✅ feito em 09/09/2026
 
-- [ ] `git init` no projeto, repositório no GitHub (privado)
-- [ ] `npx create-next-app` (TypeScript, App Router, Tailwind)
+- [x] `git init` no projeto (`git`, `node`, `npm` instalados; repo local com primeiro commit)
+- [x] `npx create-next-app` em `web/` (TypeScript, App Router, Tailwind, ESLint)
+- [ ] Repositório remoto no GitHub (privado) — pendente, precisa da sua conta
 - [ ] Projeto no Supabase: criar tabelas `users`, `properties`, `jobs`, `credit_ledger`
       (schema simplificado de arquitetura §5 — sem `organizations`/`org_members` ainda,
-      isso é fase 2)
-- [ ] Deploy inicial na Vercel (só a home, pra validar o pipeline de deploy cedo)
-- [ ] Variáveis de ambiente: `FAL_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` etc.
+      isso é fase 2) — pendente, precisa da sua conta
+- [ ] Deploy inicial na Vercel — pendente, precisa da sua conta
+- [x] `web/.env.local.example` criado — falta você copiar o valor da `FAL_KEY` de
+      `docs/pipeline-teste/fal_key.txt` pra `web/.env.local` (real, gitignorado)
 
-## Sprint 1 — Walking skeleton (3-5 dias)
+## Sprint 1 — Walking skeleton (3-5 dias) — 🟡 primeira versão pronta em 09/09/2026
 
-Objetivo: uma pessoa loga, sobe uma foto, escolhe "Mobiliar", vê o resultado. Sem
-créditos, sem cobrança, sem export — só a mágica funcionando ponta a ponta.
+Objetivo: uma pessoa sobe uma foto, escolhe uma ação, vê o resultado. Sem login, sem
+créditos, sem banco ainda — só a mágica funcionando ponta a ponta.
 
-- [ ] Tela de login (Supabase Auth, e-mail + Google)
-- [ ] Tela de upload de 1 foto (Supabase Storage)
-- [ ] 1 botão: "Mobiliar (estilo Moderno)" → chama fal.ai/nano-banana/edit com o prompt
-      estruturado (já escrito e testado — reaproveitar de `pipeline-teste/testar-pipeline.ps1`)
-- [ ] Mostrar resultado ao lado do original (antes/depois)
-- [ ] Salvar o job no banco (`jobs`: input_url, output_url, status, custo_real)
+- [x] Tela de upload de 1 foto + seletor de ação (`web/src/app/page.tsx`)
+- [x] Rota de API que chama a IA de verdade — Mobiliar e Melhorar via Nano Banana,
+      Esvaziar via Flux Kontext (`web/src/app/api/gerar/route.ts`) — a escolha de
+      provedor por ação já reflete o achado do teste de pipeline
+- [x] Mostrar resultado ao lado do original (antes/depois) na mesma tela
+- [x] Build validado (`npm run build` passa sem erro)
+- [ ] Tela de login (Supabase Auth) — próximo passo, precisa do projeto Supabase
+- [ ] Salvar o job no banco (`jobs`: input_url, output_url, status, custo_real) — idem
 
 **Critério de pronto:** você consegue subir uma foto sua e ver o resultado no navegador,
-de ponta a ponta, sem rodar nada manualmente.
+de ponta a ponta, sem rodar nada manualmente. **Falta só rodar `npm run dev` com a sua
+`FAL_KEY` configurada pra testar.**
 
 ## Sprint 2 — As 5 ações do MVP + multi-provider (1 semana)
 
