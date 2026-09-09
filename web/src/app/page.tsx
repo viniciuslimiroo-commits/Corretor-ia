@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
@@ -31,6 +31,7 @@ export default function Home() {
     aviso: string | null;
   } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const inputFotoRef = useRef<HTMLInputElement>(null);
 
   // Auth: pega o usuário logado (e reage a login/logout).
   useEffect(() => {
@@ -48,7 +49,8 @@ export default function Home() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Saldo de créditos: soma o histórico (credit_ledger) do usuário logado.
+  // Saldo de créditos: soma o histórico (credit_ledger) do usuário logado. Só leitura
+  // aqui -- quem debita de verdade é o servidor, em /api/gerar.
   useEffect(() => {
     if (!supabase || !user) return;
     supabase
@@ -77,6 +79,8 @@ export default function Home() {
     setPreview(null);
     setResultado(null);
     setErro(null);
+    // Sem isto, escolher a MESMA foto de novo não dispara onChange (bug achado no QA).
+    if (inputFotoRef.current) inputFotoRef.current.value = "";
   }
 
   async function sair() {
@@ -94,10 +98,18 @@ export default function Home() {
     setResultado(null);
     setInfoResultado(null);
     try {
+      const { data: sessao } = await supabase.auth.getSession();
+      const token = sessao.session?.access_token;
+      if (!token) throw new Error("Sessão expirou -- faça login de novo.");
+
       const form = new FormData();
       form.append("foto", foto);
       form.append("acao", acao);
-      const resp = await fetch("/api/gerar", { method: "POST", body: form });
+      const resp = await fetch("/api/gerar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Falha ao gerar.");
       setResultado(data.url);
@@ -108,27 +120,8 @@ export default function Home() {
         upscaled: data.upscaled,
         aviso: data.aviso,
       });
-
-      // Registra o job e debita 1 crédito -- respeitando o RLS (o usuário só
-      // consegue inserir linha com o próprio user_id).
-      const { data: job } = await supabase
-        .from("jobs")
-        .insert({
-          user_id: user.id,
-          tipo: acao,
-          status: "concluido",
-          output_url: data.url,
-          creditos_cobrados: 1,
-        })
-        .select()
-        .single();
-
-      await supabase.from("credit_ledger").insert({
-        user_id: user.id,
-        delta: -1,
-        motivo: "consumo",
-        job_id: job?.id,
-      });
+      // O job e o débito de crédito já aconteceram no servidor -- aqui só re-lemos o
+      // saldo (o useEffect acima dispara de novo porque `resultado` mudou).
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro desconhecido.");
     } finally {
@@ -170,14 +163,14 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Olá, {user.email}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold">Olá, {user.email}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Créditos: <strong>{creditos ?? "..."}</strong>
           </p>
         </div>
-        <button onClick={sair} className="text-sm text-neutral-500 underline">
+        <button onClick={sair} className="shrink-0 text-sm text-neutral-500 underline">
           Sair
         </button>
       </div>
@@ -187,6 +180,7 @@ export default function Home() {
           <label className="w-fit cursor-pointer rounded border px-4 py-2 hover:bg-neutral-100">
             {foto ? `📷 ${foto.name}` : "📷 Escolher foto"}
             <input
+              ref={inputFotoRef}
               type="file"
               accept="image/*"
               onChange={aoEscolherFoto}
@@ -226,19 +220,19 @@ export default function Home() {
 
         {erro && <p className="text-sm text-red-600">{erro}</p>}
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
           {preview && (
-            <div>
+            <div className="min-w-0">
               <p className="mb-1 text-xs uppercase text-neutral-500">Original</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview} alt="Foto original" className="w-full rounded border" />
+              <img src={preview} alt="Foto original" className="w-full max-w-full rounded border" />
             </div>
           )}
           {resultado && (
-            <div>
+            <div className="min-w-0">
               <p className="mb-1 text-xs uppercase text-neutral-500">Resultado</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={resultado} alt="Resultado gerado" className="w-full rounded border" />
+              <img src={resultado} alt="Resultado gerado" className="w-full max-w-full rounded border" />
               {infoResultado && (
                 <p className="mt-1 text-xs text-neutral-500">
                   {infoResultado.largura}×{infoResultado.altura}px
