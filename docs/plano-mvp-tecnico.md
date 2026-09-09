@@ -37,7 +37,7 @@ falta empacotar em produto.
 - [x] `web/.env.local.example` criado — falta você copiar o valor da `FAL_KEY` de
       `docs/pipeline-teste/fal_key.txt` pra `web/.env.local` (real, gitignorado)
 
-## Sprint 1 — Walking skeleton (3-5 dias) — 🟡 primeira versão pronta em 09/09/2026
+## Sprint 1 — Walking skeleton (3-5 dias) — ✅ validado de ponta a ponta em 09/09/2026
 
 Objetivo: uma pessoa sobe uma foto, escolhe uma ação, vê o resultado. Sem login, sem
 créditos, sem banco ainda — só a mágica funcionando ponta a ponta.
@@ -53,9 +53,9 @@ créditos, sem banco ainda — só a mágica funcionando ponta a ponta.
 - [x] Saldo de créditos exibido na tela, gerar bloqueado em 0 créditos
 - [x] Trial de 5 créditos automático no cadastro (trigger SQL)
 
-**Critério de pronto:** você consegue subir uma foto sua e ver o resultado no navegador,
-de ponta a ponta, sem rodar nada manualmente. **Falta só rodar `npm run dev` com a sua
-`FAL_KEY` configurada pra testar.**
+**Critério de pronto: batido.** Testado pelo usuário em 09/09/2026 — login por magic link,
+crédito debitado (5→4), upload, geração via Nano Banana ("Mobiliar" estilo Moderno),
+resultado exibido, job + ledger salvos no Supabase. Sprint 1 fechado.
 
 ## Sprint 2 — As 5 ações do MVP + multi-provider (1 semana)
 

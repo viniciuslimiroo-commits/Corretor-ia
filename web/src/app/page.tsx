@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
-type Acao = "mobiliar" | "esvaziar" | "melhorar";
+type Acao = "mobiliar" | "esvaziar" | "melhorar" | "trocar_ceu";
 
 const ACOES: { valor: Acao; rotulo: string }[] = [
   { valor: "mobiliar", rotulo: "Mobiliar (estilo Moderno)" },
   { valor: "esvaziar", rotulo: "Esvaziar cômodo" },
   { valor: "melhorar", rotulo: "Melhorar foto escura" },
+  { valor: "trocar_ceu", rotulo: "Trocar céu (pôr do sol)" },
 ];
 
 export default function Home() {
@@ -22,6 +23,13 @@ export default function Home() {
   const [acao, setAcao] = useState<Acao>("mobiliar");
   const [carregando, setCarregando] = useState(false);
   const [resultado, setResultado] = useState<string | null>(null);
+  const [infoResultado, setInfoResultado] = useState<{
+    largura: number;
+    altura: number;
+    modelo: string;
+    upscaled: boolean;
+    aviso: string | null;
+  } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   // Auth: pega o usuário logado (e reage a login/logout).
@@ -84,6 +92,7 @@ export default function Home() {
     setCarregando(true);
     setErro(null);
     setResultado(null);
+    setInfoResultado(null);
     try {
       const form = new FormData();
       form.append("foto", foto);
@@ -92,6 +101,13 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Falha ao gerar.");
       setResultado(data.url);
+      setInfoResultado({
+        largura: data.width,
+        altura: data.height,
+        modelo: data.modelo,
+        upscaled: data.upscaled,
+        aviso: data.aviso,
+      });
 
       // Registra o job e debita 1 crédito -- respeitando o RLS (o usuário só
       // consegue inserir linha com o próprio user_id).
@@ -223,6 +239,15 @@ export default function Home() {
               <p className="mb-1 text-xs uppercase text-neutral-500">Resultado</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={resultado} alt="Resultado gerado" className="w-full rounded border" />
+              {infoResultado && (
+                <p className="mt-1 text-xs text-neutral-500">
+                  {infoResultado.largura}×{infoResultado.altura}px
+                  {infoResultado.upscaled ? " · upscaled" : ""} · {infoResultado.modelo}
+                  {infoResultado.aviso && (
+                    <span className="block text-amber-600">⚠ {infoResultado.aviso}</span>
+                  )}
+                </p>
+              )}
             </div>
           )}
         </div>
