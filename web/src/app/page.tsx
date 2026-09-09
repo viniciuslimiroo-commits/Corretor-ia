@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
 type Acao = "mobiliar" | "esvaziar" | "melhorar";
 
@@ -11,12 +13,46 @@ const ACOES: { valor: Acao; rotulo: string }[] = [
 ];
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [checandoAuth, setCheckandoAuth] = useState(true);
+  const [creditos, setCreditos] = useState<number | null>(null);
+
   const [foto, setFoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [acao, setAcao] = useState<Acao>("mobiliar");
   const [carregando, setCarregando] = useState(false);
   const [resultado, setResultado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  // Auth: pega o usuário logado (e reage a login/logout).
+  useEffect(() => {
+    if (!supabase) {
+      setCheckandoAuth(false);
+      return;
+    }
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user ?? null);
+      setCheckandoAuth(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Saldo de créditos: soma o histórico (credit_ledger) do usuário logado.
+  useEffect(() => {
+    if (!supabase || !user) return;
+    supabase
+      .from("credit_ledger")
+      .select("delta")
+      .eq("user_id", user.id)
+      .then(({ data, error }) => {
+        if (error) return;
+        const saldo = (data ?? []).reduce((soma, l) => soma + l.delta, 0);
+        setCreditos(saldo);
+      });
+  }, [user, resultado]); // recalcula depois de cada geração
 
   function aoEscolherFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0] ?? null;
@@ -26,8 +62,16 @@ export default function Home() {
     setPreview(arquivo ? URL.createObjectURL(arquivo) : null);
   }
 
+  async function sair() {
+    await supabase?.auth.signOut();
+  }
+
   async function gerar() {
-    if (!foto) return;
+    if (!foto || !user || !supabase) return;
+    if (creditos !== null && creditos <= 0) {
+      setErro("Você não tem créditos. (No MVP ainda não tem tela de compra -- fase 3 do plano.)");
+      return;
+    }
     setCarregando(true);
     setErro(null);
     setResultado(null);
@@ -39,6 +83,27 @@ export default function Home() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Falha ao gerar.");
       setResultado(data.url);
+
+      // Registra o job e debita 1 crédito -- respeitando o RLS (o usuário só
+      // consegue inserir linha com o próprio user_id).
+      const { data: job } = await supabase
+        .from("jobs")
+        .insert({
+          user_id: user.id,
+          tipo: acao,
+          status: "concluido",
+          output_url: data.url,
+          creditos_cobrados: 1,
+        })
+        .select()
+        .single();
+
+      await supabase.from("credit_ledger").insert({
+        user_id: user.id,
+        delta: -1,
+        motivo: "consumo",
+        job_id: job?.id,
+      });
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro desconhecido.");
     } finally {
@@ -46,16 +111,62 @@ export default function Home() {
     }
   }
 
+  if (checandoAuth) {
+    return <main className="p-12 font-sans text-sm text-neutral-500">Carregando...</main>;
+  }
+
+  if (!supabase) {
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
+        <p className="rounded border bg-yellow-50 p-4 text-sm text-yellow-900">
+          Supabase ainda não configurado. Preencha{" "}
+          <code className="font-mono">web/.env.local</code> com
+          <code className="font-mono"> NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
+          <code className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> e reinicie o
+          servidor (<code className="font-mono">npm run dev</code>).
+        </p>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
+        <h1 className="text-2xl font-semibold">Bem-vindo</h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Faça login pra testar a geração de imagem com IA.
+        </p>
+        <a href="/login" className="mt-6 inline-block rounded bg-black px-4 py-2 text-white">
+          Entrar
+        </a>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
-      <h1 className="text-2xl font-semibold">Walking skeleton — Sprint 1</h1>
-      <p className="mt-2 text-sm text-neutral-500">
-        Sobe uma foto, escolhe a ação, chama a IA de verdade (fal.ai). Sem login, sem
-        crédito, sem banco — só o fio ponta a ponta funcionando.
-      </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Olá, {user.email}</h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Créditos: <strong>{creditos ?? "..."}</strong>
+          </p>
+        </div>
+        <button onClick={sair} className="text-sm text-neutral-500 underline">
+          Sair
+        </button>
+      </div>
 
       <div className="mt-8 flex flex-col gap-4">
-        <input type="file" accept="image/*" onChange={aoEscolherFoto} />
+        <label className="w-fit cursor-pointer rounded border px-4 py-2 hover:bg-neutral-100">
+          {foto ? `📷 ${foto.name}` : "📷 Escolher foto"}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={aoEscolherFoto}
+            className="hidden"
+          />
+        </label>
 
         <select
           className="w-fit rounded border px-3 py-2"

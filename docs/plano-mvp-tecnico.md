@@ -48,8 +48,10 @@ créditos, sem banco ainda — só a mágica funcionando ponta a ponta.
       provedor por ação já reflete o achado do teste de pipeline
 - [x] Mostrar resultado ao lado do original (antes/depois) na mesma tela
 - [x] Build validado (`npm run build` passa sem erro)
-- [ ] Tela de login (Supabase Auth) — próximo passo, precisa do projeto Supabase
-- [ ] Salvar o job no banco (`jobs`: input_url, output_url, status, custo_real) — idem
+- [x] Tela de login (Supabase Auth, magic link por e-mail) — `web/src/app/login/page.tsx`
+- [x] Salvar o job no banco + debitar 1 crédito no `credit_ledger` a cada geração
+- [x] Saldo de créditos exibido na tela, gerar bloqueado em 0 créditos
+- [x] Trial de 5 créditos automático no cadastro (trigger SQL)
 
 **Critério de pronto:** você consegue subir uma foto sua e ver o resultado no navegador,
 de ponta a ponta, sem rodar nada manualmente. **Falta só rodar `npm run dev` com a sua
