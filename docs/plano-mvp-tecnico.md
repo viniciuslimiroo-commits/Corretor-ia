@@ -73,6 +73,22 @@ resultado exibido, job + ledger salvos no Supabase. Sprint 1 fechado.
       ruim silencioso. Vira mais relevante quando tiver comparação de imagem.
 - [ ] Marca d'água configurável (aplicada só se `plano == grátis`)
 
+### QA rodado em 09/09/2026 — [relatorio-qa-mvp.md](relatorio-qa-mvp.md)
+
+- [x] **Bug crítico corrigido:** créditos nunca debitavam (RLS bloqueava insert do
+      navegador, código não checava erro). Débito moveu pro servidor, verificado por
+      token + saldo real (`web/src/lib/supabase-server.ts`). Fecha também um jeito de
+      dar crédito de graça pra si mesmo via devtools.
+- [x] Bug corrigido: botão "Remover" não limpava o `<input type=file>`
+- [x] Prompt de "Melhorar" reforçado (QA deu nota 2/5 — clareava pouco)
+- [x] 2 ajustes de CSS mobile (header quebrando, scroll horizontal)
+- [ ] **Pendente:** `SUPABASE_SERVICE_ROLE_KEY` no `.env.local` + reiniciar o servidor dev
+- [ ] **Backlog, não bloqueante:** URL do resultado é pública/sem expiração (link direto
+      pro `fal.media`) — antes de cliente real usar, proxiar pelo backend ou usar URL
+      assinada com TTL
+- [ ] Re-rodar QA: login por magic link (não testado nesta rodada), débito de crédito
+      funcionando, "gerar sem crédito", qualidade nova do "Melhorar"
+
 ## Sprint 3 — Créditos e billing (1 semana)
 
 - [ ] Tabela `credit_ledger` funcionando: cada geração debita 1 crédito
