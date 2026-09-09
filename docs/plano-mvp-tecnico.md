@@ -57,16 +57,20 @@ créditos, sem banco ainda — só a mágica funcionando ponta a ponta.
 crédito debitado (5→4), upload, geração via Nano Banana ("Mobiliar" estilo Moderno),
 resultado exibido, job + ledger salvos no Supabase. Sprint 1 fechado.
 
-## Sprint 2 — As 5 ações do MVP + multi-provider (1 semana)
+## Sprint 2 — As 5 ações do MVP + multi-provider — 🟡 em andamento (09/09/2026)
 
-- [ ] Abstrair `ImageEditProvider` (interface) com 2 implementações: Nano Banana e Flux
-      Kontext — o teste de pipeline já mostrou que cada um ganha em ações diferentes
-- [ ] Implementar as 5 ações: Mobiliar, Esvaziar (→ Flux Kontext por padrão, dado o
-      resultado do teste), Trocar céu, Melhorar, Remover objeto
-- [ ] Fallback automático: se o resultado sair idêntico ao original (comparação simples
-      de hash/diff) ou a chamada falhar, tentar o outro provedor antes de mostrar erro
-- [ ] Etapa de upscale (Real-ESRGAN via Replicate/fal, ou serviço equivalente) — resolver
-      o gap de resolução (1248×832 → mais perto de 4K) achado no teste
+- [x] Provedor por ação com fallback: cada ação define [primário, secundário]; se o
+      primário der erro (rede/4xx/5xx), tenta o secundário antes de devolver erro pro
+      usuário (`web/src/app/api/gerar/route.ts`)
+- [x] 4 de 5 ações: Mobiliar, Esvaziar (Flux Kontext primário, confirmado pelo teste),
+      Melhorar, Trocar céu
+- [ ] **Remover objeto** — adiado: precisa de seleção de área (pincel/máscara) na UI,
+      que ainda não existe. É a próxima peça de UI a construir.
+- [x] Etapa de upscale (`fal-ai/clarity-upscaler`, alvo ~4096px de largura) — roda depois
+      da geração; se falhar, entrega o resultado sem upscale em vez de dar erro
+- [ ] Fallback por "resultado idêntico ao original" (o caso que aconteceu com Nano Banana
+      no Esvaziar) — ainda não implementado; hoje só cobre erro de chamada, não resultado
+      ruim silencioso. Vira mais relevante quando tiver comparação de imagem.
 - [ ] Marca d'água configurável (aplicada só se `plano == grátis`)
 
 ## Sprint 3 — Créditos e billing (1 semana)
