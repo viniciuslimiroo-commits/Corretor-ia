@@ -1,4 +1,5 @@
 # Segredos - NUNCA versionar
+github_token.txt
 **/fal_key.txt
 **/.env
 **/.env.local
