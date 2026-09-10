@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { supabaseServer } from "@/lib/supabase-server";
 
-// Sprint 2: mais ações + fallback automático entre provedores + upscale + débito de
-// crédito SEGURO no servidor (bug crítico achado no QA de 09/09/2026 -- ver
-// docs/pipeline-teste ou o histórico de commits: o débito era feito do navegador e
-// falhava silenciosamente, e além disso um cliente malicioso poderia se dar créditos
-// de graça se a policy de INSERT existisse. Agora é tudo verificado aqui.)
+// Sprint 2 + correções do QA v2 (10/09/2026):
+//
+// BUG-1 (débito de crédito com brecha de arquitetura): agora o crédito é debitado
+// ATOMICAMENTE no banco (função `debitar_credito`, ver
+// web/supabase/migration-02-creditos-atomicos.sql) ANTES de chamar o fal.ai -- não
+// depois. Se a geração falhar nos dois provedores, o crédito é devolvido
+// (`estornar_credito`). Isso fecha: (a) gerar de graça se a chamada de débito for
+// bloqueada/falhar depois da geração, (b) debitar 2 num duplo-clique (a função faz
+// UPDATE...WHERE saldo>0 num único statement, que o Postgres serializa sozinho).
+//
+// BUG-2 ("Melhorar" não clareava de verdade, medido objetivamente pelo QA): a correção
+// de exposição agora é DETERMINÍSTICA (sharp: gray-world white balance + esticar a
+// luminância média pra perto de 130), rodada ANTES do modelo de IA -- que só entra
+// depois pra refinar ruído/detalhe, não pra fazer o trabalho pesado de exposição.
 
 const PROMPTS: Record<string, string> = {
   mobiliar:
@@ -13,7 +23,7 @@ const PROMPTS: Record<string, string> = {
   esvaziar:
     "Remove all furniture, rugs, and decor from this room, leaving it completely empty. Reconstruct the floor and walls naturally where objects were removed, matching the existing flooring and wall material. Keep the architecture, windows, doors, and lighting exactly the same.",
   melhorar:
-    "Dramatically brighten this underexposed real estate photo as if professionally lit for daylight photography -- increase exposure significantly (as if adding 2-3 stops), correct white balance to neutral daylight, recover shadow detail, remove noise and haze. The room should look bright, airy and inviting like a professional real estate listing photo. Keep the composition, furniture, walls, and all objects exactly the same -- only correct lighting, brightness and color.",
+    "This real estate photo has already been color- and exposure-corrected. Refine it further: remove noise and grain, recover fine detail, make the lighting look natural and professional like a real estate listing photo, gently balance any remaining color cast. Keep the composition, furniture, walls, and all objects exactly the same -- do not change anything structural, only refine lighting quality and clarity.",
   trocar_ceu:
     "Replace the sky in this photo with a dramatic warm sunset sky (orange and pink gradient). Keep the building, landscaping, and foreground exactly the same. Adjust lighting and reflections on the facade to match the new sky naturally.",
 };
@@ -61,6 +71,40 @@ async function upscale(url: string, falKey: string, fatorAlvo: number) {
   return data.image as { url: string; width: number; height: number };
 }
 
+// Correção determinística de exposição/balanço de branco (gray-world), medida em
+// luminância -- é o que o QA pediu depois de provar que o prompt sozinho não resolvia.
+async function corrigirExposicao(bytesOriginais: Buffer): Promise<Buffer> {
+  const jpegBase = await sharp(bytesOriginais).rotate().jpeg({ quality: 95 }).toBuffer();
+  const stats = await sharp(jpegBase).stats();
+  const [r, g, b] = stats.channels;
+  const grayMedio = (r.mean + g.mean + b.mean) / 3;
+
+  // Gray-world: cada canal escalado pra bater na média cinza -- corrige dominante de cor
+  // (ex. luz amarela de lâmpada incandescente, que foi exatamente o caso que o QA testou).
+  const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+  const ganhoWb: [number, number, number] = [
+    clamp(grayMedio / (r.mean || 1), 0.5, 2),
+    clamp(grayMedio / (g.mean || 1), 0.5, 2),
+    clamp(grayMedio / (b.mean || 1), 0.5, 2),
+  ];
+
+  // Depois do balanço de branco, empurra a luminância média pra perto de 130 (meta que
+  // o próprio QA definiu como "publicável": 110-140, hoje a foto ruim está em ~38).
+  const alvoLuminancia = 130;
+  const ganhoExposicao = clamp(alvoLuminancia / (grayMedio || 1), 0.5, 3.5);
+  const ganhoFinal: [number, number, number] = [
+    ganhoWb[0] * ganhoExposicao,
+    ganhoWb[1] * ganhoExposicao,
+    ganhoWb[2] * ganhoExposicao,
+  ];
+
+  return sharp(jpegBase)
+    .linear(ganhoFinal, [0, 0, 0])
+    .gamma(1.15) // recupera um pouco de detalhe na sombra sem achatar a imagem
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
 export async function POST(req: NextRequest) {
   const falKey = process.env.FAL_KEY;
   const db = supabaseServer();
@@ -77,8 +121,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Identifica o usuário pelo token que o navegador manda -- sem token válido, não
-  // gera nada. É isso que impede alguém de chamar a rota direto e gerar de graça.
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
@@ -88,19 +130,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
   const userId = userData.user.id;
-
-  // Saldo de créditos REAL, lido no servidor (o que a UI mostra é só um espelho disso).
-  const { data: ledger, error: ledgerError } = await db
-    .from("credit_ledger")
-    .select("delta")
-    .eq("user_id", userId);
-  if (ledgerError) {
-    return NextResponse.json({ error: `Erro lendo créditos: ${ledgerError.message}` }, { status: 500 });
-  }
-  const saldo = (ledger ?? []).reduce((soma, l) => soma + l.delta, 0);
-  if (saldo <= 0) {
-    return NextResponse.json({ error: "Sem créditos." }, { status: 402 });
-  }
 
   const form = await req.formData();
   const foto = form.get("foto") as File | null;
@@ -116,84 +145,103 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Ação desconhecida: ${acao}` }, { status: 400 });
   }
 
-  const bytes = Buffer.from(await foto.arrayBuffer());
-  const mime = foto.type || "image/jpeg";
-  const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
-
-  const [primario, secundario] = provedores;
-  let imagem: { url: string; width: number; height: number };
-  let modeloUsado: Provedor = primario;
-  let avisoFallback: string | null = null;
-
-  try {
-    imagem = await chamarModelo(primario, prompt, dataUri, falKey);
-  } catch (erroPrimario) {
-    try {
-      imagem = await chamarModelo(secundario, prompt, dataUri, falKey);
-      modeloUsado = secundario;
-      avisoFallback = `${primario} falhou, usamos ${secundario} no lugar.`;
-    } catch (erroSecundario) {
-      return NextResponse.json(
-        {
-          error: `Os dois provedores falharam. Primário: ${
-            erroPrimario instanceof Error ? erroPrimario.message : erroPrimario
-          } | Secundário: ${erroSecundario instanceof Error ? erroSecundario.message : erroSecundario}`,
-        },
-        { status: 502 }
-      );
-    }
-  }
-
-  let final = imagem;
-  let upscaled = false;
-  if (!semUpscale) {
-    try {
-      const fatorAlvo = 4096 / imagem.width;
-      final = await upscale(imagem.url, falKey, fatorAlvo);
-      upscaled = true;
-    } catch {
-      // Upscale é um bônus -- se falhar, entrega o resultado original em vez de dar erro.
-    }
-  }
-
-  // Só chega aqui se a geração deu certo -- agora sim registra o job e debita 1
-  // crédito, com a service role key (ignora RLS, mas só o servidor tem essa chave).
-  const { data: job, error: jobError } = await db
+  // Cria o job ANTES de debitar -- precisamos do id pra registrar o débito atrelado a
+  // ele. Fica como "processando" até a geração terminar.
+  const { data: job, error: jobCriarError } = await db
     .from("jobs")
-    .insert({
-      user_id: userId,
-      tipo: acao,
-      status: "concluido",
-      output_url: final.url,
-      creditos_cobrados: 1,
-      custo_real: null,
-    })
+    .insert({ user_id: userId, tipo: acao, status: "processando" })
     .select()
     .single();
-  if (jobError) {
-    return NextResponse.json({ error: `Erro salvando job: ${jobError.message}` }, { status: 500 });
+  if (jobCriarError) {
+    return NextResponse.json({ error: `Erro criando job: ${jobCriarError.message}` }, { status: 500 });
   }
 
-  const { error: debitoError } = await db.from("credit_ledger").insert({
-    user_id: userId,
-    delta: -1,
-    motivo: "consumo",
-    job_id: job.id,
+  // Débito ATÔMICO, antes de gastar um centavo com a IA. Se não tiver crédito, para
+  // aqui -- nunca chama o fal.ai sem crédito reservado.
+  const { data: saldoAposDebito, error: debitoError } = await db.rpc("debitar_credito", {
+    p_user_id: userId,
+    p_job_id: job.id,
   });
   if (debitoError) {
+    return NextResponse.json({ error: `Erro debitando crédito: ${debitoError.message}` }, { status: 500 });
+  }
+  if (saldoAposDebito === null) {
+    await db.from("jobs").update({ status: "sem_credito" }).eq("id", job.id);
+    return NextResponse.json({ error: "Sem créditos." }, { status: 402 });
+  }
+
+  try {
+    const bytesOriginais = Buffer.from(await foto.arrayBuffer());
+    const mimeOriginal = foto.type || "image/jpeg";
+
+    let bytesParaIA: Buffer = bytesOriginais;
+    let mimeParaIA = mimeOriginal;
+    if (acao === "melhorar") {
+      bytesParaIA = await corrigirExposicao(bytesOriginais);
+      mimeParaIA = "image/jpeg";
+    }
+    const dataUri = `data:${mimeParaIA};base64,${bytesParaIA.toString("base64")}`;
+
+    const [primario, secundario] = provedores;
+    let imagem: { url: string; width: number; height: number };
+    let modeloUsado: Provedor = primario;
+    let avisoFallback: string | null = null;
+
+    try {
+      imagem = await chamarModelo(primario, prompt, dataUri, falKey);
+    } catch (erroPrimario) {
+      try {
+        imagem = await chamarModelo(secundario, prompt, dataUri, falKey);
+        modeloUsado = secundario;
+        avisoFallback = `${primario} falhou, usamos ${secundario} no lugar.`;
+      } catch (erroSecundario) {
+        // Os dois provedores falharam -- devolve o crédito antes de responder o erro.
+        await db.rpc("estornar_credito", { p_user_id: userId, p_job_id: job.id, p_motivo: "estorno_falha" });
+        await db.from("jobs").update({ status: "falhou" }).eq("id", job.id);
+        return NextResponse.json(
+          {
+            error: `Os dois provedores falharam (crédito devolvido). Primário: ${
+              erroPrimario instanceof Error ? erroPrimario.message : erroPrimario
+            } | Secundário: ${erroSecundario instanceof Error ? erroSecundario.message : erroSecundario}`,
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    let final = imagem;
+    let upscaled = false;
+    if (!semUpscale) {
+      try {
+        const fatorAlvo = 4096 / imagem.width;
+        final = await upscale(imagem.url, falKey, fatorAlvo);
+        upscaled = true;
+      } catch {
+        // Upscale é um bônus -- se falhar, entrega o resultado original em vez de dar erro.
+      }
+    }
+
+    await db
+      .from("jobs")
+      .update({ status: "concluido", output_url: final.url, creditos_cobrados: 1 })
+      .eq("id", job.id);
+
+    return NextResponse.json({
+      url: final.url,
+      width: final.width,
+      height: final.height,
+      modelo: modeloUsado,
+      upscaled,
+      aviso: avisoFallback,
+      creditosRestantes: saldoAposDebito,
+    });
+  } catch (erroInesperado) {
+    // Qualquer outra falha (ex. erro processando a foto) também devolve o crédito.
+    await db.rpc("estornar_credito", { p_user_id: userId, p_job_id: job.id, p_motivo: "estorno_erro" });
+    await db.from("jobs").update({ status: "falhou" }).eq("id", job.id);
     return NextResponse.json(
-      { error: `Imagem gerada mas falhou ao debitar crédito: ${debitoError.message}` },
+      { error: erroInesperado instanceof Error ? erroInesperado.message : "Erro inesperado." },
       { status: 500 }
     );
   }
-
-  return NextResponse.json({
-    url: final.url,
-    width: final.width,
-    height: final.height,
-    modelo: modeloUsado,
-    upscaled,
-    aviso: avisoFallback,
-    creditosRestantes: saldo - 1,
-  });
 }

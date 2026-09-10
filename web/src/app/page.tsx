@@ -49,18 +49,19 @@ export default function Home() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Saldo de créditos: soma o histórico (credit_ledger) do usuário logado. Só leitura
-  // aqui -- quem debita de verdade é o servidor, em /api/gerar.
+  // Saldo de créditos: lê direto de users.creditos_saldo (a fonte da verdade desde a
+  // migration-02) -- é o servidor, em /api/gerar, que atualiza esse número de forma
+  // atômica. Aqui é só leitura/espelho pra UI.
   useEffect(() => {
     if (!supabase || !user) return;
     supabase
-      .from("credit_ledger")
-      .select("delta")
-      .eq("user_id", user.id)
+      .from("users")
+      .select("creditos_saldo")
+      .eq("id", user.id)
+      .single()
       .then(({ data, error }) => {
         if (error) return;
-        const saldo = (data ?? []).reduce((soma, l) => soma + l.delta, 0);
-        setCreditos(saldo);
+        setCreditos(data.creditos_saldo);
       });
   }, [user, resultado]); // recalcula depois de cada geração
 
