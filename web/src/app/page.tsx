@@ -31,6 +31,7 @@ export default function Home() {
     aviso: string | null;
   } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [exportando, setExportando] = useState<string | null>(null);
   const inputFotoRef = useRef<HTMLInputElement>(null);
 
   // Auth: pega o usuário logado (e reage a login/logout).
@@ -86,6 +87,29 @@ export default function Home() {
 
   async function sair() {
     await supabase?.auth.signOut();
+  }
+
+  async function exportarPara(portal: string) {
+    if (!resultado) return;
+    setExportando(portal);
+    try {
+      const resp = await fetch("/api/exportar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: resultado, portal }),
+      });
+      if (!resp.ok) throw new Error((await resp.json()).error || "Falha ao exportar.");
+      const blob = await resp.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `foto-${portal}.jpg`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao exportar.");
+    } finally {
+      setExportando(null);
+    }
   }
 
   async function gerar() {
@@ -248,6 +272,22 @@ export default function Home() {
                   )}
                 </p>
               )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => exportarPara("zap_vivareal_olx")}
+                  disabled={exportando !== null}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-neutral-100 disabled:opacity-40"
+                >
+                  {exportando === "zap_vivareal_olx" ? "Exportando..." : "⬇ ZAP · VivaReal · OLX"}
+                </button>
+                <button
+                  onClick={() => exportarPara("generico")}
+                  disabled={exportando !== null}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-neutral-100 disabled:opacity-40"
+                >
+                  {exportando === "generico" ? "Exportando..." : "⬇ Outros portais"}
+                </button>
+              </div>
             </div>
           )}
         </div>
