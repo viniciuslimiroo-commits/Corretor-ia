@@ -25,7 +25,7 @@ const PROMPTS: Record<string, string> = {
   melhorar:
     "This real estate photo has already been color- and exposure-corrected. Refine it further: remove noise and grain, recover fine detail, make the lighting look natural and professional like a real estate listing photo, gently balance any remaining color cast. Keep the composition, furniture, walls, and all objects exactly the same -- do not change anything structural, only refine lighting quality and clarity.",
   trocar_ceu:
-    "Replace the sky in this photo with a dramatic warm sunset sky (orange and pink gradient). Keep the building, landscaping, and foreground exactly the same. Adjust lighting and reflections on the facade to match the new sky naturally.",
+    "Replace ONLY the sky in this photo with a soft golden-hour sky (gentle warm gradient, not overly dark or saturated). Keep the building, any neighboring buildings or structures, landscaping, and foreground EXACTLY the same -- do not extend the sky over any structure. Adjust lighting and reflections on the facade subtly to match the new sky naturally, without darkening the overall image.",
 };
 
 type Provedor = "fal-ai/nano-banana/edit" | "fal-ai/flux-pro/kontext";
@@ -72,35 +72,53 @@ async function upscale(url: string, falKey: string, fatorAlvo: number) {
 }
 
 // Correção determinística de exposição/balanço de branco (gray-world), medida em
-// luminância -- é o que o QA pediu depois de provar que o prompt sozinho não resolvia.
+// luminância -- é o que o QA pediu depois de provar (com números) que o prompt sozinho
+// não resolvia, e depois que um ganho LINEAR piorou a dominante de cor e estourou mais
+// a janela (rodada 2 -> rodada 3 do QA, ver docs/relatorio-qa-mvp-v2.md e
+// docs/relatorio-qa-mvp-v3... o achado: ganho linear grande clipa canais de forma
+// desigual, ampliando a diferença R-B em vez de reduzir). Testado localmente com
+// web/scripts/testar-exposicao.mjs antes de subir -- ver resultado em
+// docs/pipeline-teste/resultados/teste-escuro-quente*.jpg.
+function clamp(v: number, min: number, max: number) {
+  return Math.min(Math.max(v, min), max);
+}
+
 async function corrigirExposicao(bytesOriginais: Buffer): Promise<Buffer> {
-  const jpegBase = await sharp(bytesOriginais).rotate().jpeg({ quality: 95 }).toBuffer();
-  const stats = await sharp(jpegBase).stats();
-  const [r, g, b] = stats.channels;
-  const grayMedio = (r.mean + g.mean + b.mean) / 3;
+  // 1. Denoise leve ANTES de amplificar (sem isso, ruído de sombra vira mancha).
+  const denoised = await sharp(bytesOriginais).rotate().jpeg({ quality: 95 }).median(3).toBuffer();
 
-  // Gray-world: cada canal escalado pra bater na média cinza -- corrige dominante de cor
-  // (ex. luz amarela de lâmpada incandescente, que foi exatamente o caso que o QA testou).
-  const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+  // 2. Balanço de branco gray-world -- corrige dominante de cor (luz amarela de
+  //    lâmpada incandescente, o caso exato que o QA testou).
+  const stats1 = await sharp(denoised).stats();
+  const [r1, g1, b1] = stats1.channels;
+  const grayMedio1 = (r1.mean + g1.mean + b1.mean) / 3;
   const ganhoWb: [number, number, number] = [
-    clamp(grayMedio / (r.mean || 1), 0.5, 2),
-    clamp(grayMedio / (g.mean || 1), 0.5, 2),
-    clamp(grayMedio / (b.mean || 1), 0.5, 2),
+    clamp(grayMedio1 / (r1.mean || 1), 0.6, 1.8),
+    clamp(grayMedio1 / (g1.mean || 1), 0.6, 1.8),
+    clamp(grayMedio1 / (b1.mean || 1), 0.6, 1.8),
   ];
+  const balanceado = await sharp(denoised).linear(ganhoWb, [0, 0, 0]).jpeg({ quality: 95 }).toBuffer();
 
-  // Depois do balanço de branco, empurra a luminância média pra perto de 130 (meta que
-  // o próprio QA definiu como "publicável": 110-140, hoje a foto ruim está em ~38).
-  const alvoLuminancia = 130;
-  const ganhoExposicao = clamp(alvoLuminancia / (grayMedio || 1), 0.5, 3.5);
-  const ganhoFinal: [number, number, number] = [
-    ganhoWb[0] * ganhoExposicao,
-    ganhoWb[1] * ganhoExposicao,
-    ganhoWb[2] * ganhoExposicao,
-  ];
+  // 3. Exposição via curva de POTÊNCIA aplicada por LUT -- côncava, então clareia
+  //    sombra/meio-tom SEM nunca estourar o branco (255 sempre mapeia pra 255; um
+  //    ganho linear multiplica reto e clipa o topo, que foi o defeito medido pelo QA).
+  const { data: amostra } = await sharp(balanceado)
+    .resize(200, 200, { fit: "inside" })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const valoresOrdenados = Array.from(amostra).sort((a, b2) => a - b2);
+  const medianaAtual = Math.max(valoresOrdenados[Math.floor(valoresOrdenados.length / 2)], 3);
 
-  return sharp(jpegBase)
-    .linear(ganhoFinal, [0, 0, 0])
-    .gamma(1.15) // recupera um pouco de detalhe na sombra sem achatar a imagem
+  const alvoLuminancia = 115; // meio da faixa "publicável" que o QA definiu (110-140)
+  const g = clamp(Math.log(medianaAtual / 255) / Math.log(alvoLuminancia / 255), 1, 4.5);
+  const lut = new Uint8ClampedArray(256);
+  for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.pow(v / 255, 1 / g));
+
+  const { data, info } = await sharp(balanceado).raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i++) data[i] = lut[data[i]];
+
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } })
     .jpeg({ quality: 92 })
     .toBuffer();
 }

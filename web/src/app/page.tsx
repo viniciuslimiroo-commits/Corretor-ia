@@ -213,12 +213,17 @@ export default function Home() {
 
         <button
           onClick={gerar}
-          disabled={!foto || carregando}
+          disabled={!foto || carregando || creditos === 0}
           className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-40"
         >
           {carregando ? "Gerando..." : "Gerar"}
         </button>
 
+        {creditos === 0 && (
+          <p className="text-sm text-amber-600">
+            Você não tem créditos. (No MVP ainda não tem tela de compra -- fase 3 do plano.)
+          </p>
+        )}
         {erro && <p className="text-sm text-red-600">{erro}</p>}
 
         <div className="mt-4 grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
