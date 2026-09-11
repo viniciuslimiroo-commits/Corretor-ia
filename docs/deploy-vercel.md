@@ -12,8 +12,22 @@ do repositório** (não em `web/` — com Root Directory configurado, a CLI tem 
 raiz, senão procura `web/web`), nove variáveis enviadas pra Production e Preview via
 stdin (nenhum valor passou por tela ou chat), `vercel --prod`.
 
-Ainda pendente, e é seu: passos 3 (Supabase: liberar o domínio pro login) e 4 (webhook
-da Stripe com o `whsec_` real). Sem o 3, o link mágico de login volta pra localhost.
+Também feitos em 11/09/2026, a pedido:
+- **Supabase**: Site URL = `https://corretor-ia-gilt.vercel.app`; Redirect URLs =
+  `https://corretor-ia-gilt.vercel.app/**` e `http://localhost:3000/**` (o segundo mantém
+  o login local funcionando). Detalhe do painel: o campo "uma URL por linha" gravou duas
+  URLs coladas numa só quando recebeu quebra de linha; foi preciso apagar e adicionar uma
+  de cada vez. E a lista mostra estado atrasado depois de salvar/remover — conferir
+  recarregando a página.
+- **Stripe**: webhook `we_1UEdj3Gu8BwjRA4gIOb9uB0d` registrado pela API apontando pra
+  `/api/stripe/webhook`, com os 6 eventos; o `whsec_` foi injetado na Vercel (Production
+  e Preview) direto da resposta da API, sem passar por tela, e a produção foi
+  redeployada. **Provado com entrega real:** assinatura de teste criada pela API → a
+  Stripe entregou `invoice.paid` ao site publicado → créditos 5 → 85, plano pro;
+  cancelamento → plano grátis. Conta de teste devolvida a 5 créditos.
+
+O que continua sendo só seu: ativar a conta Stripe (dados da empresa e conta bancária) e,
+quando for pra produção de verdade, repetir preço + webhook no modo live.
 
 ---
 
