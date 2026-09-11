@@ -10,6 +10,15 @@ import { createClient } from "@supabase/supabase-js";
 // cliente (o que deixaria qualquer usuário se dar crédito de graça via devtools), o
 // débito de crédito passa a acontecer aqui, no servidor, depois de verificar o token
 // do usuário -- é o único lugar que pode inserir em credit_ledger.
+// Bucket PRIVADO dos resultados (migration 03). O navegador nunca fala com ele direto:
+// recebe só URL assinada, gerada aqui a cada leitura.
+export const BUCKET_RESULTADOS = "resultados";
+
+// Validade da URL assinada. Uma hora é folga de sobra pra ver, baixar e exportar, e
+// curta o bastante pra um link que vazou (print, histórico do navegador, grupo de
+// WhatsApp) não virar acesso permanente à foto da casa de um cliente.
+export const VALIDADE_URL_SEGUNDOS = 60 * 60;
+
 export function supabaseServer() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -21,3 +21,6 @@ Thumbs.db
 # Ativos de teste grandes (regeneráveis, não precisam de versionamento)
 docs/pedra-teardown/fotos-teste/*.jpg
 docs/pipeline-teste/resultados/*.jpg
+
+# Renders do teste ponta a ponta (regeneraveis, pesados)
+review-e2e/
