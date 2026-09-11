@@ -24,3 +24,6 @@ docs/pipeline-teste/resultados/*.jpg
 
 # Renders do teste ponta a ponta (regeneraveis, pesados)
 review-e2e/
+
+.vercel
+.env*

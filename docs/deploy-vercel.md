@@ -1,5 +1,22 @@
 # Deploy na Vercel — checklist
 
+## ✅ Estado em 11/09/2026
+
+**Produção no ar: https://corretor-ia-gilt.vercel.app** (time `limiro-brasil`, projeto
+`corretor-ia`, Root Directory `web`, Next.js, Node 24). O subdomínio `corretor-ia` puro
+já era de outra pessoa, por isso o sufixo `-gilt`; `NEXT_PUBLIC_APP_URL` aponta pro
+domínio real.
+
+Feito pela CLI (`vercel` 59): login por código de dispositivo, `vercel link` **na raiz
+do repositório** (não em `web/` — com Root Directory configurado, a CLI tem que rodar da
+raiz, senão procura `web/web`), nove variáveis enviadas pra Production e Preview via
+stdin (nenhum valor passou por tela ou chat), `vercel --prod`.
+
+Ainda pendente, e é seu: passos 3 (Supabase: liberar o domínio pro login) e 4 (webhook
+da Stripe com o `whsec_` real). Sem o 3, o link mágico de login volta pra localhost.
+
+---
+
 O app já está pronto pra publicar: build passa, rotas curtas (nenhuma passa de 6s),
 Stripe e Supabase testados. O que falta é conta e configuração, e isso é seu.
 
