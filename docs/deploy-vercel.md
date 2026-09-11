@@ -44,11 +44,21 @@ Em Authentication → URL Configuration, coloque a URL da Vercel em **Site URL**
 4. Copie o segredo `whsec_...` que aparece e cole na Vercel como `STRIPE_WEBHOOK_SECRET`.
 5. Redeploy (a Vercel não relê variável sem isso).
 
-## 5. Pix (você, quando quiser)
+## 5. Formas de pagamento (você, quando quiser)
 
-Painel da Stripe → Configurações → Formas de pagamento → ativar **Pix**. O botão
-"Comprar 80 créditos" passa a mostrar Pix sozinho, sem mudar código. Pix na Stripe
-Brasil é só pagamento único — por isso ele mora no pacote, não na assinatura.
+O lançamento é com **cartão**, na assinatura e no pacote avulso. No painel da Stripe,
+em Configurações → Formas de pagamento, dá pra ligar **Boleto** e **Google Pay**; o
+checkout do pacote passa a mostrar sem mudar código.
+
+**Pix não está disponível** nesta conta: a Stripe libera Pix pra conta brasileira só por
+convite (conferido no painel em 11/09/2026). Não conte com ele pro lançamento. Se um
+dia aparecer como disponível, é ligar no painel — o código já trata pagamento assíncrono.
+
+## 0. Ativar a conta Stripe (você, antes de tudo)
+
+A conta ainda está em modo de teste com ativação pendente: confirmar o e-mail, ativar
+pagamentos e completar o perfil da empresa. As chaves `sk_live_`/`pk_live_` e o webhook
+de produção só existem depois disso.
 
 ## O que eu já deixei pronto no código
 

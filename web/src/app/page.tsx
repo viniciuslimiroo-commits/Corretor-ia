@@ -117,7 +117,7 @@ export default function Home() {
         retorno !== "ok"
           ? "Pagamento não concluído. Nada foi cobrado."
           : compra
-            ? "Pedido recebido. No cartão os créditos entram em instantes; no Pix, assim que o banco confirmar."
+            ? "Pedido recebido. Seus créditos entram assim que o pagamento for confirmado, o que no cartão leva instantes."
             : "Pagamento recebido. Seus créditos entram em instantes."
       );
     }, 0);
@@ -134,8 +134,8 @@ export default function Home() {
     };
   }, []);
 
-  // "assinatura" = R$ 69/mês renovando; "pacote" = R$ 69 uma vez, 80 créditos, e é
-  // onde o Pix aparece quando estiver ativo na conta da Stripe.
+  // "assinatura" = R$ 69/mês renovando; "pacote" = R$ 69 uma vez, 80 créditos, sem
+  // renovação. O pacote mostra as formas de pagamento ligadas no painel da Stripe.
   async function assinar(modo: "assinatura" | "pacote" = "assinatura") {
     if (!supabase) return;
     setAssinando(true);
@@ -384,7 +384,7 @@ export default function Home() {
           <button
             onClick={() => assinar("pacote")}
             disabled={assinando}
-            title="80 créditos, pagamento único, sem renovação. Aceita Pix quando ativo."
+            title="80 créditos, pagamento único, sem renovação."
             className="rounded border px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40"
           >
             Comprar 80 créditos

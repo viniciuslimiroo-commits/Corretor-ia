@@ -108,10 +108,11 @@ export async function POST(req: NextRequest) {
     switch (evento.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
-        // Dois eventos, porque Pix é assíncrono: a sessão "completa" quando a pessoa
-        // fecha o checkout, mas o dinheiro só chega quando o banco confirma -- e aí vem
-        // o `async_payment_succeeded`. Cartão já vem pago no `completed`. O critério
-        // que vale é um só: `payment_status === "paid"`.
+        // Dois eventos, por causa das formas de pagamento assíncronas (boleto hoje;
+        // Pix se a Stripe um dia liberar pra esta conta): a sessão "completa" quando a
+        // pessoa fecha o checkout, mas o dinheiro só chega depois -- e aí vem o
+        // `async_payment_succeeded`. Cartão já vem pago no `completed`. O critério que
+        // vale é um só: `payment_status === "paid"`.
         const sessao = evento.data.object as Stripe.Checkout.Session;
         const userId = sessao.client_reference_id ?? (await usuarioDoCustomer());
         const subscriptionId = idDe(sessao.subscription);

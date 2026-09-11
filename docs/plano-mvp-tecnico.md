@@ -238,25 +238,29 @@ verdade vira conferência do relatório de uso do fal.
       o plano vendia por menos da metade do próprio custo de produção.
 - [ ] **Sem isso, o app trava em 0 créditos e não dá pra testar mais nada** — é o próximo
       bloqueio real (saldo zerou em 10/09 depois das rodadas de QA)
-- [x] ~~Pix via Asaas ou Pagar.me~~ **Decisão eliminada em 11/09/2026: a própria Stripe
-      aceita Pix no Brasil.** Não precisa de segundo provedor. A ressalva que muda o
-      produto: Pix na Stripe Brasil é **só pagamento único** (Pix Automático, o recorrente,
-      é por convite). Então Pix nunca vai ser a assinatura — vai ser o **pacote avulso**:
+- [ ] ~~Pix via Asaas ou Pagar.me~~ **Pix sai da lista de lançamento (11/09/2026).**
+      Conferido no painel da conta: a Stripe libera Pix pra conta brasileira **só por
+      convite**, e Pix Automático (recorrente) não existe no Brasil. Uma leitura anterior
+      minha da doc pública dizia o contrário; o painel é a fonte que vale. Lançamento
+      fica com cartão (assinatura e pacote avulso); Boleto e Google Pay podem ser ligados
+      no painel. Se Pix voltar a ser prioridade, é uma mudança isolada — um provedor a
+      mais (Mercado Pago, Asaas, Pagar.me, ou a própria Stripe se liberar) restrito ao
+      pacote avulso, porque Pix é pagamento único. A assinatura fica na Stripe como está.
+      O pacote avulso existe de qualquer forma:
       R$ 69 uma vez, 80 créditos, sem renovação. Combina com corretor que foge de
       cobrança recorrente no cartão.
       - Produto "Pacote de 80 créditos" criado na Stripe; `POST /api/assinar` com
         `{modo:"pacote"}` abre checkout de pagamento único; o webhook credita em
         `checkout.session.completed` (cartão, já vem pago) ou
-        `checkout.session.async_payment_succeeded` (Pix, paga depois), sempre pelo
-        critério `payment_status == "paid"`, com guarda por id de sessão no ledger além da
-        guarda por id de evento.
+        `checkout.session.async_payment_succeeded` (forma assíncrona, como boleto, paga
+        depois), sempre pelo critério `payment_status == "paid"`, com guarda por id de
+        sessão no ledger além da guarda por id de evento.
       - O checkout do pacote não fixa formas de pagamento: mostra o que estiver ligado no
-        painel. **Pix está desligado na sua conta** — ligar em Configurações → Formas de
-        pagamento é ação sua; quando ligar, aparece sem mudar código.
+        painel. Hoje, cartão. Boleto e Google Pay podem ser ligados lá sem mudar código.
       - Testado: sessão real criada (R$ 69, brl, mode=payment); eventos de sessão paga
         SINTÉTICOS (o único teste do dia sem evento real, porque pagar exige alguém
-        digitar cartão) — cartão creditou, mesma sessão de novo não creditou, Pix
-        pendente não creditou e Pix confirmado creditou.
+        digitar cartão) — cartão creditou, mesma sessão de novo não creditou, pagamento
+        assíncrono pendente não creditou e confirmado creditou.
 - [x] Política "geração ruim = crédito de volta" — **feita em 11/09/2026**, versão manual
       como o plano pediu. Link "Ficou ruim? Reportar e recuperar o crédito" embaixo do
       resultado; `POST /api/job/[id]/reportar` devolve 1 crédito. Dois freios: um estorno

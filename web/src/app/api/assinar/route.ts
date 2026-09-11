@@ -13,12 +13,13 @@ import { stripe } from "@/lib/stripe";
 
 // Dois jeitos de pagar, um endpoint:
 //   assinatura  R$ 69/mês, 80 créditos por ciclo, cartão. Renova sozinha.
-//   pacote      R$ 69 uma vez, 80 créditos, sem renovação. É AQUI que o Pix entra: a
-//               Stripe só aceita Pix no Brasil pra pagamento único (Pix Automático é
-//               por convite), então Pix nunca vai ser assinatura -- vai ser pacote.
-//               O checkout do pacote não fixa formas de pagamento: mostra o que estiver
-//               ligado no painel da Stripe. Hoje é só cartão; no dia em que o Pix for
-//               ativado lá, ele aparece aqui sem mudar código.
+//   pacote      R$ 69 uma vez, 80 créditos, sem renovação. O checkout do pacote não
+//               fixa formas de pagamento: mostra o que estiver ligado no painel da
+//               Stripe. Hoje é cartão. Boleto e Google Pay podem ser ligados lá sem
+//               mudar código. Pix NÃO está disponível: conferido no painel em
+//               11/09/2026, a Stripe libera Pix pra conta brasileira só por convite
+//               (a doc pública é ambígua sobre isso; o painel é a fonte que vale).
+//               Se um dia for liberado, é aqui que entra -- Pix é pagamento único.
 type Modo = "assinatura" | "pacote";
 
 export async function POST(req: NextRequest) {
