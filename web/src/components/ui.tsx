@@ -298,6 +298,14 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
       );
+    case "tour360": // elipse de órbita com a seta do giro
+      return (
+        <svg {...p}>
+          <circle cx="12" cy="12" r="4" />
+          <ellipse cx="12" cy="12" rx="10" ry="4.6" />
+          <path d="M19.4 9.2l2.4.9-1 2.3" />
+        </svg>
+      );
     case "planta": // planta baixa
       return (
         <svg {...p}>

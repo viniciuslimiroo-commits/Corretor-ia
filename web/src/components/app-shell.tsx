@@ -56,7 +56,7 @@ export default function AppShell({
           <Link href="/" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={30} height={30} className="h-[30px] w-[30px]" />
-            <span className="text-lg font-bold tracking-tight text-marca-indigo">Encena</span>
+            <span className="whitespace-nowrap text-lg font-bold tracking-tight text-marca-indigo">Encena <span className="text-marca-teal">IA</span></span>
           </Link>
 
           <nav className="ml-1 hidden items-center gap-0.5 md:flex">

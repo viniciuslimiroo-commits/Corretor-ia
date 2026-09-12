@@ -13,10 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Encena", template: "%s · Encena" },
+  title: { default: "Encena IA · o imóvel inteiro, pronto para anunciar", template: "%s · Encena IA" },
   description:
-    "Fotos que vendem melhor. Inteligência artificial para imóveis: mobília ambientes vazios, remova objetos, corrija a luz e exporte pros portais.",
-  applicationName: "Encena",
+    "Inteligência artificial para imóveis: mobílie ambientes vazios, remova objetos, troque piso e parede, monte o vídeo, o tour 360°, a planta baixa e as medidas do terreno — e exporte no tamanho dos portais.",
+  applicationName: "Encena IA",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

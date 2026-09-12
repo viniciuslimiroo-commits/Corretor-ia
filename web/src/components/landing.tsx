@@ -12,15 +12,16 @@ import { Icone } from "./ui";
 // que não medimos.
 
 const EXEMPLOS = [
-  { id: "sala", rotulo: "Mobiliar · sala de estar, estilo praiano", antes: "/exemplos/sala-antes.jpg", depois: "/exemplos/sala-depois.jpg" },
+  { id: "sala", rotulo: "Mobiliar cômodo · sala de estar, estilo praiano", antes: "/exemplos/sala-antes.jpg", depois: "/exemplos/sala-depois.jpg" },
+  { id: "quarto", rotulo: "Mobiliar cômodo · quarto vazio, estilo escandinavo", antes: "/exemplos/quarto-antes.jpg", depois: "/exemplos/quarto-depois.jpg" },
   { id: "cozinha", rotulo: "Remover objeto · tirar a bagunça da bancada", antes: "/exemplos/cozinha-antes.jpg", depois: "/exemplos/cozinha-depois.jpg" },
   { id: "parede", rotulo: "Mudar parede · terracota", antes: "/exemplos/parede-antes.jpg", depois: "/exemplos/parede-depois.jpg" },
-  { id: "fachada", rotulo: "Trocar céu · dia ensolarado", antes: "/exemplos/fachada-antes.jpg", depois: "/exemplos/fachada-depois.jpg" },
 ];
 
 const PERGUNTAS = [
   { p: "Isso é permitido em anúncio?", r: "Sim, desde que fique claro que a imagem é ilustrativa. Toda foto alterada sai com esse aviso gravado, e os links compartilhados avisam também. É o que protege o corretor no Código de Defesa do Consumidor." },
-  { p: "Preciso saber usar programa de edição?", r: "Não. Você envia a foto, escolhe o que quer (mobiliar, trocar piso, tirar objeto, trocar céu) e ajusta com dois toques. Em menos de um minuto o resultado aparece lado a lado com o original." },
+  { p: "Só serve para editar foto?", r: "Não. A edição de foto é uma parte. No mesmo lugar você monta o vídeo do imóvel com movimento de câmera e narração, transforma uma foto 360° ou a panorâmica do celular em tour, desenha a planta baixa com as áreas calculadas, demarca o terreno com as medidas, processa até 40 fotos de uma vez e manda tudo por um link com a sua marca." },
+  { p: "Preciso saber usar programa de edição?", r: "Não. Você envia a foto, escolhe o que quer (mobiliar o cômodo, trocar piso, tirar objeto) e ajusta com dois toques. Em menos de um minuto o resultado aparece lado a lado com o original." },
   { p: "Funciona no celular?", r: "Sim. Foto do celular serve, e o resultado baixa no tamanho certo dos portais ou vai direto pro WhatsApp por link." },
   { p: "E se o resultado ficar ruim?", r: "Você pede o crédito de volta na hora. Uma IA compara a foto original com o resultado e o crédito volta." },
   { p: "Como funciona para imobiliária?", r: "Uma conta de equipe: cada corretor entra com o próprio e-mail, todo mundo usa os créditos da imobiliária, o gestor vê o uso de cada um, e a marca da casa vai nas fotos, vídeos e links." },
@@ -39,7 +40,9 @@ export default function Landing() {
           <Link href="/" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={32} height={32} className="h-8 w-8" />
-            <span className="text-xl font-bold tracking-tight text-marca-indigo">Encena</span>
+            <span className="whitespace-nowrap text-xl font-bold tracking-tight text-marca-indigo">
+              Encena <span className="text-marca-teal">IA</span>
+            </span>
           </Link>
           <nav className="ml-auto hidden items-center gap-5 text-sm text-neutral-600 sm:flex">
             <a href="#como" className="hover:text-marca-indigo">Como funciona</a>
@@ -56,9 +59,9 @@ export default function Landing() {
       <section className="mx-auto grid max-w-6xl gap-10 px-5 pt-14 pb-10 lg:grid-cols-12 lg:items-center lg:pt-20">
         <div className="lg:col-span-5">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-coral">Inteligência artificial para imóveis</p>
-          <h1 className="mt-3 text-4xl font-semibold leading-[1.1] text-neutral-900 sm:text-5xl">Fotos que vendem melhor.</h1>
+          <h1 className="mt-3 text-4xl font-semibold leading-[1.1] text-neutral-900 sm:text-5xl">O imóvel inteiro, pronto para anunciar.</h1>
           <p className="mt-5 max-w-lg text-lg text-neutral-600">
-            Mobília o ambiente vazio, tire o que atrapalha, troque piso, parede e céu, e monte o vídeo do imóvel com sua marca. Em minutos, pelo celular, com o aviso de imagem ilustrativa já no lugar.
+            Fotos, vídeo, tour 360°, planta baixa e medidas do terreno — tudo no mesmo lugar. Mobília o ambiente vazio, tira o que atrapalha, troca piso e parede, e monta o anúncio com a sua marca. Em minutos, pelo celular.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link href="/login" className="rounded-lg bg-marca-coral px-5 py-3 font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
@@ -69,7 +72,7 @@ export default function Landing() {
           <ul className="mt-8 grid gap-2 text-sm text-neutral-600 sm:grid-cols-2">
             <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-teal" /> Português, real e Pix na chegada</li>
             <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-teal" /> Tamanho certo do ZAP, VivaReal e OLX</li>
-            <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-teal" /> Estilos praiano e tropical</li>
+            <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-teal" /> Vídeo, tour 360° e planta sem crédito</li>
             <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-teal" /> Crédito de volta se ficar ruim</li>
           </ul>
         </div>
@@ -97,8 +100,8 @@ export default function Landing() {
           <h2 className="text-2xl font-semibold sm:text-3xl">Três passos, no celular ou no computador</h2>
           <ol className="mt-8 grid gap-6 md:grid-cols-3">
             {[
-              ["1", "Envie a foto", "Do celular mesmo. Foto escura, cômodo vazio, céu nublado: tudo entra."],
-              ["2", "Escolha o que fazer", "Mobiliar com 10 estilos, renovar, trocar piso ou parede, tirar objeto, trocar céu, corrigir luz e perspectiva."],
+              ["1", "Envie o que tiver", "Foto do celular, panorâmica, vídeo 360°, foto do terreno. Ambiente escuro, cômodo vazio, tudo entra."],
+              ["2", "Escolha o que fazer", "Mobiliar o cômodo com 10 estilos, renovar, esvaziar, trocar piso ou parede, tirar objeto, corrigir luz e perspectiva — ou montar o vídeo, o tour 360°, a planta baixa e as medidas do lote."],
               ["3", "Compare, baixe, compartilhe", "Antes e depois lado a lado. Baixa no tamanho do portal, com seu logo, ou manda o link pelo WhatsApp."],
             ].map(([n, t, d]) => (
               <li key={n} className="rounded-2xl border border-neutral-200 bg-white p-5">
@@ -114,7 +117,9 @@ export default function Landing() {
       {/* ---------- recursos ---------- */}
       <section id="recursos" className="mx-auto max-w-6xl scroll-mt-20 px-5 py-14">
         <h2 className="text-2xl font-semibold sm:text-3xl">Tudo que o anúncio precisa</h2>
-        <p className="mt-2 max-w-2xl text-neutral-600">Cada ação custa 1 crédito. Vídeo do imóvel, 1 crédito. Cena animada com IA, 2.</p>
+        <p className="mt-2 max-w-2xl text-neutral-600">
+          Cada edição de foto com IA custa 1 crédito. Vídeo, tour 360°, planta baixa e medidas do terreno não gastam crédito nenhum — use à vontade. Só a cena animada com IA custa 2.
+        </p>
         <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {acoes.map((a) => (
             <li key={a.id} className="flex items-start gap-3 rounded-2xl border border-neutral-200 p-4">
@@ -132,8 +137,44 @@ export default function Landing() {
               <Icone nome="video" />
             </span>
             <div>
-              <p className="font-semibold">Vídeo do imóvel</p>
-              <p className="text-sm text-neutral-600">Fotos viram vídeo com movimento, música, antes e depois, narração e sua marca. Reels, Stories, YouTube.</p>
+              <p className="font-semibold">Vídeo do imóvel <span className="text-xs font-normal text-marca-coral">sem crédito</span></p>
+              <p className="text-sm text-neutral-600">Fotos viram vídeo com movimento de câmera, música, antes e depois, narração e sua marca. Reels, Stories, YouTube.</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-3 rounded-2xl border border-marca-coral/40 bg-marca-pessego/30 p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-marca-indigo">
+              <Icone nome="tour360" />
+            </span>
+            <div>
+              <p className="font-semibold">Tour 360° <span className="text-xs font-normal text-marca-coral">sem crédito</span></p>
+              <p className="text-sm text-neutral-600">Foto 360°, ou a panorâmica do próprio celular, vira um passeio pelo ambiente: olhar em volta, giro completo, entrada.</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-3 rounded-2xl border border-marca-coral/40 bg-marca-pessego/30 p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-marca-indigo">
+              <Icone nome="planta" />
+            </span>
+            <div>
+              <p className="font-semibold">Planta baixa <span className="text-xs font-normal text-marca-coral">sem crédito</span></p>
+              <p className="text-sm text-neutral-600">Desenhe os cômodos tocando nos cantos. A área de cada um e a total saem calculadas, com portas, janelas e medidas nas paredes.</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-3 rounded-2xl border border-marca-coral/40 bg-marca-pessego/30 p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-marca-indigo">
+              <Icone nome="terreno" />
+            </span>
+            <div>
+              <p className="font-semibold">Terreno e lote <span className="text-xs font-normal text-marca-coral">sem crédito</span></p>
+              <p className="text-sm text-neutral-600">Marque os limites na foto do terreno, informe as medidas e a frente. Sai a foto com o lote demarcado e a área.</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-3 rounded-2xl border border-neutral-200 p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marca-pessego text-marca-indigo">
+              <Icone nome="lote" />
+            </span>
+            <div>
+              <p className="font-semibold">Vários de uma vez</p>
+              <p className="text-sm text-neutral-500">Até 40 fotos do mesmo imóvel na mesma ação, processadas em fila, e o pacote pronto num ZIP.</p>
             </div>
           </li>
           <li className="flex items-start gap-3 rounded-2xl border border-neutral-200 p-4">
@@ -231,8 +272,9 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-5 text-xs text-neutral-500">
           <span className="flex items-center gap-1.5 font-semibold text-marca-indigo">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/marca-encena.svg" alt="" width={16} height={16} className="h-4 w-4" /> Encena
+            <img src="/marca-encena.svg" alt="" width={16} height={16} className="h-4 w-4" /> Encena IA
           </span>
+          <span className="text-neutral-400">encena.app.br</span>
           <Link href="/termos" className="hover:text-marca-indigo">Termos de uso</Link>
           <Link href="/privacidade" className="hover:text-marca-indigo">Privacidade</Link>
           <Link href="/planos" className="hover:text-marca-indigo">Planos</Link>

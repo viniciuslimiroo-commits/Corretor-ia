@@ -270,10 +270,10 @@ export default function PaginaPlanta() {
               {/* rascunho do cômodo em andamento */}
               <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {rascunho.length >= 2 && (
-                  <polyline points={rascunho.map((p) => `${px(p.x)},${py(p.y)}`).join(" ")} fill="none" stroke="#f06b4f" strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
+                  <polyline points={rascunho.map((p) => `${px(p.x)},${py(p.y)}`).join(" ")} fill="none" stroke="#f06b4f" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                 )}
                 {rascunho.length >= 1 && cursor && ferramenta === "comodo" && (
-                  <line x1={px(rascunho[rascunho.length - 1].x)} y1={py(rascunho[rascunho.length - 1].y)} x2={px(cursor.x)} y2={py(cursor.y)} stroke="#f06b4f" strokeWidth={0.3} strokeDasharray="1 1" vectorEffect="non-scaling-stroke" />
+                  <line x1={px(rascunho[rascunho.length - 1].x)} y1={py(rascunho[rascunho.length - 1].y)} x2={px(cursor.x)} y2={py(cursor.y)} stroke="#f06b4f" strokeWidth={2} strokeDasharray="6 4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                 )}
               </svg>
               {rascunho.map((p, i) => (

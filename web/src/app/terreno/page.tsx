@@ -20,6 +20,41 @@ type Ponto = { x: number; y: number };
 
 const CORES = ["#f06b4f", "#2cb1a3", "#0f2d5b", "#e8b800", "#ffffff"];
 
+// Espessura da linha. O fator multiplica a régua do servidor (0,3125% do lado maior da
+// foto), então o que a pessoa vê na tela é a mesma proporção que sai no arquivo -- por
+// isso o traço da tela é calculado a partir do tamanho medido da caixa, e não um valor
+// fixo em pixel. "Média" é o padrão: o antigo traço fino ficava invisível em foto de
+// terreno com mato e terra.
+const ESPESSURAS = [
+  { id: "fina", rotulo: "Fina", fator: 1.2 },
+  { id: "media", rotulo: "Média", fator: 2 },
+  { id: "grossa", rotulo: "Grossa", fator: 3.2 },
+  { id: "extra", rotulo: "Extra", fator: 5 },
+];
+const PROPORCAO_TRACO = 0.003125; // = 5/1600, a régua do servidor
+
+// O contorno do lote, desenhado três vezes (halo escuro, cor, tracejado branco). Fica
+// fora do componente pra não redeclarar a cada tecla digitada nas medidas.
+function PolyTerreno({ pontos, fechado, stroke, strokeWidth, fill, dash, opacity }: {
+  pontos: Ponto[]; fechado: boolean; stroke: string; strokeWidth: number;
+  fill?: string; dash?: string; opacity?: number;
+}) {
+  const pts = pontos.map((p) => `${p.x * 100},${p.y * 100}`).join(" ");
+  const comum = {
+    points: pts,
+    stroke,
+    strokeWidth,
+    strokeDasharray: dash,
+    opacity,
+    vectorEffect: "non-scaling-stroke" as const,
+    strokeLinejoin: "round" as const,
+    strokeLinecap: "round" as const,
+  };
+  return fechado
+    ? <polygon {...comum} fill={fill ?? "none"} fillOpacity={fill ? 0.22 : 0} />
+    : <polyline {...comum} fill="none" />;
+}
+
 export default function Terreno() {
   const c = useConta();
   const [foto, setFoto] = useState<File | null>(null);
@@ -30,6 +65,8 @@ export default function Terreno() {
   const [titulo, setTitulo] = useState("");
   const [frente, setFrente] = useState<number>(-1);
   const [cor, setCor] = useState(CORES[0]);
+  const [espessura, setEspessura] = useState(ESPESSURAS[1]);
+  const [caixaPx, setCaixaPx] = useState(0); // maior lado da caixa, em px de tela
   const [imovelId, setImovelId] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("imovel")));
   const [arrastando, setArrastando] = useState<number | null>(null);
   const [gerando, setGerando] = useState(false);
@@ -40,6 +77,16 @@ export default function Terreno() {
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
   }, [preview]);
+
+  // Mede a caixa pra desenhar na tela a mesma espessura relativa que o servidor grava.
+  // O ResizeObserver já dispara uma vez ao observar, então não precisa medir aqui dentro.
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setCaixaPx(Math.max(e.contentRect.width, e.contentRect.height)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [preview, resultado]);
 
   function receber(f: File) {
     if (preview) URL.revokeObjectURL(preview);
@@ -91,6 +138,7 @@ export default function Terreno() {
       form.append("titulo", titulo);
       form.append("frente", String(frente));
       form.append("cor", cor);
+      form.append("espessura", String(espessura.fator));
       if (imovelId) form.append("imovelId", imovelId);
       const r = await fetch("/api/terreno", { method: "POST", headers: { Authorization: `Bearer ${await c.token()}` }, body: form });
       const d = await r.json();
@@ -114,6 +162,7 @@ export default function Terreno() {
 
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
   const fechado = pontos.length >= 3;
+  const traco = Math.max(2, (caixaPx || 640) * PROPORCAO_TRACO * espessura.fator);
 
   return (
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
@@ -177,11 +226,13 @@ export default function Terreno() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={preview} alt="Terreno" className="block w-full" draggable={false} />
                   <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                    {fechado && (
-                      <polygon points={pontos.map((p) => `${p.x * 100},${p.y * 100}`).join(" ")} fill={cor} fillOpacity={0.22} stroke={cor} strokeWidth={0.5} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-                    )}
-                    {!fechado && pontos.length >= 2 && (
-                      <polyline points={pontos.map((p) => `${p.x * 100},${p.y * 100}`).join(" ")} fill="none" stroke={cor} strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
+                    {pontos.length >= 2 && (
+                      <>
+                        {/* halo escuro por baixo: é o que faz a linha aparecer sobre mato e terra */}
+                        <PolyTerreno pontos={pontos} fechado={fechado} stroke="#000000" strokeWidth={traco * 1.7} opacity={0.4} />
+                        <PolyTerreno pontos={pontos} fechado={fechado} stroke={cor} strokeWidth={traco} fill={fechado ? cor : undefined} />
+                        <PolyTerreno pontos={pontos} fechado={fechado} stroke="#ffffff" strokeWidth={Math.max(1, traco / 3)} dash={`${traco * 2} ${traco * 1.5}`} opacity={0.9} />
+                      </>
                     )}
                   </svg>
                   {pontos.map((p, i) => {
@@ -196,8 +247,15 @@ export default function Terreno() {
                             e.stopPropagation();
                             setArrastando(i);
                           }}
-                          className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-white shadow"
-                          style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%`, borderColor: cor, cursor: "grab" }}
+                          className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+                          style={{
+                            left: `${p.x * 100}%`,
+                            top: `${p.y * 100}%`,
+                            width: Math.max(20, traco * 3),
+                            height: Math.max(20, traco * 3),
+                            border: `${Math.max(2, traco * 0.7)}px solid ${cor}`,
+                            cursor: "grab",
+                          }}
                           title={`Canto ${i + 1}`}
                         />
                         {(fechado || i < pontos.length - 1) && medidas[i] && (
@@ -251,11 +309,28 @@ export default function Terreno() {
                 <input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="ex.: Lote 12 · Quadra B" maxLength={40} className={campo} />
               </label>
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs text-neutral-500">Cor:</span>
+            <div className="mt-4 flex items-center gap-2">
+              <span className="w-20 shrink-0 text-xs text-neutral-500">Cor</span>
               {CORES.map((k) => (
                 <button key={k} type="button" onClick={() => setCor(k)} className={"h-6 w-6 rounded-full border-2 " + (cor === k ? "border-neutral-800" : "border-neutral-200")} style={{ background: k }} title={k} />
               ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="w-20 shrink-0 text-xs text-neutral-500">Espessura</span>
+              <div className="flex flex-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+                {ESPESSURAS.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => setEspessura(e)}
+                    title={`Linha ${e.rotulo.toLowerCase()}`}
+                    className={"flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs " + (espessura.id === e.id ? "bg-white font-medium text-marca-indigo shadow-sm" : "text-neutral-500 hover:text-neutral-800")}
+                  >
+                    <span className="inline-block w-4 rounded-full" style={{ height: Math.max(1, Math.round(e.fator)), background: espessura.id === e.id ? cor : "#a3a3a3" }} />
+                    {e.rotulo}
+                  </button>
+                ))}
+              </div>
             </div>
           </Cartao>
 

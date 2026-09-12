@@ -47,6 +47,10 @@ export async function POST(req: NextRequest) {
   const frente = Number(form.get("frente"));
   const corBruta = limparTexto(form.get("cor"), 7);
   const cor = /^#[0-9a-fA-F]{6}$/.test(corBruta) ? corBruta : "#f06b4f";
+  // Espessura da linha escolhida na tela (fina 1,2 · média 2 · grossa 3,2 · extra 5).
+  // Multiplica a régua base; limitada pra ninguém mandar um número que cobre a foto.
+  const espessuraBruta = Number(form.get("espessura"));
+  const espessura = Number.isFinite(espessuraBruta) ? Math.min(6, Math.max(1, espessuraBruta)) : 2;
   const imovelIdBruto = limparTexto(form.get("imovelId"), 40) || null;
 
   let imovelId: string | null = null;
@@ -73,14 +77,16 @@ export async function POST(req: NextRequest) {
   const pts = pontos.map((p) => ({ x: p.x * W, y: p.y * H }));
   const caminho = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") + " Z";
   const fonte = Math.round(26 * esc);
-  const traco = Math.max(3, Math.round(5 * esc));
+  const traco = Math.max(3, Math.round(5 * esc * espessura));
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">`;
-  svg += `<path d="${caminho}" fill="${cor}" fill-opacity="0.22" stroke="${cor}" stroke-width="${traco}" stroke-linejoin="round"/>`;
+  // halo escuro por baixo: é o que faz a linha aparecer sobre mato, terra e asfalto
+  svg += `<path d="${caminho}" fill="none" stroke="#000000" stroke-width="${Math.round(traco * 1.7)}" stroke-linejoin="round" stroke-linecap="round" opacity="0.4"/>`;
+  svg += `<path d="${caminho}" fill="${cor}" fill-opacity="0.22" stroke="${cor}" stroke-width="${traco}" stroke-linejoin="round" stroke-linecap="round"/>`;
   svg += `<path d="${caminho}" fill="none" stroke="#ffffff" stroke-width="${Math.max(1, Math.round(traco / 3))}" stroke-dasharray="${traco * 2} ${traco * 1.5}" stroke-linejoin="round" opacity="0.9"/>`;
   for (let i = 0; i < pts.length; i++) {
     const a = pts[i];
     const b = pts[(i + 1) % pts.length];
-    svg += `<circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${Math.round(7 * esc)}" fill="#ffffff" stroke="${cor}" stroke-width="${Math.round(3 * esc)}"/>`;
+    svg += `<circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${Math.round(traco * 1.5)}" fill="#ffffff" stroke="${cor}" stroke-width="${Math.max(2, Math.round(traco * 0.7))}"/>`;
     const m = medidas[i];
     if (!m) continue;
     const mx = (a.x + b.x) / 2;
@@ -128,7 +134,7 @@ export async function POST(req: NextRequest) {
       property_id: imovelId,
       tipo: "terreno",
       status: "concluido",
-      parametros: { pontos, medidas, area, titulo, frente: Number.isFinite(frente) ? frente : null },
+      parametros: { pontos, medidas, area, titulo, cor, espessura, frente: Number.isFinite(frente) ? frente : null },
       creditos_cobrados: 0,
       selo: aviso,
     })
