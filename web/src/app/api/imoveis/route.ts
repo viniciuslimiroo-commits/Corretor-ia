@@ -53,9 +53,11 @@ export async function POST(req: NextRequest) {
   const endereco = typeof corpo.endereco === "string" ? corpo.endereco.trim().slice(0, 160) : "";
   if (!titulo) return NextResponse.json({ error: "Dê um nome ao imóvel." }, { status: 400 });
 
+  // Membro de imobiliária: o imóvel nasce ligado a ela (painel do gestor no futuro).
+  const { data: membro } = await db.from("org_members").select("org_id").eq("user_id", userId).maybeSingle();
   const { data, error } = await db
     .from("properties")
-    .insert({ user_id: userId, titulo, endereco: endereco || null })
+    .insert({ user_id: userId, titulo, endereco: endereco || null, org_id: membro?.org_id ?? null })
     .select("id, titulo, endereco, criado_em, atualizado_em")
     .single();
   if (error || !data) return NextResponse.json({ error: error?.message ?? "Erro criando imóvel." }, { status: 500 });

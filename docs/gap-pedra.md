@@ -167,6 +167,34 @@ panorâmicas continua na Fase D, exige câmera 360); **antes e depois** = cena p
 **colocar um vídeo e melhorar** = cena de clipe com correção de cor/nitidez (o upscale
 por IA de vídeo é caro -- Topaz no fal -- e fica pra quando houver demanda).
 
+## Imobiliárias: conta de equipe e planos, 12/09/2026
+
+O produto atende corretor autônomo **e** imobiliária. A Pedra cobra por cadeira
+(€29/pessoa); o nosso diferencial é **plano por equipe**: créditos compartilhados, cada
+corretor com seu login, gestor vê o uso de cada um, marca da casa como padrão. Conta de
+custo e margem em `docs/precos-e-margens.md`.
+
+Migration 10 (`organizations`, `org_members`, `org_convites`, `liberacoes_creditos`,
+`org_id` em jobs/videos/properties/ledger, funções `debitar_creditos_org` /
+`adicionar_creditos_org`). Regra única em `web/src/lib/cobranca.ts`: membro de
+imobiliária gasta da imobiliária; créditos pessoais ficam congelados até sair; quem cria
+leva os próprios créditos.
+
+| Item | Estado |
+|---|---|
+| Planos: Pro (R$ 69 / R$ 690), Equipe (R$ 249 / R$ 2.490, 5 pessoas, 400 cr/mês), Imobiliária (R$ 599 / R$ 5.990, 15 pessoas, 1.200 cr/mês); pacotes pros dois | ✅ preços na Stripe (teste) por lookup_key; tela `/planos` com os dois públicos |
+| Anual paga 10 meses e libera créditos **mês a mês** (metadata `creditos_por_mes`, tabela `liberacoes_creditos`, cron diário `/api/cron/liberacoes` com CRON_SECRET) | ✅ testado em produção: assinatura anual da imobiliária → +400 e 11 parcelas agendadas → cron liberou +400 → cancelar apagou as parcelas |
+| Tela `/equipe`: criar imobiliária, convidar por e-mail (entra ao logar), membros com uso do mês, papéis dono/gestor/corretor, sair, marca da casa | ✅ testado pela API de ponta a ponta e pela tela |
+| Débito/estorno de fotos e vídeos na conta certa; marca da imobiliária como padrão em export, vídeo e link público | ✅ vídeo de um corretor membro debitou da imobiliária |
+| Webhook: acha a conta (pessoa ou imobiliária) pelo customer; `charge.refunded` apaga parcelas futuras | ✅ |
+
+Bug herdado e corrigido: o webhook devolvia 500 (pra Stripe tentar de novo) sem apagar o
+registro de idempotência, então a retentativa seria tratada como duplicata e o crédito
+nunca entraria. Agora o registro sai antes do 500.
+
+Fora desta versão: painel do gestor com as fotos e vídeos de toda a equipe (hoje ele vê
+contagens); boleto e nota fiscal; mais de 15 pessoas (sob medida, por contato).
+
 ## Ordem proposta
 
 **Fase A — edição completa (1 semana).** Mobiliar completo (tipo de espaço, estilos com

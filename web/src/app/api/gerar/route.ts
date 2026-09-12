@@ -5,6 +5,7 @@ import { apagarEntradas, caminhoEntrada, caminhoOriginal, guardarEAssinar } from
 import { UPSCALER, corpoRequisicao, despachar } from "@/lib/fal";
 import { ACOES_POR_ID, limparParametros } from "@/lib/acoes";
 import { saldoFal } from "@/lib/custo";
+import { contaDe, creditar, debitar } from "@/lib/cobranca";
 
 // DESPACHANTE. Esta rota não espera a IA: ela valida, cobra o crédito, coloca o pedido
 // na fila do fal e responde na hora com o id do job. Quem acompanha é /api/job/[id].
@@ -140,23 +141,28 @@ export async function POST(req: NextRequest) {
     imovelId = imovel.id;
   }
 
+  // De quem sai o crédito: da pessoa, ou da imobiliária se ela for membro.
+  const conta = await contaDe(db, userId);
+  const orgId = conta.tipo === "org" ? conta.id : null;
+
   const { data: job, error: jobCriarError } = await db
     .from("jobs")
-    .insert({ user_id: userId, tipo: acao.id, status: "gerando", parametros, property_id: imovelId })
+    .insert({ user_id: userId, tipo: acao.id, status: "gerando", parametros, property_id: imovelId, org_id: orgId })
     .select()
     .single();
   if (jobCriarError) return NextResponse.json({ error: `Erro criando job: ${jobCriarError.message}` }, { status: 500 });
   if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 
   // Débito ATÔMICO, antes de gastar um centavo com a IA.
-  const { data: saldoAposDebito, error: debitoError } = await db.rpc("debitar_credito", {
-    p_user_id: userId,
-    p_job_id: job.id,
-  });
-  if (debitoError) return NextResponse.json({ error: `Erro debitando crédito: ${debitoError.message}` }, { status: 500 });
+  let saldoAposDebito: number | null;
+  try {
+    saldoAposDebito = await debitar(db, conta, userId, 1, "consumo", job.id);
+  } catch (e) {
+    return NextResponse.json({ error: `Erro debitando crédito: ${e instanceof Error ? e.message : e}` }, { status: 500 });
+  }
   if (saldoAposDebito === null) {
     await db.from("jobs").update({ status: "sem_credito" }).eq("id", job.id);
-    return NextResponse.json({ error: "Sem créditos." }, { status: 402 });
+    return NextResponse.json({ error: conta.tipo === "org" ? "A imobiliária está sem créditos." : "Sem créditos." }, { status: 402 });
   }
 
   const caminhosEntrada: string[] = [];
@@ -272,7 +278,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ jobId: job.id, status: "gerando", creditosRestantes: saldoAposDebito });
   } catch (erro) {
-    await db.rpc("estornar_credito", { p_user_id: userId, p_job_id: job.id, p_motivo: "estorno_erro" });
+    await creditar(db, conta, userId, 1, "estorno_erro", job.id).catch(() => null);
     await db.from("jobs").update({ status: "falhou", input_path: null }).eq("id", job.id);
     await apagarEntradas(db, [...caminhosEntrada, ...(caminhoOriginalCriado ? [caminhoOriginalCriado] : [])]);
     return NextResponse.json({ error: erro instanceof Error ? erro.message : "Erro inesperado." }, { status: 500 });

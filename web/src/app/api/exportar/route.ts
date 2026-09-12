@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp, { type OverlayOptions } from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
+import { marcaEfetiva } from "@/lib/cobranca";
 
 // Export por portal (Sprint 4, adiantado). Specs reais pesquisadas antes de
 // implementar -- não inventadas:
@@ -73,8 +74,9 @@ export async function POST(req: NextRequest) {
   const camadas: OverlayOptions[] = [];
 
   if (comLogo) {
-    const { data: perfil } = await db.from("users").select("logo_path").eq("id", userId).single();
-    if (perfil?.logo_path) {
+    // Logo da pessoa; sem ele, o da imobiliária (marcaEfetiva decide).
+    const perfil = await marcaEfetiva(db, userId);
+    if (perfil.logo_path) {
       const { data: logoArq } = await db.storage.from(BUCKET_RESULTADOS).download(perfil.logo_path);
       if (logoArq) {
         // Logo com no máximo 18% da largura e 12% da altura, canto inferior esquerdo,

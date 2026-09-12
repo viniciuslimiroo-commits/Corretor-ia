@@ -14,6 +14,7 @@ import {
 import { aplicarSelo, textoDoSelo } from "@/lib/selo";
 import { ALVO_LARGURA_UPSCALE, saldoFal } from "@/lib/custo";
 import { ACOES_COM_CHECAGEM_DE_IGUALDADE, pareceIgual } from "@/lib/comparar";
+import { creditar } from "@/lib/cobranca";
 
 // Job despachado que nunca volta prende o crédito do usuário pra sempre. 15 minutos é
 // muito acima do pior caso medido (100s) e curto o bastante pra ninguém ficar preso a
@@ -71,13 +72,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // outro trocando o id na URL. O service role ignora RLS, então a checagem é explícita.
   const { data: job, error: erroJob } = await db
     .from("jobs")
-    .select("id, tipo, status, output_path, input_path, selo, pipeline, criado_em, property_id")
+    .select("id, tipo, status, output_path, input_path, selo, pipeline, criado_em, property_id, org_id")
     .eq("id", id)
     .eq("user_id", userId)
     .single();
   if (erroJob || !job) {
     return NextResponse.json({ error: "Job não encontrado." }, { status: 404 });
   }
+  // O crédito volta pra conta de onde saiu: a imobiliária, se o job nasceu nela.
+  const contaDoJob = job.org_id ? { tipo: "org" as const, id: job.org_id as string } : { tipo: "user" as const, id: userId };
 
   if (job.status === "concluido" && job.output_path) {
     // Reassina em vez de devolver a URL antiga: a assinatura anterior pode ter vencido
@@ -103,7 +106,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   async function falhar(mensagem: string) {
-    await db!.rpc("estornar_credito", { p_user_id: userId, p_job_id: id, p_motivo: "estorno_falha" });
+    await creditar(db!, contaDoJob, userId, 1, "estorno_falha", id).catch(() => null);
     await db!.from("jobs").update({ status: "falhou", input_path: null }).eq("id", id);
     // Job que falhou não tem "depois", então a original também não tem por que ficar.
     await apagarEntradas(db!, [...(p!.entradas ?? []), ...(job!.input_path ? [job!.input_path] : [])]);

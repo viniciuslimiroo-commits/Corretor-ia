@@ -3,6 +3,7 @@ import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar, apagarEntradas } from "@/lib/armazenamento";
 import { avancarVideo, limparTemporarios, progressoDe, type LinhaVideo, type PipelineVideo } from "@/lib/video-pipeline";
 import type { EspecVideo } from "@/lib/video";
+import { creditar } from "@/lib/cobranca";
 
 // Acompanha (e faz andar) um vídeo. Cada GET avança no máximo uma etapa. A etapa pode
 // levar dezenas de segundos (a montagem, mais), então a função tem 300s e existe uma
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: video, error: erroLeitura } = await db
     .from("videos")
-    .select("id, user_id, status, espec, pipeline, formato, titulo, output_path, thumb_path, duracao_segundos, share_token, erro, criado_em, creditos_cobrados")
+    .select("id, user_id, org_id, status, espec, pipeline, formato, titulo, output_path, thumb_path, duracao_segundos, share_token, erro, criado_em, creditos_cobrados")
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -52,8 +53,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ videoId: id, status: "falhou", error: video.erro ?? "Este vídeo não foi concluído." }, { status: 409 });
   }
 
+  const contaDoVideo = video.org_id ? { tipo: "org" as const, id: video.org_id as string } : { tipo: "user" as const, id: userId };
+
   async function falhar(mensagem: string) {
-    await db.rpc("adicionar_creditos", { p_user_id: userId, p_quantidade: video!.creditos_cobrados, p_motivo: "estorno_video", p_referencia: id });
+    await creditar(db, contaDoVideo, userId, video!.creditos_cobrados, "estorno_video", id).catch(() => null);
     await db.from("videos").update({ status: "falhou", erro: mensagem, lock_ate: null }).eq("id", id);
     await limparTemporarios(db, pipeline);
     return NextResponse.json({ videoId: id, status: "falhou", error: mensagem }, { status: 502 });
@@ -78,7 +81,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   try {
-    const prog = await avancarVideo(db, falKey, { id: video.id, user_id: video.user_id, espec, pipeline, formato: video.formato } as LinhaVideo);
+    const prog = await avancarVideo(db, falKey, { id: video.id, user_id: video.user_id, org_id: video.org_id ?? null, espec, pipeline, formato: video.formato } as LinhaVideo);
     if (prog.etapa === "concluido") {
       const { data: pronto } = await db.from("videos").select("output_path, thumb_path, duracao_segundos, pipeline").eq("id", id).single();
       return NextResponse.json({

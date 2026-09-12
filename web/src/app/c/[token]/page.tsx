@@ -5,6 +5,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { ehToken } from "@/lib/compartilhar";
 import { ACOES_POR_ID, resumirParametros } from "@/lib/acoes";
+import { marcaEfetiva } from "@/lib/cobranca";
 import GaleriaPublica, { type FotoPublica } from "@/components/galeria-publica";
 
 // Página PÚBLICA de uma foto ou de um imóvel compartilhado. Quem chega aqui é o cliente
@@ -27,13 +28,14 @@ type Pagina = {
 };
 
 async function donoDe(db: NonNullable<ReturnType<typeof supabaseServer>>, userId: string): Promise<Dono> {
-  const { data: u } = await db.from("users").select("nome, creci, whatsapp, logo_path, cor_marca").eq("id", userId).maybeSingle();
+  // Marca da pessoa completada pela da imobiliária (nome "Ana · Lima Imóveis", logo da casa).
+  const u = await marcaEfetiva(db, userId);
   return {
-    nome: u?.nome ?? null,
-    creci: u?.creci ?? null,
-    whatsapp: u?.whatsapp ?? null,
-    logo: u?.logo_path ? await assinar(db, u.logo_path).catch(() => null) : null,
-    cor: u?.cor_marca ?? null,
+    nome: u.nome,
+    creci: u.creci,
+    whatsapp: u.whatsapp,
+    logo: u.logo_path ? await assinar(db, u.logo_path).catch(() => null) : null,
+    cor: u.cor_marca,
   };
 }
 

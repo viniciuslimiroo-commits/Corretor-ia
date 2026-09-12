@@ -298,6 +298,15 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
       );
+    case "equipe": // duas pessoas
+      return (
+        <svg {...p}>
+          <circle cx="9" cy="8" r="3.5" />
+          <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+          <circle cx="17" cy="9" r="2.5" />
+          <path d="M16 15a5 5 0 0 1 5.5 5" />
+        </svg>
+      );
     case "magica": // varinha
       return (
         <svg {...p}>

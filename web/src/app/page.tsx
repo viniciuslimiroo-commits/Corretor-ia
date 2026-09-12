@@ -305,6 +305,11 @@ export default function Editor() {
           <Aviso tipo="ok">{avisoPagamento}</Aviso>
         </div>
       )}
+      {c.aviso && (
+        <div className="mb-4">
+          <Aviso tipo="ok">{c.aviso}</Aviso>
+        </div>
+      )}
       {c.erro && (
         <div className="mb-4">
           <Aviso tipo="erro">{c.erro}</Aviso>

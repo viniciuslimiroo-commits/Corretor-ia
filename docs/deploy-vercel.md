@@ -134,6 +134,23 @@ em 1080x1920 leva 8-10s; montagem de 15s leva 23s; vídeo de 3 cenas + tela fina
 sai em 69s. Uploads de clipe vão direto do navegador pro bucket por URL assinada
 (`/api/video/upload`), porque a Vercel corta corpo de requisição em 4,5 MB.
 
+## Imobiliárias e cron (12/09/2026)
+
+- **Migration 10** aplicada (organizations, org_members, org_convites,
+  liberacoes_creditos, org_id nas tabelas, funções `*_org`).
+- **Stripe (teste):** preços `encena_equipe_mensal/anual` e `encena_imobiliaria_mensal/anual`
+  criados por lookup_key; `encena_pro_anual` passou a `creditos_por_mes=80, meses=12`
+  (liberação mensal). Webhook `we_1UEdj3...` ganhou o evento `charge.refunded`. Em modo
+  live, recriar os 9 preços com as mesmas lookup_keys e metadata.
+- **Cron:** `web/vercel.json` agenda `GET /api/cron/liberacoes` todo dia às 9h UTC; a rota
+  exige `Authorization: Bearer $CRON_SECRET`. `CRON_SECRET` está na Vercel (Production e
+  Preview) e no `web/.env.local`. Plano Hobby só permite cron diário: a liberação pode
+  atrasar até 24h em relação à data exata, o que é aceitável.
+- **Provado em produção:** assinatura anual de imobiliária pela API → invoice.paid →
+  +400 na imobiliária e 11 parcelas agendadas → cron chamado à mão liberou +400 →
+  cancelamento apagou as parcelas. Imobiliária de teste "Limiro Imóveis" ficou com 20
+  créditos de teste.
+
 ## O que eu já deixei pronto no código
 
 - `maxDuration = 60` nas rotas longas: cabe no plano Hobby.

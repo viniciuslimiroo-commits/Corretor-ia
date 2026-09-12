@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/liberacoes", "schedule": "0 9 * * *" }
+  ]
+}

@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { ACOES_POR_ID } from "@/lib/acoes";
 import { avaliarResultado, type Avaliacao } from "@/lib/avaliador";
+import { creditar } from "@/lib/cobranca";
 
 // "Geração ruim = crédito de volta". A pessoa aperta "Reportar", conta o que deu errado
 // e o crédito volta -- sem ninguém aprovar. Fase B: um modelo de visão olha antes e
@@ -41,11 +42,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { data: job } = await db
     .from("jobs")
-    .select("status, reportado_em, tipo, parametros, input_path, output_path, pipeline")
+    .select("status, reportado_em, tipo, parametros, input_path, output_path, pipeline, org_id")
     .eq("id", id)
     .eq("user_id", userId)
     .single();
   if (!job) return NextResponse.json({ error: "Geração não encontrada." }, { status: 404 });
+  const contaDoJob = job.org_id ? { tipo: "org" as const, id: job.org_id as string } : { tipo: "user" as const, id: userId };
   if (job.status !== "concluido") {
     return NextResponse.json({ error: "Só dá pra reportar uma geração que terminou." }, { status: 409 });
   }
@@ -120,13 +122,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     });
   }
 
-  const { data: saldo, error: erroEstorno } = await db.rpc("estornar_credito", {
-    p_user_id: userId,
-    p_job_id: id,
-    p_motivo: "estorno_reporte",
-  });
-  if (erroEstorno) {
-    return NextResponse.json({ error: `Erro devolvendo o crédito: ${erroEstorno.message}` }, { status: 500 });
+  let saldo: number | null;
+  try {
+    saldo = await creditar(db, contaDoJob, userId, 1, "estorno_reporte", id);
+  } catch (e) {
+    return NextResponse.json({ error: `Erro devolvendo o crédito: ${e instanceof Error ? e.message : e}` }, { status: 500 });
   }
 
   return NextResponse.json({

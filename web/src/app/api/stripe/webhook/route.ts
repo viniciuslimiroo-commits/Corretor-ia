@@ -2,25 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { supabaseServer } from "@/lib/supabase-server";
 import { CREDITOS_POR_CICLO_PADRAO, idDe, stripe } from "@/lib/stripe";
+import { contaPorStripeCustomer, creditar, type ContaCobranca } from "@/lib/cobranca";
 
-// Webhook da Stripe: é AQUI que crédito entra na conta de alguém. Por isso três defesas,
-// nesta ordem, antes de tocar no banco:
+// Webhook da Stripe: é AQUI que crédito entra numa conta. Três defesas, nesta ordem:
 //
 // 1. Assinatura. `constructEvent` verifica o cabeçalho `Stripe-Signature` contra o
-//    corpo CRU da requisição (por isso `req.text()`, nunca `req.json()` -- qualquer
-//    reserialização quebra a verificação). Sem isso, qualquer um que soubesse a URL
-//    mandaria um JSON "invoice.paid" e ganharia créditos de graça.
+//    corpo CRU (por isso `req.text()`, nunca `req.json()`).
+// 2. Idempotência. INSERT em `stripe_eventos` com chave no id do evento; duplicata = 200
+//    sem efeito.
+// 3. Ordem. Nada assume ordem: a conta é achada pelo `stripe_customer_id`, gravado por
+//    /api/assinar ANTES do redirect -- na pessoa ou na imobiliária (12/09/2026).
 //
-// 2. Idempotência. A Stripe entrega o mesmo evento mais de uma vez de propósito
-//    (retentativas, reenvio manual). O INSERT em `stripe_eventos` tem chave primária no
-//    id do evento; se falhar por duplicidade, a resposta é 200 e nada acontece. Sem
-//    isso, cada retentativa daria +80 créditos.
+// Créditos, pelo metadata do preço:
+//   creditos_por_ciclo          mensal: entra tudo a cada fatura paga
+//   creditos_por_mes + meses    anual: entra a 1ª parcela agora e as outras ficam
+//                               agendadas em liberacoes_creditos (cron diário)
+//   creditos                    pacote: entra no checkout pago
 //
-// 3. Ordem. A Stripe não garante ordem. Nada aqui assume que `checkout.session.completed`
-//    chegou antes de `invoice.paid`: o usuário é achado pelo `stripe_customer_id`, que o
-//    /api/assinar gravou ANTES de redirecionar.
-//
-// Nó em vez de edge, porque a verificação de assinatura usa crypto do Node.
+// Reembolso (charge.refunded) apaga as parcelas agendadas daquele customer: quem
+// devolveu o dinheiro não recebe os meses que faltavam.
 export const runtime = "nodejs";
 
 type LinhaFatura = {
@@ -29,33 +29,32 @@ type LinhaFatura = {
   period?: { end?: number } | null;
 };
 
-/**
- * Quantos créditos esta fatura compra. Lê `metadata.creditos_por_ciclo` do preço --
- * a fonte da verdade fica na Stripe, pra mudar o plano sem deploy.
- *
- * Duas formas de linha porque a Stripe mudou o formato do objeto de fatura entre
- * versões da API: antes `line.price` vinha expandido, agora vem só o id em
- * `line.pricing.price_details.price`. Lida com as duas e, se nenhuma resolver, cai no
- * padrão e deixa isso registrado no motivo do ledger.
- */
-async function creditosDaFatura(s: Stripe, fatura: Stripe.Invoice): Promise<{ creditos: number; origem: string }> {
-  let total = 0;
+type Regra = { modo: "ciclo"; creditos: number; plano: string | null } | { modo: "mensal"; creditosPorMes: number; meses: number; plano: string | null } | { modo: "padrao"; creditos: number; plano: null };
+
+async function regraDaFatura(s: Stripe, fatura: Stripe.Invoice): Promise<Regra> {
   const linhas = (fatura.lines?.data ?? []) as unknown as LinhaFatura[];
   for (const linha of linhas) {
-    const doObjeto = linha.price?.metadata?.creditos_por_ciclo;
-    if (doObjeto) {
-      total += Number(doObjeto);
-      continue;
+    let meta = linha.price?.metadata;
+    if (!meta) {
+      const priceId = linha.pricing?.price_details?.price ?? linha.price?.id;
+      if (priceId) meta = (await s.prices.retrieve(priceId)).metadata;
     }
-    const priceId = linha.pricing?.price_details?.price ?? linha.price?.id;
-    if (priceId) {
-      const preco = await s.prices.retrieve(priceId);
-      const doPreco = preco.metadata?.creditos_por_ciclo;
-      if (doPreco) total += Number(doPreco);
-    }
+    if (!meta) continue;
+    const plano = meta.plano ?? (meta.segmento === "corretor" ? "pro" : null);
+    if (meta.creditos_por_mes) return { modo: "mensal", creditosPorMes: Number(meta.creditos_por_mes), meses: Number(meta.meses ?? 12), plano };
+    if (meta.creditos_por_ciclo) return { modo: "ciclo", creditos: Number(meta.creditos_por_ciclo), plano };
   }
-  if (total > 0) return { creditos: total, origem: "metadata_do_preco" };
-  return { creditos: CREDITOS_POR_CICLO_PADRAO, origem: "padrao_sem_metadata" };
+  return { modo: "padrao", creditos: CREDITOS_POR_CICLO_PADRAO, plano: null };
+}
+
+function proximoMes(d: Date): Date {
+  const n = new Date(d);
+  const dia = n.getUTCDate();
+  n.setUTCDate(1);
+  n.setUTCMonth(n.getUTCMonth() + 1);
+  const ultimo = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 0)).getUTCDate();
+  n.setUTCDate(Math.min(dia, ultimo));
+  return n;
 }
 
 export async function POST(req: NextRequest) {
@@ -70,168 +69,142 @@ export async function POST(req: NextRequest) {
   const corpoCru = await req.text();
   const assinatura = req.headers.get("stripe-signature");
   if (!assinatura) return NextResponse.json({ error: "Sem cabeçalho Stripe-Signature." }, { status: 400 });
-
   let evento: Stripe.Event;
   try {
     evento = s.webhooks.constructEvent(corpoCru, assinatura, segredo);
   } catch (e) {
-    return NextResponse.json(
-      { error: `Assinatura inválida: ${e instanceof Error ? e.message : e}` },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: `Assinatura inválida: ${e instanceof Error ? e.message : e}` }, { status: 400 });
   }
 
   // ---- 2. idempotência ----
-  const { error: erroRegistro } = await db
-    .from("stripe_eventos")
-    .insert({ id: evento.id, tipo: evento.type });
+  const { error: erroRegistro } = await db.from("stripe_eventos").insert({ id: evento.id, tipo: evento.type });
   if (erroRegistro) {
-    if (erroRegistro.code === "23505") {
-      return NextResponse.json({ recebido: true, duplicado: true });
-    }
-    // Se não consegui registrar, não processo: melhor a Stripe tentar de novo do que
-    // eu creditar sem conseguir marcar que creditei.
+    if (erroRegistro.code === "23505") return NextResponse.json({ recebido: true, duplicado: true });
     return NextResponse.json({ error: `Erro registrando evento: ${erroRegistro.message}` }, { status: 500 });
   }
 
-  // ---- 3. quem é o usuário ----
-  const objeto = evento.data.object as { customer?: unknown };
+  // ---- 3. de quem é ----
+  const objeto = evento.data.object as { customer?: unknown; metadata?: Record<string, string> };
   const customerId = idDe(objeto.customer);
 
-  async function usuarioDoCustomer(): Promise<string | null> {
-    if (!customerId) return null;
-    const { data } = await db!.from("users").select("id").eq("stripe_customer_id", customerId).single();
-    return data?.id ?? null;
+  async function contaDoEvento(): Promise<ContaCobranca | null> {
+    const meta = objeto.metadata ?? {};
+    if (meta.orgId) return { tipo: "org", id: meta.orgId };
+    if (customerId) {
+      const c = await contaPorStripeCustomer(db!, customerId);
+      if (c) return c;
+    }
+    if (meta.userId) return { tipo: "user", id: meta.userId };
+    return null;
   }
+
+  const tabela = (c: ContaCobranca) => (c.tipo === "org" ? "organizations" : "users");
 
   try {
     switch (evento.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
-        // Dois eventos, por causa das formas de pagamento assíncronas (boleto hoje;
-        // Pix se a Stripe um dia liberar pra esta conta): a sessão "completa" quando a
-        // pessoa fecha o checkout, mas o dinheiro só chega depois -- e aí vem o
-        // `async_payment_succeeded`. Cartão já vem pago no `completed`. O critério que
-        // vale é um só: `payment_status === "paid"`.
         const sessao = evento.data.object as Stripe.Checkout.Session;
-        const userId = sessao.client_reference_id ?? (await usuarioDoCustomer());
+        const conta = (await contaDoEvento()) ?? (sessao.client_reference_id ? { tipo: "user" as const, id: sessao.client_reference_id } : null);
         const subscriptionId = idDe(sessao.subscription);
-        if (userId) {
+        if (conta) {
           await db
-            .from("users")
-            .update({
-              stripe_customer_id: customerId,
-              ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
-            })
-            .eq("id", userId);
+            .from(tabela(conta))
+            .update({ stripe_customer_id: customerId, ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}) })
+            .eq("id", conta.id);
         }
-
-        // Pacote avulso pago: credita. Assinatura NÃO credita aqui -- quem credita
-        // assinatura é o invoice.paid, senão a primeira cobrança creditaria duas vezes.
-        if (sessao.mode === "payment" && sessao.payment_status === "paid" && userId) {
+        // Pacote pago credita aqui; assinatura credita no invoice.paid (senão dobra).
+        if (sessao.mode === "payment" && sessao.payment_status === "paid" && conta) {
           const referencia = `pacote:${sessao.id}`;
-          // Guarda extra além do id de evento: se por qualquer motivo os dois eventos
-          // chegarem pagos pra mesma sessão, o ledger já tem a referência e não credita
-          // de novo.
-          const { data: jaCreditado } = await db
-            .from("credit_ledger")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("motivo", referencia)
-            .limit(1);
+          const { data: jaCreditado } = await db.from("credit_ledger").select("id").eq("motivo", referencia).limit(1);
           if (!jaCreditado || jaCreditado.length === 0) {
             const creditos = Number(sessao.metadata?.creditos ?? CREDITOS_POR_CICLO_PADRAO);
-            const { error: erroCredito } = await db.rpc("adicionar_creditos", {
-              p_user_id: userId,
-              p_quantidade: creditos,
-              p_motivo: "pacote",
-              p_referencia: sessao.id,
-            });
-            if (erroCredito) throw new Error(`adicionar_creditos (pacote): ${erroCredito.message}`);
+            await creditar(db, conta, sessao.metadata?.userId ?? null, creditos, "pacote", sessao.id);
           }
         }
         break;
       }
 
       case "invoice.paid": {
-        // O ÚNICO lugar que credita. Dispara na primeira cobrança e em toda renovação.
         const fatura = evento.data.object as Stripe.Invoice;
-        if ((fatura.amount_paid ?? 0) <= 0) break; // fatura de R$ 0 (ajuste, teste) não compra crédito
-
-        const userId = await usuarioDoCustomer();
-        if (!userId) {
-          // Pago mas sem dono conhecido: devolve 500 pra Stripe tentar de novo mais
-          // tarde (o checkout.session.completed pode ainda estar a caminho), e deixa
-          // o evento registrado pra investigação.
-          return NextResponse.json({ error: `invoice.paid sem usuário pro customer ${customerId}` }, { status: 500 });
+        if ((fatura.amount_paid ?? 0) <= 0) break;
+        const parent = (fatura as unknown as { parent?: { subscription_details?: { subscription?: unknown; metadata?: Record<string, string> } } }).parent;
+        const metaSub = parent?.subscription_details?.metadata ?? {};
+        const conta: ContaCobranca | null = metaSub.orgId ? { tipo: "org", id: metaSub.orgId } : customerId ? await contaPorStripeCustomer(db, customerId) : null;
+        if (!conta) {
+          // Pago mas sem dono conhecido: 500 pra Stripe tentar de novo mais tarde -- e o
+          // registro de idempotência sai junto, senão a retentativa seria tratada como
+          // duplicata e o crédito nunca entraria (bug herdado da versão anterior).
+          await db.from("stripe_eventos").delete().eq("id", evento.id);
+          return NextResponse.json({ error: `invoice.paid sem conta pro customer ${customerId}` }, { status: 500 });
         }
-
-        const { creditos, origem } = await creditosDaFatura(s, fatura);
-        const { error: erroCredito } = await db.rpc("adicionar_creditos", {
-          p_user_id: userId,
-          p_quantidade: creditos,
-          p_motivo: `assinatura_${origem}`,
-          p_referencia: fatura.id,
-        });
-        if (erroCredito) throw new Error(`adicionar_creditos: ${erroCredito.message}`);
-
+        const regra = await regraDaFatura(s, fatura);
+        const subscriptionId = idDe(parent?.subscription_details?.subscription) ?? idDe((fatura as unknown as { subscription?: unknown }).subscription);
         const linhas = (fatura.lines?.data ?? []) as unknown as LinhaFatura[];
         const fimDoPeriodo = linhas[0]?.period?.end;
-        const parent = (fatura as unknown as { parent?: { subscription_details?: { subscription?: unknown } } }).parent;
-        const subscriptionId =
-          idDe(parent?.subscription_details?.subscription) ??
-          idDe((fatura as unknown as { subscription?: unknown }).subscription);
+
+        if (regra.modo === "mensal") {
+          await creditar(db, conta, metaSub.userId ?? null, regra.creditosPorMes, "assinatura_parcela", fatura.id);
+          if (regra.meses > 1) {
+            await db.from("liberacoes_creditos").insert({
+              user_id: conta.tipo === "user" ? conta.id : null,
+              org_id: conta.tipo === "org" ? conta.id : null,
+              creditos: regra.creditosPorMes,
+              restantes: regra.meses - 1,
+              proxima_em: proximoMes(new Date()).toISOString(),
+              referencia: fatura.id,
+              stripe_customer_id: customerId,
+            });
+          }
+        } else {
+          await creditar(db, conta, metaSub.userId ?? null, regra.creditos, regra.modo === "ciclo" ? "assinatura" : "assinatura_padrao_sem_metadata", fatura.id);
+        }
 
         await db
-          .from("users")
+          .from(tabela(conta))
           .update({
-            plano: "pro",
+            plano: regra.plano ?? (conta.tipo === "org" ? "equipe" : "pro"),
             assinatura_status: "active",
             ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
             ...(fimDoPeriodo ? { assinatura_renova_em: new Date(fimDoPeriodo * 1000).toISOString() } : {}),
           })
-          .eq("id", userId);
+          .eq("id", conta.id);
         break;
       }
 
       case "invoice.payment_failed": {
-        const userId = await usuarioDoCustomer();
-        if (userId) await db.from("users").update({ assinatura_status: "past_due" }).eq("id", userId);
+        const conta = customerId ? await contaPorStripeCustomer(db, customerId) : null;
+        if (conta) await db.from(tabela(conta)).update({ assinatura_status: "past_due" }).eq("id", conta.id);
         break;
       }
 
       case "customer.subscription.updated": {
         const sub = evento.data.object as Stripe.Subscription;
-        const userId = await usuarioDoCustomer();
-        if (userId) {
-          await db
-            .from("users")
-            .update({ assinatura_status: sub.status, stripe_subscription_id: sub.id })
-            .eq("id", userId);
-        }
+        const conta = (await contaDoEvento()) ?? null;
+        if (conta) await db.from(tabela(conta)).update({ assinatura_status: sub.status, stripe_subscription_id: sub.id }).eq("id", conta.id);
         break;
       }
 
       case "customer.subscription.deleted": {
-        // Cancelou. Os créditos que já tem continuam valendo até acabar -- foram pagos.
-        // Só não entra mais nenhum.
-        const userId = await usuarioDoCustomer();
-        if (userId) {
-          await db
-            .from("users")
-            .update({ plano: "gratis", assinatura_status: "canceled" })
-            .eq("id", userId);
+        // Cancelou. Créditos que já tem continuam valendo; parcelas futuras somem.
+        const conta = (await contaDoEvento()) ?? null;
+        if (conta) {
+          await db.from(tabela(conta)).update({ plano: "gratis", assinatura_status: "canceled" }).eq("id", conta.id);
+          if (customerId) await db.from("liberacoes_creditos").delete().eq("stripe_customer_id", customerId);
         }
         break;
       }
 
+      case "charge.refunded": {
+        // Devolveu o dinheiro: as parcelas que ainda iam entrar não entram mais.
+        if (customerId) await db.from("liberacoes_creditos").delete().eq("stripe_customer_id", customerId);
+        break;
+      }
+
       default:
-        // Evento que não nos interessa: 200 mesmo assim, senão a Stripe fica tentando.
         break;
     }
   } catch (e) {
-    // Falhou depois de registrar o id: apaga o registro pra Stripe poder reentregar e
-    // o processamento acontecer da próxima vez.
     await db.from("stripe_eventos").delete().eq("id", evento.id);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erro processando evento." }, { status: 500 });
   }

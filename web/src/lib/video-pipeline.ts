@@ -7,6 +7,7 @@ import { assinar, apagarEntradas } from "./armazenamento";
 import { chamarSincrono, consultar, despachar, extrairImagem, resultado } from "./fal";
 import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
+import { creditar, marcaEfetiva } from "./cobranca";
 import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, VOZES, duracaoDaCena, type Cena, type EspecVideo } from "./video";
 import {
   argsCenaAntesDepois,
@@ -51,6 +52,7 @@ export type PipelineVideo = {
 export type LinhaVideo = {
   id: string;
   user_id: string;
+  org_id: string | null;
   espec: EspecVideo;
   pipeline: PipelineVideo | null;
   formato: string;
@@ -133,6 +135,8 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
   const W = formato.largura;
   const H = formato.altura;
   const userId = video.user_id;
+  // Estornos parciais (animação ou narração que falhou) voltam pra conta que pagou.
+  const contaDoVideo = video.org_id ? { tipo: "org" as const, id: video.org_id } : { tipo: "user" as const, id: userId };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "encena-video-"));
   const local = (nome: string) => path.join(dir, nome);
   const tmp = (nome: string) => caminhoTemporario(userId, video.id, nome);
@@ -209,7 +213,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         } else {
           // devolve os créditos da animação e renderiza como foto
-          await db.rpc("adicionar_creditos", { p_user_id: userId, p_quantidade: CREDITOS.animada, p_motivo: "estorno_animacao", p_referencia: video.id });
+          await creditar(db, contaDoVideo, userId, CREDITOS.animada, "estorno_animacao", video.id).catch(() => null);
           const foto = local(`foto${i}${extensaoDe(fontes[0])}`);
           await baixar(db, fontes[0], foto);
           const saida = local(nomeClipe);
@@ -248,8 +252,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
     // ---------- tela final ----------
     if (p.etapa === "marca") {
-      const { data: u } = await db.from("users").select("nome, creci, whatsapp, logo_path, cor_marca").eq("id", userId).maybeSingle();
-      if (u && (u.nome || u.whatsapp || u.logo_path)) {
+      // A marca da pessoa, completada pela da imobiliária (logo e WhatsApp da casa).
+      const u = await marcaEfetiva(db, userId);
+      if (u.nome || u.whatsapp || u.logo_path) {
         let logo: string | undefined;
         if (u.logo_path) {
           logo = local("logo.png");
@@ -290,7 +295,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           p.narracaoPath = destino;
         } catch (e) {
           p.avisos.push(`A narração não pôde ser gravada (${e instanceof Error ? e.message.slice(0, 80) : "erro"}); o crédito dela voltou.`);
-          await db.rpc("adicionar_creditos", { p_user_id: userId, p_quantidade: CREDITOS.narracao, p_motivo: "estorno_narracao", p_referencia: video.id });
+          await creditar(db, contaDoVideo, userId, CREDITOS.narracao, "estorno_narracao", video.id).catch(() => null);
           p.narracaoPath = null;
         }
       }

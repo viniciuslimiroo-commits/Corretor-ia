@@ -4,6 +4,7 @@ import { assinar } from "@/lib/armazenamento";
 import { saldoFal } from "@/lib/custo";
 import { custoDoVideo, duracaoEstimada, limparEspec } from "@/lib/video";
 import { pipelineInicial } from "@/lib/video-pipeline";
+import { contaDe, debitar } from "@/lib/cobranca";
 
 // Vídeo (Fase C). POST cria o pedido: valida o espec, confere que cada foto é da pessoa,
 // debita os créditos de uma vez (atômico, migration 09) e grava o vídeo com o pipeline
@@ -78,11 +79,13 @@ export async function POST(req: NextRequest) {
 
   const custo = custoDoVideo(espec);
   const saldoAntes = await saldoFal(falKey);
+  const conta = await contaDe(db, userId);
 
   const { data: video, error: erroInsert } = await db
     .from("videos")
     .insert({
       user_id: userId,
+      org_id: conta.tipo === "org" ? conta.id : null,
       property_id: imovelId,
       titulo: espec.titulo || null,
       formato: espec.formato,
@@ -95,14 +98,16 @@ export async function POST(req: NextRequest) {
     .single();
   if (erroInsert || !video) return NextResponse.json({ error: `Erro criando o vídeo: ${erroInsert?.message}` }, { status: 500 });
 
-  const { data: saldo, error: erroDebito } = await db.rpc("debitar_creditos", { p_user_id: userId, p_quantidade: custo, p_motivo: "video", p_referencia: video.id });
-  if (erroDebito) {
+  let saldo: number | null;
+  try {
+    saldo = await debitar(db, conta, userId, custo, "video", video.id);
+  } catch (e) {
     await db.from("videos").delete().eq("id", video.id);
-    return NextResponse.json({ error: `Erro debitando créditos: ${erroDebito.message}` }, { status: 500 });
+    return NextResponse.json({ error: `Erro debitando créditos: ${e instanceof Error ? e.message : e}` }, { status: 500 });
   }
   if (saldo === null) {
     await db.from("videos").delete().eq("id", video.id);
-    return NextResponse.json({ error: `Este vídeo custa ${custo} ${custo === 1 ? "crédito" : "créditos"} e você não tem saldo suficiente.` }, { status: 402 });
+    return NextResponse.json({ error: `Este vídeo custa ${custo} ${custo === 1 ? "crédito" : "créditos"} e ${conta.tipo === "org" ? "a imobiliária" : "você"} não tem saldo suficiente.` }, { status: 402 });
   }
   if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 

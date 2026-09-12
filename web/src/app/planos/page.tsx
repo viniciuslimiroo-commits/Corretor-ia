@@ -2,24 +2,28 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
-import { OFERTAS, formatarReais, type Oferta, type OfertaId } from "@/lib/planos";
+import { OFERTAS, formatarReais, rotuloDoPlano, type Oferta, type OfertaId } from "@/lib/planos";
 import AppShell from "@/components/app-shell";
 import { Aviso, Botao, Icone } from "@/components/ui";
 
-// Planos: duas assinaturas (mensal e anual) e três pacotes avulsos. Preço em real,
-// crédito explicado em foto ("1 crédito = 1 foto"), e o que cada um inclui. Quem já
-// assina vê o plano atual e vai pro portal da Stripe pra trocar ou cancelar.
+// Planos: dois públicos, corretor e imobiliária, cada um com mensal e anual, e os
+// pacotes avulsos pros dois. Preço em real, crédito explicado em foto. Quem já assina
+// vê o plano atual e vai pro portal da Stripe pra trocar ou cancelar. Quem é membro de
+// imobiliária sem ser gestor só olha: quem compra é o gestor.
 
-function CartaoOferta({ o, atual, aoEscolher, ocupado, logado }: { o: Oferta; atual: boolean; aoEscolher: (id: OfertaId) => void; ocupado: boolean; logado: boolean }) {
+function CartaoOferta({ o, atual, aoEscolher, ocupado, logado, bloqueado }: { o: Oferta; atual: boolean; aoEscolher: (id: OfertaId) => void; ocupado: boolean; logado: boolean; bloqueado?: string | null }) {
+  const mensal = o.periodo === "ano" ? o.preco / 12 : o.preco;
   return (
     <div className={"relative flex flex-col rounded-2xl border bg-white p-5 shadow-sm " + (o.destaque ? "border-marca-coral ring-2 ring-marca-coral/30" : "border-neutral-200")}>
-      {o.destaque && <span className="absolute -top-3 left-5 rounded-full bg-marca-coral px-3 py-0.5 text-xs font-semibold text-white">Mais vantajoso</span>}
+      {o.destaque && <span className="absolute -top-3 left-5 rounded-full bg-marca-coral px-3 py-0.5 text-xs font-semibold text-white">2 meses grátis</span>}
       <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">{o.rotulo}</p>
       <p className="mt-2 text-3xl font-semibold text-neutral-900">
         {formatarReais(o.preco)}
         {o.periodo && <span className="text-base font-normal text-neutral-500">/{o.periodo}</span>}
       </p>
+      {o.periodo === "ano" && <p className="text-xs text-neutral-500">equivale a {formatarReais(Math.round(mensal))} por mês</p>}
       <p className="mt-1 text-sm text-neutral-600">{o.descricao}</p>
       <ul className="mt-4 flex flex-col gap-1.5 text-sm text-neutral-700">
         {o.detalhes.map((d) => (
@@ -30,7 +34,9 @@ function CartaoOferta({ o, atual, aoEscolher, ocupado, logado }: { o: Oferta; at
         ))}
       </ul>
       <div className="mt-5">
-        {atual ? (
+        {bloqueado ? (
+          <p className="text-xs text-neutral-500">{bloqueado}</p>
+        ) : atual ? (
           <Botao variante="secundaria" onClick={() => aoEscolher(o.id)} disabled={ocupado} className="w-full">Seu plano · gerenciar</Botao>
         ) : logado ? (
           <Botao variante={o.destaque || o.tipo === "assinatura" ? "primaria" : "secundaria"} onClick={() => aoEscolher(o.id)} disabled={ocupado} className="w-full">
@@ -47,16 +53,20 @@ function CartaoOferta({ o, atual, aoEscolher, ocupado, logado }: { o: Oferta; at
 }
 
 const PERGUNTAS = [
-  { p: "O que é um crédito?", r: "Uma geração: uma foto editada com uma ação (mobiliar, trocar piso, remover objeto…). Se o resultado ficar ruim, você pede o crédito de volta e ele volta." },
+  { p: "O que é um crédito?", r: "Uma geração: uma foto editada com uma ação (mobiliar, trocar piso, remover objeto…) ou um vídeo montado. Cena animada por IA no vídeo custa 2 e narração custa 1. Se o resultado ficar ruim, você pede o crédito de volta." },
+  { p: "Como funciona o anual?", r: "Você paga 10 meses e usa 12. Os créditos entram mês a mês, na mesma data, durante o ano. Cancelar não devolve os meses já pagos, mas os créditos continuam entrando até o fim do período." },
+  { p: "E a conta de imobiliária?", r: "Uma conta pra equipe: cada corretor entra com o próprio e-mail, todo mundo gasta dos créditos da imobiliária, o gestor vê o uso de cada um, e a marca da casa vai nas fotos, vídeos e links de quem não tiver a própria." },
   { p: "Os créditos expiram?", r: "Os da assinatura valem enquanto ela estiver ativa; os do pacote não expiram. Ao cancelar, o que você já tem continua valendo até acabar." },
   { p: "Posso cancelar quando quiser?", r: "Sim, com um clique em \"Gerenciar assinatura\". Sem multa e sem ligar pra ninguém." },
-  { p: "Recebo nota fiscal?", r: "A cobrança é feita pela Stripe, com recibo por e-mail em toda transação. A nota fiscal de serviço é emitida mensalmente." },
 ];
 
 export default function Planos() {
   const c = useConta();
+  const router = useRouter();
   const [aviso, setAviso] = useState<string | null>(null);
   const assinante = c.conta?.status === "active" || c.conta?.status === "past_due";
+  const org = c.conta?.org ?? null;
+  const gestor = !org || org.papel !== "corretor";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -66,47 +76,70 @@ export default function Planos() {
     }
   }, []);
 
-  const assinaturas = OFERTAS.filter((o) => o.tipo === "assinatura");
-  const pacotes = OFERTAS.filter((o) => o.tipo === "pacote");
+  const corretor = OFERTAS.filter((o) => o.segmento === "corretor");
+  const imobiliaria = OFERTAS.filter((o) => o.segmento === "imobiliaria");
+  const pacotes = OFERTAS.filter((o) => o.segmento === "pacote");
+
+  async function escolher(id: OfertaId) {
+    const o = OFERTAS.find((x) => x.id === id);
+    if (o?.segmento === "imobiliaria" && c.user && !org) {
+      router.push("/equipe");
+      return;
+    }
+    c.assinar(id);
+  }
+
+  const bloqueioCorretor = org ? "Você faz parte de uma imobiliária: os planos são os de imobiliária." : null;
+  const bloqueioImobiliaria = org && !gestor ? "Só o dono ou gestor da imobiliária assina." : !org && c.user ? null : null;
+  const bloqueioPacote = org && !gestor ? "Só o dono ou gestor da imobiliária compra." : null;
 
   const conteudo = (
     <>
-      {aviso && (
-        <div className="mb-4">
-          <Aviso tipo="atencao">{aviso}</Aviso>
-        </div>
-      )}
-      {c.erro && (
-        <div className="mb-4">
-          <Aviso tipo="erro">{c.erro}</Aviso>
-        </div>
-      )}
+      {aviso && <div className="mb-4"><Aviso tipo="atencao">{aviso}</Aviso></div>}
+      {c.erro && <div className="mb-4"><Aviso tipo="erro">{c.erro}</Aviso></div>}
 
       <h1 className="text-2xl font-semibold">Planos e créditos</h1>
-      <p className="mt-1 text-sm text-neutral-500">1 crédito = 1 foto editada. Toda conta começa com 5 grátis, sem cartão.</p>
+      <p className="mt-1 text-sm text-neutral-500">1 crédito = 1 foto editada ou 1 vídeo montado. Toda conta começa com 5 grátis, sem cartão.</p>
       {c.conta && (
         <p className="mt-2 text-sm text-neutral-700">
-          Você tem <strong>{c.conta.creditos ?? 0}</strong> {c.conta.creditos === 1 ? "crédito" : "créditos"}
-          {assinante && c.conta.renovaEm && <> · Pro renova em {new Date(c.conta.renovaEm).toLocaleDateString("pt-BR")}</>}
+          {org ? `${org.nome}: ` : "Você tem "}
+          <strong>{c.conta.creditos ?? 0}</strong> {c.conta.creditos === 1 ? "crédito" : "créditos"}
+          {assinante && <> · plano {rotuloDoPlano(c.conta.plano)}</>}
+          {assinante && c.conta.renovaEm && <> · renova em {new Date(c.conta.renovaEm).toLocaleDateString("pt-BR")}</>}
           {c.conta.status === "past_due" && <span className="text-amber-700"> · pagamento pendente, atualize o cartão em &quot;Gerenciar assinatura&quot;</span>}
         </p>
       )}
 
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">Assinatura Pro</h2>
+      <section id="corretor" className="mt-8 scroll-mt-24">
+        <h2 className="text-lg font-semibold">Para o corretor</h2>
+        <p className="mt-1 text-sm text-neutral-500">Uma pessoa, seu login, sua marca.</p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
-          {assinaturas.map((o) => (
-            <CartaoOferta key={o.id} o={o} atual={assinante && o.tipo === "assinatura"} aoEscolher={(id) => c.assinar(id)} ocupado={c.ocupado} logado={!!c.user} />
+          {corretor.map((o) => (
+            <CartaoOferta key={o.id} o={o} atual={!org && assinante} aoEscolher={escolher} ocupado={c.ocupado} logado={!!c.user} bloqueado={bloqueioCorretor} />
           ))}
         </div>
       </section>
 
-      <section id="pacotes" className="mt-10">
+      <section id="imobiliaria" className="mt-10 scroll-mt-24">
+        <h2 className="text-lg font-semibold">Para a imobiliária</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          Conta de equipe: créditos compartilhados, cada corretor com seu login, marca da casa. {!org && c.user && <Link href="/equipe" className="text-marca-indigo underline">Crie sua imobiliária</Link>}
+          {!org && c.user && " antes de assinar."}
+        </p>
+        <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {imobiliaria.map((o) => (
+            <CartaoOferta key={o.id} o={o} atual={!!org && assinante && c.conta?.plano === o.plano} aoEscolher={escolher} ocupado={c.ocupado} logado={!!c.user} bloqueado={bloqueioImobiliaria} />
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-neutral-500">Mais de 15 pessoas ou mais créditos por mês? Fale com a gente pelo WhatsApp e montamos um plano sob medida.</p>
+      </section>
+
+      <section id="pacotes" className="mt-10 scroll-mt-24">
         <h2 className="text-lg font-semibold">Pacotes avulsos</h2>
-        <p className="mt-1 text-sm text-neutral-500">Sem assinatura, pagamento único. Somam com o que você já tem.</p>
+        <p className="mt-1 text-sm text-neutral-500">Sem assinatura, pagamento único. Somam com o que você (ou a imobiliária) já tem.</p>
         <div className="mt-4 grid gap-5 sm:grid-cols-3">
           {pacotes.map((o) => (
-            <CartaoOferta key={o.id} o={o} atual={false} aoEscolher={(id) => c.assinar(id)} ocupado={c.ocupado} logado={!!c.user} />
+            <CartaoOferta key={o.id} o={o} atual={false} aoEscolher={escolher} ocupado={c.ocupado} logado={!!c.user} bloqueado={bloqueioPacote} />
           ))}
         </div>
       </section>

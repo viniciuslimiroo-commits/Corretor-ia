@@ -6,11 +6,12 @@ import { supabase } from "./supabase";
 import type { Conta } from "@/components/app-shell";
 import type { OfertaId } from "./planos";
 
-// Sessão, saldo e plano num lugar só, pra Editor, Histórico e Configurações não
-// repetirem a mesma dança de getUser + select + assinar + sair.
+// Sessão, saldo e plano num lugar só, pra todas as telas logadas não repetirem a mesma
+// dança de getUser + ler saldo + assinar + sair.
 //
-// O saldo é lido de users.creditos_saldo, a fonte da verdade desde a migration 02;
-// quem escreve nele é sempre o servidor.
+// O saldo vem de /api/conta (servidor), que sabe se a pessoa é membro de uma
+// imobiliária: nesse caso o saldo, o plano e o status são os da imobiliária. Antes o
+// navegador lia users.creditos_saldo direto; com conta de equipe isso deixou de bastar.
 
 export function useConta() {
   const [user, setUser] = useState<User | null>(null);
@@ -20,6 +21,7 @@ export function useConta() {
   const [releitura, setReleitura] = useState(0);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -31,25 +33,6 @@ export function useConta() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!supabase || !user) return;
-    supabase
-      .from("users")
-      .select("creditos_saldo, plano, assinatura_status, assinatura_renova_em")
-      .eq("id", user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) return;
-        setConta({
-          email: user.email ?? "",
-          creditos: data.creditos_saldo,
-          plano: data.plano,
-          status: data.assinatura_status,
-          renovaEm: data.assinatura_renova_em,
-        });
-      });
-  }, [user, releitura]);
-
   const token = useCallback(async () => {
     if (!supabase) throw new Error("Supabase não configurado.");
     const { data } = await supabase.auth.getSession();
@@ -57,6 +40,31 @@ export function useConta() {
     if (!t) throw new Error("Sessão expirou. Entre de novo.");
     return t;
   }, []);
+
+  useEffect(() => {
+    if (!supabase || !user) return;
+    let vivo = true;
+    token()
+      .then((t) => fetch("/api/conta", { headers: { Authorization: `Bearer ${t}` } }))
+      .then((r) => r.json())
+      .then((d) => {
+        if (!vivo || d.error) return;
+        setConta({
+          email: d.email ?? user.email ?? "",
+          creditos: d.creditos ?? 0,
+          plano: d.plano ?? "gratis",
+          status: d.status ?? null,
+          renovaEm: d.renovaEm ?? null,
+          tipo: d.tipo === "org" ? "org" : "user",
+          org: d.org ?? null,
+        });
+        if (d.entrouEm) setAviso(`Você entrou na equipe de ${d.entrouEm}. Os créditos e a marca agora são da imobiliária.`);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [user, releitura, token]);
 
   const recarregar = useCallback(() => setReleitura((n) => n + 1), []);
 
@@ -88,6 +96,7 @@ export function useConta() {
     conta,
     ocupado,
     erro,
+    aviso,
     setErro,
     token,
     recarregar,
