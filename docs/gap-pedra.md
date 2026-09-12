@@ -135,6 +135,38 @@ Duas lições que mudaram código (registradas no log do task-observer):
 Ficou de fora, de propósito: "Mudar ângulo da câmera", "Desfocar", "Efeito cortina" (baixo
 uso, prompts simples quando alguém pedir).
 
+## Fase C — vídeo, primeira versão no ar em 12/09/2026
+
+**Onde renderiza (decidido medindo, não supondo):** ffmpeg estático dentro da própria
+Vercel, em etapas curtas -- uma cena por chamada, a montagem final numa chamada. Medido
+em produção: cena de 4s em 1080x1920 leva 8-10s, a montagem de um vídeo de 15s leva 23s;
+vídeo de 3 cenas + tela final + música ficou pronto em 69s de ponta a ponta (48s local).
+Cabe nos 300s do plano Hobby com folga pra vídeos de até ~40s. Sem servidor novo, sem
+conta nova. Detalhes que custaram tempo: o binário linux do pacote `ffmpeg-static` e o
+do johnvansickle **não têm drawtext**; o que serve é o do BtbN (173 MB), baixado no
+build por `web/scripts/ffmpeg-linux.mjs`. Migration 09 (`videos`, `debitar_creditos`).
+
+| Pedra | Encena | Estado |
+|---|---|---|
+| Vídeo de 1 ou várias fotos, Zoom In/Out | Cenas de foto com Aproximar, Afastar, Passear ←/→, Parado (Ken Burns) | ✅ produção |
+| Transição entre fotos | Suave (crossfade) ou Corte | ✅ |
+| "Mágico" (antes/depois animado) | Cena **Antes e depois**: cortina passa da original pro resultado, com rótulos | ✅ |
+| Cena animada (5 cr) | Cena **animada** por image-to-video (wan 2.2), presets Drone, Caminhar, Girar, Aproximar; 2 créditos; se falhar vira foto e devolve | ✅ código; teste em produção logo abaixo |
+| Música: 5 gêneros | 5 faixas próprias geradas por IA (stable-audio-25): Calma, Elegante, Moderna, Alegre, Cinematográfica, 45s em loop, fade | ✅ |
+| Narração: 4 vozes, roteiro com IA, 1 cr | 4 vozes ElevenLabs (pt), roteiro escrito por IA a partir de título/preço/local/legendas, 1 crédito; música abaixa quando fala | ✅ código; teste em produção logo abaixo |
+| Overlay: preço, localização, marca | Carimbo de título + preço · local no topo; legenda por cena; **tela final** com logo, nome, CRECI e WhatsApp da Minha marca | ✅ |
+| Tela final (contato) | idem | ✅ |
+| 16:9 e 9:16, 4s/8s | **9:16, 16:9, 1:1 e 4:5** (a Pedra não tem os dois últimos); 3 a 8 s por cena | ✅ |
+| Mapa (endereço → clipe) | — | ❌ (precisa de chave de mapas; depois) |
+| — | **Clipes do próprio corretor** (MP4/MOV enviados direto pro bucket, até 120 MB), com "melhorar cor e nitidez" | ✅ (pedido do Vinicius) |
+| — | Compartilhar vídeo por link público (`/c/{token}`) com player e WhatsApp | ✅ |
+
+Pedidos do Vinicius em 12/09 e onde entraram: **drone** = preset da cena animada;
+**tour** = sequência de cenas com Caminhar/Girar (tour por vídeo; o tour 360° de fotos
+panorâmicas continua na Fase D, exige câmera 360); **antes e depois** = cena própria;
+**colocar um vídeo e melhorar** = cena de clipe com correção de cor/nitidez (o upscale
+por IA de vídeo é caro -- Topaz no fal -- e fica pra quando houver demanda).
+
 ## Ordem proposta
 
 **Fase A — edição completa (1 semana).** Mobiliar completo (tipo de espaço, estilos com

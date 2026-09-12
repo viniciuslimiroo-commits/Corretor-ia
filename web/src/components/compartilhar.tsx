@@ -11,6 +11,7 @@ export default function Compartilhar({
   token,
   jobId,
   imovelId,
+  videoId,
   compartilhadoInicial = false,
   texto = "",
   compacto = false,
@@ -18,6 +19,7 @@ export default function Compartilhar({
   token: () => Promise<string>;
   jobId?: string;
   imovelId?: string;
+  videoId?: string;
   compartilhadoInicial?: boolean;
   /** Texto que vai junto no WhatsApp, antes do link. */
   texto?: string;
@@ -30,7 +32,7 @@ export default function Compartilhar({
   const [ativo, setAtivo] = useState(compartilhadoInicial);
   const [erro, setErro] = useState<string | null>(null);
 
-  const alvo = jobId ? { jobId } : { imovelId };
+  const alvo = jobId ? { jobId } : imovelId ? { imovelId } : { videoId };
 
   async function abrir() {
     setAberto(true);

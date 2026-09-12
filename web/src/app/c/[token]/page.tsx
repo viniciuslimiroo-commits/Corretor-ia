@@ -16,12 +16,26 @@ export const dynamic = "force-dynamic";
 
 type Dono = { nome: string | null; creci: string | null; whatsapp: string | null; logo: string | null; cor: string | null };
 
+type VideoPublico = { url: string; poster: string | null; vertical: boolean; duracao: number | null };
+
 type Pagina = {
   titulo: string;
   subtitulo: string | null;
   fotos: FotoPublica[];
+  video: VideoPublico | null;
   dono: Dono;
 };
+
+async function donoDe(db: NonNullable<ReturnType<typeof supabaseServer>>, userId: string): Promise<Dono> {
+  const { data: u } = await db.from("users").select("nome, creci, whatsapp, logo_path, cor_marca").eq("id", userId).maybeSingle();
+  return {
+    nome: u?.nome ?? null,
+    creci: u?.creci ?? null,
+    whatsapp: u?.whatsapp ?? null,
+    logo: u?.logo_path ? await assinar(db, u.logo_path).catch(() => null) : null,
+    cor: u?.cor_marca ?? null,
+  };
+}
 
 async function carregar(token: string): Promise<Pagina | null> {
   const db = supabaseServer();
@@ -32,6 +46,34 @@ async function carregar(token: string): Promise<Pagina | null> {
   let subtitulo: string | null = null;
   type Job = { id: string; tipo: string; parametros: Record<string, string> | null; input_path: string | null; output_path: string | null };
   let jobs: Job[] = [];
+
+  // Vídeo compartilhado: um player e a marca do corretor, nada mais.
+  const { data: video } = await db
+    .from("videos")
+    .select("id, user_id, titulo, formato, output_path, thumb_path, duracao_segundos, property_id")
+    .eq("share_token", token)
+    .eq("status", "concluido")
+    .maybeSingle();
+  if (video?.output_path) {
+    let sub: string | null = null;
+    if (video.property_id) {
+      const { data: imovel } = await db.from("properties").select("titulo, endereco").eq("id", video.property_id).maybeSingle();
+      sub = imovel?.endereco ?? null;
+      if (!video.titulo && imovel?.titulo) video.titulo = imovel.titulo;
+    }
+    return {
+      titulo: video.titulo ?? "Vídeo do imóvel",
+      subtitulo: sub,
+      fotos: [],
+      video: {
+        url: await assinar(db, video.output_path),
+        poster: video.thumb_path ? await assinar(db, video.thumb_path).catch(() => null) : null,
+        vertical: video.formato === "9:16" || video.formato === "4:5",
+        duracao: video.duracao_segundos,
+      },
+      dono: await donoDe(db, video.user_id),
+    };
+  }
 
   const { data: job } = await db
     .from("jobs")
@@ -84,16 +126,7 @@ async function carregar(token: string): Promise<Pagina | null> {
     )
   ).filter((f): f is FotoPublica => f !== null);
 
-  const { data: u } = await db.from("users").select("nome, creci, whatsapp, logo_path, cor_marca").eq("id", userId!).maybeSingle();
-  const dono: Dono = {
-    nome: u?.nome ?? null,
-    creci: u?.creci ?? null,
-    whatsapp: u?.whatsapp ?? null,
-    logo: u?.logo_path ? await assinar(db, u.logo_path).catch(() => null) : null,
-    cor: u?.cor_marca ?? null,
-  };
-
-  return { titulo, subtitulo, fotos, dono };
+  return { titulo, subtitulo, fotos, video: null, dono: await donoDe(db, userId!) };
 }
 
 export async function generateMetadata({ params }: PageProps<"/c/[token]">): Promise<Metadata> {
@@ -116,7 +149,7 @@ export default async function PaginaCompartilhada({ params }: PageProps<"/c/[tok
   const pagina = await carregar(token);
   if (!pagina) notFound();
 
-  const { titulo, subtitulo, fotos, dono } = pagina;
+  const { titulo, subtitulo, fotos, video, dono } = pagina;
   const cor = dono.cor && /^#[0-9a-fA-F]{6}$/.test(dono.cor) ? dono.cor : "#0f2d5b";
 
   return (
@@ -152,12 +185,22 @@ export default async function PaginaCompartilhada({ params }: PageProps<"/c/[tok
       <section className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-semibold sm:text-3xl">{titulo}</h1>
         {subtitulo && <p className="mt-1 text-neutral-600">{subtitulo}</p>}
-        <p className="mt-2 text-sm text-neutral-500">
-          {fotos.length === 1 ? "Arraste a divisória para comparar antes e depois." : `${fotos.length} fotos. Arraste a divisória para comparar antes e depois.`}
-        </p>
+        {!video && (
+          <p className="mt-2 text-sm text-neutral-500">
+            {fotos.length === 1 ? "Arraste a divisória para comparar antes e depois." : `${fotos.length} fotos. Arraste a divisória para comparar antes e depois.`}
+          </p>
+        )}
 
         <div className="mt-6">
-          {fotos.length ? <GaleriaPublica fotos={fotos} /> : <p className="text-sm text-neutral-500">Nenhuma foto pronta ainda.</p>}
+          {video ? (
+            <div className={"mx-auto overflow-hidden rounded-2xl border border-neutral-200 bg-black shadow-sm " + (video.vertical ? "max-w-sm" : "")}>
+              <video src={video.url} poster={video.poster ?? undefined} controls playsInline preload="metadata" className="block w-full" />
+            </div>
+          ) : fotos.length ? (
+            <GaleriaPublica fotos={fotos} />
+          ) : (
+            <p className="text-sm text-neutral-500">Nenhuma foto pronta ainda.</p>
+          )}
         </div>
 
         <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

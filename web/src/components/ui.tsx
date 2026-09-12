@@ -267,6 +267,43 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <circle cx="12" cy="12" r="3" />
         </svg>
       );
+    case "video":
+      return (
+        <svg {...p}>
+          <rect x="3" y="6" width="13" height="12" rx="2" />
+          <path d="M16 10l5-3v10l-5-3z" />
+        </svg>
+      );
+    case "play":
+      return (
+        <svg {...p}>
+          <path d="M7 5l12 7-12 7z" />
+        </svg>
+      );
+    case "cima":
+      return (
+        <svg {...p}>
+          <path d="M6 14l6-6 6 6" />
+        </svg>
+      );
+    case "baixo":
+      return (
+        <svg {...p}>
+          <path d="M6 10l6 6 6-6" />
+        </svg>
+      );
+    case "fechar":
+      return (
+        <svg {...p}>
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      );
+    case "magica": // varinha
+      return (
+        <svg {...p}>
+          <path d="M4 20l11-11M13 5l1 2M17 3l-1 2M19 9l2 1M17 11l2 2" />
+        </svg>
+      );
     default:
       return <svg {...p}><circle cx="12" cy="12" r="8" /></svg>;
   }

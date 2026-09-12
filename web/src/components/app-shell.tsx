@@ -36,6 +36,7 @@ export default function AppShell({
 
   const links = [
     { href: "/", rotulo: "Editar", icone: "foto" },
+    { href: "/video", rotulo: "Vídeo", icone: "video" },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis" },
     { href: "/historico", rotulo: "Histórico", icone: "historico" },
     { href: "/configuracoes", rotulo: "Minha marca", icone: "configuracoes" },
