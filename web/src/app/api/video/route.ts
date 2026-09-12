@@ -98,16 +98,19 @@ export async function POST(req: NextRequest) {
     .single();
   if (erroInsert || !video) return NextResponse.json({ error: `Erro criando o vídeo: ${erroInsert?.message}` }, { status: 500 });
 
-  let saldo: number | null;
-  try {
-    saldo = await debitar(db, conta, userId, custo, "video", video.id);
-  } catch (e) {
-    await db.from("videos").delete().eq("id", video.id);
-    return NextResponse.json({ error: `Erro debitando créditos: ${e instanceof Error ? e.message : e}` }, { status: 500 });
-  }
-  if (saldo === null) {
-    await db.from("videos").delete().eq("id", video.id);
-    return NextResponse.json({ error: `Este vídeo custa ${custo} ${custo === 1 ? "crédito" : "créditos"} e ${conta.tipo === "org" ? "a imobiliária" : "você"} não tem saldo suficiente.` }, { status: 402 });
+  // Vídeo sem IA não custa crédito: só cena animada e narração debitam.
+  let saldo: number | null = conta.creditos;
+  if (custo > 0) {
+    try {
+      saldo = await debitar(db, conta, userId, custo, "video", video.id);
+    } catch (e) {
+      await db.from("videos").delete().eq("id", video.id);
+      return NextResponse.json({ error: `Erro debitando créditos: ${e instanceof Error ? e.message : e}` }, { status: 500 });
+    }
+    if (saldo === null) {
+      await db.from("videos").delete().eq("id", video.id);
+      return NextResponse.json({ error: `Este vídeo custa ${custo} ${custo === 1 ? "crédito" : "créditos"} e ${conta.tipo === "org" ? "a imobiliária" : "você"} não tem saldo suficiente.` }, { status: 402 });
+    }
   }
   if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 

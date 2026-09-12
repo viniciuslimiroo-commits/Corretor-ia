@@ -612,11 +612,14 @@ export default function PaginaVideo() {
           <Cartao>
             <div className="mb-3 flex items-baseline justify-between text-sm">
               <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
-              <span className="font-semibold text-marca-indigo">{custo} {custo === 1 ? "crédito" : "créditos"}</span>
+              <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
             </div>
             <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
-              {gerando ? progresso?.mensagem ?? "Gerando…" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
+              {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
             </Botao>
+            {custo === 0 && !gerando && cenas.length > 0 && (
+              <p className="mt-2 text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e narração ({CREDITOS.narracao}).</p>
+            )}
             {gerando && progresso && (
               <div className="mt-3">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">

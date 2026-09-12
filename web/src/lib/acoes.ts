@@ -369,7 +369,7 @@ export const ACOES_POR_ID: Record<string, DefAcao> = Object.fromEntries(ACOES.ma
 
 // Tipos de job que não passam pelo editor de ações (têm tela própria), mas aparecem no
 // histórico, na galeria e no link como qualquer foto.
-const ROTULOS_ESPECIAIS: Record<string, string> = { terreno: "Terreno com medidas" };
+const ROTULOS_ESPECIAIS: Record<string, string> = { terreno: "Terreno com medidas", planta: "Planta baixa" };
 
 export function rotuloDoTipo(tipo: string): string {
   return ACOES_POR_ID[tipo]?.rotulo ?? ROTULOS_ESPECIAIS[tipo] ?? tipo;

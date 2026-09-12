@@ -7,8 +7,9 @@ import { assinar, apagarEntradas } from "./armazenamento";
 import { chamarSincrono, consultar, despachar, extrairImagem, resultado } from "./fal";
 import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
+import sharp from "sharp";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, VOZES, duracaoDaCena, type Cena, type EspecVideo } from "./video";
+import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, VOZES, duracaoDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -231,17 +232,35 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const r = await rodarFfmpeg(argsCenaAntesDepois({ antes, depois, saida, W, H, duracao: dur, legenda: cena.legenda }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else if (cena.tipo === "tour360") {
-        // Equirretangular: pode ser foto (jpg/png) ou vídeo (mp4/mov) do próprio cliente.
+        // Pode ser foto 360 (equirretangular 2:1), panorâmica de celular (cilíndrica,
+        // 3:1 ou mais) ou vídeo 360. A projeção é decidida AQUI, pelo tamanho real do
+        // arquivo, não pelo que o navegador disse.
         const [fonte] = await fontesDaCena(db, userId, cena);
         const ext = extensaoDe(fonte);
         const ehVideo = ext === ".mp4" || ext === ".mov";
         const entrada = local(`e360-${i}${ext}`);
         await baixar(db, fonte, entrada);
+        let projecao: Projecao360 = "equirect";
+        let larguraEntrada: number | undefined;
+        let alturaEntrada: number | undefined;
+        if (ehVideo) {
+          const sonda = await sondarMidia(entrada);
+          larguraEntrada = sonda.largura ?? undefined;
+          alturaEntrada = sonda.altura ?? undefined;
+        } else {
+          const meta = await sharp(entrada).metadata();
+          larguraEntrada = meta.width;
+          alturaEntrada = meta.height;
+        }
+        if (larguraEntrada && alturaEntrada) {
+          projecao = projecaoPelaProporcao(larguraEntrada, alturaEntrada) ?? "panoramica";
+        }
         const saida = local(nomeClipe);
         const r = await rodarFfmpeg(
-          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", legenda: cena.legenda }),
+          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", legenda: cena.legenda, projecao, entradaLargura: larguraEntrada, entradaAltura: alturaEntrada }),
           280_000
         );
+        if (projecao === "panoramica") p.avisos.push(`Cena ${i + 1}: tratei como panorâmica de celular (a imagem não tem a proporção 2:1 de câmera 360).`);
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else if (cena.tipo === "clipe") {
         const [fonte] = await fontesDaCena(db, userId, cena);

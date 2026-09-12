@@ -124,6 +124,10 @@ export default function Terreno() {
           <Icone nome="terreno" className="h-4 w-4" />
           Terreno
         </span>
+        <Link href="/planta" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
+          <Icone nome="planta" className="h-4 w-4" />
+          Planta
+        </Link>
       </div>
 
       <h1 className="text-2xl font-semibold">Terreno com medidas</h1>

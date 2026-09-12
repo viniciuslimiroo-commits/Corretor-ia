@@ -45,7 +45,7 @@ export type Oferta = {
 /** Quantas pessoas cada plano comporta na conta de equipe. `gratis` é pra montar e testar. */
 export const PESSOAS_POR_PLANO: Record<PlanoId, number> = { gratis: 3, pro: 1, equipe: 5, imobiliaria: 15 };
 
-const BASE_EQUIPE = ["Conta de equipe: cada corretor com seu login", "Créditos compartilhados, uso por pessoa visível", "Marca da imobiliária nas fotos, vídeos e links", "Todas as ações de edição e o vídeo"];
+const BASE_EQUIPE = ["Conta de equipe: cada corretor com seu login", "Créditos compartilhados, uso por pessoa visível", "Marca da imobiliária nas fotos, vídeos e links", "Vídeos, tours 360 e terrenos ilimitados"];
 
 export const OFERTAS: Oferta[] = [
   {
@@ -60,7 +60,7 @@ export const OFERTAS: Oferta[] = [
     periodo: "mês",
     pessoas: 1,
     descricao: "80 fotos por mês, renovando sozinho.",
-    detalhes: ["80 créditos todo mês", "Todas as ações de edição e o vídeo", "Imóveis, galeria e links de compartilhamento", "Cancele quando quiser"],
+    detalhes: ["80 créditos todo mês", "Vídeos, tours 360 e terrenos ilimitados", "Imóveis, galeria e links de compartilhamento", "Cancele quando quiser"],
   },
   {
     id: "pro_anual",
@@ -75,7 +75,7 @@ export const OFERTAS: Oferta[] = [
     pessoas: 1,
     destaque: true,
     descricao: "Paga 10 meses, usa 12. Créditos entram mês a mês.",
-    detalhes: ["80 créditos por mês, por 12 meses", "Equivale a R$ 57,50 por mês", "Todas as ações de edição e o vídeo", "Imóveis, galeria e links de compartilhamento"],
+    detalhes: ["80 créditos por mês, por 12 meses", "Equivale a R$ 57,50 por mês", "Vídeos, tours 360 e terrenos ilimitados", "Imóveis, galeria e links de compartilhamento"],
   },
   {
     id: "equipe_mensal",

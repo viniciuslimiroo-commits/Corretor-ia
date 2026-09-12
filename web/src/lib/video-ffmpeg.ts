@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { LIMITES, MOVIMENTOS_360, type EfeitoId, type Movimento360Id } from "./video";
+import { LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360 } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -176,8 +176,29 @@ export function argsCena360(o: {
   duracao: number;
   movimento: Movimento360Id;
   legenda?: string;
+  /** "equirect" (câmera 360) ou "panoramica" (modo panorâmico do celular). */
+  projecao?: Projecao360;
+  /** Tamanho da imagem de entrada: só usado pra calcular o campo de visão da panorâmica. */
+  entradaLargura?: number;
+  entradaAltura?: number;
 }): string[] {
-  const preset = MOVIMENTOS_360.find((m) => m.id === o.movimento) ?? MOVIMENTOS_360[0];
+  const projecao = o.projecao ?? "equirect";
+  const presetBase = MOVIMENTOS_360.find((m) => m.id === o.movimento) ?? MOVIMENTOS_360[0];
+
+  // Panorâmica de celular não é uma esfera: é uma faixa cilíndrica de ~200° na
+  // horizontal e ~55° na vertical. O campo de visão da saída tem que caber dentro
+  // disso, senão sobra faixa cinza (visto com a panorâmica real do Vinicius). E o giro
+  // só pode varrer o que existe: nada de 360°.
+  const pan = projecao === "panoramica" ? fovDaPanoramica(o.entradaLargura ?? 3000, o.entradaAltura ?? 900, o.W, o.H) : null;
+  const preset = pan
+    ? (() => {
+        const limite = Math.max(6, ((pan.ihFov - pan.hFov) / 2) * 0.9);
+        const alcance = Math.min(1, Math.abs(presetBase.yaw[1] - presetBase.yaw[0]) / 140);
+        const meio = limite * alcance;
+        return { ...presetBase, yaw: [-meio, meio] as [number, number], pitch: [0, 0] as [number, number], fov: [pan.hFov, pan.hFov] as [number, number] };
+      })()
+    : presetBase;
+
   const quadros = Math.max(2, Math.round(o.duracao * FPS));
 
   // Custo medido (12/09/2026, 6s em 9:16): cúbico em 1080 = 65s; linear em 720 e
@@ -210,10 +231,13 @@ export function argsCena360(o: {
   // (9:16) fica achatado.
   const wi = Math.round((o.W * 2) / 3 / 2) * 2;
   const hi = Math.round((o.H * 2) / 3 / 2) * 2;
-  const vFov = Math.min(120, Math.max(40, (preset.fov[0] * o.H) / o.W));
+  const vFov = pan ? pan.vFov : Math.min(120, Math.max(40, (preset.fov[0] * o.H) / o.W));
+  const entradaFiltro = pan
+    ? `input=cylindrical:ih_fov=${pan.ihFov}:iv_fov=${pan.ivFov.toFixed(2)}`
+    : "input=e";
   const filtros = [
     `sendcmd=f='${caminhoParaFiltro(arquivoCmd)}'`,
-    `v360=input=e:output=flat:h_fov=${preset.fov[0]}:v_fov=${vFov.toFixed(1)}:w=${wi}:h=${hi}:interp=line`,
+    `v360=${entradaFiltro}:output=flat:h_fov=${preset.fov[0].toFixed(2)}:v_fov=${vFov.toFixed(2)}:w=${wi}:h=${hi}:interp=line`,
     `scale=${o.W}:${o.H}:flags=lanczos`,
     "format=yuv420p",
   ];

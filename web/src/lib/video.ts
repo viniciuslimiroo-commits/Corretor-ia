@@ -71,6 +71,39 @@ export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; pro
 //
 // Velocidade importa: 45°/s embrulha o estômago. Estes presets ficam entre 8 e 20°/s,
 // que é o ritmo de tour imobiliário.
+// Duas entradas diferentes, e confundir as duas entorta a imagem:
+//   equirect     câmera 360 de verdade: 2:1, cobre 360°×180°.
+//   panoramica   modo panorâmico do celular: projeção CILÍNDRICA, 3:1 ou mais, cobre
+//                uns 180-220° na horizontal e pouco na vertical.
+// Quase nenhum corretor tem câmera 360; todo celular tem modo panorâmico. Suportar os
+// dois é o que faz esta função existir de verdade.
+export type Projecao360 = "equirect" | "panoramica";
+
+/** Pela proporção: 2:1 é equirretangular; acima de 2,6:1 é panorâmica de celular. */
+export function projecaoPelaProporcao(largura: number, altura: number): Projecao360 | null {
+  const r = largura / altura;
+  if (r > 1.85 && r < 2.15 && largura >= 1800) return "equirect";
+  if (r >= 2.6 && largura >= 1200) return "panoramica";
+  return null;
+}
+
+/**
+ * Campo de visão da panorâmica e o que cabe na saída.
+ *
+ * Uma panorâmica cilíndrica de largura W cobrindo `ihFov` graus tem raio
+ * R = W / rad(ihFov); a altura H cobre então 2·atan(H/2R) graus. Pedir mais do que
+ * isso devolve faixa cinza em cima e embaixo -- foi o que apareceu no primeiro teste
+ * com a panorâmica real do Vinicius (12/09/2026).
+ */
+export function fovDaPanoramica(largura: number, altura: number, larguraSaida: number, alturaSaida: number, ihFov = 200) {
+  const raio = largura / ((ihFov * Math.PI) / 180);
+  const ivFov = (2 * Math.atan(altura / 2 / raio) * 180) / Math.PI;
+  // Deixa 6% de margem pra não raspar a borda, e deriva o horizontal pelo formato.
+  const vFov = Math.max(20, ivFov * 0.94);
+  const hFov = (2 * Math.atan(Math.tan((vFov * Math.PI) / 360) * (larguraSaida / alturaSaida)) * 180) / Math.PI;
+  return { ihFov, ivFov, hFov: Math.min(hFov, ihFov * 0.9), vFov };
+}
+
 export type Movimento360Id = "olhar_volta" | "giro_completo" | "entrar" | "panoramica" | "revelar";
 
 export const MOVIMENTOS_360: { id: Movimento360Id; rotulo: string; descricao: string; yaw: [number, number]; pitch: [number, number]; fov: [number, number] }[] = [
@@ -150,10 +183,14 @@ export const LIMITES = {
   transicaoSegundos: 0.6,
 };
 
-// Créditos: vídeo estático custa 1 (o render é nosso, custa CPU e nada mais); cada
-// cena animada soma 2 (sai pro fal, ≈ US$ 0,05-0,10); narração soma 1 (TTS). A Pedra
-// cobra 5 por cena animada e 1 por narração.
-export const CREDITOS = { base: 1, animada: 2, narracao: 1 };
+// Créditos: SÓ onde há IA de verdade.
+//
+// O vídeo montado, o tour 360 e o terreno rodam no nosso servidor: custam CPU, não
+// modelo pago. Cobrar por eles era desvantagem de percepção sem justificativa de custo
+// -- a Pedra anuncia "vídeos, tours e plantas ilimitados" e cobra crédito só na imagem
+// (varredura de 12/09/2026, docs/pedra-varredura-12-09.md). Aqui é igual, e a cena
+// animada custa 2 contra os 5 deles.
+export const CREDITOS = { base: 0, animada: 2, narracao: 1 };
 
 export function custoDoVideo(e: Pick<EspecVideo, "cenas" | "narracao">): number {
   const animadas = e.cenas.filter((c) => c.tipo === "animada").length;

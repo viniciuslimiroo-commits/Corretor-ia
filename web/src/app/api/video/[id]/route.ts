@@ -56,7 +56,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const contaDoVideo = video.org_id ? { tipo: "org" as const, id: video.org_id as string } : { tipo: "user" as const, id: userId };
 
   async function falhar(mensagem: string) {
-    await creditar(db, contaDoVideo, userId, video!.creditos_cobrados, "estorno_video", id).catch(() => null);
+    if (video!.creditos_cobrados > 0) await creditar(db, contaDoVideo, userId, video!.creditos_cobrados, "estorno_video", id).catch(() => null);
     await db.from("videos").update({ status: "falhou", erro: mensagem, lock_ate: null }).eq("id", id);
     await limparTemporarios(db, pipeline);
     return NextResponse.json({ videoId: id, status: "falhou", error: mensagem }, { status: 502 });

@@ -295,6 +295,10 @@ export default function Editor() {
           <Icone nome="terreno" className="h-4 w-4" />
           Terreno
         </Link>
+        <Link href="/planta" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
+          <Icone nome="planta" className="h-4 w-4" />
+          Planta
+        </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-12">
