@@ -77,6 +77,30 @@ Planta (editor CAD) e Social com publicação são produtos à parte e ficam por
 O que a Pedra **não** tem e nós temos: export por portal brasileiro, selo de imagem
 ilustrativa, pt-BR de verdade, cobrança em real, custo real por geração.
 
+## Fase A — feita em 12/09/2026
+
+Catálogo de ações (`web/src/lib/acoes.ts`) alimenta servidor e tela. Testado, cada um
+com geração real:
+
+| Item | Estado |
+|---|---|
+| Mobiliar: tipo de espaço (12 + "outro"), estilo (10, com Praiano e Tropical, + "outro"), intensidade | ✅ pela interface |
+| Mobiliar só onde eu pintar (FLUX Fill) | ✅ pela interface; primeira rodada caiu na checagem de igualdade (mudança local), corrigido |
+| Mobiliar com móveis de outra foto (2ª imagem pro Nano Banana) | ⚠️ implementado, não testado |
+| Renovar (nível, tipo, estilo, móveis) | ✅ pela API, cozinha escandinava |
+| Mudar piso (10 materiais) | ✅ pela interface, cimento queimado |
+| Mudar parede (10 acabamentos) | ⚠️ implementado, mesmo pipeline do piso, não testado |
+| Trocar céu (5 opções) | ⚠️ implementado, não testado nas opções novas |
+| Converter em HD (só upscale, sem modelo; recusa foto já grande sem cobrar) | ✅ pela API, 900px → 2560px em 19s |
+| Editar com texto | ✅ pela API: "almofadas amarelas e tirar o tapete" saiu exato |
+| Histórico com miniaturas e movimentação de créditos | ✅ |
+| Minha marca: logo e cor | ✅ |
+| Export com legenda e logo do corretor | ✅ conferido na imagem |
+| Interface nova: app shell, editor em passos, comparador antes/depois | ✅ |
+
+Fora de propósito: remover marca d'água (jurídico). Ficou pra Fase B: remover objeto
+automático, corrigir perspectiva.
+
 ## Ordem proposta
 
 **Fase A — edição completa (1 semana).** Mobiliar completo (tipo de espaço, estilos com
