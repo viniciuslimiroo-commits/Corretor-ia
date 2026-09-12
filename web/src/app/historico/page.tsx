@@ -15,7 +15,7 @@ type Movimento = { delta: number; motivo: string; em: string };
 function humanizarMotivo(m: string): string {
   const base = m.split(":")[0];
   if (base.startsWith("trial") || base.includes("boas")) return "Créditos de boas-vindas";
-  if (base.startsWith("geracao") || base.startsWith("debito")) return "Geração";
+  if (base.startsWith("geracao") || base.startsWith("debito") || base.startsWith("consumo")) return "Geração";
   if (base.startsWith("estorno_reporte")) return "Devolvido: você reportou um problema";
   if (base.startsWith("estorno")) return "Devolvido: a geração falhou";
   if (base.startsWith("assinatura")) return "Assinatura Pro";

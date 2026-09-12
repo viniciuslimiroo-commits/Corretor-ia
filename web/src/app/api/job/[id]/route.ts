@@ -251,7 +251,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // A falha que não se parece com falha: a chamada devolve 200, o crédito é debitado,
     // e o corretor recebe de volta a foto que ele mesmo subiu. Aconteceu de verdade com
     // o Nano Banana no "esvaziar". Limiar calibrado em @/lib/comparar.
-    if (ACOES_COM_CHECAGEM_DE_IGUALDADE.has(job.tipo)) {
+    // Com máscara a mudança é LOCAL (mobília só na área pintada) e a medida global fica
+    // abaixo do limiar mesmo quando o modelo acertou -- aconteceu no primeiro teste do
+    // "mobiliar só onde eu pintar": o fill trabalhou certo e foi descartado por isso.
+    // Sem máscara a checagem continua valendo.
+    if (ACOES_COM_CHECAGEM_DE_IGUALDADE.has(job.tipo) && !p.urlMascara) {
       const bytesEntrada = Buffer.from(await (await fetch(p.urlFoto)).arrayBuffer());
       if (await pareceIgual(job.tipo, bytesEntrada, bytesSaida)) {
         try {
