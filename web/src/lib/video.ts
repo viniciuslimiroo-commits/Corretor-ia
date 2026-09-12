@@ -64,7 +64,24 @@ export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; pro
   },
 ];
 
-export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada";
+// Tour 360: a foto (ou o vídeo) equirretangular tem a cena inteira, então dá pra mover
+// uma câmera de verdade dentro dela -- giro e inclinação reais, com a perspectiva
+// correta em cada quadro. É o único jeito honesto de fazer "câmera passeando pelo
+// ambiente" sem IA: numa foto comum não existe o que está atrás do sofá.
+//
+// Velocidade importa: 45°/s embrulha o estômago. Estes presets ficam entre 8 e 20°/s,
+// que é o ritmo de tour imobiliário.
+export type Movimento360Id = "olhar_volta" | "giro_completo" | "entrar" | "panoramica" | "revelar";
+
+export const MOVIMENTOS_360: { id: Movimento360Id; rotulo: string; descricao: string; yaw: [number, number]; pitch: [number, number]; fov: [number, number] }[] = [
+  { id: "olhar_volta", rotulo: "Olhar em volta", descricao: "Vira devagar da esquerda pra direita.", yaw: [-70, 70], pitch: [0, 0], fov: [95, 95] },
+  { id: "giro_completo", rotulo: "Giro completo", descricao: "Mostra o ambiente inteiro, 360°.", yaw: [-180, 180], pitch: [0, 0], fov: [100, 100] },
+  { id: "entrar", rotulo: "Entrar no ambiente", descricao: "Abre o campo de visão como quem entra.", yaw: [-15, 15], pitch: [4, 0], fov: [110, 72] },
+  { id: "panoramica", rotulo: "Panorâmica lenta", descricao: "Movimento suave e curto, bom pra fundo.", yaw: [-35, 35], pitch: [0, 0], fov: [90, 90] },
+  { id: "revelar", rotulo: "Do piso ao ambiente", descricao: "Começa olhando pra baixo e levanta.", yaw: [-20, 20], pitch: [-35, 5], fov: [100, 92] },
+];
+
+export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada" | "tour360";
 
 export type Cena = {
   tipo: TipoCena;
@@ -74,6 +91,8 @@ export type Cena = {
   arquivo?: string;
   efeito?: EfeitoId;
   animacao?: AnimacaoId;
+  /** Só tour360: como a câmera se move dentro da esfera. */
+  movimento?: Movimento360Id;
   legenda?: string;
   /** Segundos em tela. */
   duracao?: number;
@@ -119,6 +138,9 @@ export type EspecVideo = {
 export const LIMITES = {
   cenasMax: 12,
   duracaoMin: 3,
+  /** Tour 360 pode ser mais longo (tem cena de verdade pra mostrar), mas cada segundo
+   *  custa ~7s de render local e mais no servidor; 10s é o teto que cabe na função. */
+  duracaoMax360: 10,
   duracaoMax: 8,
   duracaoPadrao: 4,
   legendaMax: 40,
@@ -139,8 +161,9 @@ export function custoDoVideo(e: Pick<EspecVideo, "cenas" | "narracao">): number 
 }
 
 export function duracaoDaCena(c: Cena): number {
-  const d = c.duracao ?? LIMITES.duracaoPadrao;
-  return Math.min(Math.max(d, LIMITES.duracaoMin), LIMITES.duracaoMax);
+  const teto = c.tipo === "tour360" ? LIMITES.duracaoMax360 : LIMITES.duracaoMax;
+  const d = c.duracao ?? (c.tipo === "tour360" ? 10 : LIMITES.duracaoPadrao);
+  return Math.min(Math.max(d, LIMITES.duracaoMin), teto);
 }
 
 export function duracaoEstimada(e: Pick<EspecVideo, "cenas" | "telaFinal" | "transicao">): number {
@@ -172,21 +195,25 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
   for (const cb of cenasBrutas) {
     const c = (cb && typeof cb === "object" ? cb : {}) as Record<string, unknown>;
     const tipo = c.tipo;
-    if (tipo !== "foto" && tipo !== "antes_depois" && tipo !== "clipe" && tipo !== "animada") return { espec: null, erro: "Cena com tipo desconhecido." };
+    if (tipo !== "foto" && tipo !== "antes_depois" && tipo !== "clipe" && tipo !== "animada" && tipo !== "tour360") return { espec: null, erro: "Cena com tipo desconhecido." };
     const jobId = typeof c.jobId === "string" && /^[0-9a-f-]{36}$/.test(c.jobId) ? c.jobId : undefined;
     const arquivo = typeof c.arquivo === "string" && /^[\w./-]{1,200}$/.test(c.arquivo) && !c.arquivo.includes("..") ? c.arquivo : undefined;
     if (tipo === "antes_depois" && !jobId) return { espec: null, erro: "Antes e depois precisa de uma geração do Encena." };
     if (tipo === "clipe" && !arquivo) return { espec: null, erro: "Cena de clipe sem arquivo." };
+    if (tipo === "tour360" && !arquivo) return { espec: null, erro: "Cena 360 sem arquivo. Envie a foto ou o vídeo 360." };
     if ((tipo === "foto" || tipo === "animada") && !jobId && !arquivo) return { espec: null, erro: "Cena sem foto." };
     const duracaoNum = Number(c.duracao);
+    const teto = tipo === "tour360" ? LIMITES.duracaoMax360 : LIMITES.duracaoMax;
+    const padrao = tipo === "tour360" ? 10 : LIMITES.duracaoPadrao;
     cenas.push({
       tipo,
       jobId,
       arquivo,
       efeito: ehId(EFEITOS, c.efeito) ? c.efeito : "aproximar",
       animacao: tipo === "animada" ? (ehId(ANIMACOES, c.animacao) ? c.animacao : "caminhar") : undefined,
+      movimento: tipo === "tour360" ? (ehId(MOVIMENTOS_360, c.movimento) ? c.movimento : "olhar_volta") : undefined,
       legenda: texto(c.legenda, LIMITES.legendaMax) || undefined,
-      duracao: Number.isFinite(duracaoNum) ? Math.min(Math.max(Math.round(duracaoNum), LIMITES.duracaoMin), LIMITES.duracaoMax) : LIMITES.duracaoPadrao,
+      duracao: Number.isFinite(duracaoNum) ? Math.min(Math.max(Math.round(duracaoNum), LIMITES.duracaoMin), teto) : padrao,
       melhorar: tipo === "clipe" ? c.melhorar === true : undefined,
     });
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
-import { ACOES_POR_ID, resumirParametros } from "@/lib/acoes";
+import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
 
 // Um imóvel: dados e a galeria de gerações dele, cada uma com antes e depois assinados.
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       const def = ACOES_POR_ID[j.tipo];
       return {
         id: j.id,
-        acao: def?.rotulo ?? j.tipo,
+        acao: rotuloDoTipo(j.tipo),
         detalhe: def ? resumirParametros(def, (j.parametros ?? {}) as Record<string, string>) : "",
         status: j.status,
         criadoEm: j.criado_em,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
-import { ACOES_POR_ID, resumirParametros } from "@/lib/acoes";
+import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
 
 // Histórico: cada geração da pessoa com miniatura, ação, parâmetros e o que aconteceu
 // com o crédito. A Pedra tem isso em "Ver histórico de créditos" e foi como o teste
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       const imovel = j.properties as unknown as { titulo: string | null } | null;
       return {
         id: j.id,
-        acao: def?.rotulo ?? j.tipo,
+        acao: rotuloDoTipo(j.tipo),
         detalhe: def ? resumirParametros(def, (j.parametros ?? {}) as Record<string, string>) : "",
         status: j.status,
         criadoEm: j.criado_em,

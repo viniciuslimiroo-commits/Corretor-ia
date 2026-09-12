@@ -291,6 +291,10 @@ export default function Editor() {
           <Icone nome="lote" className="h-4 w-4" />
           Em lote
         </Link>
+        <Link href="/terreno" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
+          <Icone nome="terreno" className="h-4 w-4" />
+          Terreno
+        </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-12">

@@ -14,6 +14,8 @@ import {
 import { aplicarSelo, textoDoSelo } from "@/lib/selo";
 import { ALVO_LARGURA_UPSCALE, saldoFal } from "@/lib/custo";
 import { ACOES_COM_CHECAGEM_DE_IGUALDADE, pareceIgual } from "@/lib/comparar";
+import { ACOES_POR_ID } from "@/lib/acoes";
+import { avaliarResultado } from "@/lib/avaliador";
 import { creditar } from "@/lib/cobranca";
 
 // Job despachado que nunca volta prende o crédito do usuário pra sempre. 15 minutos é
@@ -72,7 +74,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // outro trocando o id na URL. O service role ignora RLS, então a checagem é explícita.
   const { data: job, error: erroJob } = await db
     .from("jobs")
-    .select("id, tipo, status, output_path, input_path, selo, pipeline, criado_em, property_id, org_id")
+    .select("id, tipo, status, output_path, input_path, selo, pipeline, criado_em, property_id, org_id, parametros")
     .eq("id", id)
     .eq("user_id", userId)
     .single();
@@ -273,15 +275,37 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (ACOES_COM_CHECAGEM_DE_IGUALDADE.has(job.tipo) && !p.urlMascara) {
       const bytesEntrada = Buffer.from(await (await fetch(p.urlFoto)).arrayBuffer());
       if (await pareceIgual(job.tipo, bytesEntrada, bytesSaida)) {
-        try {
-          const trocou = await tentarFallback("devolveu a foto quase sem alteração");
-          if (trocou) return trocou;
-        } catch {
-          // cai no falhar abaixo
+        // Medir pixel diz "mudou pouco", não "está errado": esvaziar uma varanda quase
+        // vazia muda pouco e ACERTA. Na bateria de 12/09/2026 um esvaziar bom foi
+        // descartado assim, dos dois modelos -- é a terceira vez que essa medida global
+        // erra (ver observação 0012). Antes de descartar, um modelo de visão olha as
+        // duas imagens e diz se o pedido foi cumprido; só descarta se ele confirmar.
+        const acaoDef = ACOES_POR_ID[job.tipo];
+        let confirmouIgual = true;
+        if (acaoDef) {
+          const veredito = await avaliarResultado({
+            falKey,
+            acao: acaoDef,
+            parametros: (job.parametros ?? {}) as Record<string, string>,
+            usouMascara: false,
+            relato: "A imagem parece não ter mudado quase nada em relação à original.",
+            urlAntes: p.urlFoto,
+            urlDepois: imagem.url,
+          }).catch(() => null);
+          // "ok" = o avaliador viu a mudança pedida: o resultado presta, segue.
+          if (veredito?.veredito === "ok") confirmouIgual = false;
         }
-        return falhar(
-          "Os dois modelos devolveram a sua foto praticamente sem alteração, então seu crédito voltou. Costuma acontecer quando a foto não tem o que a ação pede (por exemplo, esvaziar um cômodo que já está vazio)."
-        );
+        if (confirmouIgual) {
+          try {
+            const trocou = await tentarFallback("devolveu a foto quase sem alteração");
+            if (trocou) return trocou;
+          } catch {
+            // cai no falhar abaixo
+          }
+          return falhar(
+            "Os dois modelos devolveram a sua foto praticamente sem alteração, então seu crédito voltou. Costuma acontecer quando a foto não tem o que a ação pede (por exemplo, esvaziar um cômodo que já está vazio)."
+          );
+        }
       }
     }
 

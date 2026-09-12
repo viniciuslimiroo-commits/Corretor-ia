@@ -118,6 +118,10 @@ export default function Lote() {
           <Icone nome="lote" className="h-4 w-4" />
           Em lote
         </span>
+        <Link href="/terreno" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
+          <Icone nome="terreno" className="h-4 w-4" />
+          Terreno
+        </Link>
       </div>
 
       <div>

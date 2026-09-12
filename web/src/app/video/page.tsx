@@ -11,6 +11,7 @@ import {
   EFEITOS,
   FORMATOS,
   LIMITES,
+  MOVIMENTOS_360,
   MUSICAS,
   VOZES,
   custoDoVideo,
@@ -20,6 +21,7 @@ import {
   type EfeitoId,
   type EspecVideo,
   type FormatoId,
+  type Movimento360Id,
   type MusicaId,
   type VozId,
 } from "@/lib/video";
@@ -44,12 +46,29 @@ type CenaUI = {
   rotulo: string;
   temAntes: boolean;
   ehClipe: boolean;
+  /** Foto (ou vídeo) equirretangular, detectada pela proporção 2:1: vira tour 360. */
+  eh360: boolean;
   efeito: EfeitoId;
   animacao: AnimacaoId;
+  movimento: Movimento360Id;
   legenda: string;
   duracao: number;
   melhorar: boolean;
 };
+
+/** Proporção 2:1 (com folga) é a assinatura de uma foto 360 equirretangular. */
+async function pareceEquirect(f: File): Promise<boolean> {
+  if (!f.type.startsWith("image/")) return false;
+  try {
+    const bmp = await createImageBitmap(f);
+    const { width, height } = bmp;
+    bmp.close();
+    const razao = width / height;
+    return razao > 1.9 && razao < 2.1 && width >= 2000;
+  } catch {
+    return false;
+  }
+}
 
 type VideoResumo = { id: string; titulo: string; formato: string; status: string; criadoEm: string; duracao: number | null; miniatura: string | null; compartilhado: boolean; erro: string | null };
 
@@ -91,7 +110,7 @@ export default function PaginaVideo() {
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, legenda: s.legenda || undefined, duracao: s.duracao, melhorar: s.melhorar })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, duracao: s.duracao, melhorar: s.melhorar })),
       musica,
       narracao: narrar && roteiro.trim().length >= 10 ? { roteiro: roteiro.trim(), voz } : null,
       titulo,
@@ -152,8 +171,10 @@ export default function PaginaVideo() {
         rotulo: `${g.acao}${g.detalhe ? " · " + g.detalhe : ""}`,
         temAntes: !!g.antes,
         ehClipe: false,
+        eh360: false,
         efeito: EFEITOS[lista.length % 2 === 0 ? 0 : 1].id,
         animacao: "caminhar",
+        movimento: "olhar_volta",
         legenda: "",
         duracao: LIMITES.duracaoPadrao,
         melhorar: false,
@@ -177,20 +198,23 @@ export default function PaginaVideo() {
         const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, f, { contentType: f.type });
         if (error) throw new Error(error.message);
         const ehVideo = !!d.ehVideo;
+        const eh360 = !ehVideo && (await pareceEquirect(f));
         setCenas((lista) => [
           ...lista,
           {
             chave: chave(),
-            tipo: ehVideo ? "clipe" : "foto",
+            tipo: eh360 ? "tour360" : ehVideo ? "clipe" : "foto",
             arquivo: d.caminho,
             miniatura: ehVideo ? null : URL.createObjectURL(f),
-            rotulo: ehVideo ? `Clipe · ${f.name}` : f.name,
+            rotulo: eh360 ? `Foto 360 · ${f.name}` : ehVideo ? `Clipe · ${f.name}` : f.name,
             temAntes: false,
             ehClipe: ehVideo,
+            eh360,
             efeito: "aproximar",
             animacao: "caminhar",
+            movimento: "olhar_volta",
             legenda: "",
-            duracao: ehVideo ? 6 : LIMITES.duracaoPadrao,
+            duracao: eh360 ? 10 : ehVideo ? 6 : LIMITES.duracaoPadrao,
             melhorar: ehVideo,
           },
         ]);
@@ -445,7 +469,7 @@ export default function PaginaVideo() {
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {!s.ehClipe && (
+                          {!s.ehClipe && !s.eh360 && (
                             <>
                               <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto</Chip>
                               {s.temAntes && <Chip ativo={s.tipo === "antes_depois"} onClick={() => mudarCena(s.chave, { tipo: "antes_depois" })}>Antes e depois</Chip>}
@@ -454,11 +478,23 @@ export default function PaginaVideo() {
                               </Chip>
                             </>
                           )}
+                          {s.eh360 && (
+                            <>
+                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Câmera de verdade dentro da foto 360">🧭 Tour 360</Chip>
+                              <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto comum</Chip>
+                            </>
+                          )}
                           {s.ehClipe && (
-                            <label className="flex items-center gap-1.5 text-sm text-neutral-700">
-                              <input type="checkbox" checked={s.melhorar} onChange={(e) => mudarCena(s.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
-                              Melhorar cor e nitidez
-                            </label>
+                            <>
+                              <Chip ativo={s.tipo === "clipe"} onClick={() => mudarCena(s.chave, { tipo: "clipe" })}>Clipe</Chip>
+                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Vídeo 360</Chip>
+                              {s.tipo === "clipe" && (
+                                <label className="flex items-center gap-1.5 text-sm text-neutral-700">
+                                  <input type="checkbox" checked={s.melhorar} onChange={(e) => mudarCena(s.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
+                                  Melhorar cor e nitidez
+                                </label>
+                              )}
+                            </>
                           )}
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -476,8 +512,15 @@ export default function PaginaVideo() {
                               ))}
                             </select>
                           )}
+                          {s.tipo === "tour360" && (
+                            <select value={s.movimento} onChange={(e) => mudarCena(s.chave, { movimento: e.target.value as Movimento360Id })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Movimento da câmera 360" title={MOVIMENTOS_360.find((m) => m.id === s.movimento)?.descricao}>
+                              {MOVIMENTOS_360.map((m) => (
+                                <option key={m.id} value={m.id}>{m.rotulo}</option>
+                              ))}
+                            </select>
+                          )}
                           <select value={s.duracao} onChange={(e) => mudarCena(s.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Duração">
-                            {[3, 4, 5, 6, 8].map((d) => (
+                            {(s.tipo === "tour360" ? [4, 6, 8, 10] : [3, 4, 5, 6, 8]).map((d) => (
                               <option key={d} value={d}>{d} s</option>
                             ))}
                           </select>

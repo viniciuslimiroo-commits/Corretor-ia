@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { ehToken } from "@/lib/compartilhar";
-import { ACOES_POR_ID, resumirParametros } from "@/lib/acoes";
+import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
 import { marcaEfetiva } from "@/lib/cobranca";
 import GaleriaPublica, { type FotoPublica } from "@/components/galeria-publica";
 
@@ -87,7 +87,7 @@ async function carregar(token: string): Promise<Pagina | null> {
   if (job) {
     userId = job.user_id;
     jobs = [job];
-    titulo = ACOES_POR_ID[job.tipo]?.rotulo ?? "Foto";
+    titulo = rotuloDoTipo(job.tipo);
     if (job.property_id) {
       const { data: imovel } = await db.from("properties").select("titulo, endereco").eq("id", job.property_id).maybeSingle();
       if (imovel) {
@@ -121,7 +121,7 @@ async function carregar(token: string): Promise<Pagina | null> {
           id: j.id,
           antes: j.input_path ? await assinar(db, j.input_path).catch(() => null) : null,
           depois,
-          rotulo: def?.rotulo ?? j.tipo,
+          rotulo: rotuloDoTipo(j.tipo),
           detalhe: def ? resumirParametros(def, j.parametros ?? {}) : "",
         };
       })

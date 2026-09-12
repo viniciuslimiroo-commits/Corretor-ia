@@ -27,3 +27,6 @@ review-e2e/
 
 .vercel
 .env*
+
+# Imagens da bateria de testes (pesadas; o log.json fica versionado)
+docs/testes-reais/*.jpg

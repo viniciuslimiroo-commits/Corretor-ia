@@ -42,16 +42,22 @@ export async function guardarEAssinar(
   bytes: Buffer,
   contentType: string
 ): Promise<string> {
-  const { error: erroUpload } = await db.storage
-    .from(BUCKET_RESULTADOS)
-    .upload(caminho, bytes, { contentType, upsert: true });
-  if (erroUpload) {
-    throw new Error(
-      `Não consegui guardar "${caminho}": ${erroUpload.message}. ` +
-        `Faltou rodar a migration 03 (bucket "${BUCKET_RESULTADOS}") no Supabase?`
-    );
+  // O storage do Supabase devolve 504 de vez em quando (visto na bateria de 12/09/2026:
+  // uma geração perdida por "Gateway Timeout" ao subir a original). Falhar aqui joga
+  // fora um trabalho que já foi pago, então três tentativas com espera crescente.
+  let ultimo = "";
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const { error } = await db.storage.from(BUCKET_RESULTADOS).upload(caminho, bytes, { contentType, upsert: true });
+    if (!error) return assinar(db, caminho);
+    ultimo = error.message;
+    const passageiro = /timeout|gateway|504|502|503|fetch failed|network/i.test(ultimo);
+    if (!passageiro) break;
+    await new Promise((r) => setTimeout(r, 800 * tentativa));
   }
-  return assinar(db, caminho);
+  throw new Error(
+    `Não consegui guardar "${caminho}": ${ultimo}. ` +
+      `Faltou rodar a migration 03 (bucket "${BUCKET_RESULTADOS}") no Supabase?`
+  );
 }
 
 export async function assinar(db: Db, caminho: string): Promise<string> {

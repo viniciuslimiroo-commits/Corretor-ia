@@ -1,0 +1,324 @@
+[
+ {
+  "n": "02",
+  "acao": "mobiliar",
+  "params": {
+   "tipo_espaco": "quarto",
+   "estilo": "escandinavo",
+   "criatividade": "alta"
+  },
+  "rotulo": "comodo vazio pequeno",
+  "jobId": "2183cbe8-8d49-4b4d-8f3c-564cc528a019",
+  "segundos": 94.9,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.1194
+ },
+ {
+  "n": "01",
+  "acao": "mobiliar",
+  "params": {
+   "tipo_espaco": "sala",
+   "estilo": "moderno",
+   "criatividade": "alta"
+  },
+  "rotulo": "sala vazia, profissional",
+  "jobId": "1fb1c76f-81f2-4460-ac5a-e254795df0f5",
+  "segundos": 95.5,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.1194
+ },
+ {
+  "n": "03",
+  "acao": "mobiliar",
+  "params": {
+   "tipo_espaco": "sala",
+   "estilo": "praiano",
+   "criatividade": "media"
+  },
+  "rotulo": "foto escura de celular, 1000px",
+  "jobId": "c1017c36-c17a-4358-adef-98ffc1e74742",
+  "segundos": 99.1,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.1194
+ },
+ {
+  "n": "06",
+  "acao": "renovar",
+  "params": {
+   "tipo_espaco": "sala",
+   "estilo": "contemporaneo",
+   "criatividade": "media",
+   "moveis": "auto"
+  },
+  "rotulo": "sala mobiliada",
+  "jobId": "43da7a55-f523-42c8-a323-3ff65d0f99fa",
+  "segundos": 50.5,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.4398
+ },
+ {
+  "n": "05",
+  "acao": "renovar",
+  "params": {
+   "tipo_espaco": "cozinha",
+   "estilo": "moderno",
+   "criatividade": "alta",
+   "moveis": "com"
+  },
+  "rotulo": "cozinha vazia",
+  "jobId": "e2142e34-8327-4529-ac02-d00ea7ba1049",
+  "segundos": 54.6,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.4398
+ },
+ {
+  "n": "04",
+  "acao": "mobiliar",
+  "params": {
+   "tipo_espaco": "auto",
+   "estilo": "tropical",
+   "criatividade": "alta"
+  },
+  "rotulo": "sala vazia, angulo torto",
+  "jobId": "153ac7e7-1142-40d3-b72a-41e271498dd2",
+  "segundos": 58.2,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.594
+ },
+ {
+  "n": "08",
+  "acao": "esvaziar",
+  "params": {},
+  "rotulo": "cozinha real com objetos",
+  "jobId": "16392bc3-493b-4c22-8766-645f79448427",
+  "segundos": 37.2,
+  "modelo": "fal-ai/flux-pro/kontext",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.04
+ },
+ {
+  "n": "09",
+  "acao": "esvaziar",
+  "rotulo": "varanda externa",
+  "erro": "Esta geração não foi concluída."
+ },
+ {
+  "n": "07",
+  "acao": "esvaziar",
+  "params": {},
+  "rotulo": "sala mobiliada",
+  "jobId": "7a1bdf2d-9de9-4f8d-b60b-2aa7cbff693e",
+  "segundos": 55.6,
+  "modelo": "fal-ai/flux-pro/kontext",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2001
+ },
+ {
+  "n": "10",
+  "acao": "remover_objeto",
+  "params": {
+   "o_que": ""
+  },
+  "rotulo": "tirar bagunca, sala",
+  "jobId": "e3096532-07a3-4c2a-afe5-842a4f35ebda",
+  "segundos": 37.1,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.3596
+ },
+ {
+  "n": "11",
+  "acao": "remover_objeto",
+  "params": {
+   "o_que": "the rug on the floor"
+  },
+  "rotulo": "tirar o tapete",
+  "jobId": "2f5b8d92-b716-4cf0-9fde-cff83b367fdd",
+  "segundos": 36,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.1995
+ },
+ {
+  "n": "12",
+  "acao": "mudar_piso",
+  "params": {
+   "material": "madeira_clara"
+  },
+  "rotulo": "sala vazia",
+  "jobId": "354983e4-951c-4ab1-9cf0-be279074423a",
+  "segundos": 44.6,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2796
+ },
+ {
+  "n": "13",
+  "acao": "mudar_piso",
+  "params": {
+   "material": "porcelanato"
+  },
+  "rotulo": "cozinha",
+  "jobId": "eb392e42-614e-43bc-8ddd-210a1f9f4052",
+  "segundos": 46.2,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.3599
+ },
+ {
+  "n": "14",
+  "acao": "mudar_parede",
+  "params": {
+   "material": "verde"
+  },
+  "rotulo": "sala clara",
+  "jobId": "cc7c3d33-16cc-42ea-8863-e64f2724e164",
+  "segundos": 54.9,
+  "modelo": "fal-ai/flux-pro/kontext",
+  "aviso": "fal-ai/nano-banana/edit recusou o pedido, usamos fal-ai/flux-pro/kontext no lugar.",
+  "largura": 2048,
+  "custo": 0.5141
+ },
+ {
+  "n": "15",
+  "acao": "mudar_parede",
+  "params": {
+   "material": "tijolo"
+  },
+  "rotulo": "comodo vazio",
+  "jobId": "e3cd894a-e8cd-44e6-804d-6067a7c07191",
+  "segundos": 44.6,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.3539
+ },
+ {
+  "n": "16",
+  "acao": "melhorar",
+  "params": {},
+  "rotulo": "foto escura original",
+  "jobId": "3c2850f0-0ea5-49cc-9987-3d76bc33c515",
+  "segundos": 35.8,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2398
+ },
+ {
+  "n": "17",
+  "acao": "melhorar",
+  "params": {},
+  "rotulo": "celular escuro 900px",
+  "jobId": "05e2d360-2307-46fc-8d99-760bad92cee9",
+  "segundos": 39.6,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.3199
+ },
+ {
+  "n": "18",
+  "acao": "converter_hd",
+  "rotulo": "celular 1100px",
+  "erro": "Não consegui guardar \"03d2a33f-40de-495e-bd23-b9965a0200fa/d506d942-b516-4463-8771-82241a93261d-original.jpg\": Gateway Timeout. Faltou rodar a migration 03 (bucket \"resultados\") no Supabase?"
+ },
+ {
+  "n": "19",
+  "acao": "corrigir_perspectiva",
+  "params": {},
+  "rotulo": "angulo torto",
+  "jobId": "7d2afbd8-a6ff-4b3f-bb5d-ef7e2b92fb36",
+  "segundos": 53.2,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2796
+ },
+ {
+  "n": "20",
+  "acao": "corrigir_perspectiva",
+  "params": {},
+  "rotulo": "fachada",
+  "jobId": "0e56fc0d-5637-4789-8f8f-2dac44fc0f97",
+  "segundos": 49.4,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.1597
+ },
+ {
+  "n": "21",
+  "acao": "trocar_ceu",
+  "params": {
+   "ceu": "entardecer"
+  },
+  "rotulo": "fachada nublada",
+  "jobId": "c022ab74-bb49-46e7-98a7-c8d84a4a39f2",
+  "segundos": 76.4,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2796
+ },
+ {
+  "n": "22",
+  "acao": "trocar_ceu",
+  "params": {
+   "ceu": "noite"
+  },
+  "rotulo": "fachada nublada 2",
+  "jobId": "e3b64041-8d20-4f4b-a763-75427aa35af5",
+  "segundos": 83.7,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.3597
+ },
+ {
+  "n": "23",
+  "acao": "editar_prompt",
+  "params": {
+   "instrucao": "remover o ventilador de teto"
+  },
+  "rotulo": "sala com ventilador",
+  "jobId": "2d006512-bc13-4211-adbf-2dacec38e893",
+  "segundos": 69.7,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2796
+ },
+ {
+  "n": "24",
+  "acao": "editar_prompt",
+  "params": {
+   "instrucao": "colocar cortinas brancas leves nas janelas"
+  },
+  "rotulo": "sala clara",
+  "jobId": "9227c7d2-6d5c-4ef0-aa1e-99ede181b110",
+  "segundos": 42.8,
+  "modelo": "fal-ai/nano-banana/edit",
+  "aviso": null,
+  "largura": 2048,
+  "custo": 0.2801
+ }
+]

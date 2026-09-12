@@ -1,6 +1,7 @@
+import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { LIMITES, type EfeitoId } from "./video";
+import { LIMITES, MOVIMENTOS_360, type EfeitoId, type Movimento360Id } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -148,6 +149,81 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
   if (o.legenda) filtros.push(pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }));
   return ["-ss", "0", "-t", o.duracao.toFixed(2), "-i", o.clipe, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
+}
+
+/** Suavização em S: começa e termina devagar, como uma câmera de verdade. */
+function suave(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Cena de TOUR 360: move uma câmera dentro da foto (ou do vídeo) equirretangular.
+ *
+ * O `v360` converte a esfera em perspectiva plana a cada quadro; `yaw`, `pitch` e
+ * `h_fov` aceitam comando em tempo de execução, então o movimento vem de um arquivo de
+ * comandos gerado aqui, um por quadro. É câmera de verdade: a perspectiva muda, as
+ * linhas se curvam certo, não é recorte deslizando.
+ *
+ * Escreve o arquivo de comandos em `dirTrabalho` e devolve os argumentos.
+ */
+export function argsCena360(o: {
+  entrada: string;
+  ehVideo: boolean;
+  saida: string;
+  dirTrabalho: string;
+  W: number;
+  H: number;
+  duracao: number;
+  movimento: Movimento360Id;
+  legenda?: string;
+}): string[] {
+  const preset = MOVIMENTOS_360.find((m) => m.id === o.movimento) ?? MOVIMENTOS_360[0];
+  const quadros = Math.max(2, Math.round(o.duracao * FPS));
+
+  // Custo medido (12/09/2026, 6s em 9:16): cúbico em 1080 = 65s; linear em 720 e
+  // ampliado = 27s; mudar o fov a cada quadro dobra o tempo, a cada 6 quadros quase
+  // não pesa e o olho não percebe. Yaw continua por quadro, que é o que dá suavidade.
+  const PASSO_LENTO = 6;
+  const linhas: string[] = [];
+  for (let f = 0; f < quadros; f++) {
+    const t = suave(f / (quadros - 1));
+    const yaw = preset.yaw[0] + (preset.yaw[1] - preset.yaw[0]) * t;
+    const pitch = preset.pitch[0] + (preset.pitch[1] - preset.pitch[0]) * t;
+    const fov = preset.fov[0] + (preset.fov[1] - preset.fov[0]) * t;
+    const quando = (f / FPS).toFixed(4);
+    // reset_rot ANTES de cada quadro: sem ele os comandos de rotação do v360 se
+    // acumulam (cada yaw soma ao anterior) e a câmera gira feito pião, chegando a
+    // ficar de cabeça pra baixo -- visto no teste de 12/09/2026. Com o reset, yaw e
+    // pitch passam a ser absolutos.
+    linhas.push(`${quando} v360 reset_rot 1;`);
+    linhas.push(`${quando} v360 yaw ${yaw.toFixed(3)};`);
+    if (preset.pitch[0] !== preset.pitch[1] || preset.pitch[0] !== 0) linhas.push(`${quando} v360 pitch ${pitch.toFixed(3)};`);
+    if ((f % PASSO_LENTO === 0 || f === quadros - 1) && preset.fov[0] !== preset.fov[1]) {
+      linhas.push(`${quando} v360 h_fov ${fov.toFixed(3)};`);
+    }
+  }
+  const arquivoCmd = path.join(o.dirTrabalho, `cmd360-${Math.random().toString(36).slice(2, 8)}.txt`);
+  fs.writeFileSync(arquivoCmd, linhas.join("\n"));
+
+  // Render interno a 2/3 do tamanho e ampliação com lanczos: metade do tempo, nitidez
+  // que passa despercebida em celular. v_fov proporcional ao formato, senão o vertical
+  // (9:16) fica achatado.
+  const wi = Math.round((o.W * 2) / 3 / 2) * 2;
+  const hi = Math.round((o.H * 2) / 3 / 2) * 2;
+  const vFov = Math.min(120, Math.max(40, (preset.fov[0] * o.H) / o.W));
+  const filtros = [
+    `sendcmd=f='${caminhoParaFiltro(arquivoCmd)}'`,
+    `v360=input=e:output=flat:h_fov=${preset.fov[0]}:v_fov=${vFov.toFixed(1)}:w=${wi}:h=${hi}:interp=line`,
+    `scale=${o.W}:${o.H}:flags=lanczos`,
+    "format=yuv420p",
+  ];
+  if (o.legenda) filtros.push(pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }));
+
+  const entrada = o.ehVideo
+    ? ["-t", o.duracao.toFixed(2), "-i", o.entrada]
+    : ["-loop", "1", "-framerate", String(FPS), "-t", o.duracao.toFixed(2), "-i", o.entrada];
+
+  return [...entrada, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
 /** Tela final: cor da marca, logo (se houver), nome, CRECI e WhatsApp. */

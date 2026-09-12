@@ -10,6 +10,7 @@ import { saldoFal } from "./custo";
 import { creditar, marcaEfetiva } from "./cobranca";
 import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, VOZES, duracaoDaCena, type Cena, type EspecVideo } from "./video";
 import {
+  argsCena360,
   argsCenaAntesDepois,
   argsCenaClipe,
   argsCenaFoto,
@@ -228,6 +229,19 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         await Promise.all([baixar(db, antesPath, antes), baixar(db, depoisPath, depois)]);
         const saida = local(nomeClipe);
         const r = await rodarFfmpeg(argsCenaAntesDepois({ antes, depois, saida, W, H, duracao: dur, legenda: cena.legenda }));
+        await guardarClipe(saida, nomeClipe, dur, r.segundos);
+      } else if (cena.tipo === "tour360") {
+        // Equirretangular: pode ser foto (jpg/png) ou vídeo (mp4/mov) do próprio cliente.
+        const [fonte] = await fontesDaCena(db, userId, cena);
+        const ext = extensaoDe(fonte);
+        const ehVideo = ext === ".mp4" || ext === ".mov";
+        const entrada = local(`e360-${i}${ext}`);
+        await baixar(db, fonte, entrada);
+        const saida = local(nomeClipe);
+        const r = await rodarFfmpeg(
+          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", legenda: cena.legenda }),
+          280_000
+        );
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else if (cena.tipo === "clipe") {
         const [fonte] = await fontesDaCena(db, userId, cena);

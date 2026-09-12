@@ -298,6 +298,17 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
       );
+    case "terreno": // lote com cantos marcados
+      return (
+        <svg {...p}>
+          <path d="M5 8l9-4 6 6-4 10-11-3z" />
+          <circle cx="5" cy="8" r="1.6" fill="currentColor" />
+          <circle cx="14" cy="4" r="1.6" fill="currentColor" />
+          <circle cx="20" cy="10" r="1.6" fill="currentColor" />
+          <circle cx="16" cy="20" r="1.6" fill="currentColor" />
+          <circle cx="5" cy="17" r="1.6" fill="currentColor" />
+        </svg>
+      );
     case "lote": // pilha de fotos
       return (
         <svg {...p}>

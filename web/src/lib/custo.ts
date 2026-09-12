@@ -34,7 +34,12 @@ export const PRECO_UPSCALE_POR_MEGAPIXEL = 0.03; // fonte: fal.ai/models/fal-ai/
  * faixa em que o clarity agrega nitidez de verdade em vez de inventar detalhe caro.
  * Se algum portal publicar exigência maior, sobe aqui -- sabendo o preço.
  */
-export const ALVO_LARGURA_UPSCALE = 2048;
+// 1600px: o ZAP/VivaReal/OLX aceitam de 260 a 3840 de largura, e 1600 já passa do que
+// qualquer anúncio mostra na tela. Estava em 2048, e a bateria de 12/09/2026 mediu
+// US$ 0,13 por geração (o upscaler cobra por megapixel de SAÍDA), o que deixava o plano
+// Imobiliária no vermelho se o cliente usasse tudo. 1600 corta ~40% desse custo.
+// Quem precisa de mais tem a ação "Converter em HD", que vai a 2560.
+export const ALVO_LARGURA_UPSCALE = 1600;
 
 export function custoEstimadoUpscale(largura: number, altura: number): number {
   return ((largura * altura) / 1_000_000) * PRECO_UPSCALE_POR_MEGAPIXEL;
