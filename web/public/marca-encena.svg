@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Encena">
+  <rect width="64" height="64" rx="14" fill="#0F2D5B"/>
+  <rect x="16" y="15" width="8" height="34" rx="2" fill="#FFFFFF"/>
+  <rect x="16" y="15" width="30" height="8" rx="2" fill="#FFFFFF"/>
+  <rect x="16" y="41" width="30" height="8" rx="2" fill="#FFFFFF"/>
+  <rect x="16" y="28" width="38" height="8" rx="4" fill="#F06B4F"/>
+</svg>

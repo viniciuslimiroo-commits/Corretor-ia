@@ -1,5 +1,13 @@
 # Plano técnico do MVP — passo a passo
 
+> **Nome do produto: Encena** (decidido em 12/09/2026, de "encenar": montar a cena).
+> Tagline "Fotos que vendem melhor." Domínio principal `encena.ai` (a registrar; `.com`
+> está à venda na DomainMarket, `.com.br` registrado e parado). Paleta: índigo #0F2D5B,
+> coral #F06B4F, pêssego #FAD7C4, teal #2CB1A3. Verificado: nenhuma empresa do setor com
+> o nome; existem 3 companhias de teatro "Encena" (classe 41, convive com software 9/42).
+> Repositório, projeto Vercel e URL provisória continuam "corretor-ia" até o domínio
+> ser apontado. Referências a "Corretor IA" abaixo são históricas.
+
 Documento vivo. Objetivo: quebrar a Fase 1 do roadmap (staging + enhance + export +
 vídeo + billing) em passos concretos, na ordem certa de construir. Referências:
 [arquitetura-tecnica.md](arquitetura-tecnica.md) (stack e pipeline) e

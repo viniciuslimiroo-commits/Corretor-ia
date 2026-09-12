@@ -338,11 +338,12 @@ export default function Home() {
   if (!user) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
-        <h1 className="text-2xl font-semibold">Bem-vindo</h1>
+        <h1 className="text-2xl font-semibold">Encena</h1>
         <p className="mt-2 text-sm text-neutral-500">
-          Faça login pra testar a geração de imagem com IA.
+          Fotos que vendem melhor. Inteligência artificial para imóveis: mobília ambientes
+          vazios, remova objetos, corrija a luz e exporte pros portais.
         </p>
-        <a href="/login" className="mt-6 inline-block rounded bg-black px-4 py-2 text-white">
+        <a href="/login" className="mt-6 inline-block rounded bg-marca-indigo px-4 py-2 text-white">
           Entrar
         </a>
       </main>
@@ -353,6 +354,11 @@ export default function Home() {
     <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático */}
+            <img src="/marca-encena.svg" alt="" width={28} height={28} className="h-7 w-7" />
+            <span className="text-lg font-bold tracking-tight text-marca-indigo">Encena</span>
+          </div>
           <h1 className="truncate text-2xl font-semibold">Olá, {user.email}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Créditos: <strong>{creditos ?? "..."}</strong>
@@ -376,7 +382,7 @@ export default function Home() {
             className={
               assinaturaAtiva
                 ? "text-sm text-neutral-500 underline disabled:opacity-40"
-                : "rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-40"
+                : "rounded bg-marca-coral px-3 py-1.5 text-sm text-white hover:bg-marca-coral-escuro disabled:opacity-40"
             }
           >
             {assinando ? "Abrindo..." : assinaturaAtiva ? "Gerenciar assinatura" : "Assinar Pro · R$ 69/mês"}
@@ -396,7 +402,7 @@ export default function Home() {
       </div>
 
       {avisoAssinatura && (
-        <p className="mt-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <p className="mt-4 rounded border border-marca-teal/40 bg-marca-teal/10 p-3 text-sm text-marca-indigo">
           {avisoAssinatura}
         </p>
       )}
@@ -439,7 +445,7 @@ export default function Home() {
         <button
           onClick={gerar}
           disabled={!foto || carregando || creditos === 0 || (precisaMascara && !temMascara)}
-          className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-40"
+          className="w-fit rounded bg-marca-indigo px-4 py-2 text-white disabled:opacity-40"
         >
           {carregando ? (etapa ?? "Gerando...") : "Gerar"}
         </button>
@@ -512,7 +518,7 @@ export default function Home() {
               </div>
               <div className="mt-2">
                 {reportado ? (
-                  <p className="text-xs text-emerald-700">{reportado}</p>
+                  <p className="text-xs font-medium text-marca-teal">{reportado}</p>
                 ) : (
                   <button
                     onClick={reportarProblema}

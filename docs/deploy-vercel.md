@@ -1,5 +1,19 @@
 # Deploy na Vercel — checklist
 
+## Nome e domínio (12/09/2026)
+
+O produto agora se chama **Encena**. Site, título da página, botões e produtos da Stripe
+já usam o nome e a paleta. O que ainda depende de você:
+
+1. Registrar `encena.ai` (livre em 12/09; `encena.io` e `encena.com.mx` como defesa).
+2. Na Vercel, Settings → Domains → adicionar `encena.ai` e apontar o DNS conforme ela
+   indicar; depois trocar `NEXT_PUBLIC_APP_URL` pra `https://encena.ai` e redeployar.
+3. No Supabase, acrescentar `https://encena.ai/**` nas Redirect URLs e trocar a Site URL.
+4. Na Stripe, a descrição no extrato do cartão é `ENCENA`: fica no passo "Descrição no
+   extrato" da ativação (a API não deixa alterar na própria conta).
+5. Quando o logo vier em vetor ou PNG transparente, ele entra no lugar da palavra
+   "Encena" que hoje faz o papel de símbolo no cabeçalho e na tela de login.
+
 ## ✅ Estado em 11/09/2026
 
 **Produção no ar: https://corretor-ia-gilt.vercel.app** (time `limiro-brasil`, projeto

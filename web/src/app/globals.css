@@ -1,13 +1,27 @@
 @import "tailwindcss";
 
+/* Paleta da identidade Encena (12/09/2026). Os códigos vieram do painel de marca:
+   índigo profundo = confiança, coral terracota = energia, pêssego suave = acolhimento,
+   teal fresco = inovação. Expostos como cores do Tailwind (bg-marca-coral etc.) pra
+   nenhum componente precisar repetir hexadecimal. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --marca-indigo: #0f2d5b;
+  --marca-coral: #f06b4f;
+  --marca-coral-escuro: #d9583e;
+  --marca-pessego: #fad7c4;
+  --marca-teal: #2cb1a3;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-marca-indigo: var(--marca-indigo);
+  --color-marca-coral: var(--marca-coral);
+  --color-marca-coral-escuro: var(--marca-coral-escuro);
+  --color-marca-pessego: var(--marca-pessego);
+  --color-marca-teal: var(--marca-teal);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -22,5 +36,5 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
