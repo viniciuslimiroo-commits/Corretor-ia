@@ -283,6 +283,16 @@ export default function Editor() {
         </div>
       )}
 
+      {/* Uma foto ou o imóvel inteiro: o lote é o que serve pra imobiliária, então
+          precisa estar visível aqui, não escondido no menu. */}
+      <div className="mb-4 inline-flex rounded-xl border border-neutral-200 bg-white p-1 text-sm">
+        <span className="rounded-lg bg-marca-indigo/10 px-3 py-1.5 font-medium text-marca-indigo">Uma foto</span>
+        <Link href="/lote" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
+          <Icone nome="lote" className="h-4 w-4" />
+          Em lote
+        </Link>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-12">
         {/* ---------- coluna da foto ---------- */}
         <section className="lg:col-span-7">

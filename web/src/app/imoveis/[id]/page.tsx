@@ -138,7 +138,28 @@ export default function PaginaImovel() {
   const [titulo, setTitulo] = useState("");
   const [endereco, setEndereco] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [baixando, setBaixando] = useState(false);
   const { user, token } = c;
+
+  // Baixar o imóvel inteiro: o servidor monta o ZIP já no tamanho do portal, com logo.
+  async function baixarTudo() {
+    setBaixando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/imoveis/${id}/zip?portal=zap_vivareal_olx&logo=1`, { headers: { Authorization: `Bearer ${await token()}` } });
+      if (!r.ok) throw new Error((await r.json()).error ?? "Não consegui montar o arquivo.");
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (r.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1]) ?? "encena.zip";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao baixar.");
+    } finally {
+      setBaixando(false);
+    }
+  }
 
   // Busca sem tocar em estado: quem escreve na tela é sempre um callback de promessa.
   // (A regra react-hooks/set-state-in-effect rejeita `await` seguido de setState dentro
@@ -265,10 +286,20 @@ export default function PaginaImovel() {
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/?imovel=${imovel.id}`} className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
-              <Icone nome="mais" className="h-4 w-4" />
-              Editar nova foto
+            <Link href={`/lote?imovel=${imovel.id}`} className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
+              <Icone nome="lote" className="h-4 w-4" />
+              Editar fotos em lote
             </Link>
+            <Link href={`/?imovel=${imovel.id}`} className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50">
+              <Icone nome="mais" className="h-4 w-4" />
+              Uma foto
+            </Link>
+            {(geracoes ?? []).some((g) => g.status === "concluido") && (
+              <Botao variante="secundaria" onClick={baixarTudo} disabled={baixando} title="Todas as fotos prontas, no tamanho dos portais">
+                <Icone nome="download" className="h-4 w-4" />
+                {baixando ? "Preparando…" : "Baixar tudo"}
+              </Botao>
+            )}
             <Compartilhar token={token} imovelId={imovel.id} compartilhadoInicial={imovel.compartilhado} texto={`Olha as fotos de ${imovel.titulo}:`} compacto />
             <Botao variante="perigo" onClick={excluir} disabled={ocupado} className="px-2 py-1 text-xs">
               <Icone nome="lixeira" className="h-4 w-4" />
