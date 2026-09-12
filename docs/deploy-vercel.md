@@ -117,6 +117,23 @@ A conta ainda está em modo de teste com ativação pendente: confirmar o e-mail
 pagamentos e completar o perfil da empresa. As chaves `sk_live_`/`pk_live_` e o webhook
 de produção só existem depois disso.
 
+## Vídeo: ffmpeg dentro da Vercel (12/09/2026)
+
+O render de vídeo roda em funções da própria Vercel (`maxDuration = 300`, Fluid
+compute do plano Hobby: 300s, 2 GB, 1 vCPU). O `npm run build` primeiro roda
+`web/scripts/ffmpeg-linux.mjs`, que baixa um ffmpeg estático de Linux pra `web/bin/ffmpeg`
+(gitignored) e **confere que ele tem drawtext, zoompan e xfade** antes de seguir. Fontes,
+em ordem: johnvansickle (42 MB, **sem drawtext** na versão 7.0.2 — descartado pelo
+próprio check) e BtbN (`ffmpeg-master-latest-linux64-gpl`, 173 MB, o que está no ar). O
+pacote `ffmpeg-static` do npm só serve no Windows de desenvolvimento: o npm da Vercel
+bloqueia o script de instalação dele, e o build linux dele também não tem drawtext.
+
+`next.config.ts` inclui `bin/ffmpeg` e `assets/**` (fonte Geist e as 5 músicas) no bundle
+das rotas `/api/video/**` via `outputFileTracingIncludes`. Medido em produção: cena de 4s
+em 1080x1920 leva 8-10s; montagem de 15s leva 23s; vídeo de 3 cenas + tela final + música
+sai em 69s. Uploads de clipe vão direto do navegador pro bucket por URL assinada
+(`/api/video/upload`), porque a Vercel corta corpo de requisição em 4,5 MB.
+
 ## O que eu já deixei pronto no código
 
 - `maxDuration = 60` nas rotas longas: cabe no plano Hobby.
