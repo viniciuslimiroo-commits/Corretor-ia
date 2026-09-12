@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import { ACOES, ACOES_POR_ID, GRUPOS, type DefAcao } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
+import Landing from "@/components/landing";
 import Dropzone from "@/components/dropzone";
 import Comparador from "@/components/comparador";
 import PainelParametros from "@/components/painel-parametros";
@@ -258,42 +259,8 @@ export default function Editor() {
     );
   }
 
-  if (!c.user || !c.conta) {
-    return (
-      <main className="min-h-screen bg-white font-sans">
-        <div className="mx-auto max-w-3xl px-6 py-20">
-          <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/marca-encena.svg" alt="" width={44} height={44} className="h-11 w-11" />
-            <span className="text-3xl font-bold tracking-tight text-marca-indigo">Encena</span>
-          </div>
-          <h1 className="mt-8 text-4xl font-semibold leading-tight text-neutral-900 sm:text-5xl">Fotos que vendem melhor.</h1>
-          <p className="mt-4 max-w-xl text-lg text-neutral-600">
-            Inteligência artificial para imóveis. Mobília ambientes vazios, remova o que atrapalha, corrija a luz, troque o
-            céu e exporte no formato dos portais. Em segundos, com o aviso de imagem ilustrativa já no lugar.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <a href="/login" className="rounded-lg bg-marca-coral px-5 py-3 font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
-              Entrar e testar grátis
-            </a>
-            <span className="text-sm text-neutral-500">5 gerações grátis, sem cartão.</span>
-            <Link href="/planos" className="text-sm text-marca-indigo underline">Ver planos</Link>
-          </div>
-          <ul className="mt-12 grid gap-4 sm:grid-cols-3">
-            {ACOES.filter((a) => ["mobiliar", "remover_objeto", "trocar_ceu"].includes(a.id)).map((a) => (
-              <li key={a.id} className="rounded-2xl border border-neutral-200 p-4">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-marca-pessego text-marca-indigo">
-                  <Icone nome={a.id} />
-                </span>
-                <p className="mt-3 font-semibold">{a.rotulo}</p>
-                <p className="text-sm text-neutral-500">{a.descricao}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </main>
-    );
-  }
+  // Sem sessão, quem manda é a página de venda (components/landing.tsx).
+  if (!c.user || !c.conta) return <Landing />;
 
   // ---------- editor ----------
   const semCreditos = (c.conta.creditos ?? 0) <= 0;
