@@ -4,9 +4,12 @@ import { BUCKET_RESULTADOS, VALIDADE_URL_SEGUNDOS } from "./supabase-server";
 // Guarda e assina arquivos no bucket privado. Duas famílias de arquivo, com destinos
 // de vida diferentes:
 //
-//   entradas/{userId}/{jobId}-*   a foto que a pessoa subiu e a máscara que ela pintou.
-//                                 Existem só enquanto o job roda, e são apagadas quando
-//                                 ele termina.
+//   entradas/{userId}/{jobId}-*   máscara, referência e (só no "melhorar") a cópia
+//                                 pré-corrigida da foto. Existem enquanto o job roda e
+//                                 são apagadas quando ele termina.
+//   {userId}/{jobId}-original.jpg a foto que a pessoa subiu, que FICA (Fase B): é o
+//                                 "antes" da galeria e do link compartilhado, e o que
+//                                 o avaliador de estorno compara com o resultado.
 //   {userId}/{jobId}.jpg          o resultado carimbado, que fica.
 //
 // Por que a entrada vai parar no storage em vez de ir embutida na chamada (era um data
@@ -23,8 +26,12 @@ export function caminhoResultado(userId: string, jobId: string) {
   return `${userId}/${jobId}.jpg`;
 }
 
-export function caminhoEntrada(userId: string, jobId: string, qual: "foto" | "mascara") {
-  const ext = qual === "foto" ? "jpg" : "png";
+export function caminhoOriginal(userId: string, jobId: string) {
+  return `${userId}/${jobId}-original.jpg`;
+}
+
+export function caminhoEntrada(userId: string, jobId: string, qual: "foto" | "mascara" | "referencia") {
+  const ext = qual === "mascara" ? "png" : "jpg";
   return `${PREFIXO_ENTRADAS}/${userId}/${jobId}-${qual}.${ext}`;
 }
 

@@ -104,6 +104,28 @@ export async function consultar(statusUrl: string, falKey: string): Promise<Esta
   }
 }
 
+/**
+ * Chamada SÍNCRONA (fal.run), só pra modelos que respondem em segundos -- hoje o
+ * avaliador de estorno (any-llm/vision). Tudo que envolve gerar imagem continua na fila.
+ * O timeout é obrigatório: uma chamada síncrona pendurada come o tempo da função inteira.
+ */
+export async function chamarSincrono(modelo: string, corpo: unknown, falKey: string, timeoutMs = 30_000): Promise<unknown> {
+  const controle = new AbortController();
+  const timer = setTimeout(() => controle.abort(), timeoutMs);
+  try {
+    const resp = await fetch(`https://fal.run/${modelo}`, {
+      method: "POST",
+      headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+      signal: controle.signal,
+    });
+    if (!resp.ok) throw new Error(`${modelo} respondeu ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    return resp.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Busca a saída do modelo depois que a fila disse COMPLETED. */
 export async function resultado(responseUrl: string, falKey: string) {
   const resp = await fetch(responseUrl, { headers: { Authorization: `Key ${falKey}` } });

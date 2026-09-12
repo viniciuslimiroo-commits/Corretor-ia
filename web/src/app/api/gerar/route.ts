@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { supabaseServer } from "@/lib/supabase-server";
-import { apagarEntradas, caminhoEntrada, guardarEAssinar } from "@/lib/armazenamento";
+import { apagarEntradas, caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
 import { UPSCALER, corpoRequisicao, despachar } from "@/lib/fal";
 import { ACOES_POR_ID, limparParametros } from "@/lib/acoes";
 import { saldoFal } from "@/lib/custo";
@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
   const referencia = form.get("referencia") as File | null;
   const acaoId = (form.get("acao") as string) || "mobiliar";
   const semUpscale = form.get("semUpscale") === "1";
+  const imovelIdBruto = ((form.get("imovelId") as string | null) ?? "").trim() || null;
 
   if (!foto) return NextResponse.json({ error: "Nenhuma foto enviada." }, { status: 400 });
 
@@ -130,12 +131,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Imóvel (Fase B): a foto pode nascer dentro de um projeto. Conferido contra o dono
+  // antes de gravar, porque o service role ignora RLS.
+  let imovelId: string | null = null;
+  if (imovelIdBruto) {
+    const { data: imovel } = await db.from("properties").select("id").eq("id", imovelIdBruto).eq("user_id", userId).maybeSingle();
+    if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 400 });
+    imovelId = imovel.id;
+  }
+
   const { data: job, error: jobCriarError } = await db
     .from("jobs")
-    .insert({ user_id: userId, tipo: acao.id, status: "gerando", parametros })
+    .insert({ user_id: userId, tipo: acao.id, status: "gerando", parametros, property_id: imovelId })
     .select()
     .single();
   if (jobCriarError) return NextResponse.json({ error: `Erro criando job: ${jobCriarError.message}` }, { status: 500 });
+  if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 
   // Débito ATÔMICO, antes de gastar um centavo com a IA.
   const { data: saldoAposDebito, error: debitoError } = await db.rpc("debitar_credito", {
@@ -149,20 +160,26 @@ export async function POST(req: NextRequest) {
   }
 
   const caminhosEntrada: string[] = [];
+  let caminhoOriginalCriado: string | null = null;
   try {
-    let bytesParaIA: Buffer;
-    if (acao.id === "melhorar") {
-      bytesParaIA = await corrigirExposicao(bytesOriginais);
-    } else {
-      // `.rotate()` queima a orientação do EXIF no pixel. Obrigatório nas ações com
-      // máscara: o navegador JÁ mostra a foto girada (é ele que lê o EXIF), então a
-      // máscara chega no espaço girado; mandando os bytes crus, ela ficaria 90° fora.
-      bytesParaIA = await sharp(bytesOriginais).rotate().jpeg({ quality: 95 }).toBuffer();
-    }
+    // `.rotate()` queima a orientação do EXIF no pixel. Obrigatório nas ações com
+    // máscara: o navegador JÁ mostra a foto girada (é ele que lê o EXIF), então a
+    // máscara chega no espaço girado; mandando os bytes crus, ela ficaria 90° fora.
+    const bytesGirados = await sharp(bytesOriginais).rotate().jpeg({ quality: 95 }).toBuffer();
+    const bytesParaIA = acao.id === "melhorar" ? await corrigirExposicao(bytesOriginais) : bytesGirados;
 
-    const caminhoFoto = caminhoEntrada(userId, job.id, "foto");
-    caminhosEntrada.push(caminhoFoto);
-    const urlFoto = await guardarEAssinar(db, caminhoFoto, bytesParaIA, "image/jpeg");
+    // A original FICA (Fase B): é o "antes" da galeria e do link público, e o que o
+    // avaliador de estorno compara com o resultado. Só o "melhorar" manda pro modelo uma
+    // cópia pré-corrigida, que vive em entradas/ e morre com o job.
+    const caminhoOrig = caminhoOriginal(userId, job.id);
+    caminhoOriginalCriado = caminhoOrig;
+    let urlFoto = await guardarEAssinar(db, caminhoOrig, bytesGirados, "image/jpeg");
+    if (acao.id === "melhorar") {
+      const caminhoFoto = caminhoEntrada(userId, job.id, "foto");
+      caminhosEntrada.push(caminhoFoto);
+      urlFoto = await guardarEAssinar(db, caminhoFoto, bytesParaIA, "image/jpeg");
+    }
+    await db.from("jobs").update({ input_path: caminhoOrig }).eq("id", job.id);
 
     let urlMascara: string | undefined;
     if (usaMascara && mascara) {
@@ -185,7 +202,7 @@ export async function POST(req: NextRequest) {
         .resize(1600, 1600, { fit: "inside", withoutEnlargement: true })
         .jpeg({ quality: 90 })
         .toBuffer();
-      const caminhoRef = `entradas/${userId}/${job.id}-referencia.jpg`;
+      const caminhoRef = caminhoEntrada(userId, job.id, "referencia");
       caminhosEntrada.push(caminhoRef);
       urlReferencia = await guardarEAssinar(db, caminhoRef, bytesRef, "image/jpeg");
     }
@@ -256,8 +273,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ jobId: job.id, status: "gerando", creditosRestantes: saldoAposDebito });
   } catch (erro) {
     await db.rpc("estornar_credito", { p_user_id: userId, p_job_id: job.id, p_motivo: "estorno_erro" });
-    await db.from("jobs").update({ status: "falhou" }).eq("id", job.id);
-    await apagarEntradas(db, caminhosEntrada);
+    await db.from("jobs").update({ status: "falhou", input_path: null }).eq("id", job.id);
+    await apagarEntradas(db, [...caminhosEntrada, ...(caminhoOriginalCriado ? [caminhoOriginalCriado] : [])]);
     return NextResponse.json({ error: erro instanceof Error ? erro.message : "Erro inesperado." }, { status: 500 });
   }
 }

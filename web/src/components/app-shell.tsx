@@ -6,8 +6,8 @@ import type { ReactNode } from "react";
 import { Botao, Icone } from "./ui";
 
 // Moldura comum das telas logadas: marca, navegação, créditos e conta. O conteúdo da
-// página entra no meio. Manter isto num lugar só é o que faz Editor, Histórico e
-// Configurações parecerem o mesmo produto.
+// página entra no meio. Manter isto num lugar só é o que faz Editor, Imóveis, Histórico
+// e Minha marca parecerem o mesmo produto.
 
 export type Conta = {
   email: string;
@@ -20,14 +20,13 @@ export type Conta = {
 export default function AppShell({
   conta,
   aoAssinar,
-  aoComprar,
   aoSair,
   ocupado = false,
   children,
 }: {
   conta: Conta;
+  /** Abre o portal da Stripe (só faz sentido pra quem já assina). */
   aoAssinar: () => void;
-  aoComprar: () => void;
   aoSair: () => void;
   ocupado?: boolean;
   children: ReactNode;
@@ -37,9 +36,11 @@ export default function AppShell({
 
   const links = [
     { href: "/", rotulo: "Editar", icone: "foto" },
+    { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis" },
     { href: "/historico", rotulo: "Histórico", icone: "historico" },
     { href: "/configuracoes", rotulo: "Minha marca", icone: "configuracoes" },
   ];
+  const ativo = (href: string) => (href === "/" ? rota === "/" : rota.startsWith(href));
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-900">
@@ -52,44 +53,41 @@ export default function AppShell({
           </Link>
 
           <nav className="ml-2 hidden items-center gap-1 sm:flex">
-            {links.map((l) => {
-              const ativo = rota === l.href;
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={
-                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition " +
-                    (ativo ? "bg-marca-indigo/10 font-medium text-marca-indigo" : "text-neutral-600 hover:bg-neutral-100")
-                  }
-                >
-                  <Icone nome={l.icone} className="h-4 w-4" />
-                  {l.rotulo}
-                </Link>
-              );
-            })}
+            {links.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition " +
+                  (ativo(l.href) ? "bg-marca-indigo/10 font-medium text-marca-indigo" : "text-neutral-600 hover:bg-neutral-100")
+                }
+              >
+                <Icone nome={l.icone} className="h-4 w-4" />
+                {l.rotulo}
+              </Link>
+            ))}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm sm:flex">
+            <Link href="/planos" className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400 sm:flex" title="Ver planos e pacotes">
               <span className="font-semibold text-marca-indigo">{conta.creditos ?? "…"}</span>
               <span className="text-neutral-500">{conta.creditos === 1 ? "crédito" : "créditos"}</span>
               <span className="text-neutral-300">·</span>
               <span className="text-neutral-600">{assinante ? "Pro" : "Grátis"}</span>
               {conta.status === "past_due" && <span className="text-amber-600">· pendente</span>}
-            </div>
+            </Link>
             {assinante ? (
               <Botao variante="discreta" onClick={aoAssinar} disabled={ocupado} className="hidden sm:inline-flex">
                 Gerenciar assinatura
               </Botao>
             ) : (
-              <Botao variante="primaria" onClick={aoAssinar} disabled={ocupado} className="hidden sm:inline-flex">
+              <Link href="/planos" className="hidden items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro sm:inline-flex">
                 Assinar Pro
-              </Botao>
+              </Link>
             )}
-            <Botao variante="secundaria" onClick={aoComprar} disabled={ocupado} className="hidden sm:inline-flex" title="80 créditos, pagamento único">
-              +80 créditos
-            </Botao>
+            <Link href="/planos#pacotes" className="hidden items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 sm:inline-flex">
+              Comprar créditos
+            </Link>
             <Botao variante="discreta" onClick={aoSair} title={conta.email}>
               Sair
             </Botao>
@@ -98,19 +96,20 @@ export default function AppShell({
 
         {/* navegação no celular */}
         <nav className="flex items-center justify-around border-t border-neutral-100 sm:hidden">
-          {links.map((l) => {
-            const ativo = rota === l.href;
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-xs " + (ativo ? "text-marca-indigo" : "text-neutral-500")}
-              >
-                <Icone nome={l.icone} className="h-5 w-5" />
-                {l.rotulo}
-              </Link>
-            );
-          })}
+          {links.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-xs " + (ativo(l.href) ? "text-marca-indigo" : "text-neutral-500")}
+            >
+              <Icone nome={l.icone} className="h-5 w-5" />
+              {l.rotulo}
+            </Link>
+          ))}
+          <Link href="/planos" className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-xs " + (ativo("/planos") ? "text-marca-indigo" : "text-neutral-500")}>
+            <Icone nome="planos" className="h-5 w-5" />
+            {conta.creditos ?? "…"} cr.
+          </Link>
         </nav>
       </header>
 

@@ -71,7 +71,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // outro trocando o id na URL. O service role ignora RLS, então a checagem é explícita.
   const { data: job, error: erroJob } = await db
     .from("jobs")
-    .select("id, tipo, status, output_path, selo, pipeline, criado_em")
+    .select("id, tipo, status, output_path, input_path, selo, pipeline, criado_em, property_id")
     .eq("id", id)
     .eq("user_id", userId)
     .single();
@@ -87,6 +87,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       status: "concluido",
       url: await assinar(db, job.output_path),
       selo: job.selo,
+      imovelId: job.property_id,
     });
   }
   if (job.status === "falhou" || job.status === "sem_credito") {
@@ -103,8 +104,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   async function falhar(mensagem: string) {
     await db!.rpc("estornar_credito", { p_user_id: userId, p_job_id: id, p_motivo: "estorno_falha" });
-    await db!.from("jobs").update({ status: "falhou" }).eq("id", id);
-    await apagarEntradas(db!, p!.entradas ?? []);
+    await db!.from("jobs").update({ status: "falhou", input_path: null }).eq("id", id);
+    // Job que falhou não tem "depois", então a original também não tem por que ficar.
+    await apagarEntradas(db!, [...(p!.entradas ?? []), ...(job!.input_path ? [job!.input_path] : [])]);
     return NextResponse.json({ jobId: id, status: "falhou", error: mensagem }, { status: 502 });
   }
 
@@ -236,12 +238,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       return falhar(`A geração falhou (crédito devolvido). ${estado.mensagem}`);
     }
 
-    // pronto
+    // pronto -- ou quase: a fila diz COMPLETED e a resposta vem 422 quando o filtro de
+    // conteúdo do modelo recusou o prompt (aconteceu com "tirar bagunça" no Nano Banana,
+    // 12/09/2026). É falha do provedor como qualquer outra: tenta o segundo antes de
+    // devolver o crédito.
     let imagem;
     try {
       imagem = extrairImagem(await resultado(p.responseUrl, falKey));
     } catch (e) {
-      return falhar(e instanceof Error ? e.message : "Resposta do modelo ilegível.");
+      const mensagem = e instanceof Error ? e.message : "Resposta do modelo ilegível.";
+      try {
+        const trocou = await tentarFallback("recusou o pedido");
+        if (trocou) return trocou;
+      } catch {
+        // cai no falhar abaixo
+      }
+      return falhar(`A geração falhou (crédito devolvido). ${mensagem}`);
     }
 
     // Baixa uma vez só: os mesmos bytes servem pra checar "voltou igual?" e pra medir a
@@ -310,4 +322,39 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   } catch {
     return finalizar(p.urlGerada!, { ...p, upscaled: false });
   }
+}
+
+/**
+ * Move a geração pra um imóvel (ou tira dela, com `imovelId: null`). Fase B: a pessoa
+ * pode gerar primeiro e organizar depois, sem ter que decidir o projeto antes da foto.
+ */
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const db = supabaseServer();
+  if (!db) return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada." }, { status: 500 });
+  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  const { data: userData, error: userError } = await db.auth.getUser(token);
+  if (userError || !userData.user) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  const userId = userData.user.id;
+
+  const corpo = await req.json().catch(() => ({}));
+  if (!("imovelId" in corpo)) return NextResponse.json({ error: "Nada pra alterar." }, { status: 400 });
+  const imovelId: string | null = typeof corpo.imovelId === "string" && corpo.imovelId ? corpo.imovelId : null;
+
+  if (imovelId) {
+    const { data: imovel } = await db.from("properties").select("id").eq("id", imovelId).eq("user_id", userId).maybeSingle();
+    if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 404 });
+  }
+
+  const { data: alterado } = await db
+    .from("jobs")
+    .update({ property_id: imovelId })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("id, property_id");
+  if (!alterado || alterado.length === 0) return NextResponse.json({ error: "Geração não encontrada." }, { status: 404 });
+  if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
+
+  return NextResponse.json({ jobId: id, imovelId });
 }

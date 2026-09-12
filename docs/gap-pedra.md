@@ -101,6 +101,40 @@ com geração real:
 Fora de propósito: remover marca d'água (jurídico). Ficou pra Fase B: remover objeto
 automático, corrigir perspectiva.
 
+## Fase B — feita em 12/09/2026
+
+Migration 08 (`web/supabase/migration-08-imoveis-compartilhar-avaliacao.sql`). A foto
+original passa a ficar guardada (`jobs.input_path`): sem ela não existe antes/depois na
+galeria, no link público, nem no avaliador.
+
+| Item | Estado |
+|---|---|
+| Imóveis: lista, criar, renomear, endereço, capa, excluir (`/imoveis`, `/api/imoveis`) | ✅ testado pela API e pela tela |
+| Galeria por imóvel com antes/depois, baixar, tirar do imóvel | ✅ pela tela |
+| Seletor "Guardar em" no editor, `?imovel=` vindo da página do imóvel | ✅ (primeira versão perdia o parâmetro no modo estrito do React; corrigido lendo a URL no estado inicial) |
+| Compartilhar foto ou imóvel: link público `/c/{token}`, copiar, WhatsApp, desativar | ✅ testado; página conferida no celular (375px) |
+| Página pública com nome, CRECI, WhatsApp e logo do corretor | ✅ |
+| Classificador de estorno (`fal-ai/any-llm/vision`, gemini-2.5-flash-lite, antes+depois+pedido+relato) | ✅ disse "ok" pra reclamação falsa em resultado bom (8,7s) e "falhou" nos dois casos ruins forjados (sem mudança; ação diferente da pedida) |
+| Política de estorno: confirmado pelo modelo até 10/dia; cortesia até 3/dia; o resto vai pra análise manual; justificativa no histórico | ✅ |
+| Remover objeto: modo automático (descreve ou deixa em branco = tirar bagunça) | ✅ cozinha real: bancada limpa, móveis e eletrodomésticos intactos. Nano Banana recusou o prompt (filtro de conteúdo, 422) e o fallback pro Kontext resolveu |
+| Corrigir perspectiva | ✅ roda; efeito sutil na foto de teste, que já era reta |
+| Mudar parede (pendente da Fase A) | ✅ terracota, piso e janelas intactos |
+| Trocar céu, opção nova (pendente da Fase A) | ✅ ensolarado na fachada |
+| Planos: Pro anual (R$ 690, 960 créditos na hora) e pacotes de 20 e 200, por `lookup_key` na Stripe; página `/planos` | ✅ checkout aberto pras 4 ofertas novas em modo teste |
+| Minha marca: nome, CRECI, WhatsApp | ✅ |
+
+Duas lições que mudaram código (registradas no log do task-observer):
+
+- A checagem "voltou igual?" descartou o resultado certo do modo automático de remover
+  objeto, dos dois modelos, porque tirar bagunça muda poucos pixels. É o mesmo erro da
+  máscara (observação 0012), reincidido por outra porta. Remover objeto ficou sem a
+  checagem; quem julga é o avaliador.
+- Uma fila que responde COMPLETED e depois 422 na resposta é falha do provedor; antes
+  ia direto pro estorno, agora tenta o segundo modelo.
+
+Ficou de fora, de propósito: "Mudar ângulo da câmera", "Desfocar", "Efeito cortina" (baixo
+uso, prompts simples quando alguém pedir).
+
 ## Ordem proposta
 
 **Fase A — edição completa (1 semana).** Mobiliar completo (tipo de espaço, estilos com

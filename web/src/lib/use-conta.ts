@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type { Conta } from "@/components/app-shell";
+import type { OfertaId } from "./planos";
 
 // Sessão, saldo e plano num lugar só, pra Editor, Histórico e Configurações não
 // repetirem a mesma dança de getUser + select + assinar + sair.
@@ -59,14 +60,14 @@ export function useConta() {
 
   const recarregar = useCallback(() => setReleitura((n) => n + 1), []);
 
-  async function assinar(modo: "assinatura" | "pacote") {
+  async function assinar(oferta: OfertaId) {
     setOcupado(true);
     setErro(null);
     try {
       const resp = await fetch("/api/assinar", {
         method: "POST",
         headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ modo }),
+        body: JSON.stringify({ oferta }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Não consegui abrir o pagamento.");
@@ -90,8 +91,8 @@ export function useConta() {
     setErro,
     token,
     recarregar,
-    assinar: () => assinar("assinatura"),
-    comprar: () => assinar("pacote"),
+    /** Sem argumento: Pro mensal (ou o portal, se já assina). Com oferta: a oferta. */
+    assinar: (oferta: OfertaId = "pro_mensal") => assinar(oferta),
     sair,
   };
 }

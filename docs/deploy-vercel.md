@@ -2,17 +2,29 @@
 
 ## Nome e domínio (12/09/2026)
 
-O produto agora se chama **Encena**. Site, título da página, botões e produtos da Stripe
-já usam o nome e a paleta. O que ainda depende de você:
+O produto se chama **Encena**. Site, título da página, botões e produtos da Stripe já
+usam o nome e a paleta.
 
-1. Registrar `encena.ai` (livre em 12/09; `encena.io` e `encena.com.mx` como defesa).
-2. Na Vercel, Settings → Domains → adicionar `encena.ai` e apontar o DNS conforme ela
-   indicar; depois trocar `NEXT_PUBLIC_APP_URL` pra `https://encena.ai` e redeployar.
-3. No Supabase, acrescentar `https://encena.ai/**` nas Redirect URLs e trocar a Site URL.
+**Domínio registrado em 12/09/2026: `encena.app.br`** (Registro.br, DNS do próprio
+Registro.br, `a.auto.dns.br`/`b.auto.dns.br`). É o domínio de teste/lançamento; o
+`encena.ai` continua livre pra quando fizer sentido pagar os 2 anos mínimos.
+
+Estado do apontamento:
+
+1. ✅ `encena.app.br` e `www.encena.app.br` adicionados ao projeto `corretor-ia` na Vercel
+   pela CLI (`vercel domains add`).
+2. ⏳ **Você**, no painel do Registro.br → domínio → DNS → Editar zona, cria:
+   `A @ 216.198.79.1`, `A @ 64.29.17.1`, `CNAME www cname.vercel-dns.com`.
+   (Os IPs vieram de `vercel domains verify encena.app.br`; são os atuais da Vercel, não
+   o antigo 76.76.21.21.)
+3. ⏳ Quando `nslookup encena.app.br` responder com esses IPs, a Vercel emite o
+   certificado sozinha. Aí: `vercel env add NEXT_PUBLIC_APP_URL` = `https://encena.app.br`
+   (Production) + `vercel --prod`; no Supabase, Site URL = `https://encena.app.br` e
+   Redirect URLs + `https://encena.app.br/**`; na Stripe, trocar a URL do webhook pra
+   `https://encena.app.br/api/stripe/webhook` (ou criar outro endpoint e atualizar o
+   `STRIPE_WEBHOOK_SECRET`).
 4. Na Stripe, a descrição no extrato do cartão é `ENCENA`: fica no passo "Descrição no
    extrato" da ativação (a API não deixa alterar na própria conta).
-5. Quando o logo vier em vetor ou PNG transparente, ele entra no lugar da palavra
-   "Encena" que hoje faz o papel de símbolo no cabeçalho e na tela de login.
 
 ## ✅ Estado em 11/09/2026
 

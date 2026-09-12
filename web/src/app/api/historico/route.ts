@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const [{ data: jobs }, { data: ledger }] = await Promise.all([
     db
       .from("jobs")
-      .select("id, tipo, status, parametros, output_path, criado_em, reportado_em, custo_real")
+      .select("id, tipo, status, parametros, output_path, criado_em, reportado_em, custo_real, avaliacao, property_id, properties(titulo)")
       .eq("user_id", userId)
       .order("criado_em", { ascending: false })
       .limit(limite),
@@ -39,6 +39,8 @@ export async function GET(req: NextRequest) {
   const itens = await Promise.all(
     (jobs ?? []).map(async (j) => {
       const def = ACOES_POR_ID[j.tipo];
+      const av = j.avaliacao as { veredito?: string; justificativa?: string; estornado?: boolean } | null;
+      const imovel = j.properties as unknown as { titulo: string | null } | null;
       return {
         id: j.id,
         acao: def?.rotulo ?? j.tipo,
@@ -46,6 +48,10 @@ export async function GET(req: NextRequest) {
         status: j.status,
         criadoEm: j.criado_em,
         reportado: !!j.reportado_em,
+        // O que o avaliador escreveu quando a pessoa pediu o crédito de volta -- a
+        // Pedra mostra isso no (i) do histórico; aqui vai direto no cartão.
+        avaliacao: av ? { veredito: av.veredito ?? "indeterminado", justificativa: av.justificativa ?? "", estornado: !!av.estornado } : null,
+        imovel: j.property_id ? { id: j.property_id, titulo: imovel?.titulo ?? "Imóvel" } : null,
         miniatura: j.output_path ? await assinar(db, j.output_path).catch(() => null) : null,
       };
     })

@@ -17,14 +17,25 @@ async function usuarioDoToken(req: NextRequest) {
   return { db, userId: data.user.id, erro: null };
 }
 
-export async function GET(req: NextRequest) {
-  const { db, userId, erro } = await usuarioDoToken(req);
-  if (erro || !db || !userId) return erro!;
-  const { data } = await db.from("users").select("logo_path, cor_marca").eq("id", userId).single();
+const CAMPOS = "logo_path, cor_marca, nome, creci, whatsapp";
+
+type Perfil = { logo_path: string | null; cor_marca: string | null; nome: string | null; creci: string | null; whatsapp: string | null };
+
+async function resposta(db: NonNullable<ReturnType<typeof supabaseServer>>, data: Perfil | null) {
   return NextResponse.json({
     logoUrl: data?.logo_path ? await assinar(db, data.logo_path).catch(() => null) : null,
     cor: data?.cor_marca ?? null,
+    nome: data?.nome ?? "",
+    creci: data?.creci ?? "",
+    whatsapp: data?.whatsapp ?? "",
   });
+}
+
+export async function GET(req: NextRequest) {
+  const { db, userId, erro } = await usuarioDoToken(req);
+  if (erro || !db || !userId) return erro!;
+  const { data } = await db.from("users").select(CAMPOS).eq("id", userId).single();
+  return resposta(db, data as Perfil | null);
 }
 
 export async function POST(req: NextRequest) {
@@ -38,6 +49,17 @@ export async function POST(req: NextRequest) {
   const atualizacao: Record<string, string | null> = {};
   if (cor !== undefined && cor !== null) {
     atualizacao.cor_marca = /^#[0-9a-fA-F]{6}$/.test(cor) ? cor : null;
+  }
+  // Dados que aparecem na página compartilhada. O WhatsApp fica só com dígitos (DDI
+  // opcional) pra montar o link wa.me sem surpresa.
+  const nome = form.get("nome");
+  if (typeof nome === "string") atualizacao.nome = nome.trim().slice(0, 80) || null;
+  const creci = form.get("creci");
+  if (typeof creci === "string") atualizacao.creci = creci.trim().slice(0, 30) || null;
+  const whatsapp = form.get("whatsapp");
+  if (typeof whatsapp === "string") {
+    const digitos = whatsapp.replace(/\D/g, "").slice(0, 15);
+    atualizacao.whatsapp = digitos.length >= 10 ? digitos : null;
   }
 
   if (logo) {
@@ -61,11 +83,8 @@ export async function POST(req: NextRequest) {
     if (erroUpdate) return NextResponse.json({ error: erroUpdate.message }, { status: 500 });
   }
 
-  const { data } = await db.from("users").select("logo_path, cor_marca").eq("id", userId).single();
-  return NextResponse.json({
-    logoUrl: data?.logo_path ? await assinar(db, data.logo_path).catch(() => null) : null,
-    cor: data?.cor_marca ?? null,
-  });
+  const { data } = await db.from("users").select(CAMPOS).eq("id", userId).single();
+  return resposta(db, data as Perfil | null);
 }
 
 export async function DELETE(req: NextRequest) {

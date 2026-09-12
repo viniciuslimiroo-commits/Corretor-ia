@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import { ACOES, ACOES_POR_ID, GRUPOS, type DefAcao } from "@/lib/acoes";
@@ -8,12 +9,14 @@ import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
 import Comparador from "@/components/comparador";
 import PainelParametros from "@/components/painel-parametros";
+import SeletorImovel from "@/components/seletor-imovel";
+import Compartilhar from "@/components/compartilhar";
 import EditorMascara, { type EditorMascaraRef } from "@/components/editor-mascara";
 import { Aviso, Botao, Cartao, Icone, Rotulo } from "@/components/ui";
 
 // Editor: a tela principal. Três passos que o corretor lê de cima pra baixo no celular
 // e lado a lado no computador: foto, o que fazer, ajustes e gerar. O resultado entra no
-// lugar da foto como comparador antes/depois, com export logo abaixo.
+// lugar da foto como comparador antes/depois, com export e compartilhar logo abaixo.
 
 type Info = { largura: number; altura: number; modelo: string; upscaled: boolean; aviso: string | null; selo: string | null };
 
@@ -21,6 +24,17 @@ function padroesDe(acao: DefAcao): Record<string, string> {
   const p: Record<string, string> = {};
   for (const def of acao.parametros) if (def.padrao) p[def.chave] = def.padrao;
   return p;
+}
+
+// O que veio na URL: `?imovel=` (da página do imóvel) e o retorno da Stripe. Lido no
+// estado inicial, NÃO num efeito: o efeito que limpava a URL e agendava o setState
+// rodava duas vezes no modo estrito do React, e a segunda rodada já não achava o
+// parâmetro -- o imóvel pré-selecionado se perdia em desenvolvimento.
+function lerQuery() {
+  if (typeof window === "undefined") return { imovel: null, compra: null, retorno: null };
+  const p = new URLSearchParams(window.location.search);
+  const compra = p.get("compra");
+  return { imovel: p.get("imovel"), compra, retorno: p.get("assinatura") ?? compra };
 }
 
 export default function Editor() {
@@ -35,6 +49,8 @@ export default function Editor() {
   const [referencia, setReferencia] = useState<File | null>(null);
   const [previewRef, setPreviewRef] = useState<string | null>(null);
   const [temMascara, setTemMascara] = useState(false);
+  const [query] = useState(lerQuery);
+  const [imovelId, setImovelId] = useState<string | null>(query.imovel);
   const editorRef = useRef<EditorMascaraRef>(null);
 
   const [carregando, setCarregando] = useState(false);
@@ -50,37 +66,34 @@ export default function Editor() {
   const [temLogo, setTemLogo] = useState(false);
   const [reportando, setReportando] = useState(false);
   const [reportado, setReportado] = useState<string | null>(null);
-  const [avisoPagamento, setAvisoPagamento] = useState<string | null>(null);
+  const [motivoReporte, setMotivoReporte] = useState("");
+  const [formReporte, setFormReporte] = useState(false);
+  const [avisoPagamento] = useState<string | null>(() =>
+    !query.retorno
+      ? null
+      : query.retorno !== "ok"
+        ? "Pagamento não concluído. Nada foi cobrado."
+        : query.compra
+          ? "Pedido recebido. Seus créditos entram assim que o pagamento for confirmado."
+          : "Pagamento recebido. Seus créditos entram em instantes."
+  );
 
   const usaMascara = acao.mascara === "obrigatoria" || (acao.mascara === "opcional" && pintarArea);
+  const rotulosMascara = acao.rotulosMascara ?? { opcao: "Aplicar só onde eu pintar", ajuda: "Sem marcar, a IA decide sozinha.", titulo: "Pinte onde aplicar" };
   const podeGerar = !!foto && !carregando && (c.conta?.creditos ?? 0) > 0 && (!usaMascara || temMascara) && (acao.id !== "editar_prompt" || !!parametros.instrucao?.trim());
 
-  // Voltou da Stripe? O crédito entra pelo webhook em segundos; relê o saldo algumas vezes.
+  // Limpa a URL e, se voltou da Stripe com pagamento ok, relê o saldo algumas vezes:
+  // o crédito entra pelo webhook em segundos.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const compra = params.get("compra");
-    const retorno = params.get("assinatura") ?? compra;
-    if (!retorno) return;
+    if (!query.imovel && !query.retorno) return;
     window.history.replaceState({}, "", window.location.pathname);
-    const mostrar = setTimeout(() => {
-      setAvisoPagamento(
-        retorno !== "ok"
-          ? "Pagamento não concluído. Nada foi cobrado."
-          : compra
-            ? "Pedido recebido. Seus créditos entram assim que o pagamento for confirmado."
-            : "Pagamento recebido. Seus créditos entram em instantes."
-      );
-    }, 0);
-    if (retorno !== "ok") return () => clearTimeout(mostrar);
+    if (query.retorno !== "ok") return;
     let vezes = 0;
     const timer = setInterval(() => {
       c.recarregar();
       if (++vezes >= 10) clearInterval(timer);
     }, 3000);
-    return () => {
-      clearTimeout(mostrar);
-      clearInterval(timer);
-    };
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -121,6 +134,8 @@ export default function Editor() {
     setInfo(null);
     setJobId(null);
     setReportado(null);
+    setFormReporte(false);
+    setMotivoReporte("");
     setErro(null);
     setTemMascara(false);
   }
@@ -160,6 +175,7 @@ export default function Editor() {
       form.append("foto", foto);
       form.append("acao", acao.id);
       form.append("parametros", JSON.stringify(parametros));
+      if (imovelId) form.append("imovelId", imovelId);
       if (usaMascara) {
         const mascara = await editorRef.current?.obterMascara();
         if (!mascara) throw new Error("Pinte na foto a área antes de gerar.");
@@ -212,10 +228,15 @@ export default function Editor() {
     if (!jobId) return;
     setReportando(true);
     try {
-      const resp = await fetch(`/api/job/${jobId}/reportar`, { method: "POST", headers: { Authorization: `Bearer ${await c.token()}` } });
+      const resp = await fetch(`/api/job/${jobId}/reportar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await c.token()}` },
+        body: JSON.stringify({ motivo: motivoReporte }),
+      });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Não consegui registrar.");
       setReportado(data.mensagem);
+      setFormReporte(false);
       c.recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao reportar.");
@@ -256,6 +277,7 @@ export default function Editor() {
               Entrar e testar grátis
             </a>
             <span className="text-sm text-neutral-500">5 gerações grátis, sem cartão.</span>
+            <Link href="/planos" className="text-sm text-marca-indigo underline">Ver planos</Link>
           </div>
           <ul className="mt-12 grid gap-4 sm:grid-cols-3">
             {ACOES.filter((a) => ["mobiliar", "remover_objeto", "trocar_ceu"].includes(a.id)).map((a) => (
@@ -277,7 +299,7 @@ export default function Editor() {
   const semCreditos = (c.conta.creditos ?? 0) <= 0;
 
   return (
-    <AppShell conta={c.conta} aoAssinar={c.assinar} aoComprar={c.comprar} aoSair={c.sair} ocupado={c.ocupado}>
+    <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       {avisoPagamento && (
         <div className="mb-4">
           <Aviso tipo="ok">{avisoPagamento}</Aviso>
@@ -298,7 +320,7 @@ export default function Editor() {
               <ol className="mt-5 grid gap-3 text-sm text-neutral-600 sm:grid-cols-3">
                 <li className="flex gap-2"><span className="font-bold text-marca-coral">1</span> Envie a foto do ambiente.</li>
                 <li className="flex gap-2"><span className="font-bold text-marca-coral">2</span> Escolha o que fazer e o estilo.</li>
-                <li className="flex gap-2"><span className="font-bold text-marca-coral">3</span> Compare e baixe no formato do portal.</li>
+                <li className="flex gap-2"><span className="font-bold text-marca-coral">3</span> Compare, compartilhe e baixe.</li>
               </ol>
             </Cartao>
           ) : (
@@ -344,14 +366,41 @@ export default function Editor() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                    {reportado ? (
-                      <p className="text-xs font-medium text-marca-teal">{reportado}</p>
-                    ) : (
-                      <button onClick={reportarProblema} disabled={reportando} className="text-xs text-neutral-500 underline disabled:opacity-40">
-                        {reportando ? "Registrando…" : "Ficou ruim? Reportar e recuperar o crédito"}
-                      </button>
-                    )}
+                  {jobId && (
+                    <div className="mt-3">
+                      <Compartilhar token={c.token} jobId={jobId} texto="Olha como ficou:" />
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      {reportado ? (
+                        <p className="text-xs font-medium text-marca-teal">{reportado}</p>
+                      ) : formReporte ? (
+                        <div className="max-w-sm">
+                          <textarea
+                            autoFocus
+                            value={motivoReporte}
+                            onChange={(e) => setMotivoReporte(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                            placeholder="O que deu errado? Ex.: os móveis ficaram flutuando; o piso não mudou."
+                            className="w-full resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
+                          />
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <Botao variante="secundaria" onClick={reportarProblema} disabled={reportando} className="px-3 py-1.5 text-xs">
+                              {reportando ? "Avaliando…" : "Enviar e recuperar crédito"}
+                            </Botao>
+                            <button onClick={() => setFormReporte(false)} className="text-xs text-neutral-500 underline">cancelar</button>
+                          </div>
+                          <p className="mt-1 text-xs text-neutral-400">Uma IA compara a foto original com o resultado antes de devolver o crédito.</p>
+                        </div>
+                      ) : (
+                        <button onClick={() => setFormReporte(true)} className="text-xs text-neutral-500 underline">
+                          Ficou ruim? Reportar e recuperar o crédito
+                        </button>
+                      )}
+                    </div>
                     <div className="flex gap-2">
                       <Botao variante="discreta" onClick={limparResultado}>Editar de novo</Botao>
                       <Botao variante="secundaria" onClick={novaFoto}>Nova foto</Botao>
@@ -361,7 +410,7 @@ export default function Editor() {
               ) : (
                 <>
                   <div className="mb-2 flex items-center justify-between">
-                    <Rotulo>{usaMascara ? (acao.id === "remover_objeto" ? "Pinte o que remover" : "Pinte onde aplicar") : "Sua foto"}</Rotulo>
+                    <Rotulo>{usaMascara ? rotulosMascara.titulo : "Sua foto"}</Rotulo>
                     <button onClick={novaFoto} className="text-xs text-neutral-500 underline">Trocar foto</button>
                   </div>
                   {usaMascara && preview ? (
@@ -432,8 +481,8 @@ export default function Editor() {
                 <label className="mt-5 flex items-start gap-2 text-sm text-neutral-700">
                   <input type="checkbox" checked={pintarArea} onChange={(e) => { setPintarArea(e.target.checked); setTemMascara(false); }} className="mt-0.5 accent-marca-coral" />
                   <span>
-                    Aplicar só onde eu pintar
-                    <span className="block text-xs text-neutral-500">Sem marcar, a IA decide a posição sozinha.</span>
+                    {rotulosMascara.opcao}
+                    <span className="block text-xs text-neutral-500">{rotulosMascara.ajuda}</span>
                   </span>
                 </label>
               )}
@@ -457,6 +506,11 @@ export default function Editor() {
           )}
 
           <Cartao>
+            <div className="mb-3">
+              <Rotulo>Guardar em</Rotulo>
+              <SeletorImovel token={c.token} valor={imovelId} onChange={setImovelId} disabled={carregando} />
+              <p className="mt-1.5 text-xs text-neutral-500">Fotos do mesmo anúncio ficam juntas e viram um link só pro cliente.</p>
+            </div>
             <Botao onClick={gerar} disabled={!podeGerar} className="w-full py-3 text-base">
               {carregando ? (etapa ?? "Gerando…") : `Gerar · 1 crédito`}
             </Botao>
@@ -467,14 +521,14 @@ export default function Editor() {
             {semCreditos && (
               <div className="mt-3">
                 <Aviso tipo="atencao">
-                  Seus créditos acabaram. {c.conta.status === "active" ? "Eles renovam no próximo ciclo." : "Assine o Pro ou compre um pacote de 80."}
+                  Seus créditos acabaram.{" "}
+                  {c.conta.status === "active" ? "Eles renovam no próximo ciclo." : <Link href="/planos" className="underline">Veja os planos e pacotes.</Link>}
                 </Aviso>
               </div>
             )}
           </Cartao>
         </aside>
       </div>
-
     </AppShell>
   );
 }

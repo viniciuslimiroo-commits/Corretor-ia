@@ -4,12 +4,24 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
-import { Aviso, Cartao, Rotulo } from "@/components/ui";
+import { Aviso, Cartao, Icone, Rotulo } from "@/components/ui";
 
 // Histórico: o que foi gerado e para onde foi cada crédito. Transparência é parte do
-// produto -- foi assim que o próprio teste na Pedra confirmou os custos dela.
+// produto -- foi assim que o próprio teste na Pedra confirmou os custos dela. Quando a
+// pessoa pediu o crédito de volta, o que o avaliador escreveu fica aqui também.
 
-type Geracao = { id: string; acao: string; detalhe: string; status: string; criadoEm: string; reportado: boolean; miniatura: string | null };
+type Avaliacao = { veredito: string; justificativa: string; estornado: boolean };
+type Geracao = {
+  id: string;
+  acao: string;
+  detalhe: string;
+  status: string;
+  criadoEm: string;
+  reportado: boolean;
+  avaliacao: Avaliacao | null;
+  imovel: { id: string; titulo: string } | null;
+  miniatura: string | null;
+};
 type Movimento = { delta: number; motivo: string; em: string };
 
 function humanizarMotivo(m: string): string {
@@ -60,7 +72,7 @@ export default function Historico() {
   const statusRotulo: Record<string, string> = { concluido: "Pronta", falhou: "Falhou", gerando: "Gerando", upscaling: "Gerando", sem_credito: "Sem crédito" };
 
   return (
-    <AppShell conta={c.conta} aoAssinar={c.assinar} aoComprar={c.comprar} aoSair={c.sair} ocupado={c.ocupado}>
+    <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <h1 className="text-2xl font-semibold">Histórico</h1>
       <p className="mt-1 text-sm text-neutral-500">Suas gerações e a movimentação de créditos.</p>
       {erro && <div className="mt-4"><Aviso tipo="erro">{erro}</Aviso></div>}
@@ -93,6 +105,18 @@ export default function Historico() {
                       {dataCurta(g.criadoEm)} · {statusRotulo[g.status] ?? g.status}
                       {g.reportado && " · reportada"}
                     </p>
+                    {g.imovel && (
+                      <Link href={`/imoveis/${g.imovel.id}`} className="mt-1.5 inline-flex items-center gap-1 text-xs text-marca-indigo hover:underline">
+                        <Icone nome="imoveis" className="h-3.5 w-3.5" />
+                        {g.imovel.titulo}
+                      </Link>
+                    )}
+                    {g.avaliacao && g.avaliacao.justificativa && (
+                      <p className={"mt-2 rounded-lg px-2 py-1.5 text-xs " + (g.avaliacao.estornado ? "bg-marca-teal/10 text-marca-indigo" : "bg-neutral-100 text-neutral-600")}>
+                        <span className="font-medium">{g.avaliacao.estornado ? "Crédito devolvido. " : "Sem devolução automática. "}</span>
+                        {g.avaliacao.justificativa}
+                      </p>
+                    )}
                   </div>
                 </li>
               ))}
@@ -123,6 +147,9 @@ export default function Historico() {
               </ul>
             )}
           </Cartao>
+          <p className="mt-3 text-xs text-neutral-500">
+            Precisa de mais? <Link href="/planos" className="text-marca-indigo underline">Planos e pacotes</Link>.
+          </p>
         </aside>
       </div>
     </AppShell>

@@ -183,6 +183,90 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M21 16l-5-5-7 7" />
         </svg>
       );
+    case "corrigir_perspectiva": // moldura com cantos puxados
+      return (
+        <svg {...p}>
+          <path d="M5 4l14 2v12L5 20z" />
+          <path d="M9 8v8M14 8.5v7" />
+        </svg>
+      );
+    case "imoveis": // casa
+      return (
+        <svg {...p}>
+          <path d="M3 11l9-7 9 7" />
+          <path d="M5 10v10h14V10" />
+          <path d="M10 20v-6h4v6" />
+        </svg>
+      );
+    case "compartilhar":
+      return (
+        <svg {...p}>
+          <circle cx="18" cy="5" r="2.5" />
+          <circle cx="6" cy="12" r="2.5" />
+          <circle cx="18" cy="19" r="2.5" />
+          <path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" />
+        </svg>
+      );
+    case "whatsapp":
+      return (
+        <svg {...p}>
+          <path d="M4 20l1.3-3.8A8 8 0 1 1 8.2 19z" />
+          <path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z" />
+        </svg>
+      );
+    case "copiar":
+      return (
+        <svg {...p}>
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+        </svg>
+      );
+    case "check":
+      return (
+        <svg {...p}>
+          <path d="M5 12l5 5L20 7" />
+        </svg>
+      );
+    case "link":
+      return (
+        <svg {...p}>
+          <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+          <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+        </svg>
+      );
+    case "lixeira":
+      return (
+        <svg {...p}>
+          <path d="M4 7h16M10 11v6M14 11v6" />
+          <path d="M6 7l1 13h10l1-13M9 7V4h6v3" />
+        </svg>
+      );
+    case "estrela":
+      return (
+        <svg {...p}>
+          <path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z" />
+        </svg>
+      );
+    case "mais":
+      return (
+        <svg {...p}>
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      );
+    case "planos": // etiqueta
+      return (
+        <svg {...p}>
+          <path d="M20 12l-8 8-9-9V4h7z" />
+          <circle cx="7.5" cy="7.5" r="1.2" />
+        </svg>
+      );
+    case "olho":
+      return (
+        <svg {...p}>
+          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
     default:
       return <svg {...p}><circle cx="12" cy="12" r="8" /></svg>;
   }
