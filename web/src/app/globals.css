@@ -26,11 +26,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Sem modo escuro por decisão: a identidade Encena é clara (índigo sobre branco e
+   pêssego). Com o tema seguindo o sistema, o nome em índigo sumia sobre fundo preto
+   -- visto no primeiro print da produção em 12/09/2026. Se um dia houver modo escuro,
+   ele precisa de tokens próprios (nome em pêssego, botões em coral), não da inversão
+   automática do template. */
+:root {
+  color-scheme: light;
 }
 
 body {
