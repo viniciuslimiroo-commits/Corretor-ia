@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { ACOES_POR_ID } from "./acoes";
 
 // Selo de "imagem ilustrativa" (Sprint 4 do plano, puxado pra cá porque é pré-requisito
 // pra colocar o produto na mão de corretor de verdade).
@@ -17,16 +18,11 @@ import sharp from "sharp";
 // que todo fotógrafo de imóvel faz. Carimbar "imagem ilustrativa" nela seria pior que
 // não carimbar: sujaria uma foto honesta e ensinaria o comprador a ignorar o selo
 // justamente nas fotos em que ele importa.
-export const SELOS: Record<string, string | null> = {
-  mobiliar: "Imagem ilustrativa · mobília virtual",
-  esvaziar: "Imagem ilustrativa · mobília removida digitalmente",
-  trocar_ceu: "Imagem ilustrativa · céu substituído digitalmente",
-  remover_objeto: "Imagem ilustrativa · objeto removido digitalmente",
-  melhorar: null,
-};
-
+// O texto de cada ação mora no catálogo (acoes.ts), ao lado do prompt que a define.
+// Ação desconhecida recebe o selo genérico: na dúvida, avisar é o lado seguro.
 export function textoDoSelo(acao: string): string | null {
-  return SELOS[acao] ?? null;
+  const def = ACOES_POR_ID[acao];
+  return def ? def.selo : "Imagem ilustrativa · editada digitalmente";
 }
 
 function escaparXml(texto: string): string {

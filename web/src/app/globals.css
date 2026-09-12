@@ -35,6 +35,12 @@
   color-scheme: light;
 }
 
+/* Barra de progresso indeterminada do editor. */
+@keyframes deslizar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -1,208 +1,204 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useConta } from "@/lib/use-conta";
+import { ACOES, ACOES_POR_ID, GRUPOS, type DefAcao } from "@/lib/acoes";
+import AppShell from "@/components/app-shell";
+import Dropzone from "@/components/dropzone";
+import Comparador from "@/components/comparador";
+import PainelParametros from "@/components/painel-parametros";
 import EditorMascara, { type EditorMascaraRef } from "@/components/editor-mascara";
+import { Aviso, Botao, Cartao, Icone, Rotulo } from "@/components/ui";
 
-type Acao = "mobiliar" | "esvaziar" | "melhorar" | "trocar_ceu" | "remover_objeto";
+// Editor: a tela principal. Três passos que o corretor lê de cima pra baixo no celular
+// e lado a lado no computador: foto, o que fazer, ajustes e gerar. O resultado entra no
+// lugar da foto como comparador antes/depois, com export logo abaixo.
 
-const ACOES: { valor: Acao; rotulo: string }[] = [
-  { valor: "mobiliar", rotulo: "Mobiliar (estilo Moderno)" },
-  { valor: "esvaziar", rotulo: "Esvaziar cômodo" },
-  { valor: "melhorar", rotulo: "Melhorar foto escura" },
-  { valor: "trocar_ceu", rotulo: "Trocar céu (pôr do sol)" },
-  { valor: "remover_objeto", rotulo: "Remover objeto (pintar na foto)" },
-];
+type Info = { largura: number; altura: number; modelo: string; upscaled: boolean; aviso: string | null; selo: string | null };
 
-// Precisa o usuário pintar a área antes de gerar. Tem que bater com o
-// ACOES_COM_MASCARA do servidor -- o servidor é quem recusa de verdade, isto aqui é só
-// pra não deixar a pessoa clicar em Gerar e levar um erro que dava pra evitar.
-const ACOES_COM_MASCARA = new Set<Acao>(["remover_objeto"]);
+function padroesDe(acao: DefAcao): Record<string, string> {
+  const p: Record<string, string> = {};
+  for (const def of acao.parametros) if (def.padrao) p[def.chave] = def.padrao;
+  return p;
+}
 
-export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
-  // Começa como "checando" só se há Supabase pra checar. Sem ele, já nasce resolvido --
-  // e o effect abaixo não precisa chamar setState de forma síncrona (regra
-  // react-hooks/set-state-in-effect, o único erro de lint que restava).
-  const [checandoAuth, setCheckandoAuth] = useState(() => !!supabase);
-  const [creditos, setCreditos] = useState<number | null>(null);
+export default function Editor() {
+  const c = useConta();
 
   const [foto, setFoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [acao, setAcao] = useState<Acao>("mobiliar");
-  const [carregando, setCarregando] = useState(false);
-  const [resultado, setResultado] = useState<string | null>(null);
-  const [infoResultado, setInfoResultado] = useState<{
-    largura: number;
-    altura: number;
-    modelo: string;
-    upscaled: boolean;
-    aviso: string | null;
-    selo: string | null;
-  } | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [exportando, setExportando] = useState<string | null>(null);
-  const inputFotoRef = useRef<HTMLInputElement>(null);
-
-  // O resultado agora é identificado pelo id do job, não pela URL. A URL que o
-  // navegador recebe é assinada e expira, então ela não serve de identificador -- quem
-  // exporta é o servidor, lendo do storage a partir deste id.
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [etapa, setEtapa] = useState<string | null>(null);
-  const [reportando, setReportando] = useState(false);
-  const [reportado, setReportado] = useState<string | null>(null);
+  const [acaoId, setAcaoId] = useState<string>("mobiliar");
+  const acao = ACOES_POR_ID[acaoId];
+  const [parametros, setParametros] = useState<Record<string, string>>(() => padroesDe(ACOES_POR_ID["mobiliar"]));
+  const [pintarArea, setPintarArea] = useState(false);
+  const [referencia, setReferencia] = useState<File | null>(null);
+  const [previewRef, setPreviewRef] = useState<string | null>(null);
   const [temMascara, setTemMascara] = useState(false);
   const editorRef = useRef<EditorMascaraRef>(null);
-  const precisaMascara = ACOES_COM_MASCARA.has(acao);
 
-  // Auth: pega o usuário logado (e reage a login/logout).
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user ?? null);
-      setCheckandoAuth(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  const [carregando, setCarregando] = useState(false);
+  const [etapa, setEtapa] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<string | null>(null);
+  const [info, setInfo] = useState<Info | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
 
-  // Saldo de créditos: lê direto de users.creditos_saldo (a fonte da verdade desde a
-  // migration-02) -- é o servidor, em /api/gerar, que atualiza esse número de forma
-  // atômica. Aqui é só leitura/espelho pra UI.
-  const [conta, setConta] = useState<{
-    plano: string;
-    status: string | null;
-    renovaEm: string | null;
-  } | null>(null);
-  const [assinando, setAssinando] = useState(false);
-  const [avisoAssinatura, setAvisoAssinatura] = useState<string | null>(null);
-  // Muda pra forçar releitura do saldo (usado quando a pessoa volta da Stripe).
-  const [releitura, setReleitura] = useState(0);
+  const [exportando, setExportando] = useState<string | null>(null);
+  const [legenda, setLegenda] = useState("");
+  const [comLogo, setComLogo] = useState(false);
+  const [temLogo, setTemLogo] = useState(false);
+  const [reportando, setReportando] = useState(false);
+  const [reportado, setReportado] = useState<string | null>(null);
+  const [avisoPagamento, setAvisoPagamento] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!supabase || !user) return;
-    supabase
-      .from("users")
-      .select("creditos_saldo, plano, assinatura_status, assinatura_renova_em")
-      .eq("id", user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) return;
-        setCreditos(data.creditos_saldo);
-        setConta({
-          plano: data.plano,
-          status: data.assinatura_status,
-          renovaEm: data.assinatura_renova_em,
-        });
-      });
-  }, [user, resultado, releitura]); // recalcula depois de cada geração
+  const usaMascara = acao.mascara === "obrigatoria" || (acao.mascara === "opcional" && pintarArea);
+  const podeGerar = !!foto && !carregando && (c.conta?.creditos ?? 0) > 0 && (!usaMascara || temMascara) && (acao.id !== "editar_prompt" || !!parametros.instrucao?.trim());
 
-  // Voltou da Stripe? O crédito entra pelo webhook, que pode levar alguns segundos pra
-  // chegar. Em vez de mostrar "0 créditos" pra quem acabou de pagar, avisa e relê o
-  // saldo algumas vezes.
+  // Voltou da Stripe? O crédito entra pelo webhook em segundos; relê o saldo algumas vezes.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const compra = params.get("compra");
     const retorno = params.get("assinatura") ?? compra;
     if (!retorno) return;
     window.history.replaceState({}, "", window.location.pathname);
-    // setState fora do corpo síncrono do effect (regra react-hooks/set-state-in-effect),
-    // e também fora da hidratação: o servidor renderizou sem aviso, então o aviso só
-    // pode entrar depois que o cliente assumiu.
     const mostrar = setTimeout(() => {
-      setAvisoAssinatura(
+      setAvisoPagamento(
         retorno !== "ok"
           ? "Pagamento não concluído. Nada foi cobrado."
           : compra
-            ? "Pedido recebido. Seus créditos entram assim que o pagamento for confirmado, o que no cartão leva instantes."
+            ? "Pedido recebido. Seus créditos entram assim que o pagamento for confirmado."
             : "Pagamento recebido. Seus créditos entram em instantes."
       );
     }, 0);
     if (retorno !== "ok") return () => clearTimeout(mostrar);
-
     let vezes = 0;
     const timer = setInterval(() => {
-      setReleitura((n) => n + 1);
+      c.recarregar();
       if (++vezes >= 10) clearInterval(timer);
     }, 3000);
     return () => {
       clearTimeout(mostrar);
       clearInterval(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // "assinatura" = R$ 69/mês renovando; "pacote" = R$ 69 uma vez, 80 créditos, sem
-  // renovação. O pacote mostra as formas de pagamento ligadas no painel da Stripe.
-  async function assinar(modo: "assinatura" | "pacote" = "assinatura") {
-    if (!supabase) return;
-    setAssinando(true);
+  // Tem logo salvo? Decide se mostra o "com meu logo" no export.
+  const { user: usuarioAtual, token: obterToken } = c;
+  useEffect(() => {
+    if (!usuarioAtual) return;
+    obterToken()
+      .then((t) => fetch("/api/marca", { headers: { Authorization: `Bearer ${t}` } }))
+      .then((r) => r.json())
+      .then((d) => setTemLogo(!!d.logoUrl))
+      .catch(() => {});
+  }, [usuarioAtual, obterToken]);
+
+  function escolherAcao(id: string) {
+    setAcaoId(id);
+    setParametros(padroesDe(ACOES_POR_ID[id]));
+    setPintarArea(false);
+    setTemMascara(false);
     setErro(null);
-    try {
-      const { data: sessao } = await supabase.auth.getSession();
-      const token = sessao.session?.access_token;
-      if (!token) throw new Error("Sessão expirou -- faça login de novo.");
-      const resp = await fetch("/api/assinar", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ modo }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "Não consegui abrir o pagamento.");
-      window.location.href = data.url; // página da Stripe: o cartão é digitado lá, nunca aqui
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao assinar.");
-      setAssinando(false);
-    }
   }
 
-  const assinaturaAtiva = conta?.status === "active" || conta?.status === "past_due";
-
-  function aoEscolherFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const arquivo = e.target.files?.[0] ?? null;
-    setFoto(arquivo);
-    setResultado(null);
-    setJobId(null);
-    setErro(null);
+  function receberFoto(f: File) {
     if (preview) URL.revokeObjectURL(preview);
-    setPreview(arquivo ? URL.createObjectURL(arquivo) : null);
+    setFoto(f);
+    setPreview(URL.createObjectURL(f));
+    limparResultado();
   }
 
-  function removerFoto() {
+  function receberReferencia(f: File) {
+    if (previewRef) URL.revokeObjectURL(previewRef);
+    setReferencia(f);
+    setPreviewRef(URL.createObjectURL(f));
+  }
+
+  function limparResultado() {
+    setResultado(null);
+    setInfo(null);
+    setJobId(null);
+    setReportado(null);
+    setErro(null);
+    setTemMascara(false);
+  }
+
+  function novaFoto() {
     if (preview) URL.revokeObjectURL(preview);
     setFoto(null);
     setPreview(null);
-    setResultado(null);
-    setJobId(null);
-    setTemMascara(false);
-    setErro(null);
-    // Sem isto, escolher a MESMA foto de novo não dispara onChange (bug achado no QA).
-    if (inputFotoRef.current) inputFotoRef.current.value = "";
+    limparResultado();
   }
 
-  async function sair() {
-    await supabase?.auth.signOut();
+  async function acompanhar(id: string, token: string) {
+    for (let i = 0; i < 144; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const resp = await fetch(`/api/job/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "A geração falhou.");
+      if (data.status === "concluido") return data;
+      if (data.status === "upscaling") setEtapa("Aumentando a resolução…");
+      else if (data.posicaoNaFila) setEtapa(`Na fila, posição ${data.posicaoNaFila}…`);
+      else setEtapa("Gerando…");
+    }
+    throw new Error("Passou de 6 minutos. Recarregue a página daqui a pouco antes de tentar de novo, pra não gastar outro crédito.");
+  }
+
+  async function gerar() {
+    if (!foto || !podeGerar) return;
+    setCarregando(true);
+    setErro(null);
+    setResultado(null);
+    setInfo(null);
+    setJobId(null);
+    setReportado(null);
+    try {
+      const token = await c.token();
+      const form = new FormData();
+      form.append("foto", foto);
+      form.append("acao", acao.id);
+      form.append("parametros", JSON.stringify(parametros));
+      if (usaMascara) {
+        const mascara = await editorRef.current?.obterMascara();
+        if (!mascara) throw new Error("Pinte na foto a área antes de gerar.");
+        form.append("mascara", mascara, "mascara.png");
+      }
+      if (acao.referencia && referencia) form.append("referencia", referencia);
+
+      const resp = await fetch("/api/gerar", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Falha ao gerar.");
+      setJobId(data.jobId);
+      setEtapa("Na fila…");
+      const final = await acompanhar(data.jobId, token);
+      setResultado(final.url);
+      setInfo({ largura: final.width, altura: final.height, modelo: final.modelo, upscaled: final.upscaled, aviso: final.aviso, selo: final.selo ?? null });
+      c.recarregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro desconhecido.");
+      c.recarregar();
+    } finally {
+      setCarregando(false);
+      setEtapa(null);
+    }
   }
 
   async function exportarPara(portal: string) {
-    if (!jobId || !supabase) return;
+    if (!jobId) return;
     setExportando(portal);
     try {
-      const { data: sessao } = await supabase.auth.getSession();
-      const token = sessao.session?.access_token;
-      if (!token) throw new Error("Sessão expirou -- faça login de novo.");
       const resp = await fetch("/api/exportar", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId, portal }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await c.token()}` },
+        body: JSON.stringify({ jobId, portal, legenda, comLogo }),
       });
       if (!resp.ok) throw new Error((await resp.json()).error || "Falha ao exportar.");
       const blob = await resp.blob();
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `foto-${portal}.jpg`;
+      link.download = `encena-${portal}.jpg`;
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (e) {
@@ -212,44 +208,15 @@ export default function Home() {
     }
   }
 
-  // Pergunta ao servidor se o job já andou. Cada chamada é curta; quem espera é o
-  // navegador, que pode esperar o quanto for -- não o servidor, que não pode.
-  async function acompanhar(id: string, token: string) {
-    const INTERVALO = 2500;
-    const TENTATIVAS = 144; // ~6 minutos, bem acima do pior caso medido (100s)
-    for (let i = 0; i < TENTATIVAS; i++) {
-      await new Promise((r) => setTimeout(r, INTERVALO));
-      const resp = await fetch(`/api/job/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "A geração falhou.");
-      if (data.status === "concluido") return data;
-      if (data.status === "upscaling") setEtapa("Aumentando a resolução...");
-      else if (data.posicaoNaFila) setEtapa(`Na fila, posição ${data.posicaoNaFila}...`);
-      else setEtapa("Gerando...");
-    }
-    throw new Error(
-      "A geração passou de 6 minutos e parei de esperar. O pedido pode ainda terminar -- recarregue a página daqui a pouco antes de gerar de novo, pra não gastar outro crédito."
-    );
-  }
-
-  // "Geração ruim = crédito de volta", versão manual do plano: um clique devolve o
-  // crédito. O servidor limita a um estorno por geração e a três por dia.
   async function reportarProblema() {
-    if (!jobId || !supabase) return;
+    if (!jobId) return;
     setReportando(true);
-    setErro(null);
     try {
-      const { data: sessao } = await supabase.auth.getSession();
-      const token = sessao.session?.access_token;
-      if (!token) throw new Error("Sessão expirou -- faça login de novo.");
-      const resp = await fetch(`/api/job/${jobId}/reportar`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const resp = await fetch(`/api/job/${jobId}/reportar`, { method: "POST", headers: { Authorization: `Bearer ${await c.token()}` } });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "Não consegui registrar o problema.");
+      if (!resp.ok) throw new Error(data.error || "Não consegui registrar.");
       setReportado(data.mensagem);
-      setReleitura((n) => n + 1); // relê o saldo, que acabou de mudar
+      c.recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao reportar.");
     } finally {
@@ -257,282 +224,257 @@ export default function Home() {
     }
   }
 
-  async function gerar() {
-    if (!foto || !user || !supabase) return;
-    if (creditos !== null && creditos <= 0) {
-      setErro("Seus créditos acabaram. Assine o Pro pra continuar gerando.");
-      return;
-    }
-    setCarregando(true);
-    setErro(null);
-    setResultado(null);
-    setInfoResultado(null);
-    setJobId(null);
-    setReportado(null);
-    try {
-      const { data: sessao } = await supabase.auth.getSession();
-      const token = sessao.session?.access_token;
-      if (!token) throw new Error("Sessão expirou -- faça login de novo.");
+  const acoesPorGrupo = useMemo(() => GRUPOS.map((g) => ({ ...g, acoes: ACOES.filter((a) => a.grupo === g.id) })), []);
 
-      const form = new FormData();
-      form.append("foto", foto);
-      form.append("acao", acao);
-
-      if (precisaMascara) {
-        const mascara = await editorRef.current?.obterMascara();
-        if (!mascara) throw new Error("Pinte na foto o que você quer remover antes de gerar.");
-        form.append("mascara", mascara, "mascara.png");
-      }
-      const resp = await fetch("/api/gerar", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "Falha ao gerar.");
-
-      // O servidor só DESPACHOU o pedido. Ele responde em segundos com um id, e a
-      // imagem fica pronta depois -- é o que permite uma geração de 100s viver num
-      // servidor que corta requisição em 10s.
-      setJobId(data.jobId);
-      setEtapa("Na fila...");
-      const final = await acompanhar(data.jobId, token);
-
-      setResultado(final.url);
-      setInfoResultado({
-        largura: final.width,
-        altura: final.height,
-        modelo: final.modelo,
-        upscaled: final.upscaled,
-        aviso: final.aviso,
-        selo: final.selo ?? null,
-      });
-      // O job e o débito de crédito já aconteceram no servidor -- aqui só re-lemos o
-      // saldo (o useEffect acima dispara de novo porque `resultado` mudou).
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro desconhecido.");
-    } finally {
-      setCarregando(false);
-      setEtapa(null);
-    }
-  }
-
-  if (checandoAuth) {
-    return <main className="p-12 font-sans text-sm text-neutral-500">Carregando...</main>;
-  }
+  // ---------- estados sem sessão ----------
+  if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
 
   if (!supabase) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
-        <p className="rounded border bg-yellow-50 p-4 text-sm text-yellow-900">
-          Supabase ainda não configurado. Preencha{" "}
-          <code className="font-mono">web/.env.local</code> com
-          <code className="font-mono"> NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
-          <code className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> e reinicie o
-          servidor (<code className="font-mono">npm run dev</code>).
-        </p>
+      <main className="mx-auto max-w-2xl p-8">
+        <Aviso tipo="atencao">Supabase não configurado. Preencha web/.env.local e reinicie o servidor.</Aviso>
       </main>
     );
   }
 
-  if (!user) {
+  if (!c.user || !c.conta) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
-        <h1 className="text-2xl font-semibold">Encena</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Fotos que vendem melhor. Inteligência artificial para imóveis: mobília ambientes
-          vazios, remova objetos, corrija a luz e exporte pros portais.
-        </p>
-        <a href="/login" className="mt-6 inline-block rounded bg-marca-indigo px-4 py-2 text-white">
-          Entrar
-        </a>
+      <main className="min-h-screen bg-white font-sans">
+        <div className="mx-auto max-w-3xl px-6 py-20">
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/marca-encena.svg" alt="" width={44} height={44} className="h-11 w-11" />
+            <span className="text-3xl font-bold tracking-tight text-marca-indigo">Encena</span>
+          </div>
+          <h1 className="mt-8 text-4xl font-semibold leading-tight text-neutral-900 sm:text-5xl">Fotos que vendem melhor.</h1>
+          <p className="mt-4 max-w-xl text-lg text-neutral-600">
+            Inteligência artificial para imóveis. Mobília ambientes vazios, remova o que atrapalha, corrija a luz, troque o
+            céu e exporte no formato dos portais. Em segundos, com o aviso de imagem ilustrativa já no lugar.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <a href="/login" className="rounded-lg bg-marca-coral px-5 py-3 font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
+              Entrar e testar grátis
+            </a>
+            <span className="text-sm text-neutral-500">5 gerações grátis, sem cartão.</span>
+          </div>
+          <ul className="mt-12 grid gap-4 sm:grid-cols-3">
+            {ACOES.filter((a) => ["mobiliar", "remover_objeto", "trocar_ceu"].includes(a.id)).map((a) => (
+              <li key={a.id} className="rounded-2xl border border-neutral-200 p-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-marca-pessego text-marca-indigo">
+                  <Icone nome={a.id} />
+                </span>
+                <p className="mt-3 font-semibold">{a.rotulo}</p>
+                <p className="text-sm text-neutral-500">{a.descricao}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
       </main>
     );
   }
+
+  // ---------- editor ----------
+  const semCreditos = (c.conta.creditos ?? 0) <= 0;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12 font-sans">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático */}
-            <img src="/marca-encena.svg" alt="" width={28} height={28} className="h-7 w-7" />
-            <span className="text-lg font-bold tracking-tight text-marca-indigo">Encena</span>
-          </div>
-          <h1 className="truncate text-2xl font-semibold">Olá, {user.email}</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Créditos: <strong>{creditos ?? "..."}</strong>
-            {conta && (
-              <span className="ml-2">
-                · {assinaturaAtiva ? "Plano Pro" : "Plano grátis"}
-                {assinaturaAtiva && conta.renovaEm && (
-                  <> · renova em {new Date(conta.renovaEm).toLocaleDateString("pt-BR")}</>
-                )}
-                {conta.status === "past_due" && (
-                  <span className="text-amber-600"> · pagamento pendente</span>
-                )}
-              </span>
-            )}
-          </p>
+    <AppShell conta={c.conta} aoAssinar={c.assinar} aoComprar={c.comprar} aoSair={c.sair} ocupado={c.ocupado}>
+      {avisoPagamento && (
+        <div className="mb-4">
+          <Aviso tipo="ok">{avisoPagamento}</Aviso>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <button
-            onClick={() => assinar("assinatura")}
-            disabled={assinando}
-            className={
-              assinaturaAtiva
-                ? "text-sm text-neutral-500 underline disabled:opacity-40"
-                : "rounded bg-marca-coral px-3 py-1.5 text-sm text-white hover:bg-marca-coral-escuro disabled:opacity-40"
-            }
-          >
-            {assinando ? "Abrindo..." : assinaturaAtiva ? "Gerenciar assinatura" : "Assinar Pro · R$ 69/mês"}
-          </button>
-          <button
-            onClick={() => assinar("pacote")}
-            disabled={assinando}
-            title="80 créditos, pagamento único, sem renovação."
-            className="rounded border px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40"
-          >
-            Comprar 80 créditos
-          </button>
-          <button onClick={sair} className="text-sm text-neutral-500 underline">
-            Sair
-          </button>
+      )}
+      {c.erro && (
+        <div className="mb-4">
+          <Aviso tipo="erro">{c.erro}</Aviso>
         </div>
-      </div>
-
-      {avisoAssinatura && (
-        <p className="mt-4 rounded border border-marca-teal/40 bg-marca-teal/10 p-3 text-sm text-marca-indigo">
-          {avisoAssinatura}
-        </p>
       )}
 
-      <div className="mt-8 flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          <label className="w-fit cursor-pointer rounded border px-4 py-2 hover:bg-neutral-100">
-            {foto ? `📷 ${foto.name}` : "📷 Escolher foto"}
-            <input
-              ref={inputFotoRef}
-              type="file"
-              accept="image/*"
-              onChange={aoEscolherFoto}
-              className="hidden"
-            />
-          </label>
-          {foto && (
-            <button
-              onClick={removerFoto}
-              className="rounded border px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100"
-              title="Remover foto"
-            >
-              ✕ Remover
-            </button>
-          )}
-        </div>
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* ---------- coluna da foto ---------- */}
+        <section className="lg:col-span-7">
+          {!foto ? (
+            <Cartao>
+              <Dropzone onArquivo={receberFoto} />
+              <ol className="mt-5 grid gap-3 text-sm text-neutral-600 sm:grid-cols-3">
+                <li className="flex gap-2"><span className="font-bold text-marca-coral">1</span> Envie a foto do ambiente.</li>
+                <li className="flex gap-2"><span className="font-bold text-marca-coral">2</span> Escolha o que fazer e o estilo.</li>
+                <li className="flex gap-2"><span className="font-bold text-marca-coral">3</span> Compare e baixe no formato do portal.</li>
+              </ol>
+            </Cartao>
+          ) : (
+            <Cartao className="p-3 sm:p-4">
+              {resultado && preview ? (
+                <>
+                  <Comparador antes={preview} depois={resultado} />
+                  {info && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      {info.largura}×{info.altura}px{info.upscaled ? " · alta resolução" : ""}
+                      {info.selo && <> · sai com o aviso &quot;{info.selo}&quot;</>}
+                      {info.aviso && <span className="block text-amber-600">⚠ {info.aviso}</span>}
+                    </p>
+                  )}
 
-        <select
-          className="w-fit rounded border px-3 py-2"
-          value={acao}
-          onChange={(e) => setAcao(e.target.value as Acao)}
-        >
-          {ACOES.map((a) => (
-            <option key={a.valor} value={a.valor}>
-              {a.rotulo}
-            </option>
-          ))}
-        </select>
+                  <div className="mt-4 rounded-xl bg-neutral-50 p-3">
+                    <Rotulo>Baixar para o anúncio</Rotulo>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Botao variante="secundaria" onClick={() => exportarPara("zap_vivareal_olx")} disabled={exportando !== null}>
+                        <Icone nome="download" className="h-4 w-4" />
+                        {exportando === "zap_vivareal_olx" ? "Exportando…" : "ZAP · VivaReal · OLX"}
+                      </Botao>
+                      <Botao variante="secundaria" onClick={() => exportarPara("generico")} disabled={exportando !== null}>
+                        <Icone nome="download" className="h-4 w-4" />
+                        {exportando === "generico" ? "Exportando…" : "Outros portais"}
+                      </Botao>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <input
+                        type="text"
+                        value={legenda}
+                        onChange={(e) => setLegenda(e.target.value)}
+                        maxLength={80}
+                        placeholder="Legenda opcional, ex.: Sala de estar · 32 m²"
+                        className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
+                      />
+                      {temLogo && (
+                        <label className="flex items-center gap-2 text-sm text-neutral-700">
+                          <input type="checkbox" checked={comLogo} onChange={(e) => setComLogo(e.target.checked)} className="accent-marca-coral" />
+                          Com meu logo
+                        </label>
+                      )}
+                    </div>
+                  </div>
 
-        <button
-          onClick={gerar}
-          disabled={!foto || carregando || creditos === 0 || (precisaMascara && !temMascara)}
-          className="w-fit rounded bg-marca-indigo px-4 py-2 text-white disabled:opacity-40"
-        >
-          {carregando ? (etapa ?? "Gerando...") : "Gerar"}
-        </button>
-
-        {precisaMascara && foto && !temMascara && (
-          <p className="text-sm text-neutral-500">
-            Marque na foto o que deve sair antes de gerar.
-          </p>
-        )}
-
-        {creditos === 0 && (
-          <p className="text-sm text-amber-600">
-            Seus créditos acabaram.{" "}
-            {assinaturaAtiva
-              ? "Eles renovam no próximo ciclo da assinatura."
-              : "Assine o Pro pra ganhar 80 gerações por mês."}
-          </p>
-        )}
-        {erro && <p className="text-sm text-red-600">{erro}</p>}
-
-        <div className="mt-4 grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
-          {preview && (
-            <div className="min-w-0">
-              <p className="mb-1 text-xs uppercase text-neutral-500">
-                {precisaMascara ? "Marque o que remover" : "Original"}
-              </p>
-              {precisaMascara ? (
-                <EditorMascara ref={editorRef} src={preview} aoMudar={setTemMascara} />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    {reportado ? (
+                      <p className="text-xs font-medium text-marca-teal">{reportado}</p>
+                    ) : (
+                      <button onClick={reportarProblema} disabled={reportando} className="text-xs text-neutral-500 underline disabled:opacity-40">
+                        {reportando ? "Registrando…" : "Ficou ruim? Reportar e recuperar o crédito"}
+                      </button>
+                    )}
+                    <div className="flex gap-2">
+                      <Botao variante="discreta" onClick={limparResultado}>Editar de novo</Botao>
+                      <Botao variante="secundaria" onClick={novaFoto}>Nova foto</Botao>
+                    </div>
+                  </div>
+                </>
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={preview} alt="Foto original" className="w-full max-w-full rounded border" />
+                <>
+                  <div className="mb-2 flex items-center justify-between">
+                    <Rotulo>{usaMascara ? (acao.id === "remover_objeto" ? "Pinte o que remover" : "Pinte onde aplicar") : "Sua foto"}</Rotulo>
+                    <button onClick={novaFoto} className="text-xs text-neutral-500 underline">Trocar foto</button>
+                  </div>
+                  {usaMascara && preview ? (
+                    <EditorMascara ref={editorRef} src={preview} aoMudar={setTemMascara} />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={preview ?? ""} alt="Foto original" className="w-full rounded-xl" />
+                  )}
+                  {carregando && (
+                    <div className="mt-3">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                        <div className="h-full w-1/3 animate-[deslizar_1.4s_ease-in-out_infinite] rounded-full bg-marca-coral" />
+                      </div>
+                      <p className="mt-2 text-sm text-neutral-600">{etapa ?? "Gerando…"} Costuma levar de 30 segundos a 2 minutos.</p>
+                    </div>
+                  )}
+                </>
               )}
+            </Cartao>
+          )}
+          {erro && (
+            <div className="mt-3">
+              <Aviso tipo="erro">{erro}</Aviso>
             </div>
           )}
-          {resultado && (
-            <div className="min-w-0">
-              <p className="mb-1 text-xs uppercase text-neutral-500">Resultado</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={resultado} alt="Resultado gerado" className="w-full max-w-full rounded border" />
-              {infoResultado && (
-                <p className="mt-1 text-xs text-neutral-500">
-                  {infoResultado.largura}×{infoResultado.altura}px
-                  {infoResultado.upscaled ? " · upscaled" : ""} · {infoResultado.modelo}
-                  {infoResultado.selo && (
-                    <span className="block">
-                      Carimbada com o aviso &quot;{infoResultado.selo}&quot;, que vai junto no
-                      download.
-                    </span>
-                  )}
-                  {infoResultado.aviso && (
-                    <span className="block text-amber-600">⚠ {infoResultado.aviso}</span>
-                  )}
-                </p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  onClick={() => exportarPara("zap_vivareal_olx")}
-                  disabled={exportando !== null}
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-neutral-100 disabled:opacity-40"
-                >
-                  {exportando === "zap_vivareal_olx" ? "Exportando..." : "⬇ ZAP · VivaReal · OLX"}
-                </button>
-                <button
-                  onClick={() => exportarPara("generico")}
-                  disabled={exportando !== null}
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-neutral-100 disabled:opacity-40"
-                >
-                  {exportando === "generico" ? "Exportando..." : "⬇ Outros portais"}
-                </button>
-              </div>
-              <div className="mt-2">
-                {reportado ? (
-                  <p className="text-xs font-medium text-marca-teal">{reportado}</p>
-                ) : (
-                  <button
-                    onClick={reportarProblema}
-                    disabled={reportando}
-                    className="text-xs text-neutral-500 underline disabled:opacity-40"
-                  >
-                    {reportando ? "Registrando..." : "Ficou ruim? Reportar e recuperar o crédito"}
-                  </button>
-                )}
-              </div>
+        </section>
+
+        {/* ---------- coluna das ações ---------- */}
+        <aside className="flex flex-col gap-4 lg:col-span-5">
+          <Cartao>
+            <Rotulo>O que fazer</Rotulo>
+            <div className="flex flex-col gap-3">
+              {acoesPorGrupo.map((g) => (
+                <div key={g.id}>
+                  <p className="mb-1.5 text-xs text-neutral-400">{g.rotulo}</p>
+                  <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
+                    {g.acoes.map((a) => {
+                      const ativo = a.id === acao.id;
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => escolherAcao(a.id)}
+                          disabled={carregando}
+                          title={a.descricao}
+                          className={
+                            "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-sm leading-tight transition disabled:opacity-50 " +
+                            (ativo ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-700 hover:border-neutral-400")
+                          }
+                        >
+                          <Icone nome={a.id} className="h-4 w-4 shrink-0" />
+                          <span>{a.rotulo}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
+            <p className="mt-3 text-sm text-neutral-600">{acao.descricao}</p>
+          </Cartao>
+
+          {(acao.parametros.length > 0 || acao.mascara === "opcional" || acao.referencia) && (
+            <Cartao>
+              <PainelParametros acao={acao} valores={parametros} onChange={(k, v) => setParametros((p) => ({ ...p, [k]: v }))} />
+
+              {acao.mascara === "opcional" && (
+                <label className="mt-5 flex items-start gap-2 text-sm text-neutral-700">
+                  <input type="checkbox" checked={pintarArea} onChange={(e) => { setPintarArea(e.target.checked); setTemMascara(false); }} className="mt-0.5 accent-marca-coral" />
+                  <span>
+                    Aplicar só onde eu pintar
+                    <span className="block text-xs text-neutral-500">Sem marcar, a IA decide a posição sozinha.</span>
+                  </span>
+                </label>
+              )}
+
+              {acao.referencia && (
+                <div className="mt-5">
+                  <Rotulo>Móveis de outra foto (opcional)</Rotulo>
+                  {previewRef ? (
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={previewRef} alt="Referência" className="h-14 w-20 rounded-lg object-cover" />
+                      <button onClick={() => { setReferencia(null); setPreviewRef(null); }} className="text-xs text-neutral-500 underline">Remover</button>
+                    </div>
+                  ) : (
+                    <Dropzone compacto rotulo="Usar os móveis de uma foto" onArquivo={receberReferencia} />
+                  )}
+                  <p className="mt-1.5 text-xs text-neutral-500">Bom pra manter o mesmo estilo em todas as fotos do imóvel.</p>
+                </div>
+              )}
+            </Cartao>
           )}
-        </div>
+
+          <Cartao>
+            <Botao onClick={gerar} disabled={!podeGerar} className="w-full py-3 text-base">
+              {carregando ? (etapa ?? "Gerando…") : `Gerar · 1 crédito`}
+            </Botao>
+            {!foto && <p className="mt-2 text-center text-xs text-neutral-500">Envie uma foto para começar.</p>}
+            {foto && usaMascara && !temMascara && !carregando && (
+              <p className="mt-2 text-center text-xs text-neutral-500">Pinte na foto a área antes de gerar.</p>
+            )}
+            {semCreditos && (
+              <div className="mt-3">
+                <Aviso tipo="atencao">
+                  Seus créditos acabaram. {c.conta.status === "active" ? "Eles renovam no próximo ciclo." : "Assine o Pro ou compre um pacote de 80."}
+                </Aviso>
+              </div>
+            )}
+          </Cartao>
+        </aside>
       </div>
-    </main>
+
+    </AppShell>
   );
 }

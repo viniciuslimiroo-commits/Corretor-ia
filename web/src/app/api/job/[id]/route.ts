@@ -3,8 +3,6 @@ import sharp from "sharp";
 import { supabaseServer } from "@/lib/supabase-server";
 import { apagarEntradas, assinar, caminhoResultado, guardarEAssinar } from "@/lib/armazenamento";
 import {
-  PROMPTS,
-  PROVEDORES_POR_ACAO,
   UPSCALER,
   consultar,
   corpoRequisicao,
@@ -42,6 +40,11 @@ type Pipeline = {
   entradas: string[];
   urlFoto: string;
   urlMascara: string | null;
+  urlReferencia?: string | null;
+  /** [primário, fallback] escolhidos no despacho (mudam se houve máscara). */
+  provedores?: [Provedor, Provedor] | [string, string];
+  /** Prompt já montado pelo catálogo, reaproveitado no fallback. */
+  prompt?: string;
   urlGerada?: string;
   upscaled?: boolean;
   aviso?: string | null;
@@ -178,12 +181,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
    * isso mora num lugar só.
    */
   async function tentarFallback(motivoDoAviso: string) {
-    const provedores = PROVEDORES_POR_ACAO[job!.tipo];
-    if (p!.tentouFallback || !provedores) return null;
-    const [primario, secundario] = provedores;
+    const provedores = p!.provedores;
+    if (p!.tentouFallback || !provedores || provedores[0] === provedores[1]) return null;
+    const [primario, secundario] = provedores as [Provedor, Provedor];
     const novo = await despachar(
       secundario,
-      corpoRequisicao(secundario, PROMPTS[job!.tipo] ?? "", p!.urlFoto, p!.urlMascara ?? undefined),
+      corpoRequisicao(secundario, {
+        prompt: p!.prompt ?? "",
+        imagemUrl: p!.urlFoto,
+        mascaraUrl: p!.urlMascara ?? undefined,
+        referenciaUrl: p!.urlReferencia ?? undefined,
+      }),
       falKey!
     );
     await db!

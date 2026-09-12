@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { ACOES } from "./acoes";
 
 // Detecta o caso "o modelo devolveu praticamente a mesma foto".
 //
@@ -41,7 +42,11 @@ export const LIMITE_IGUAL = 11;
 //   trocar_ceu      fora: numa fachada com pouco céu, a mudança legítima é pequena. A
 //                   amostra (16,84) veio de uma foto com muito céu, então não sustenta
 //                   o caso geral.
-export const ACOES_COM_CHECAGEM_DE_IGUALDADE = new Set(["mobiliar", "esvaziar"]);
+// Derivado do catálogo: cada ação declara `checarIgual`. Hoje: mobiliar, esvaziar,
+// renovar -- as que transformam a cena inteira.
+export const ACOES_COM_CHECAGEM_DE_IGUALDADE = new Set(
+  ACOES.filter((a) => a.checarIgual).map((a) => a.id)
+);
 
 /**
  * Diferença média por pixel entre duas imagens, de 0 (idênticas) a 255.
