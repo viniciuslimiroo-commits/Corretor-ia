@@ -402,7 +402,7 @@ export default function PaginaVideo() {
         {/* ---------- coluna das cenas ---------- */}
         <section className="flex flex-col gap-4 lg:col-span-7">
           <Cartao>
-            <Rotulo>1 · Fotos do vídeo</Rotulo>
+            <Rotulo>1 · O que entra no vídeo</Rotulo>
             <div className="flex flex-wrap items-center gap-3">
               <SeletorImovel token={token} valor={imovelId} onChange={setImovelId} disabled={gerando} />
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400">
