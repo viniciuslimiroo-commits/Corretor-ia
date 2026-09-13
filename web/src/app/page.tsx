@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import { ACOES, ACOES_POR_ID, GRUPOS, type DefAcao } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
 import Landing from "@/components/landing";
 import Dropzone from "@/components/dropzone";
+import { guardarArquivos } from "@/lib/entrega-arquivos";
 import Comparador from "@/components/comparador";
 import PainelParametros from "@/components/painel-parametros";
 import SeletorImovel from "@/components/seletor-imovel";
@@ -39,6 +41,7 @@ function lerQuery() {
 }
 
 export default function Editor() {
+  const router = useRouter();
   const c = useConta();
 
   const [foto, setFoto] = useState<File | null>(null);
@@ -283,14 +286,15 @@ export default function Editor() {
         </div>
       )}
 
-      {/* Uma foto ou o imóvel inteiro: o lote é o que serve pra imobiliária, então
-          precisa estar visível aqui, não escondido no menu. */}
+      {/* Três FERRAMENTAS, não quatro. "Uma foto" e "Em lote" eram a mesma coisa com
+          contagem diferente, e ocupavam metade da barra decidindo algo que o app sabe
+          sozinho: jogou várias fotos, vai pro lote. Com isso Terreno e Planta deixam de
+          ficar espremidos no canto. */}
       <div className="mb-4 inline-flex rounded-xl border border-neutral-200 bg-white p-1 text-sm">
-        <span className="rounded-lg bg-marca-indigo/10 px-3 py-1.5 font-medium text-marca-indigo">Uma foto</span>
-        <Link href="/lote" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
-          <Icone nome="lote" className="h-4 w-4" />
-          Em lote
-        </Link>
+        <span className="flex items-center gap-1.5 rounded-lg bg-marca-indigo/10 px-3 py-1.5 font-medium text-marca-indigo">
+          <Icone nome="foto" className="h-4 w-4" />
+          Fotos
+        </span>
         <Link href="/terreno" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
           <Icone nome="terreno" className="h-4 w-4" />
           Terreno
@@ -306,7 +310,14 @@ export default function Editor() {
         <section className="lg:col-span-7">
           {!foto ? (
             <Cartao>
-              <Dropzone onArquivo={receberFoto} />
+              <Dropzone
+                onArquivo={receberFoto}
+                onArquivos={(fs) => {
+                  guardarArquivos(fs);
+                  router.push("/lote");
+                }}
+                dica="Arraste aqui ou clique. Uma foto ou várias — se vierem várias, elas entram em fila sozinhas."
+              />
               <ol className="mt-5 grid gap-3 text-sm text-neutral-600 sm:grid-cols-3">
                 <li className="flex gap-2"><span className="font-bold text-marca-coral">1</span> Envie a foto do ambiente.</li>
                 <li className="flex gap-2"><span className="font-bold text-marca-coral">2</span> Escolha o que fazer e o estilo.</li>

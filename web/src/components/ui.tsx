@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 // Peças pequenas da interface, no padrão da marca. Nada de biblioteca: Tailwind e
 // as cores marca-* definidas em globals.css. Manter poucas variantes e usar sempre
@@ -56,6 +56,25 @@ export function Chip({
       {children}
     </button>
   );
+}
+
+/**
+ * Miniatura de um File local.
+ *
+ * A URL do blob é criada e revogada DENTRO do próprio ciclo de vida da imagem, e o src é
+ * posto por ref -- sem passar pelo estado. É o único jeito que sobrevive ao modo estrito:
+ * guardando a URL no estado da página, a limpeza da montagem simulada revoga o blob e nada
+ * o recria, e a miniatura fica quebrada pra sempre (0x0).
+ */
+export function Miniatura({ arquivo, className = "" }: { arquivo: File; className?: string }) {
+  const img = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const url = URL.createObjectURL(arquivo);
+    if (img.current) img.current.src = url;
+    return () => URL.revokeObjectURL(url);
+  }, [arquivo]);
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img ref={img} alt="" className={className} />;
 }
 
 export function Cartao({ children, className = "" }: { children: ReactNode; className?: string }) {

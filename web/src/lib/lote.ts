@@ -17,7 +17,7 @@ export const SIMULTANEAS = 3;
 export type ItemLote = {
   id: string;
   arquivo: File;
-  preview: string;
+
   estado: "esperando" | "gerando" | "pronto" | "erro";
   jobId?: string;
   resultado?: string;

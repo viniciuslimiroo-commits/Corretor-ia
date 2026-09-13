@@ -14,9 +14,17 @@ export function guardarArquivos(arquivos: File[]) {
   pendentes = arquivos;
 }
 
-/** Pega e limpa: a entrega vale uma vez só, senão a foto volta sozinha na próxima visita. */
+/**
+ * Pega a entrega. Vale uma vez só -- senão as fotos voltariam sozinhas na próxima visita.
+ *
+ * A limpeza é adiada um ciclo DE PROPÓSITO. Isto é lido no inicializador de useState, que
+ * o React roda DUAS vezes no modo estrito; limpando na hora, a segunda leitura voltaria
+ * vazia e as fotos sumiriam (é a observação 0013 de novo: efeito que consome e apaga
+ * estado externo não é idempotente). Adiando, as duas leituras veem a mesma lista e a
+ * gaveta esvazia logo depois da montagem.
+ */
 export function retirarArquivos(): File[] {
   const f = pendentes;
-  pendentes = [];
+  if (f.length) setTimeout(() => { pendentes = []; }, 0);
   return f;
 }

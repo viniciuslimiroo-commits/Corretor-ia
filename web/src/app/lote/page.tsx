@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
+import { retirarArquivos } from "@/lib/entrega-arquivos";
 import { ACOES, ACOES_POR_ID, GRUPOS, type DefAcao } from "@/lib/acoes";
 import { rodarLote, SIMULTANEAS, type ItemLote } from "@/lib/lote";
 import AppShell from "@/components/app-shell";
 import PainelParametros from "@/components/painel-parametros";
 import SeletorImovel from "@/components/seletor-imovel";
-import { Aviso, Botao, Cartao, Icone, Rotulo } from "@/components/ui";
+import { Aviso, Botao, Cartao, Icone, Miniatura, Rotulo } from "@/components/ui";
 
 // Lote: a tela que faz o produto servir pra imobiliária. Um imóvel tem 15 a 30 fotos;
 // editar uma por uma não é trabalho, é castigo. Aqui a pessoa joga a pasta inteira,
@@ -31,7 +32,14 @@ const ACOES_LOTE = ACOES.filter((a) => a.mascara !== "obrigatoria");
 
 export default function Lote() {
   const c = useConta();
-  const [itens, setItens] = useState<ItemLote[]>([]);
+  // As fotos que a tela de edição entregou já nascem aqui: no inicializador, não num
+  // efeito -- efeito com setState em cascata é o que o lint proíbe, e não faz falta.
+  const [itens, setItens] = useState<ItemLote[]>(() =>
+    retirarArquivos()
+      .filter((f) => f.type.startsWith("image/"))
+      .map((f) => ({ id: chave(), arquivo: f, estado: "esperando" as const }))
+      .slice(0, 40)
+  );
   const [acaoId, setAcaoId] = useState("melhorar");
   const acao = ACOES_POR_ID[acaoId];
   const [parametros, setParametros] = useState<Record<string, string>>(() => padroesDe(ACOES_POR_ID["melhorar"]));
@@ -46,22 +54,31 @@ export default function Lote() {
   const cancelar = useRef(false);
   const entrada = useRef<HTMLInputElement>(null);
 
-  // Fotos escolhidas viram URLs locais; solta tudo ao sair pra não vazar memória.
-  useEffect(() => () => itens.forEach((i) => URL.revokeObjectURL(i.preview)), [itens]);
+  // A URL local de cada foto é criada e solta pelo <Miniatura>, junto com a imagem. A
+  // página não guarda URL de blob no estado: guardando, a limpeza da montagem simulada do
+  // modo estrito revoga o blob e nada o recria -- as miniaturas ficavam 0x0 pra sempre.
+  function removerItem(id: string) {
+    setItens((lista) => lista.filter((i) => i.id !== id));
+  }
 
   const passo = useCallback((id: string, mudanca: Partial<ItemLote>) => {
     setItens((lista) => lista.map((i) => (i.id === id ? { ...i, ...mudanca } : i)));
   }, []);
 
-  function receber(arquivos: FileList | null) {
-    if (!arquivos) return;
-    const novos = Array.from(arquivos)
+  function adicionar(arquivos: File[]) {
+    const novos = arquivos
       .filter((f) => f.type.startsWith("image/"))
-      .map((f) => ({ id: chave(), arquivo: f, preview: URL.createObjectURL(f), estado: "esperando" as const }));
+      .map((f) => ({ id: chave(), arquivo: f, estado: "esperando" as const }));
     setItens((lista) => [...lista, ...novos].slice(0, 40));
     setResumo(null);
     if (entrada.current) entrada.current.value = "";
   }
+
+  function receber(arquivos: FileList | null) {
+    if (arquivos) adicionar(Array.from(arquivos));
+  }
+
+
 
   function escolherAcao(id: string) {
     setAcaoId(id);
@@ -113,11 +130,12 @@ export default function Lote() {
   return (
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <div className="mb-4 inline-flex rounded-xl border border-neutral-200 bg-white p-1 text-sm">
-        <Link href="/" className="rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">Uma foto</Link>
+        {/* o lote é a mesma ferramenta "Fotos", só com mais de uma */}
         <span className="flex items-center gap-1.5 rounded-lg bg-marca-indigo/10 px-3 py-1.5 font-medium text-marca-indigo">
-          <Icone nome="lote" className="h-4 w-4" />
-          Em lote
+          <Icone nome="foto" className="h-4 w-4" />
+          Fotos
         </span>
+        <Link href="/" className="rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100" title="Voltar pra uma foto só">uma só</Link>
         <Link href="/terreno" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
           <Icone nome="terreno" className="h-4 w-4" />
           Terreno
@@ -173,8 +191,12 @@ export default function Lote() {
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {itens.map((i) => (
                   <li key={i.id} className="relative overflow-hidden rounded-lg border border-neutral-200">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={i.resultado ?? i.preview} alt="" className="aspect-square w-full object-cover" />
+                    {i.resultado ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={i.resultado} alt="" className="aspect-square w-full object-cover" />
+                    ) : (
+                      <Miniatura arquivo={i.arquivo} className="aspect-square w-full object-cover" />
+                    )}
                     {i.estado === "gerando" && (
                       <span className="absolute inset-x-0 bottom-0 bg-marca-indigo/85 px-1 py-0.5 text-center text-[10px] text-white">{i.etapa ?? "Gerando…"}</span>
                     )}
@@ -188,7 +210,7 @@ export default function Lote() {
                     )}
                     {!rodando && i.estado !== "pronto" && (
                       <button
-                        onClick={() => setItens((lista) => lista.filter((x) => x.id !== i.id))}
+                        onClick={() => removerItem(i.id)}
                         className="absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"
                         title="Tirar"
                       >
