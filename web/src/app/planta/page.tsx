@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import {
@@ -39,6 +39,7 @@ import {
   type TipoMovel,
 } from "@/lib/moveis";
 import { plantaParaSvg } from "@/lib/planta-svg";
+import { useNavegacao } from "@/lib/use-navegacao";
 import { ESTILOS } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
@@ -135,7 +136,6 @@ export default function PaginaPlanta() {
   const [salvando, setSalvando] = useState(false);
   const [resultado, setResultado] = useState<{ jobId: string; url: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const caixa = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState<{ telaX: number; telaY: number; x0: number; y0: number } | null>(null);
   const [cantoRetangulo, setCantoRetangulo] = useState<Ponto | null>(null);
   const [estiloIa, setEstiloIa] = useState(ESTILOS[0].valor);
@@ -148,16 +148,17 @@ export default function PaginaPlanta() {
   const [decorado, setDecorado] = useState<{ jobId: string; url: string } | null>(null);
 
   /**
-   * Janela visível, em metros. É ESTADO, não coisa calculada a cada desenho -- de
-   * propósito.
+   * Janela visível, em metros. Vem da camada compartilhada de navegação (use-navegacao),
+   * a mesma que o terreno e os tours vão usar -- é o que faz mover e ampliar responderem
+   * igual no produto inteiro.
    *
-   * Quando ela se reenquadrava sozinha, cada cômodo terminado mudava a escala e o centro,
-   * e o desenho fugia debaixo do dedo: o arrasto seguinte caía num ponto diferente do que
-   * a pessoa mirou. Agora a janela só muda quando a pessoa manda (zoom, arrastar,
-   * enquadrar) ou quando o desenho passaria da borda -- e aí ela cresce, nunca recentra.
+   * Ela NÃO se reenquadra sozinha, de propósito: quando fazia isso, cada cômodo terminado
+   * mudava escala e centro e o desenho fugia debaixo do dedo (o arrasto seguinte caía
+   * noutro ponto do mundo). Só muda quando a pessoa manda, ou cresce quando o desenho
+   * passaria da borda.
    */
-  const [vistaBase, setVistaBase] = useState({ x0: -1, y0: -1, largura: 12 });
-  const vista = { ...vistaBase, altura: vistaBase.largura / PROPORCAO };
+  const nav = useNavegacao({ proporcao: PROPORCAO, inicial: { x0: -1, y0: -1, largura: 12 }, min: LARGURA_MIN, max: LARGURA_MAX });
+  const vista = nav.vista;
 
   /** Enquadramento que faz a planta inteira caber, na proporção da caixa. */
   function enquadramentoDe(pl: Planta) {
@@ -169,42 +170,14 @@ export default function PaginaPlanta() {
     return { x0: (l.x0 + l.x1) / 2 - largura / 2, y0: (l.y0 + l.y1) / 2 - altura / 2, largura };
   }
 
-  /** Cresce a janela só o suficiente pra caber os pontos novos. Nunca encolhe, nunca recentra. */
-  function abrirEspacoPara(pontos: Ponto[]) {
-    if (pontos.length === 0) return;
-    setVistaBase((v) => {
-      const altura = v.largura / PROPORCAO;
-      let x0 = v.x0;
-      let y0 = v.y0;
-      let x1 = v.x0 + v.largura;
-      let y1 = v.y0 + altura;
-      for (const p of pontos) {
-        x0 = Math.min(x0, p.x - 0.8);
-        y0 = Math.min(y0, p.y - 0.8);
-        x1 = Math.max(x1, p.x + 0.8);
-        y1 = Math.max(y1, p.y + 0.8);
-      }
-      let largura = x1 - x0;
-      if (largura / (y1 - y0) < PROPORCAO) largura = (y1 - y0) * PROPORCAO;
-      if (largura <= v.largura + 1e-6 && x0 >= v.x0 - 1e-6 && y0 >= v.y0 - 1e-6) return v;
-      return { x0, y0, largura: Math.min(LARGURA_MAX, largura) };
-    });
-  }
+  const abrirEspacoPara = nav.abrirEspacoPara;
 
   const escalaTela = 46;
   const svgLargura = Math.round(vista.largura * escalaTela);
   const svgAltura = Math.round(vista.altura * escalaTela);
 
-  /** Zoom mantendo o centro. fator < 1 aproxima. */
-  function aplicarZoom(fator: number) {
-    const cx = vista.x0 + vista.largura / 2;
-    const cy = vista.y0 + vista.altura / 2;
-    const largura = Math.min(LARGURA_MAX, Math.max(LARGURA_MIN, vista.largura * fator));
-    setVistaBase({ x0: cx - largura / 2, y0: cy - largura / PROPORCAO / 2, largura });
-  }
-
   function posicao(e: ReactPointerEvent): Ponto | null {
-    const r = caixa.current?.getBoundingClientRect();
+    const r = nav.caixa.current?.getBoundingClientRect();
     if (!r) return null;
     const x = ((e.clientX - r.left) / r.width) * vista.largura + vista.x0;
     const y = ((e.clientY - r.top) / r.height) * vista.altura + vista.y0;
@@ -393,10 +366,12 @@ export default function PaginaPlanta() {
       return;
     }
     if (pan) {
-      const r = caixa.current?.getBoundingClientRect();
+      const r = nav.caixa.current?.getBoundingClientRect();
       if (!r) return;
+      // a ferramenta "Mover" existe pra quem não tem botão do meio; passa pela MESMA
+      // janela da camada de navegação, senão haveria dois donos do enquadramento
       const porPixel = vista.largura / r.width;
-      setVistaBase({
+      nav.enquadrar({
         x0: pan.x0 - (e.clientX - pan.telaX) * porPixel,
         y0: pan.y0 - (e.clientY - pan.telaY) * porPixel,
         largura: vista.largura,
@@ -592,7 +567,44 @@ export default function PaginaPlanta() {
       <div className="mt-5 grid gap-6 lg:grid-cols-12">
         <section className="lg:col-span-8">
           <Cartao className="p-3">
+            {/* Voltar e seguir vêm ANTES das ferramentas e com peso de botão: são as duas
+                ações que a pessoa mais usa desenhando, e como texto miúdo no rodapé
+                ninguém achava. */}
             <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="mr-1 flex items-center gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+                <button
+                  onClick={voltar}
+                  disabled={!podeVoltar}
+                  title="Voltar (Ctrl+Z)"
+                  aria-label="Voltar"
+                  className={
+                    "flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition " +
+                    (podeVoltar ? "bg-white text-marca-indigo shadow-sm hover:bg-marca-indigo hover:text-white" : "text-neutral-300")
+                  }
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 14L4 9l5-5" />
+                    <path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+                  </svg>
+                  Voltar
+                </button>
+                <button
+                  onClick={seguir}
+                  disabled={!podeSeguir}
+                  title="Seguir (Ctrl+Shift+Z)"
+                  aria-label="Seguir"
+                  className={
+                    "flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition " +
+                    (podeSeguir ? "bg-white text-marca-indigo shadow-sm hover:bg-marca-indigo hover:text-white" : "text-neutral-300")
+                  }
+                >
+                  Seguir
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 14l5-5-5-5" />
+                    <path d="M20 9H9a5 5 0 0 0 0 10h3" />
+                  </svg>
+                </button>
+              </span>
               <Chip ativo={ferramenta === "retangulo"} onClick={() => setFerramenta("retangulo")}>Retângulo</Chip>
               <Chip ativo={ferramenta === "comodo"} onClick={() => setFerramenta("comodo")}>Cômodo livre</Chip>
               <Chip ativo={ferramenta === "movel"} onClick={() => setFerramenta("movel")}>Móveis</Chip>
@@ -601,14 +613,14 @@ export default function PaginaPlanta() {
               <Chip ativo={ferramenta === "mover"} onClick={() => setFerramenta("mover")}>Mover</Chip>
               <Chip ativo={ferramenta === "apagar"} onClick={() => setFerramenta("apagar")}>Apagar</Chip>
               <span className="ml-auto flex items-center gap-1">
-                <button onClick={() => aplicarZoom(1 / 0.75)} title="Afastar" aria-label="Afastar" className="h-7 w-7 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">−</button>
-                <button onClick={() => aplicarZoom(0.75)} title="Aproximar" aria-label="Aproximar" className="h-7 w-7 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">+</button>
-                <button onClick={() => setVistaBase(enquadramentoDe(planta))} title="Enquadrar tudo" className="rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100">enquadrar</button>
+                <button onClick={() => nav.zoomEm(1 / 0.75)} title="Afastar" aria-label="Afastar" className="h-7 w-7 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">−</button>
+                <button onClick={() => nav.zoomEm(0.75)} title="Aproximar" aria-label="Aproximar" className="h-7 w-7 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">+</button>
+                <button onClick={() => nav.enquadrar(enquadramentoDe(planta))} title="Enquadrar tudo" className="rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100">enquadrar</button>
               </span>
             </div>
 
             <div
-              ref={caixa}
+              ref={nav.montarCaixa}
               data-caixa=""
               className="relative w-full overflow-hidden rounded-xl border border-neutral-200 bg-white"
               style={{
@@ -767,8 +779,6 @@ export default function PaginaPlanta() {
                           : "Toque perto da parede: a janela gruda nela sozinha."}
               </p>
               <span className="flex shrink-0 items-center gap-3">
-                <button onClick={voltar} disabled={!podeVoltar} title="Voltar (Ctrl+Z)" className={podeVoltar ? "underline hover:text-neutral-800" : "text-neutral-300"}>← voltar</button>
-                <button onClick={seguir} disabled={!podeSeguir} title="Seguir (Ctrl+Shift+Z)" className={podeSeguir ? "underline hover:text-neutral-800" : "text-neutral-300"}>seguir →</button>
                 {rascunho.length >= 3 && (
                   <button onClick={fecharComodo} className="rounded bg-marca-coral px-2 py-1 font-medium text-white">fechar cômodo</button>
                 )}
