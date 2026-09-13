@@ -54,7 +54,7 @@ const LARGURA_MAX = 80;
 let seq = 0;
 const novoId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
 
-const PLANTA_VAZIA: Planta = { nome: "", passo: PASSO_PADRAO, comodos: [], aberturas: [], cotas: true };
+const PLANTA_VAZIA: Planta = { nome: "", passo: PASSO_PADRAO, comodos: [], aberturas: [], moveis: [], cotas: true };
 
 /** O que dá pra voltar e seguir: a planta e o cômodo que está sendo desenhado. */
 type Estado = { planta: Planta; rascunho: Ponto[] };
