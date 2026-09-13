@@ -55,12 +55,61 @@ const novoId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
 
 const PLANTA_VAZIA: Planta = { nome: "", passo: PASSO_PADRAO, comodos: [], aberturas: [], cotas: true };
 
+/** O que dá pra voltar e seguir: a planta e o cômodo que está sendo desenhado. */
+type Estado = { planta: Planta; rascunho: Ponto[] };
+const ESTADO_INICIAL: Estado = { planta: PLANTA_VAZIA, rascunho: [] };
+const LIMITE_HISTORICO = 80;
+
 export default function PaginaPlanta() {
   const c = useConta();
-  const [planta, setPlanta] = useState<Planta>(PLANTA_VAZIA);
   const [ferramenta, setFerramenta] = useState<Ferramenta>("comodo");
-  const [rascunho, setRascunho] = useState<Ponto[]>([]);
   const [cursor, setCursor] = useState<Ponto | null>(null);
+
+  /**
+   * Histórico de voltar/seguir. Pilha de fotografias do estado -- a planta é JSON pequeno,
+   * então guardar cópia inteira sai mais barato (e muito mais confiável) que guardar a
+   * operação inversa de cada ação.
+   *
+   * Pilha e posição vivem no MESMO estado de propósito: em dois `useState` separados eles
+   * saem de sincronia numa atualização em lote e o histórico aponta pro lugar errado.
+   *
+   * `chave` funde alterações seguidas da mesma origem: digitar o nome de um cômodo é uma
+   * entrada só, não uma por letra.
+   */
+  const [hist, setHist] = useState<{ pilha: Estado[]; i: number; chave: string | null }>({
+    pilha: [ESTADO_INICIAL],
+    i: 0,
+    chave: null,
+  });
+  const { planta, rascunho } = hist.pilha[hist.i];
+  const podeVoltar = hist.i > 0;
+  const podeSeguir = hist.i < hist.pilha.length - 1;
+
+  function registrar(muda: (e: Estado) => Estado, chave: string | null = null) {
+    setHist((h) => {
+      const base = h.pilha.slice(0, h.i + 1);
+      const atual = base[base.length - 1];
+      const proximo = muda(atual);
+      if (proximo.planta === atual.planta && proximo.rascunho === atual.rascunho) return h;
+      // mesma origem em sequência (digitação): troca o topo em vez de empilhar
+      if (chave && chave === h.chave && base.length > 1) {
+        const nova = [...base.slice(0, -1), proximo];
+        return { pilha: nova, i: nova.length - 1, chave };
+      }
+      const nova = [...base, proximo];
+      const cortada = nova.length > LIMITE_HISTORICO ? nova.slice(nova.length - LIMITE_HISTORICO) : nova;
+      return { pilha: cortada, i: cortada.length - 1, chave };
+    });
+  }
+
+  // Mesma assinatura dos setState que substituíram, pra todo o resto da tela continuar igual.
+  const setPlanta = (v: Planta | ((p: Planta) => Planta), chave?: string) =>
+    registrar((e) => ({ ...e, planta: typeof v === "function" ? v(e.planta) : v }), chave ?? null);
+  const setRascunho = (v: Ponto[] | ((r: Ponto[]) => Ponto[])) =>
+    registrar((e) => ({ ...e, rascunho: typeof v === "function" ? v(e.rascunho) : v }));
+
+  const voltar = () => setHist((h) => (h.i > 0 ? { ...h, i: h.i - 1, chave: null } : h));
+  const seguir = () => setHist((h) => (h.i < h.pilha.length - 1 ? { ...h, i: h.i + 1, chave: null } : h));
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [imovelId, setImovelId] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("imovel")));
   const [salvando, setSalvando] = useState(false);
@@ -281,17 +330,10 @@ export default function PaginaPlanta() {
       pontos: rascunho,
       cor: CORES_COMODO[planta.comodos.length % CORES_COMODO.length],
     };
-    setPlanta((pl) => ({ ...pl, comodos: [...pl.comodos, novo] }));
+    // comodos e rascunho numa REGISTRADA so: senao voltar precisaria de dois toques
+    registrar((e) => ({ planta: { ...e.planta, comodos: [...e.planta.comodos, novo] }, rascunho: [] }));
     abrirEspacoPara(novo.pontos);
-    setRascunho([]);
     setSelecionado(novo.id);
-    setResultado(null);
-  }
-
-  function desfazerPonto() {
-    if (rascunho.length) return setRascunho((l) => l.slice(0, -1));
-    if (planta.aberturas.length) return setPlanta((pl) => ({ ...pl, aberturas: pl.aberturas.slice(0, -1) }));
-    setPlanta((pl) => ({ ...pl, comodos: pl.comodos.slice(0, -1) }));
     setResultado(null);
   }
 
@@ -317,9 +359,19 @@ export default function PaginaPlanta() {
 
   useEffect(() => {
     function tecla(e: KeyboardEvent) {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && /^(INPUT|TEXTAREA)$/.test(alvo.tagName)) return; // não sequestrar a digitação
       if (e.key === "Escape") setRascunho([]);
       if (e.key === "Enter" && rascunho.length >= 3) fecharComodo();
-      if ((e.key === "z" && (e.ctrlKey || e.metaKey)) || e.key === "Backspace") desfazerPonto();
+      const cmd = e.ctrlKey || e.metaKey;
+      if ((cmd && e.key.toLowerCase() === "z" && e.shiftKey) || (cmd && e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        return seguir();
+      }
+      if ((cmd && e.key.toLowerCase() === "z") || e.key === "Backspace") {
+        e.preventDefault();
+        voltar();
+      }
     }
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
@@ -475,7 +527,8 @@ export default function PaginaPlanta() {
                           : "Toque perto da parede: a janela gruda nela sozinha."}
               </p>
               <span className="flex shrink-0 items-center gap-3">
-                <button onClick={desfazerPonto} className="underline">desfazer</button>
+                <button onClick={voltar} disabled={!podeVoltar} title="Voltar (Ctrl+Z)" className={podeVoltar ? "underline hover:text-neutral-800" : "text-neutral-300"}>← voltar</button>
+                <button onClick={seguir} disabled={!podeSeguir} title="Seguir (Ctrl+Shift+Z)" className={podeSeguir ? "underline hover:text-neutral-800" : "text-neutral-300"}>seguir →</button>
                 {rascunho.length >= 3 && (
                   <button onClick={fecharComodo} className="rounded bg-marca-coral px-2 py-1 font-medium text-white">fechar cômodo</button>
                 )}
@@ -498,7 +551,7 @@ export default function PaginaPlanta() {
                       value={cm.nome}
                       onChange={(e) => {
                         const v = e.target.value;
-                        setPlanta((pl) => ({ ...pl, comodos: pl.comodos.map((x) => (x.id === cm.id ? { ...x, nome: v } : x)) }));
+                        setPlanta((pl) => ({ ...pl, comodos: pl.comodos.map((x) => (x.id === cm.id ? { ...x, nome: v } : x)) }), `nome:${cm.id}`);
                         setResultado(null);
                       }}
                       placeholder="Nome do cômodo"
@@ -537,7 +590,7 @@ export default function PaginaPlanta() {
 
           <Cartao>
             <Rotulo>Planta</Rotulo>
-            <input value={planta.nome} onChange={(e) => setPlanta((pl) => ({ ...pl, nome: e.target.value }))} placeholder="Nome (ex.: Apto 302 · Térreo)" maxLength={60} className={campo} />
+            <input value={planta.nome} onChange={(e) => setPlanta((pl) => ({ ...pl, nome: e.target.value }), "nome-da-planta")} placeholder="Nome (ex.: Apto 302 · Térreo)" maxLength={60} className={campo} />
             <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
               <label className="flex items-center gap-2 text-neutral-700">
                 <input type="checkbox" checked={planta.cotas} onChange={(e) => { setPlanta((pl) => ({ ...pl, cotas: e.target.checked })); setResultado(null); }} className="accent-marca-coral" />
