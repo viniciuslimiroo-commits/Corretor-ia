@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { rotuloDoPlano } from "@/lib/planos";
 import { Botao, Icone } from "./ui";
 
@@ -36,19 +36,25 @@ export default function AppShell({
   children: ReactNode;
 }) {
   const rota = usePathname();
+  const [maisAberto, setMaisAberto] = useState(false);
   const assinante = conta.status === "active" || conta.status === "past_due";
   const gerencia = !conta.org || conta.org.papel !== "corretor";
 
   // `soIcone` = no menu de cima entra só o ícone (com o nome no title). A barra tem
   // 1152px e o nome inteiro não cabe junto do resto; embaixo, no celular, vai completo.
-  const links = [
+  const links: { href: string; rotulo: string; icone: string; soIcone: boolean; secundario?: boolean }[] = [
     { href: "/", rotulo: "Início", icone: "casa", soIcone: false },
     { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false },
     { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
-    { href: "/equipe", rotulo: "Equipe", icone: "equipe", soIcone: false },
-    { href: "/historico", rotulo: "Histórico", icone: "historico", soIcone: true },
-    { href: "/configuracoes", rotulo: "Minha marca", icone: "configuracoes", soIcone: true },
+    { href: "/biblioteca", rotulo: "Biblioteca", icone: "biblioteca", soIcone: false },
+    // Equipe virou só ícone quando a Biblioteca entrou: o nome inteiro dos dois não cabe
+    // junto do resto na barra de 1152px.
+    // `secundario` = no celular sai da barra de baixo e vai pro "Mais": nove ícones numa
+    // tela de 375px viram 41px cada, onde ninguém acerta o dedo.
+    { href: "/equipe", rotulo: "Equipe", icone: "equipe", soIcone: true, secundario: true },
+    { href: "/historico", rotulo: "Histórico", icone: "historico", soIcone: true, secundario: true },
+    { href: "/configuracoes", rotulo: "Minha marca", icone: "configuracoes", soIcone: true, secundario: true },
   ];
   const ativo = (href: string) => (href === "/" ? rota === "/" : rota.startsWith(href));
 
@@ -117,22 +123,53 @@ export default function AppShell({
           </div>
         </div>
 
-        {/* navegação no celular */}
-        <nav className="flex items-center justify-around border-t border-neutral-100 xl:hidden">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] " + (ativo(l.href) ? "text-marca-indigo" : "text-neutral-500")}
-            >
-              <Icone nome={l.icone} className="h-5 w-5" />
-              {l.rotulo}
-            </Link>
-          ))}
+        {/* navegação no celular: cinco destinos, créditos e "Mais" */}
+        <nav className="relative flex items-center justify-around border-t border-neutral-100 xl:hidden">
+          {links
+            .filter((l) => !l.secundario)
+            .map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] " + (ativo(l.href) ? "text-marca-indigo" : "text-neutral-500")}
+              >
+                <Icone nome={l.icone} className="h-5 w-5" />
+                {l.rotulo}
+              </Link>
+            ))}
           <Link href="/planos" className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] " + (ativo("/planos") ? "text-marca-indigo" : "text-neutral-500")}>
             <Icone nome="planos" className="h-5 w-5" />
             {conta.creditos ?? "…"} cr.
           </Link>
+          <button
+            type="button"
+            onClick={() => setMaisAberto((v) => !v)}
+            aria-expanded={maisAberto}
+            className={"flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] " + (maisAberto ? "text-marca-indigo" : "text-neutral-500")}
+          >
+            <Icone nome={maisAberto ? "fechar" : "mais"} className="h-5 w-5" />
+            Mais
+          </button>
+          {maisAberto && (
+            // top-full, não bottom-full: no celular esta barra fica no ALTO da tela (dentro
+            // do cabeçalho fixo), então um painel que abre pra cima sai pela borda -- os
+            // dois primeiros itens ficavam cortados.
+            <div className="absolute top-full right-2 z-30 mt-1 w-52 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
+              {links
+                .filter((l) => l.secundario)
+                .map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setMaisAberto(false)}
+                    className={"flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm " + (ativo(l.href) ? "bg-marca-indigo/10 text-marca-indigo" : "text-neutral-700 hover:bg-neutral-50")}
+                  >
+                    <Icone nome={l.icone} className="h-4 w-4" />
+                    {l.rotulo}
+                  </Link>
+                ))}
+            </div>
+          )}
         </nav>
       </header>
 

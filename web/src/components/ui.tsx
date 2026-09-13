@@ -311,6 +311,14 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M6 10l6 6 6-6" />
         </svg>
       );
+    case "biblioteca": // livros em pé, um deitado em cima
+      return (
+        <svg {...p}>
+          <path d="M4 5h3v13H4zM9 5h3v13H9z" />
+          <path d="M14.5 5.6l2.9.8-3.2 11.6-2.9-.8z" />
+          <path d="M3 20h18" />
+        </svg>
+      );
     case "fechar":
       return (
         <svg {...p}>

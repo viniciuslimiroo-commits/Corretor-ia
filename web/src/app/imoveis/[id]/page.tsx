@@ -7,6 +7,7 @@ import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, Cartao, Icone } from "@/components/ui";
+import { guardarSelecao } from "@/lib/selecao-material";
 
 // Um imóvel: a galeria. Cada geração mostra o "depois" e vira "antes" com um toque;
 // dá pra escolher a capa, compartilhar uma foto só, baixar pro anúncio e tirar do
@@ -139,10 +140,6 @@ export default function PaginaImovel() {
   const [endereco, setEndereco] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [baixando, setBaixando] = useState(false);
-  const [bookAberto, setBookAberto] = useState(false);
-  const [montandoBook, setMontandoBook] = useState(false);
-  const [precoBook, setPrecoBook] = useState("");
-  const [descricaoBook, setDescricaoBook] = useState("");
   const { user, token } = c;
 
   // Baixar o imóvel inteiro: o servidor monta o ZIP já no tamanho do portal, com logo.
@@ -165,28 +162,16 @@ export default function PaginaImovel() {
     }
   }
 
-  /** Book em PDF: capa, fotos e contato com QR. Não gasta crédito -- é diagramação. */
-  async function baixarBook() {
-    setMontandoBook(true);
-    setErro(null);
-    try {
-      const q = new URLSearchParams();
-      if (precoBook.trim()) q.set("preco", precoBook.trim());
-      if (descricaoBook.trim()) q.set("descricao", descricaoBook.trim());
-      const r = await fetch(`/api/imoveis/${id}/book?${q}`, { headers: { Authorization: `Bearer ${await token()}` } });
-      if (!r.ok) throw new Error((await r.json()).error ?? "Não consegui montar o book.");
-      const blob = await r.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = r.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "book.pdf";
-      a.click();
-      URL.revokeObjectURL(a.href);
-      setBookAberto(false);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao montar o book.");
-    } finally {
-      setMontandoBook(false);
-    }
+  /**
+   * Book, PDF de WhatsApp, apresentação: tudo isso mora na Biblioteca agora. Daqui a gente
+   * só leva as fotos deste imóvel já marcadas, com a capa na frente -- o montador é um só,
+   * pra não existirem dois caminhos que geram o mesmo PDF com telas diferentes.
+   */
+  function montarMaterial() {
+    const prontas = (geracoes ?? []).filter((g) => g.status === "concluido" && g.depois);
+    const comCapaNaFrente = [...prontas].sort((a, b) => (a.capa ? -1 : b.capa ? 1 : 0));
+    guardarSelecao(comCapaNaFrente.map((g) => g.id));
+    router.push("/biblioteca/material");
   }
 
   // Busca sem tocar em estado: quem escreve na tela é sempre um callback de promessa.
@@ -328,9 +313,9 @@ export default function PaginaImovel() {
                   <Icone nome="download" className="h-4 w-4" />
                   {baixando ? "Preparando…" : "Baixar tudo"}
                 </Botao>
-                <Botao onClick={() => setBookAberto((v) => !v)} title="PDF de apresentação pra mandar ao cliente">
-                  <Icone nome="planta" className="h-4 w-4" />
-                  Book em PDF
+                <Botao onClick={montarMaterial} title="Book, PDF de WhatsApp, catálogo ou apresentação, com as fotos deste imóvel">
+                  <Icone nome="biblioteca" className="h-4 w-4" />
+                  Criar material
                 </Botao>
               </>
             )}
@@ -341,40 +326,6 @@ export default function PaginaImovel() {
             </Botao>
           </div>
 
-          {/* Preço e descrição são digitados aqui, não guardados no imóvel: o texto muda
-              conforme o cliente pra quem se manda, e properties ainda não tem as colunas. */}
-          {bookAberto && (
-            <div className="mt-4 rounded-2xl border border-marca-indigo/30 bg-marca-indigo/[0.03] p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Book em PDF · sem crédito</p>
-              <p className="mt-1 text-sm text-neutral-600">
-                Capa com a foto principal, as fotos do imóvel e uma última página com seu contato e o QR do link.
-                Sua marca de <Link href="/configuracoes" className="underline">Minha marca</Link> entra sozinha.
-              </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <input
-                  value={precoBook}
-                  onChange={(e) => setPrecoBook(e.target.value)}
-                  maxLength={40}
-                  placeholder="Preço (ex.: R$ 690.000)"
-                  className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
-                />
-                <input
-                  value={descricaoBook}
-                  onChange={(e) => setDescricaoBook(e.target.value)}
-                  maxLength={600}
-                  placeholder="Descrição curta do imóvel"
-                  className="sm:col-span-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
-                />
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Botao onClick={baixarBook} disabled={montandoBook}>
-                  <Icone nome="download" className="h-4 w-4" />
-                  {montandoBook ? "Montando…" : "Baixar o book"}
-                </Botao>
-                <span className="text-xs text-neutral-500">Leva alguns segundos. O QR só aparece se o imóvel estiver compartilhado.</span>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

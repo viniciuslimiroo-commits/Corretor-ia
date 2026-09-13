@@ -22,6 +22,7 @@ const FERRAMENTAS = [
   { href: "/video", icone: "video", titulo: "Vídeo e tour 360°", texto: "As fotos viram vídeo com movimento, música e sua marca. Sem crédito." },
   { href: "/planta", icone: "planta", titulo: "Planta baixa", texto: "Desenhe os cômodos, mobílie e veja a área calculada. Sem crédito." },
   { href: "/terreno", icone: "terreno", titulo: "Terreno e lote", texto: "Marque as medidas na foto, limpe o mato ou mostre a casa construída." },
+  { href: "/biblioteca", icone: "biblioteca", titulo: "Biblioteca e materiais", texto: "Tudo que você criou. Vira book, catálogo ou apresentação em PDF. Sem crédito." },
 ];
 
 function quando(iso: string) {
@@ -87,12 +88,12 @@ export default function Inicio({ conta, token }: { conta: Conta; token: () => Pr
         <section className="mt-6">
           <div className="mb-2 flex items-baseline justify-between">
             <Rotulo>Seu material</Rotulo>
-            <Link href="/historico" className="text-xs text-marca-indigo underline">ver tudo</Link>
+            <Link href="/biblioteca" className="text-xs text-marca-indigo underline">ver tudo na Biblioteca</Link>
           </div>
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6">
             {geracoes.map((g) => (
               <li key={g.id}>
-                <Link href="/historico" className="block overflow-hidden rounded-xl border border-neutral-200 bg-white transition hover:border-marca-indigo">
+                <Link href="/biblioteca" className="block overflow-hidden rounded-xl border border-neutral-200 bg-white transition hover:border-marca-indigo">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={g.miniatura!} alt="" className="aspect-square w-full object-cover" />
                   <span className="block truncate px-2 py-1.5 text-[11px] text-neutral-600">

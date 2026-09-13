@@ -369,10 +369,23 @@ export const ACOES_POR_ID: Record<string, DefAcao> = Object.fromEntries(ACOES.ma
 
 // Tipos de job que não passam pelo editor de ações (têm tela própria), mas aparecem no
 // histórico, na galeria e no link como qualquer foto.
-const ROTULOS_ESPECIAIS: Record<string, string> = { terreno: "Terreno com medidas", planta: "Planta baixa" };
+const ROTULOS_ESPECIAIS: Record<string, string> = {
+  terreno: "Terreno com medidas",
+  terreno_limpar: "Terreno limpo",
+  terreno_construir: "Casa no terreno",
+  terreno_livre: "Terreno editado",
+  planta: "Planta baixa",
+  planta_humanizada: "Planta humanizada",
+};
 
 export function rotuloDoTipo(tipo: string): string {
-  return ACOES_POR_ID[tipo]?.rotulo ?? ROTULOS_ESPECIAIS[tipo] ?? tipo;
+  const conhecido = ACOES_POR_ID[tipo]?.rotulo ?? ROTULOS_ESPECIAIS[tipo];
+  if (conhecido) return conhecido;
+  // Rede de segurança: um tipo novo que ninguém cadastrou aqui aparecia cru na tela e no
+  // PDF ("terreno_construir" na legenda do book). Melhor sair "Terreno construir" do que
+  // parecer nome de variável vazando pro cliente do corretor.
+  const legivel = tipo.replace(/_/g, " ").trim();
+  return legivel ? legivel.charAt(0).toUpperCase() + legivel.slice(1) : tipo;
 }
 
 export const GRUPOS: { id: Grupo; rotulo: string }[] = [
