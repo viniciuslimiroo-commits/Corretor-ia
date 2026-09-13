@@ -46,7 +46,7 @@ export default function AppShell({
     { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false },
     { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
-    { href: "/equipe", rotulo: conta.org ? "Equipe" : "Imobiliária", icone: "equipe", soIcone: false },
+    { href: "/equipe", rotulo: "Equipe", icone: "equipe", soIcone: false },
     { href: "/historico", rotulo: "Histórico", icone: "historico", soIcone: true },
     { href: "/configuracoes", rotulo: "Minha marca", icone: "configuracoes", soIcone: true },
   ];

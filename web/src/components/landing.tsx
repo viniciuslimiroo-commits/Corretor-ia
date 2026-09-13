@@ -24,7 +24,8 @@ const PERGUNTAS = [
   { p: "Preciso saber usar programa de edição?", r: "Não. Você envia a foto, escolhe o que quer (mobiliar o cômodo, trocar piso, tirar objeto) e ajusta com dois toques. Em menos de um minuto o resultado aparece lado a lado com o original." },
   { p: "Funciona no celular?", r: "Sim. Foto do celular serve, e o resultado baixa no tamanho certo dos portais ou vai direto pro WhatsApp por link." },
   { p: "E se o resultado ficar ruim?", r: "Você pede o crédito de volta na hora. Uma IA compara a foto original com o resultado e o crédito volta." },
-  { p: "Como funciona para imobiliária?", r: "Uma conta de equipe: cada corretor entra com o próprio e-mail, todo mundo usa os créditos da imobiliária, o gestor vê o uso de cada um, e a marca da casa vai nas fotos, vídeos e links." },
+  { p: "Trabalho sozinho. Serve pra mim?", r: "Serve, e é o caso mais comum: o plano Pro é de uma pessoa só. Você não precisa de equipe nem de CNPJ pra usar — entra com seu e-mail e começa. Se um dia virar uma dupla ou uma imobiliária, a conta de equipe está lá." },
+  { p: "E se formos mais de um?", r: "Dá pra criar uma equipe: cada pessoa entra com o próprio e-mail, todo mundo usa os mesmos créditos, quem gerencia vê o uso de cada um, e a marca da casa vai nas fotos, vídeos e links. Vale pra corretor com assistente, dupla de corretores ou imobiliária inteira." },
 ];
 
 export default function Landing() {
@@ -202,9 +203,9 @@ export default function Landing() {
       <section id="imobiliarias" className="scroll-mt-20 bg-marca-indigo py-14 text-white">
         <div className="mx-auto grid max-w-6xl gap-8 px-5 lg:grid-cols-12 lg:items-center">
           <div className="lg:col-span-7">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-pessego">Para imobiliárias</p>
-            <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">Uma conta para a equipe inteira</h2>
-            <p className="mt-3 max-w-xl text-white/80">Cada corretor entra com o próprio e-mail. Os créditos são da imobiliária, o gestor vê o uso de cada um, e o logo e o WhatsApp da casa saem nas fotos, nos vídeos e nos links de todo mundo.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-pessego">Quando são mais de um</p>
+            <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">Uma conta para o time inteiro</h2>
+            <p className="mt-3 max-w-xl text-white/80">Corretor com assistente, dupla de corretores ou imobiliária inteira. Cada um entra com o próprio e-mail, os créditos são compartilhados, quem gerencia vê o uso de cada um, e o mesmo logo e WhatsApp saem nas fotos, nos vídeos e nos links de todo mundo.</p>
             <ul className="mt-5 grid gap-2 text-sm text-white/90 sm:grid-cols-2">
               <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-pessego" /> Plano por equipe, não por cadeira</li>
               <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-pessego" /> Convite por e-mail, sem instalar nada</li>
@@ -222,7 +223,7 @@ export default function Landing() {
                 <p className="text-sm text-white/80">{o.creditos} créditos por mês · até {o.pessoas} pessoas</p>
               </div>
             ))}
-            <Link href="/planos#imobiliaria" className="inline-flex items-center justify-center rounded-lg bg-marca-coral px-5 py-3 font-medium text-white hover:bg-marca-coral-escuro">Ver planos de imobiliária</Link>
+            <Link href="/planos#imobiliaria" className="inline-flex items-center justify-center rounded-lg bg-marca-coral px-5 py-3 font-medium text-white hover:bg-marca-coral-escuro">Ver planos de equipe</Link>
           </div>
         </div>
       </section>

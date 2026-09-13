@@ -8,7 +8,9 @@ import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
 import { Aviso, Botao, Cartao, Icone, Rotulo } from "@/components/ui";
 
-// Equipe: a conta da imobiliária. Quem não tem cria aqui (e leva os créditos pessoais);
+// Equipe: a conta compartilhada. Serve pro corretor com assistente, pra dupla de
+// corretores e pra imobiliária -- por isso ela se chama EQUIPE e não "imobiliária". Quem
+// não tem cria aqui (e leva os créditos pessoais);
 // quem tem vê plano, créditos, pessoas e uso do mês; dono e gestor convidam, removem,
 // ajustam papéis e a marca da casa. Corretor vê a equipe e pode sair.
 
@@ -97,7 +99,7 @@ export default function Equipe() {
   async function criar(e: React.FormEvent) {
     e.preventDefault();
     const d = await chamar("/api/equipe", json({ nome: nomeNova }));
-    if (d) setMensagem(d.transferidos > 0 ? `Imobiliária criada. Seus ${d.transferidos} créditos passaram pra ela.` : "Imobiliária criada.");
+    if (d) setMensagem(d.transferidos > 0 ? `Equipe criada. Seus ${d.transferidos} créditos passaram pra ela.` : "Equipe criada.");
   }
 
   async function convidar(e: React.FormEvent) {
@@ -114,7 +116,7 @@ export default function Equipe() {
     form.append("whatsapp", whatsapp);
     form.append("creci", creci);
     if (logo) form.append("logo", logo);
-    await chamar("/api/equipe/marca", { method: "POST", body: form }, "Marca da imobiliária salva.");
+    await chamar("/api/equipe/marca", { method: "POST", body: form }, "Marca da equipe salva.");
   }
 
   if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
@@ -135,31 +137,35 @@ export default function Equipe() {
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       {!org ? (
         <>
-          <h1 className="text-2xl font-semibold">Imobiliária</h1>
-          <p className="mt-1 text-sm text-neutral-500">Uma conta pra equipe inteira: cada corretor com seu login, créditos compartilhados, marca da casa nas fotos e vídeos.</p>
+          <h1 className="text-2xl font-semibold">Equipe</h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Uma conta para mais de uma pessoa: cada um entra com o próprio e-mail, os créditos são compartilhados e a
+            mesma marca vai nas fotos, vídeos e links. Serve pra corretor com assistente, dupla de corretores ou
+            imobiliária inteira.
+          </p>
           {erro && <div className="mt-4"><Aviso tipo="erro">{erro}</Aviso></div>}
           {painel && (
             <div className="mt-6 grid gap-6 lg:grid-cols-12">
               <Cartao className="lg:col-span-7">
-                <Rotulo>Criar minha imobiliária</Rotulo>
+                <Rotulo>Criar minha equipe</Rotulo>
                 <form onSubmit={criar} className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label className="flex-1 text-sm">
-                    <span className="mb-1 block text-xs text-neutral-500">Nome da imobiliária</span>
+                    <span className="mb-1 block text-xs text-neutral-500">Nome da equipe</span>
                     <input value={nomeNova} onChange={(e) => setNomeNova(e.target.value)} maxLength={80} placeholder="Ex.: Lima Imóveis" className={campo} />
                   </label>
                   <Botao type="submit" disabled={ocupado || nomeNova.trim().length < 2}>{ocupado ? "Criando…" : "Criar"}</Botao>
                 </form>
                 <ul className="mt-4 flex flex-col gap-1.5 text-sm text-neutral-600">
-                  <li>· Você vira o dono. Seus {c.conta.creditos ?? 0} créditos passam pra imobiliária.</li>
-                  <li>· Convide a equipe por e-mail: até {PESSOAS_POR_PLANO.gratis} pessoas pra testar, {PESSOAS_POR_PLANO.equipe} no Equipe, {PESSOAS_POR_PLANO.imobiliaria} no Imobiliária.</li>
-                  <li>· Quem entra usa os créditos da imobiliária; os pessoais ficam guardados até sair.</li>
+                  <li>· Você vira o dono. Seus {c.conta.creditos ?? 0} créditos passam pra equipe.</li>
+                  <li>· Convide por e-mail: até {PESSOAS_POR_PLANO.gratis} pessoas pra testar, {PESSOAS_POR_PLANO.equipe} no plano Equipe, {PESSOAS_POR_PLANO.imobiliaria} no Imobiliária.</li>
+                  <li>· Quem entra usa os créditos da equipe; os pessoais ficam guardados até sair.</li>
                 </ul>
               </Cartao>
               <Cartao className="lg:col-span-5">
                 <Rotulo>Fui convidado</Rotulo>
                 <p className="text-sm text-neutral-600">Se alguém te convidou, é só ter entrado com o mesmo e-mail do convite: a equipe aparece aqui sozinha. Se não apareceu, confira com quem convidou qual e-mail foi usado.</p>
                 <p className="mt-3 text-sm text-neutral-600">
-                  Planos de imobiliária: <Link href="/planos#imobiliaria" className="text-marca-indigo underline">ver preços</Link>.
+                  Planos com mais de uma pessoa: <Link href="/planos#imobiliaria" className="text-marca-indigo underline">ver preços</Link>.
                 </p>
               </Cartao>
             </div>
@@ -183,8 +189,8 @@ export default function Equipe() {
                 </Link>
               )}
               {papel !== "dono" && (
-                <Botao variante="perigo" onClick={() => window.confirm("Sair da imobiliária? Você volta a usar seus créditos pessoais.") && chamar("/api/equipe/membros", json({ sair: true }, "DELETE"))} disabled={ocupado} className="text-xs">
-                  Sair da imobiliária
+                <Botao variante="perigo" onClick={() => window.confirm("Sair da equipe? Você volta a usar seus créditos pessoais.") && chamar("/api/equipe/membros", json({ sair: true }, "DELETE"))} disabled={ocupado} className="text-xs">
+                  Sair da equipe
                 </Botao>
               )}
             </div>
@@ -195,7 +201,7 @@ export default function Equipe() {
           {org.plano === "gratis" && gerencia && (
             <div className="mt-4">
               <Aviso tipo="atencao">
-                A imobiliária ainda não tem plano: dá pra montar a equipe (até {org.limite} pessoas) e usar os créditos que vieram com você. <Link href="/planos#imobiliaria" className="underline">Veja os planos Equipe e Imobiliária.</Link>
+                A equipe ainda não tem plano: dá pra montar o time (até {org.limite} pessoas) e usar os créditos que vieram com você. <Link href="/planos#imobiliaria" className="underline">Veja os planos Equipe e Imobiliária.</Link>
               </Aviso>
             </div>
           )}
@@ -273,7 +279,7 @@ export default function Equipe() {
 
             <aside className="flex flex-col gap-4 lg:col-span-5">
               <Cartao>
-                <Rotulo>Marca da imobiliária</Rotulo>
+                <Rotulo>Marca da equipe</Rotulo>
                 <p className="mb-3 text-xs text-neutral-500">Vale como padrão pra toda a equipe: quem não tiver logo ou WhatsApp próprio usa o da casa.</p>
                 <div className="flex items-center gap-4">
                   <div className="flex h-20 w-28 items-center justify-center rounded-xl border border-neutral-200 bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] bg-[length:16px_16px] p-2">
@@ -288,7 +294,7 @@ export default function Equipe() {
                 </div>
                 {gerencia ? (
                   <form onSubmit={(e) => salvarMarca(e)} className="mt-3 grid gap-2">
-                    <input value={nomeOrg} onChange={(e) => setNomeOrg(e.target.value)} maxLength={80} placeholder="Nome da imobiliária" className={campo} />
+                    <input value={nomeOrg} onChange={(e) => setNomeOrg(e.target.value)} maxLength={80} placeholder="Nome da equipe (ex.: Limiro Imóveis)" className={campo} />
                     <div className="grid grid-cols-2 gap-2">
                       <input value={creci} onChange={(e) => setCreci(e.target.value)} maxLength={30} placeholder="CRECI J" className={campo} />
                       <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} inputMode="tel" maxLength={20} placeholder="WhatsApp (DDD)" className={campo} />
@@ -307,7 +313,7 @@ export default function Equipe() {
               <Cartao>
                 <Rotulo>Como funciona</Rotulo>
                 <ul className="flex flex-col gap-1.5 text-sm text-neutral-600">
-                  <li>· Tudo que a equipe gera sai dos créditos da imobiliária.</li>
+                  <li>· Tudo que a equipe gera sai dos créditos compartilhados.</li>
                   <li>· Cada pessoa vê seus próprios imóveis, fotos e vídeos; o gestor vê o uso de todos aqui.</li>
                   <li>· Plano {rotuloDoPlano("equipe")}: 400 créditos/mês, 5 pessoas. {rotuloDoPlano("imobiliaria")}: 1.200/mês, 15 pessoas. Pacotes avulsos somam.</li>
                 </ul>

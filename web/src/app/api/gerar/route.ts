@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
   }
   if (saldoAposDebito === null) {
     await db.from("jobs").update({ status: "sem_credito" }).eq("id", job.id);
-    return NextResponse.json({ error: conta.tipo === "org" ? "A imobiliária está sem créditos." : "Sem créditos." }, { status: 402 });
+    return NextResponse.json({ error: conta.tipo === "org" ? "A equipe está sem créditos." : "Sem créditos." }, { status: 402 });
   }
 
   const caminhosEntrada: string[] = [];

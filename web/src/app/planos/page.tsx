@@ -8,7 +8,8 @@ import { OFERTAS, formatarReais, rotuloDoPlano, type Oferta, type OfertaId } fro
 import AppShell from "@/components/app-shell";
 import { Aviso, Botao, Icone } from "@/components/ui";
 
-// Planos: dois públicos, corretor e imobiliária, cada um com mensal e anual, e os
+// Planos: dois tamanhos de conta -- UMA pessoa e MAIS DE UMA -- cada um com mensal e
+// anual, e os
 // pacotes avulsos pros dois. Preço em real, crédito explicado em foto. Quem já assina
 // vê o plano atual e vai pro portal da Stripe pra trocar ou cancelar. Quem é membro de
 // imobiliária sem ser gestor só olha: quem compra é o gestor.
@@ -55,7 +56,7 @@ function CartaoOferta({ o, atual, aoEscolher, ocupado, logado, bloqueado }: { o:
 const PERGUNTAS = [
   { p: "O que é um crédito?", r: "Uma geração: uma foto editada com uma ação (mobiliar, trocar piso, remover objeto…) ou um vídeo montado. Cena animada por IA no vídeo custa 2 e narração custa 1. Se o resultado ficar ruim, você pede o crédito de volta." },
   { p: "Como funciona o anual?", r: "Você paga 10 meses e usa 12. Os créditos entram mês a mês, na mesma data, durante o ano. Cancelar não devolve os meses já pagos, mas os créditos continuam entrando até o fim do período." },
-  { p: "E a conta de imobiliária?", r: "Uma conta pra equipe: cada corretor entra com o próprio e-mail, todo mundo gasta dos créditos da imobiliária, o gestor vê o uso de cada um, e a marca da casa vai nas fotos, vídeos e links de quem não tiver a própria." },
+  { p: "Preciso ter imobiliária ou CNPJ?", r: "Não. O plano Pro é de uma pessoa só e a maioria de quem usa trabalha sozinho — basta seu e-mail. A conta de equipe existe pra quando forem mais de um: corretor com assistente, dupla de corretores ou imobiliária. Cada um entra com o próprio e-mail, todos gastam dos mesmos créditos, e quem gerencia vê o uso de cada um." },
   { p: "Os créditos expiram?", r: "Os da assinatura valem enquanto ela estiver ativa; os do pacote não expiram. Ao cancelar, o que você já tem continua valendo até acabar." },
   { p: "Posso cancelar quando quiser?", r: "Sim, com um clique em \"Gerenciar assinatura\". Sem multa e sem ligar pra ninguém." },
 ];
@@ -111,7 +112,7 @@ export default function Planos() {
       )}
 
       <section id="corretor" className="mt-8 scroll-mt-24">
-        <h2 className="text-lg font-semibold">Para o corretor</h2>
+        <h2 className="text-lg font-semibold">Você sozinho</h2>
         <p className="mt-1 text-sm text-neutral-500">Uma pessoa, seu login, sua marca.</p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
           {corretor.map((o) => (
@@ -121,9 +122,10 @@ export default function Planos() {
       </section>
 
       <section id="imobiliaria" className="mt-10 scroll-mt-24">
-        <h2 className="text-lg font-semibold">Para a imobiliária</h2>
+        <h2 className="text-lg font-semibold">Mais de uma pessoa</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          Conta de equipe: créditos compartilhados, cada corretor com seu login, marca da casa. {!org && c.user && <Link href="/equipe" className="text-marca-indigo underline">Crie sua imobiliária</Link>}
+          Corretor com assistente, dupla de corretores ou imobiliária inteira: créditos compartilhados, cada um com
+          seu login, a mesma marca em tudo. {!org && c.user && <Link href="/equipe" className="text-marca-indigo underline">Crie sua equipe</Link>}
           {!org && c.user && " antes de assinar."}
         </p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
