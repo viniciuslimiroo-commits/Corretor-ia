@@ -111,7 +111,7 @@ export default function Imoveis() {
         ) : imoveis.length === 0 ? (
           <Cartao>
             <p className="font-medium">Nenhum imóvel ainda.</p>
-            <p className="mt-1 text-sm text-neutral-600">Crie um e escolha ele no editor na hora de gerar. Ou vá direto <Link href="/" className="text-marca-indigo underline">editar uma foto</Link>: dá pra guardar no imóvel depois.</p>
+            <p className="mt-1 text-sm text-neutral-600">Crie um e escolha ele no editor na hora de gerar. Ou vá direto <Link href="/editar" className="text-marca-indigo underline">editar uma foto</Link>: dá pra guardar no imóvel depois.</p>
           </Cartao>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -135,7 +135,7 @@ export default function Lote() {
           <Icone nome="foto" className="h-4 w-4" />
           Fotos
         </span>
-        <Link href="/" className="rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100" title="Voltar pra uma foto só">uma só</Link>
+        <Link href="/editar" className="rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100" title="Voltar pra uma foto só">uma só</Link>
         <Link href="/terreno" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">
           <Icone nome="terreno" className="h-4 w-4" />
           Terreno

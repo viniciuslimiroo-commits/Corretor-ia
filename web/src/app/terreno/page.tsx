@@ -231,7 +231,7 @@ export default function Terreno() {
   return (
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <div className="mb-4 inline-flex rounded-xl border border-neutral-200 bg-white p-1 text-sm">
-        <Link href="/" className="rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">Fotos</Link>
+        <Link href="/editar" className="rounded-lg px-3 py-1.5 text-neutral-600 hover:bg-neutral-100">Fotos</Link>
         <span className="flex items-center gap-1.5 rounded-lg bg-marca-indigo/10 px-3 py-1.5 font-medium text-marca-indigo">
           <Icone nome="terreno" className="h-4 w-4" />
           Terreno

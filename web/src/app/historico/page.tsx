@@ -84,7 +84,7 @@ export default function Historico() {
             <p className="text-sm text-neutral-500">Carregando…</p>
           ) : geracoes.length === 0 ? (
             <Cartao>
-              <p className="text-sm text-neutral-600">Nada ainda. <Link href="/" className="text-marca-indigo underline">Gere sua primeira foto</Link>.</p>
+              <p className="text-sm text-neutral-600">Nada ainda. <Link href="/editar" className="text-marca-indigo underline">Gere sua primeira foto</Link>.</p>
             </Cartao>
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

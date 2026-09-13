@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data: videos } = await db
     .from("videos")
-    .select("id, titulo, formato, status, criado_em, concluido_em, duracao_segundos, thumb_path, share_token, property_id, creditos_cobrados, erro, properties(titulo)")
+    .select("id, titulo, formato, status, criado_em, concluido_em, duracao_segundos, thumb_path, share_token, property_id, creditos_cobrados, erro, properties!videos_property_id_fkey(titulo)")
     .eq("user_id", userId)
     .order("criado_em", { ascending: false })
     .limit(60);

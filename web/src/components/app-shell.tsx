@@ -42,7 +42,8 @@ export default function AppShell({
   // `soIcone` = no menu de cima entra só o ícone (com o nome no title). A barra tem
   // 1152px e o nome inteiro não cabe junto do resto; embaixo, no celular, vai completo.
   const links = [
-    { href: "/", rotulo: "Editar", icone: "foto", soIcone: false },
+    { href: "/", rotulo: "Início", icone: "casa", soIcone: false },
+    { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false },
     { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
     { href: "/equipe", rotulo: conta.org ? "Equipe" : "Imobiliária", icone: "equipe", soIcone: false },

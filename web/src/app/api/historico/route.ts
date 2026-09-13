@@ -21,10 +21,14 @@ export async function GET(req: NextRequest) {
 
   const limite = Math.min(Number(req.nextUrl.searchParams.get("limite") ?? 60), 200);
 
-  const [{ data: jobs }, { data: ledger }] = await Promise.all([
+  const [{ data: jobs, error: erroJobs }, { data: ledger }] = await Promise.all([
     db
       .from("jobs")
-      .select("id, tipo, status, parametros, output_path, criado_em, reportado_em, custo_real, avaliacao, property_id, properties(titulo)")
+      // `properties!jobs_property_id_fkey`: existem DUAS chaves entre jobs e properties
+      // (jobs.property_id e properties.capa_job_id), então "properties(...)" é ambíguo e o
+      // PostgREST devolve erro em vez de linhas. Sem nomear a chave, esta consulta falhava
+      // inteira e a tela ficava vazia em silêncio, porque o erro era engolido pelo `?? []`.
+      .select("id, tipo, status, parametros, output_path, criado_em, reportado_em, custo_real, avaliacao, property_id, properties!jobs_property_id_fkey(titulo)")
       .eq("user_id", userId)
       .order("criado_em", { ascending: false })
       .limit(limite),
@@ -35,6 +39,9 @@ export async function GET(req: NextRequest) {
       .order("criado_em", { ascending: false })
       .limit(limite * 2),
   ]);
+
+  // Falhar alto: uma consulta quebrada não pode virar "nada ainda" na tela.
+  if (erroJobs) return NextResponse.json({ error: `Erro lendo o histórico: ${erroJobs.message}` }, { status: 500 });
 
   const itens = await Promise.all(
     (jobs ?? []).map(async (j) => {
