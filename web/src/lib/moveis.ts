@@ -79,7 +79,10 @@ export const MOVEIS: DefMovel[] = [
     desenho: r(-0.5, -0.5, 1, 1, 'rx="0.1"') + r(-0.5, -0.5, 1, 0.32, 'rx="0.1"') +
       r(-0.5, -0.18, 0.16, 0.68, 'rx="0.07"') + r(0.34, -0.18, 0.16, 0.68, 'rx="0.07"') + l(0, -0.18, 0, 0.5) },
   { tipo: "sofa_l", rotulo: "Sofá em L", grupo: "sala", largura: 2.4, altura: 1.8, fundo: "#ffffff",
-    desenho: `<path d="M-0.5 -0.5 H0.5 V0.5 H0.05 V-0.05 H-0.5 Z" rx="0.05"/>` + l(-0.5, -0.2, 0.05, -0.2) + l(0.2, -0.05, 0.2, 0.5) },
+    // contorno em L, encosto nas duas costas e vinco entre os assentos
+    desenho: `<path d="M-0.5 -0.5 H0.5 V0.5 H0.06 V-0.04 H-0.5 Z"/>` +
+      `<path d="M-0.5 -0.5 H0.5 V-0.2 H-0.5 Z"/>` + `<path d="M0.5 -0.2 V0.5 H0.2 V-0.2 Z"/>` +
+      l(-0.1, -0.2, -0.1, -0.04) + l(0.2, 0.16, 0.06, 0.16) },
   { tipo: "poltrona", rotulo: "Poltrona", grupo: "sala", largura: 0.8, altura: 0.8, fundo: "#ffffff",
     desenho: r(-0.5, -0.5, 1, 1, 'rx="0.14"') + r(-0.5, -0.5, 1, 0.3, 'rx="0.14"') },
   { tipo: "mesa_centro", rotulo: "Mesa de centro", grupo: "sala", largura: 1.1, altura: 0.6, fundo: "#ffffff",
@@ -170,4 +173,91 @@ export function dentroDoMovel(p: { x: number; y: number }, m: Movel): boolean {
   const x = dx * Math.cos(rad) - dy * Math.sin(rad);
   const y = dx * Math.sin(rad) + dy * Math.cos(rad);
   return Math.abs(x) <= m.largura / 2 && Math.abs(y) <= m.altura / 2;
+}
+
+/**
+ * Encaixa o móvel na parede mais próxima: encosta as costas nela e copia o ângulo dela.
+ *
+ * É o que faz mobiliar parecer profissional sem exigir precisão do mouse -- cama, sofá e
+ * armário quase sempre vão contra a parede, e acertar isso no olho dá sempre 2 ou 3 graus
+ * de torto. Só encaixa se a parede estiver perto o bastante; longe dela, o móvel fica
+ * exatamente onde a pessoa soltou.
+ */
+export function encostarNaParede(
+  m: Movel,
+  paredes: { a: { x: number; y: number }; b: { x: number; y: number } }[],
+  tolerancia = 0.45
+): Movel {
+  let melhor: { d: number; ang: number; q: { x: number; y: number } } | null = null;
+  for (const { a, b } of paredes) {
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const comp2 = vx * vx + vy * vy;
+    if (comp2 < 1e-6) continue;
+    const t = Math.max(0, Math.min(1, ((m.p.x - a.x) * vx + (m.p.y - a.y) * vy) / comp2));
+    const q = { x: a.x + vx * t, y: a.y + vy * t };
+    const d = Math.hypot(m.p.x - q.x, m.p.y - q.y);
+    if (d > tolerancia + m.altura / 2) continue;
+    if (!melhor || d < melhor.d) melhor = { d, ang: (Math.atan2(vy, vx) * 180) / Math.PI, q };
+  }
+  if (!melhor) return m;
+
+  // gira pro ângulo da parede (múltiplo de 180 mais próximo do atual, pra não virar de ré)
+  const base = ((melhor.ang % 360) + 360) % 360;
+  const opcoes = [base, (base + 180) % 360];
+  const atual = ((m.angulo % 360) + 360) % 360;
+  const angulo = opcoes.reduce((melhorA, o) => {
+    const dif = (x: number) => Math.min(Math.abs(x - atual), 360 - Math.abs(x - atual));
+    return dif(o) < dif(melhorA) ? o : melhorA;
+  }, opcoes[0]);
+
+  // empurra o centro pra que as costas encostem na parede
+  const rad = (angulo * Math.PI) / 180;
+  const nx = -Math.sin(rad);
+  const ny = Math.cos(rad);
+  const lado = (m.p.x - melhor.q.x) * nx + (m.p.y - melhor.q.y) * ny >= 0 ? 1 : -1;
+  return { ...m, angulo, p: { x: melhor.q.x + nx * lado * (m.altura / 2), y: melhor.q.y + ny * lado * (m.altura / 2) } };
+}
+
+/**
+ * Guias de alinhamento: devolve o móvel ajustado e as linhas a desenhar.
+ *
+ * Compara o centro com o centro dos outros móveis; quando está a menos de `tol`, cola e
+ * devolve a guia. É o que existe em editor de verdade e o que impede a fileira de móveis
+ * levemente desalinhada que denuncia planta feita no olho.
+ */
+export function alinharComOutros(
+  m: Movel,
+  outros: Movel[],
+  tol = 0.12
+): { movel: Movel; guias: { eixo: "x" | "y"; valor: number }[] } {
+  const guias: { eixo: "x" | "y"; valor: number }[] = [];
+  let { x, y } = m.p;
+  let dx = tol;
+  let dy = tol;
+  for (const o of outros) {
+    if (o.id === m.id) continue;
+    if (Math.abs(o.p.x - m.p.x) < dx) {
+      dx = Math.abs(o.p.x - m.p.x);
+      x = o.p.x;
+    }
+    if (Math.abs(o.p.y - m.p.y) < dy) {
+      dy = Math.abs(o.p.y - m.p.y);
+      y = o.p.y;
+    }
+  }
+  if (x !== m.p.x) guias.push({ eixo: "x", valor: x });
+  if (y !== m.p.y) guias.push({ eixo: "y", valor: y });
+  return { movel: { ...m, p: { x, y } }, guias };
+}
+
+/** Todas as paredes da planta como pares de pontos, pro encaixe. */
+export function paredesDe(comodos: { pontos: { x: number; y: number }[] }[]) {
+  const paredes: { a: { x: number; y: number }; b: { x: number; y: number } }[] = [];
+  for (const c of comodos) {
+    for (let i = 0; i < c.pontos.length; i++) {
+      paredes.push({ a: c.pontos[i], b: c.pontos[(i + 1) % c.pontos.length] });
+    }
+  }
+  return paredes;
 }

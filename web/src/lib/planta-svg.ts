@@ -1,4 +1,5 @@
 import { area, centro, distancia, limites, metros, metrosQuadrados, type Planta } from "./planta";
+import { MOVEL_POR_TIPO } from "./moveis";
 
 // Desenho da planta em SVG. Uma função só, usada nos dois lados: a tela mostra o SVG
 // direto e o servidor converte o MESMO SVG em PNG com o sharp. O que a pessoa vê é
@@ -77,6 +78,26 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
   for (const c of planta.comodos) {
     const d = c.pontos.map((p, i) => `${i === 0 ? "M" : "L"}${px(p.x)},${py(p.y)}`).join(" ") + " Z";
     partes.push(`<path d="${d}" fill="${c.cor ?? "#dbeafe"}" fill-opacity="0.85" stroke="#0f2d5b" stroke-width="${parede}" stroke-linejoin="miter"/>`);
+  }
+
+  // ---- móveis ----
+  // Entram depois dos cômodos (ficam sobre o piso) e antes das aberturas (porta e janela
+  // continuam por cima, que é a leitura certa de uma planta). O símbolo é desenhado numa
+  // caixa unitária e escalado aqui pela medida real -- por isso o `scale` não uniforme.
+  for (const m of planta.moveis ?? []) {
+    const def = MOVEL_POR_TIPO[m.tipo];
+    if (!def) continue;
+    const cx = Number(px(m.p.x));
+    const cy = Number(py(m.p.y));
+    const sx = m.largura * escala;
+    const sy = m.altura * escala;
+    // traço fino e constante: sem o inverso da escala, um móvel largo sai com traço grosso
+    const traco = Math.max(0.9, escala * 0.022);
+    partes.push(
+      `<g transform="translate(${cx} ${cy}) rotate(${m.angulo}) scale(${sx} ${sy})" ` +
+        `fill="${def.fundo ?? "none"}" stroke="#42566f" stroke-width="${traco / Math.min(sx, sy)}" ` +
+        `stroke-linejoin="round" vector-effect="non-scaling-stroke">${def.desenho}</g>`
+    );
   }
 
   // ---- aberturas: apagam o trecho da parede e desenham o símbolo ----

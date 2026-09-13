@@ -13,6 +13,7 @@ import {
   area,
   areaTotal,
   distancia,
+  encaixar,
   grudarNoDesenho,
   limites,
   metros,
@@ -25,6 +26,18 @@ import {
   type Planta,
   type Ponto,
 } from "@/lib/planta";
+import {
+  GRUPOS_MOVEL,
+  MOVEIS,
+  MOVEL_POR_TIPO,
+  alinharComOutros,
+  dentroDoMovel,
+  encostarNaParede,
+  paredesDe,
+  type DefMovel,
+  type Movel,
+  type TipoMovel,
+} from "@/lib/moveis";
 import { plantaParaSvg } from "@/lib/planta-svg";
 import { ESTILOS } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
@@ -44,7 +57,13 @@ import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 // A prévia e a camada de toque usam a MESMA janela (`vista`), passada pro plantaParaSvg.
 // Sem isso o SVG se centraliza sozinho dentro da caixa e o ponto não cai onde se tocou.
 
-type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "mover" | "apagar";
+type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "movel" | "mover" | "apagar";
+
+/** O que o ponteiro está fazendo com um móvel. */
+type Manuseio =
+  | { modo: "arrastar"; id: string; dx: number; dy: number }
+  | { modo: "girar"; id: string }
+  | { modo: "redimensionar"; id: string; larg0: number; alt0: number; d0: number };
 
 /** A caixa de desenho tem proporção fixa: assim o zoom não muda o formato dela. */
 const PROPORCAO = 4 / 3;
@@ -120,6 +139,11 @@ export default function PaginaPlanta() {
   const [pan, setPan] = useState<{ telaX: number; telaY: number; x0: number; y0: number } | null>(null);
   const [cantoRetangulo, setCantoRetangulo] = useState<Ponto | null>(null);
   const [estiloIa, setEstiloIa] = useState(ESTILOS[0].valor);
+  const [tipoMovel, setTipoMovel] = useState<TipoMovel>("cama_casal");
+  const [grupoMovel, setGrupoMovel] = useState<DefMovel["grupo"]>("sala");
+  const [selMovel, setSelMovel] = useState<string | null>(null);
+  const [manuseio, setManuseio] = useState<Manuseio | null>(null);
+  const [guias, setGuias] = useState<{ eixo: "x" | "y"; valor: number }[]>([]);
   const [decorando, setDecorando] = useState<"humanizada" | "maquete" | null>(null);
   const [decorado, setDecorado] = useState<{ jobId: string; url: string } | null>(null);
 
@@ -278,7 +302,55 @@ export default function PaginaPlanta() {
     setResultado(null);
   }
 
+  const movelSelecionado = planta.moveis.find((m) => m.id === selMovel) ?? null;
+
+  function porMovel(id: string, muda: (m: Movel) => Movel) {
+    setPlanta((pl) => ({ ...pl, moveis: pl.moveis.map((m) => (m.id === id ? muda(m) : m)) }), `movel:${id}`);
+    setResultado(null);
+  }
+
+  function colocarMovel(p: Ponto) {
+    const def = MOVEL_POR_TIPO[tipoMovel];
+    const novo: Movel = { id: novoId("mv"), tipo: def.tipo, p, largura: def.largura, altura: def.altura, angulo: 0 };
+    const encostado = encostarNaParede(novo, paredesDe(planta.comodos));
+    setPlanta((pl) => ({ ...pl, moveis: [...pl.moveis, encostado] }));
+    setSelMovel(encostado.id);
+    setResultado(null);
+  }
+
+  /** Só pega móvel destravado, do mais recente pro mais antigo (o de cima ganha). */
+  function movelEm(p: Ponto): Movel | null {
+    return [...planta.moveis].reverse().find((m) => !m.travado && dentroDoMovel(p, m)) ?? null;
+  }
+
+  function duplicarMovel() {
+    if (!movelSelecionado) return;
+    const copia: Movel = { ...movelSelecionado, id: novoId("mv"), p: { x: movelSelecionado.p.x + 0.4, y: movelSelecionado.p.y + 0.4 } };
+    setPlanta((pl) => ({ ...pl, moveis: [...pl.moveis, copia] }));
+    setSelMovel(copia.id);
+  }
+
+  function apagarMovel(id: string) {
+    setPlanta((pl) => ({ ...pl, moveis: pl.moveis.filter((m) => m.id !== id) }));
+    setSelMovel(null);
+    setResultado(null);
+  }
+
   function aoApertar(e: ReactPointerEvent) {
+    if (ferramenta === "movel") {
+      const cru = posicao(e);
+      if (!cru) return;
+      const alvo = movelEm(cru);
+      if (alvo) {
+        // pegou um que já existe: arrasta. Guarda a diferença pro móvel não pular pro cursor.
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setSelMovel(alvo.id);
+        setManuseio({ modo: "arrastar", id: alvo.id, dx: alvo.p.x - cru.x, dy: alvo.p.y - cru.y });
+        return;
+      }
+      colocarMovel(encaixar(cru, planta.passo / 2));
+      return;
+    }
     if (ferramenta === "mover") {
       e.currentTarget.setPointerCapture(e.pointerId);
       setPan({ telaX: e.clientX, telaY: e.clientY, x0: vista.x0, y0: vista.y0 });
@@ -293,6 +365,33 @@ export default function PaginaPlanta() {
   }
 
   function aoMover(e: ReactPointerEvent) {
+    if (manuseio) {
+      const cru = posicao(e);
+      if (!cru) return;
+      const alvo = planta.moveis.find((m) => m.id === manuseio.id);
+      if (!alvo) return;
+      if (manuseio.modo === "arrastar") {
+        const solto: Movel = { ...alvo, p: { x: cru.x + manuseio.dx, y: cru.y + manuseio.dy } };
+        const encostado = encostarNaParede(solto, paredesDe(planta.comodos));
+        const { movel, guias: g } = alinharComOutros(encostado, planta.moveis);
+        setGuias(g);
+        porMovel(alvo.id, () => movel);
+      } else if (manuseio.modo === "girar") {
+        const bruto = (Math.atan2(cru.y - alvo.p.y, cru.x - alvo.p.x) * 180) / Math.PI + 90;
+        // Shift solta o passo de 15°, pra dar ajuste fino
+        const ang = e.shiftKey ? bruto : Math.round(bruto / 15) * 15;
+        porMovel(alvo.id, (m) => ({ ...m, angulo: ((ang % 360) + 360) % 360 }));
+      } else {
+        const d = Math.hypot(cru.x - alvo.p.x, cru.y - alvo.p.y);
+        const f = Math.max(0.25, Math.min(4, d / Math.max(0.05, manuseio.d0)));
+        porMovel(alvo.id, (m) => ({
+          ...m,
+          largura: Math.round(manuseio.larg0 * f * 20) / 20,
+          altura: Math.round(manuseio.alt0 * f * 20) / 20,
+        }));
+      }
+      return;
+    }
     if (pan) {
       const r = caixa.current?.getBoundingClientRect();
       if (!r) return;
@@ -308,6 +407,11 @@ export default function PaginaPlanta() {
   }
 
   function aoSoltar(e: ReactPointerEvent) {
+    if (manuseio) {
+      setManuseio(null);
+      setGuias([]);
+      return;
+    }
     if (pan) return setPan(null);
     if (ferramenta === "retangulo" && cantoRetangulo) {
       const fim = pontoDeTrabalho(e);
@@ -401,7 +505,35 @@ export default function PaginaPlanta() {
     function tecla(e: KeyboardEvent) {
       const alvo = e.target as HTMLElement | null;
       if (alvo && /^(INPUT|TEXTAREA)$/.test(alvo.tagName)) return; // não sequestrar a digitação
-      if (e.key === "Escape") setRascunho([]);
+      // Atalhos do móvel selecionado: setas movem, R gira, Delete apaga, Ctrl+D duplica.
+      if (selMovel && ferramenta === "movel") {
+        const passoSeta = e.shiftKey ? 0.05 : planta.passo / 2;
+        const setas: Record<string, [number, number]> = {
+          ArrowLeft: [-passoSeta, 0], ArrowRight: [passoSeta, 0], ArrowUp: [0, -passoSeta], ArrowDown: [0, passoSeta],
+        };
+        if (setas[e.key]) {
+          e.preventDefault();
+          const [ax, ay] = setas[e.key];
+          return porMovel(selMovel, (m) => ({ ...m, p: { x: m.p.x + ax, y: m.p.y + ay } }));
+        }
+        if (e.key.toLowerCase() === "r") {
+          e.preventDefault();
+          return porMovel(selMovel, (m) => ({ ...m, angulo: (m.angulo + (e.shiftKey ? -15 : 15) + 360) % 360 }));
+        }
+        if (e.key === "Delete") {
+          e.preventDefault();
+          return apagarMovel(selMovel);
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+          e.preventDefault();
+          return duplicarMovel();
+        }
+      }
+      if (e.key === "Escape") {
+        setSelMovel(null);
+        setRascunho([]);
+        return;
+      }
       if (e.key === "Enter" && rascunho.length >= 3) fecharComodo();
       const cmd = e.ctrlKey || e.metaKey;
       if ((cmd && e.key.toLowerCase() === "z" && e.shiftKey) || (cmd && e.key.toLowerCase() === "y")) {
@@ -463,6 +595,7 @@ export default function PaginaPlanta() {
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Chip ativo={ferramenta === "retangulo"} onClick={() => setFerramenta("retangulo")}>Retângulo</Chip>
               <Chip ativo={ferramenta === "comodo"} onClick={() => setFerramenta("comodo")}>Cômodo livre</Chip>
+              <Chip ativo={ferramenta === "movel"} onClick={() => setFerramenta("movel")}>Móveis</Chip>
               <Chip ativo={ferramenta === "porta"} onClick={() => setFerramenta("porta")}>Porta</Chip>
               <Chip ativo={ferramenta === "janela"} onClick={() => setFerramenta("janela")}>Janela</Chip>
               <Chip ativo={ferramenta === "mover"} onClick={() => setFerramenta("mover")}>Mover</Chip>
@@ -476,6 +609,7 @@ export default function PaginaPlanta() {
 
             <div
               ref={caixa}
+              data-caixa=""
               className="relative w-full overflow-hidden rounded-xl border border-neutral-200 bg-white"
               style={{
                 aspectRatio: `${svgLargura} / ${svgAltura}`,
@@ -499,6 +633,13 @@ export default function PaginaPlanta() {
                 )}
                 {rascunho.length >= 1 && cursor && ferramenta === "comodo" && (
                   <line x1={px(rascunho[rascunho.length - 1].x)} y1={py(rascunho[rascunho.length - 1].y)} x2={px(cursor.x)} y2={py(cursor.y)} stroke="#f06b4f" strokeWidth={2} strokeDasharray="6 4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                )}
+                {guias.map((g, i) =>
+                  g.eixo === "x" ? (
+                    <line key={"gx" + i} x1={px(g.valor)} y1={0} x2={px(g.valor)} y2={100} stroke="#f06b4f" strokeWidth={1} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                  ) : (
+                    <line key={"gy" + i} x1={0} y1={py(g.valor)} x2={100} y2={py(g.valor)} stroke="#f06b4f" strokeWidth={1} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                  )
                 )}
                 {cantoRetangulo && cursor && (
                   <rect
@@ -531,6 +672,62 @@ export default function PaginaPlanta() {
                   {metros(distancia(rascunho[rascunho.length - 1], cursor))}
                 </span>
               )}
+              {/* Alças do móvel selecionado. Em HTML e não no SVG: o alvo de toque fica do
+                  tamanho certo pro dedo sem depender da escala do desenho. */}
+              {ferramenta === "movel" && movelSelecionado && (() => {
+                const m = movelSelecionado;
+                const rad = (m.angulo * Math.PI) / 180;
+                // ponta de cima (girar) e canto inferior direito (redimensionar), já girados
+                const giroP = { x: m.p.x + Math.sin(rad) * (m.altura / 2 + 0.45), y: m.p.y - Math.cos(rad) * (m.altura / 2 + 0.45) };
+                const cantoP = {
+                  x: m.p.x + (m.largura / 2) * Math.cos(rad) - (m.altura / 2) * Math.sin(rad),
+                  y: m.p.y + (m.largura / 2) * Math.sin(rad) + (m.altura / 2) * Math.cos(rad),
+                };
+                // A caixa vem do próprio evento (data-caixa), não do ref: ler ref aqui é
+                // durante a renderização, que o lint proíbe -- e com razão, porque esta
+                // função é criada a cada render.
+                const pegar = (modo: "girar" | "redimensionar") => (e: ReactPointerEvent) => {
+                  e.stopPropagation();
+                  const el = e.currentTarget as HTMLElement;
+                  el.setPointerCapture(e.pointerId);
+                  const cx = el.closest<HTMLElement>("[data-caixa]");
+                  let d0 = 1;
+                  if (cx) {
+                    const r = cx.getBoundingClientRect();
+                    const mx = ((e.clientX - r.left) / r.width) * vista.largura + vista.x0;
+                    const my = ((e.clientY - r.top) / r.height) * vista.altura + vista.y0;
+                    d0 = Math.max(0.05, Math.hypot(mx - m.p.x, my - m.p.y));
+                  }
+                  setManuseio(
+                    modo === "girar" ? { modo, id: m.id } : { modo, id: m.id, larg0: m.largura, alt0: m.altura, d0 }
+                  );
+                };
+                return (
+                  <>
+                    <button
+                      onPointerDown={pegar("girar")}
+                      title="Girar (segure Shift pra ajuste fino)"
+                      className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-2 border-marca-coral bg-white text-marca-coral shadow"
+                      style={{ left: `${px(giroP.x)}%`, top: `${py(giroP.y)}%`, touchAction: "none" }}
+                    >
+                      <Icone nome="tour360" className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onPointerDown={pegar("redimensionar")}
+                      title="Redimensionar"
+                      className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize rounded-sm border-2 border-marca-coral bg-white shadow"
+                      style={{ left: `${px(cantoP.x)}%`, top: `${py(cantoP.y)}%`, touchAction: "none" }}
+                    />
+                    <span
+                      className="pointer-events-none absolute -translate-x-1/2 translate-y-2 whitespace-nowrap rounded bg-marca-indigo px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                      style={{ left: `${px(m.p.x)}%`, top: `${py(m.p.y + m.altura / 2)}%` }}
+                    >
+                      {metros(m.largura)} × {metros(m.altura)}
+                    </span>
+                  </>
+                );
+              })()}
+
               {planta.comodos.map((cm) => {
                 const m = cm.pontos.reduce((s, p) => ({ x: s.x + p.x / cm.pontos.length, y: s.y + p.y / cm.pontos.length }), { x: 0, y: 0 });
                 return (
@@ -557,7 +754,11 @@ export default function PaginaPlanta() {
                     ? rascunho.length === 0
                       ? "Toque em cada canto. O ponto gruda primeiro num canto ou parede que já existe, depois na grade."
                       : `${rascunho.length} ${rascunho.length === 1 ? "canto" : "cantos"}. Toque no primeiro canto de novo, ou em "fechar cômodo".`
-                    : ferramenta === "mover"
+                    : ferramenta === "movel"
+                    ? movelSelecionado
+                      ? "Arraste pra mover. A alça de cima gira (Shift solta o passo de 15°), a do canto redimensiona. Delete apaga."
+                      : "Escolha o móvel ao lado e toque na planta. Ele encosta na parede sozinho."
+                  : ferramenta === "mover"
                       ? "Arraste pra andar pela planta. Use − e + pra afastar e aproximar."
                       : ferramenta === "apagar"
                         ? "Toque numa porta, janela ou dentro de um cômodo pra apagar."
@@ -669,6 +870,64 @@ export default function PaginaPlanta() {
           )}
 
           {/* ---- decorar a planta com IA ---- */}
+          {ferramenta === "movel" && (
+            <Cartao>
+              <Rotulo>Móveis · sem crédito</Rotulo>
+              <div className="flex flex-wrap gap-1.5">
+                {GRUPOS_MOVEL.map((g) => (
+                  <Chip key={g.id} ativo={grupoMovel === g.id} onClick={() => setGrupoMovel(g.id)}>{g.rotulo}</Chip>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {MOVEIS.filter((d) => d.grupo === grupoMovel).map((d) => (
+                  <button
+                    key={d.tipo}
+                    type="button"
+                    onClick={() => {
+                      setTipoMovel(d.tipo);
+                      setFerramenta("movel");
+                    }}
+                    title={`${d.rotulo} · ${d.largura} × ${d.altura} m`}
+                    className={
+                      "flex flex-col items-center gap-1 rounded-xl border p-2 text-center transition " +
+                      (tipoMovel === d.tipo ? "border-marca-indigo bg-marca-indigo/5" : "border-neutral-200 hover:border-neutral-400")
+                    }
+                  >
+                    <svg viewBox="-0.6 -0.6 1.2 1.2" className="h-9 w-9" fill="none" stroke="#42566f" strokeWidth={0.05} strokeLinejoin="round">
+                      <g
+                        transform={`scale(${Math.min(1, d.largura / Math.max(d.largura, d.altura))} ${Math.min(1, d.altura / Math.max(d.largura, d.altura))})`}
+                        dangerouslySetInnerHTML={{ __html: d.desenho }}
+                      />
+                    </svg>
+                    <span className="text-[10px] leading-tight text-neutral-600">{d.rotulo}</span>
+                  </button>
+                ))}
+              </div>
+
+              {movelSelecionado && (
+                <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                  <p className="text-xs font-semibold text-neutral-700">
+                    {MOVEL_POR_TIPO[movelSelecionado.tipo]?.rotulo} · {metros(movelSelecionado.largura)} × {metros(movelSelecionado.altura)} · {Math.round(movelSelecionado.angulo)}°
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Chip ativo={false} onClick={() => porMovel(movelSelecionado.id, (m) => ({ ...m, angulo: (m.angulo + 90) % 360 }))}>girar 90°</Chip>
+                    <Chip ativo={false} onClick={duplicarMovel}>duplicar</Chip>
+                    <Chip
+                      ativo={!!movelSelecionado.travado}
+                      onClick={() => porMovel(movelSelecionado.id, (m) => ({ ...m, travado: !m.travado }))}
+                    >
+                      {movelSelecionado.travado ? "travado" : "travar"}
+                    </Chip>
+                    <Chip ativo={false} onClick={() => apagarMovel(movelSelecionado.id)}>apagar</Chip>
+                  </div>
+                  <p className="mt-2 text-[11px] text-neutral-500">
+                    Atalhos: setas movem, R gira, Delete apaga, Ctrl+D duplica.
+                  </p>
+                </div>
+              )}
+            </Cartao>
+          )}
+
           <Cartao>
             <Rotulo>Decorar com IA · 1 crédito</Rotulo>
             <p className="text-sm text-neutral-500">
