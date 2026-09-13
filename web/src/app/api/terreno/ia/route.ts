@@ -4,7 +4,7 @@ import { usuarioDaRota } from "@/lib/auth-rota";
 import { caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
 import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
-import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE } from "@/lib/terreno-ia";
+import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, type Referencia } from "@/lib/terreno-ia";
 
 // Terreno com IA: limpar o mato, terraplanar, murar, construir a casa que a pessoa quer,
 // ou pedir por texto. Uma imagem de IA, 1 crédito -- as linhas e medidas do lote continuam
@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
   }
 
   const referencia = acao.aceitaReferencia ? (form.get("referencia") as File | null) : null;
+  // o que a segunda imagem é muda o prompt: casa parecida (copia o jeitão) x planta (constrói aquela casa)
+  const tipoReferencia: Referencia = String(form.get("tipoReferencia") ?? "") === "planta" ? "planta" : "casa";
 
   let bytesFoto: Buffer;
   try {
@@ -119,7 +121,7 @@ export async function POST(req: NextRequest) {
     }
 
     const modelo = "fal-ai/nano-banana/edit" as const;
-    const prompt = acao.prompt(parametros, !!urlReferencia);
+    const prompt = acao.prompt(parametros, urlReferencia ? tipoReferencia : "nenhuma");
     const despacho = await despachar(modelo, corpoRequisicao(modelo, { prompt, imagemUrl: urlFoto, referenciaUrl: urlReferencia }), falKey);
 
     await db

@@ -4,6 +4,24 @@
 // Cada ação aqui é UMA imagem de IA e custa 1 crédito. As linhas e medidas do lote
 // continuam sendo desenho exato, de graça, na mesma tela -- exato é exato, ilustração é
 // ilustração, e cada uma sai com o selo que lhe cabe.
+//
+// A LISTA É CURTA DE PROPÓSITO. Preset não é capacidade -- o texto livre já faz qualquer
+// coisa. O que um preset entrega é um prompt testado (com as restrições que ninguém
+// digita: manter o relevo, manter as árvores, não construir) mais o selo correto. Preset
+// que não tem restrição sutil pra proteger é só um botão a mais cobrando um crédito.
+// Foi por isso que "terraplanagem" e "murar" saíram: nicho, e o texto livre cobre.
+
+/**
+ * O que a segunda imagem É. Muda o prompt inteiro: com a FOTO de uma casa parecida a IA
+ * copia o jeitão; com a PLANTA da casa ela constrói aquela casa, seguindo os cômodos e a
+ * silhueta. Perguntar é mais barato e mais confiável que adivinhar com um modelo de visão.
+ */
+export type Referencia = "nenhuma" | "casa" | "planta";
+
+export const TIPOS_REFERENCIA = [
+  { valor: "casa", rotulo: "Foto de uma casa parecida" },
+  { valor: "planta", rotulo: "Planta da casa" },
+];
 
 export type CampoTerreno = {
   chave: string;
@@ -21,7 +39,7 @@ export type AcaoTerreno = {
   campos?: CampoTerreno[];
   /** Só a construção aceita foto de referência (uma casa parecida com a que a pessoa quer). */
   aceitaReferencia?: boolean;
-  prompt: (p: Record<string, string>, temReferencia: boolean) => string;
+  prompt: (p: Record<string, string>, referencia: Referencia) => string;
 };
 
 // Trecho repetido em toda ação: o que NÃO pode mudar. Sem isto o modelo troca o céu,
@@ -84,30 +102,6 @@ export const ACOES_TERRENO: AcaoTerreno[] = [
       ` Keep the exact same camera angle, horizon line, perspective and framing as the original photograph.`,
   },
   {
-    id: "terraplanar",
-    rotulo: "Terraplanagem",
-    descricao: "Mostra o lote nivelado, terra batida, pronto pra obra.",
-    selo: "Imagem ilustrativa · terraplanagem simulada",
-    prompt: () =>
-      `Show this same piece of land after earthmoving and grading: a flat, level, compacted bare-earth building pad, with clean graded soil and tidy edges.` +
-      ` Remove the vegetation on the plot itself. Keep the surrounding landscape, the trees at the edges and the general terrain level.` +
-      ` Do not add any building, machine, wall or fence.` +
-      MANTER +
-      ` Keep the exact same camera angle, horizon line, perspective and framing as the original photograph.`,
-  },
-  {
-    id: "murar",
-    rotulo: "Murar o terreno",
-    descricao: "Fecha o lote com muro e portão.",
-    selo: "Imagem ilustrativa · muro simulado",
-    prompt: () =>
-      `Add a realistic perimeter wall with an entrance gate around this plot of land, following the natural boundaries and the slope of the terrain.` +
-      ` Plain rendered masonry wall, around 2 metres tall, in a neutral colour, with a simple metal gate facing the street.` +
-      ` Keep the land inside tidy. Do not add a house or any other building.` +
-      MANTER +
-      ` Keep the exact same camera angle, horizon line, perspective and framing as the original photograph.`,
-  },
-  {
     id: "construir",
     rotulo: "Construir a casa",
     descricao: "Coloca no lote a casa que a pessoa descrever. Pode mandar a foto de uma casa parecida.",
@@ -118,7 +112,7 @@ export const ACOES_TERRENO: AcaoTerreno[] = [
       { chave: "estilo", rotulo: "Estilo", opcoes: ESTILOS_CASA, padrao: "moderna" },
       { chave: "enquadramento", rotulo: "Enquadramento", opcoes: ENQUADRAMENTOS, padrao: "aerea" },
     ],
-    prompt: (p, temReferencia) => {
+    prompt: (p, referencia) => {
       const extras = (p.extras ?? "")
         .split(",")
         .map((v) => EXTRAS_CASA.find((e) => e.valor === v.trim())?.en)
@@ -127,9 +121,11 @@ export const ACOES_TERRENO: AcaoTerreno[] = [
         `Build a house standing on the empty land in the FIRST image: a ${rot(TIPOS_CASA, p.tipo, TIPOS_CASA[0].en)},` +
         ` ${rot(ESTILOS_CASA, p.estilo, ESTILOS_CASA[0].en)}.` +
         (extras.length ? ` Include ${extras.join(", ")}.` : "") +
-        (temReferencia
-          ? ` Use the SECOND image only as a style reference for the architecture, materials and colours -- do not copy its surroundings, its terrain or its background, and do not reproduce it identically.`
-          : "") +
+        (referencia === "casa"
+          ? ` Use the SECOND image as the reference for the architecture: same overall look, roof type, materials, proportions and colours. Do not copy its surroundings, its terrain, its neighbours or its background -- only the house itself.`
+          : referencia === "planta"
+            ? ` The SECOND image is the FLOOR PLAN of the house to be built. Follow it: the same footprint shape, the same number and arrangement of rooms, the same proportions and the same window and door positions, turned into a real three-dimensional house. Do not copy the drawing itself into the photo.`
+            : "") +
         ` The house must sit ON the ground, level with the terrain, at a believable size compared to the neighbouring buildings and the vegetation.` +
         (p.enquadramento === "manter"
           ? ` DO NOT move the camera. Keep the exact same viewpoint, eye level, framing and focal length as the original photograph, even if that means the house is seen from the street and is partly hidden by the terrain or the vegetation in the foreground. Never switch to an aerial or drone view.`
@@ -151,9 +147,13 @@ ACOES_TERRENO.push({
   descricao: "Escreva o que quer ver no terreno. Ex.: “põe um galpão de 200 m² e cascalho na entrada”.",
   selo: "Imagem ilustrativa · editada digitalmente",
   aceitaReferencia: true,
-  prompt: (p, temReferencia) =>
+  prompt: (p, referencia) =>
     `Edit the FIRST image, a photo of a plot of land, according to this request from the owner: "${p.texto ?? ""}".` +
-    (temReferencia ? ` Use the SECOND image only as a style reference, never copying its surroundings or background.` : "") +
+    (referencia === "planta"
+      ? ` The SECOND image is a floor plan: follow its footprint and room layout for anything you build.`
+      : referencia === "casa"
+        ? ` Use the SECOND image as the reference for the architecture only, never copying its surroundings or background.`
+        : "") +
     ` Anything the request does not mention must stay exactly as it is in the photo.` +
     ` Whatever you add must sit on the ground with correct scale, perspective and shadow direction.` +
     MANTER +

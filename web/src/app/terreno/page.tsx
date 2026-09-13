@@ -8,7 +8,7 @@ import Dropzone from "@/components/dropzone";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
-import { ACAO_TERRENO_POR_ID, ACOES_TERRENO, EXTRAS_CASA, LIMITE_TEXTO_LIVRE } from "@/lib/terreno-ia";
+import { ACAO_TERRENO_POR_ID, ACOES_TERRENO, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, TIPOS_REFERENCIA } from "@/lib/terreno-ia";
 
 // Terreno com medidas. A pessoa toca nos cantos do lote na foto, digita os metros de
 // cada lado e a área, e o desenho sai por cima da foto -- na hora, na tela, e depois
@@ -79,12 +79,27 @@ export default function Terreno() {
   const [extras, setExtras] = useState<string[]>(["jardim"]);
   const [textoIa, setTextoIa] = useState("");
   const [referencia, setReferencia] = useState<File | null>(null);
+  const [tipoReferencia, setTipoReferencia] = useState(TIPOS_REFERENCIA[0].valor);
+  const [previewRef, setPreviewRef] = useState<string | null>(null);
   const [gerandoIa, setGerandoIa] = useState(false);
   const [resultadoIa, setResultadoIa] = useState<{ jobId: string; url: string } | null>(null);
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
   }, [preview]);
+
+  // Miniatura da referência. Criada no manipulador do clique, não num efeito: efeito que
+  // chama setState em cascata é justamente o que o lint proíbe, e aqui não precisa.
+  const urlRef = useRef<string | null>(null);
+  function escolherReferencia(f: File | null) {
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    urlRef.current = f ? URL.createObjectURL(f) : null;
+    setReferencia(f);
+    setPreviewRef(urlRef.current);
+  }
+  useEffect(() => () => {
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+  }, []);
 
   // Mede a caixa pra desenhar na tela a mesma espessura relativa que o servidor grava.
   // O ResizeObserver já dispara uma vez ao observar, então não precisa medir aqui dentro.
@@ -147,7 +162,10 @@ export default function Terreno() {
       f.append("texto", textoIa);
       f.append("extras", extras.join(","));
       for (const campo of acaoTerreno.campos ?? []) f.append(campo.chave, camposIa[campo.chave] ?? campo.padrao);
-      if (referencia) f.append("referencia", referencia);
+      if (referencia) {
+        f.append("referencia", referencia);
+        f.append("tipoReferencia", tipoReferencia);
+      }
       if (imovelId) f.append("imovelId", imovelId);
       const r = await fetch("/api/terreno/ia", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: f });
       const d = await r.json();
@@ -441,19 +459,53 @@ export default function Terreno() {
               )}
 
               {acaoTerreno.aceitaReferencia && (
-                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-neutral-600">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setReferencia(e.target.files?.[0] ?? null)}
-                    className="block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-1.5 file:text-xs file:text-neutral-700"
-                  />
-                </label>
-              )}
-              {acaoTerreno.aceitaReferencia && (
-                <p className="mt-1 text-xs text-neutral-400">
-                  {referencia ? `Referência: ${referencia.name}` : "Opcional: foto de uma casa parecida com a que você quer."}
-                </p>
+                <div className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50/60 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Espelhar em algo · opcional</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {TIPOS_REFERENCIA.map((t) => (
+                      <Chip key={t.valor} ativo={tipoReferencia === t.valor} onClick={() => setTipoReferencia(t.valor)}>
+                        {t.rotulo}
+                      </Chip>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-neutral-500">
+                    {tipoReferencia === "planta"
+                      ? "Mande a planta e a IA constrói aquela casa: mesmo formato, mesmos cômodos."
+                      : "Mande a foto de uma casa parecida e a IA copia o jeitão dela — telhado, materiais e cor."}
+                  </p>
+
+                  <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 bg-white p-2 hover:border-marca-indigo">
+                    {previewRef ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={previewRef} alt="" className="h-16 w-16 shrink-0 rounded-md object-cover" />
+                    ) : (
+                      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-marca-pessego text-marca-indigo">
+                        <Icone nome={tipoReferencia === "planta" ? "planta" : "foto"} className="h-6 w-6" />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 text-sm">
+                      <span className="block font-medium text-neutral-800">
+                        {referencia ? "Trocar imagem" : tipoReferencia === "planta" ? "Escolher a planta" : "Escolher a foto"}
+                      </span>
+                      <span className="block truncate text-xs text-neutral-500">
+                        {referencia ? referencia.name : "JPG ou PNG. Foto do celular ou print serve."}
+                      </span>
+                    </span>
+                    {referencia && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          escolherReferencia(null);
+                        }}
+                        className="shrink-0 rounded-md px-2 py-1 text-xs text-neutral-400 hover:text-red-600"
+                      >
+                        tirar
+                      </button>
+                    )}
+                    <input type="file" accept="image/*" onChange={(e) => escolherReferencia(e.target.files?.[0] ?? null)} className="hidden" />
+                  </label>
+                </div>
               )}
 
               <Botao onClick={gerarIa} disabled={!!gerandoIa || (acaoIa === "livre" && textoIa.trim().length < 3)} className="mt-3 w-full py-2.5">
