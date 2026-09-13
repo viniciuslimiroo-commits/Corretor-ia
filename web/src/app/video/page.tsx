@@ -601,9 +601,11 @@ export default function PaginaVideo() {
               <Icone nome={ajustesAbertos ? "cima" : "baixo"} className="h-4 w-4 shrink-0 text-neutral-400" />
             </button>
           </Cartao>
-        </aside>
 
-        <aside className={"flex-col gap-4 lg:col-span-5 lg:col-start-8 " + (ajustesAbertos ? "flex" : "hidden")}>
+          {/* Conteúdo dos ajustes: FILHO da mesma coluna, não outro item da grade -- como
+              item separado ele caía na linha de baixo e abria um buraco que crescia junto
+              com a coluna da esquerda. */}
+          <div className={"flex-col gap-4 " + (ajustesAbertos ? "flex" : "hidden")}>
           <Cartao>
             <Rotulo>Formato</Rotulo>
             <div className="grid grid-cols-2 gap-2">
@@ -675,6 +677,8 @@ export default function PaginaVideo() {
               </div>
             )}
           </Cartao>
+
+          </div>
 
           <Cartao>
             <Rotulo>Seus vídeos</Rotulo>

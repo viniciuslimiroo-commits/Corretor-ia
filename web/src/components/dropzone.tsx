@@ -9,27 +9,34 @@ import { Icone } from "./ui";
 
 export default function Dropzone({
   onArquivo,
+  onArquivos,
   compacto = false,
   rotulo = "Escolher foto do imóvel",
+  dica = "Arraste aqui ou clique. JPG ou PNG, foto do celular serve.",
 }: {
   onArquivo: (f: File) => void;
+  /** Recebe TODAS as fotos quando vem mais de uma. Sem isto, só a primeira entra. */
+  onArquivos?: (fs: File[]) => void;
   compacto?: boolean;
   rotulo?: string;
+  dica?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [arrastando, setArrastando] = useState(false);
 
-  function receber(f: File | undefined) {
-    if (!f) return;
-    if (!f.type.startsWith("image/")) return;
-    onArquivo(f);
+  function receber(lista: FileList | null | undefined) {
+    const fotos = Array.from(lista ?? []).filter((f) => f.type.startsWith("image/"));
+    if (fotos.length === 0) return;
+    // Mais de uma só é tratada por quem sabe tratar; senão entra a primeira, como antes.
+    if (fotos.length > 1 && onArquivos) onArquivos(fotos);
+    else onArquivo(fotos[0]);
     if (inputRef.current) inputRef.current.value = "";
   }
 
   function aoSoltar(e: DragEvent) {
     e.preventDefault();
     setArrastando(false);
-    receber(e.dataTransfer.files?.[0]);
+    receber(e.dataTransfer.files);
   }
 
   return (
@@ -51,9 +58,9 @@ export default function Dropzone({
       </span>
       <span className={compacto ? "text-sm font-medium text-neutral-800" : "text-base font-semibold text-neutral-900"}>{rotulo}</span>
       {!compacto && (
-        <span className="text-sm text-neutral-500">Arraste aqui ou clique. JPG ou PNG, foto do celular serve.</span>
+        <span className="text-sm text-neutral-500">{dica}</span>
       )}
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => receber(e.target.files?.[0])} />
+      <input ref={inputRef} type="file" accept="image/*" multiple={!!onArquivos} className="hidden" onChange={(e) => receber(e.target.files)} />
     </label>
   );
 }
