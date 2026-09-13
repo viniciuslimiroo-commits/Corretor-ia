@@ -100,6 +100,7 @@ export default function PaginaVideo() {
   const [voz, setVoz] = useState<VozId>("laura");
   const [escrevendo, setEscrevendo] = useState(false);
   const [enviando, setEnviando] = useState(0);
+  const [ajustesAbertos, setAjustesAbertos] = useState(false);
 
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string } | null>(null);
@@ -121,6 +122,17 @@ export default function PaginaVideo() {
     }),
     [formato, cenas, musica, narrar, roteiro, voz, titulo, preco, local, telaFinal, transicao]
   );
+  // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
+  const resumoDosAjustes = [
+    FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato,
+    MUSICAS.find((m) => m.id === musica)?.rotulo ?? musica,
+    transicao === "suave" ? "transição suave" : "corte seco",
+    titulo ? `“${titulo}”` : null,
+    narrar ? `narrado (${VOZES.find((v) => v.id === voz)?.rotulo ?? voz})` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const custo = custoDoVideo(espec);
   const duracao = duracaoEstimada(espec);
 
@@ -535,10 +547,65 @@ export default function PaginaVideo() {
           </Cartao>
         </section>
 
-        {/* ---------- coluna dos ajustes ---------- */}
+        {/* ---------- coluna dos ajustes ----------
+
+             Formato, música, textos e narração vivem FECHADOS aqui dentro.
+             Eram quatro cartões abertos, 28 escolhas antes do botão de gerar, numa tela
+             que ninguém terminava. Todos têm padrão que funciona: quem só quer o vídeo
+             sobe as fotos e clica em gerar; quem quer mexer, abre. O resumo em uma linha
+             mostra o que está valendo, pra ninguém precisar abrir só pra conferir. */}
         <aside className="flex flex-col gap-4 lg:col-span-5">
           <Cartao>
-            <Rotulo>3 · Formato</Rotulo>
+            <div className="mb-3 flex items-baseline justify-between text-sm">
+              <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
+              <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
+            </div>
+            <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
+              {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
+            </Botao>
+            {cenas.length === 0 && !gerando && (
+              <p className="mt-2 text-center text-xs text-neutral-500">Envie as fotos ao lado. O resto já vem pronto.</p>
+            )}
+            {custo === 0 && !gerando && cenas.length > 0 && (
+              <p className="mt-2 text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e narração ({CREDITOS.narracao}).</p>
+            )}
+            {gerando && progresso && (
+              <div className="mt-3">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                  <div className="h-full rounded-full bg-marca-coral transition-all" style={{ width: `${Math.max(6, Math.round((progresso.feitas / Math.max(1, progresso.total)) * 100))}%` }} />
+                </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Mantenha esta aba aberta.
+                </p>
+              </div>
+            )}
+            {semSaldo && !gerando && (
+              <div className="mt-3">
+                <Aviso tipo="atencao">
+                  Faltam créditos pra este vídeo. <Link href="/planos" className="underline">Veja os planos e pacotes.</Link>
+                </Aviso>
+              </div>
+            )}
+          </Cartao>
+
+          <Cartao className="p-0">
+            <button
+              type="button"
+              onClick={() => setAjustesAbertos((v) => !v)}
+              className="flex w-full items-center gap-3 px-5 py-4 text-left"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold uppercase tracking-wider text-neutral-500">Ajustes</span>
+                <span className="mt-0.5 block truncate text-sm text-neutral-600">{resumoDosAjustes}</span>
+              </span>
+              <Icone nome={ajustesAbertos ? "cima" : "baixo"} className="h-4 w-4 shrink-0 text-neutral-400" />
+            </button>
+          </Cartao>
+        </aside>
+
+        <aside className={"flex-col gap-4 lg:col-span-5 lg:col-start-8 " + (ajustesAbertos ? "flex" : "hidden")}>
+          <Cartao>
+            <Rotulo>Formato</Rotulo>
             <div className="grid grid-cols-2 gap-2">
               {FORMATOS.map((f) => (
                 <button key={f.id} type="button" onClick={() => setFormato(f.id)} disabled={gerando} className={"rounded-xl border px-3 py-2 text-left text-sm transition " + (formato === f.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")}>
@@ -550,7 +617,7 @@ export default function PaginaVideo() {
           </Cartao>
 
           <Cartao>
-            <Rotulo>4 · Música e transição</Rotulo>
+            <Rotulo>Música e transição</Rotulo>
             <div className="flex flex-wrap gap-2">
               {MUSICAS.map((m) => (
                 <Chip key={m.id} ativo={musica === m.id} onClick={() => setMusica(m.id)} title={m.descricao}>{m.rotulo}</Chip>
@@ -564,7 +631,7 @@ export default function PaginaVideo() {
           </Cartao>
 
           <Cartao>
-            <Rotulo>5 · Textos e marca</Rotulo>
+            <Rotulo>Textos e marca</Rotulo>
             <div className="grid gap-2">
               <input value={titulo} onChange={(e) => setTitulo(e.target.value)} maxLength={LIMITES.tituloMax} placeholder="Título (ex.: Apto 302 · Setor Bueno)" className={campo} />
               <div className="grid grid-cols-2 gap-2">
@@ -584,7 +651,7 @@ export default function PaginaVideo() {
           </Cartao>
 
           <Cartao>
-            <Rotulo>6 · Narração (+{CREDITOS.narracao} crédito)</Rotulo>
+            <Rotulo>Narração (+{CREDITOS.narracao} crédito)</Rotulo>
             <label className="flex items-center gap-2 text-sm text-neutral-700">
               <input type="checkbox" checked={narrar} onChange={(e) => setNarrar(e.target.checked)} className="accent-marca-coral" />
               Narrar o vídeo com voz de IA
@@ -605,36 +672,6 @@ export default function PaginaVideo() {
                   ))}
                 </div>
                 {narrar && roteiro.trim().length < 10 && <p className="mt-2 text-xs text-amber-700">Escreva pelo menos uma frase pra narração entrar.</p>}
-              </div>
-            )}
-          </Cartao>
-
-          <Cartao>
-            <div className="mb-3 flex items-baseline justify-between text-sm">
-              <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
-              <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
-            </div>
-            <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
-              {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
-            </Botao>
-            {custo === 0 && !gerando && cenas.length > 0 && (
-              <p className="mt-2 text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e narração ({CREDITOS.narracao}).</p>
-            )}
-            {gerando && progresso && (
-              <div className="mt-3">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
-                  <div className="h-full rounded-full bg-marca-coral transition-all" style={{ width: `${Math.max(6, Math.round((progresso.feitas / Math.max(1, progresso.total)) * 100))}%` }} />
-                </div>
-                <p className="mt-2 text-xs text-neutral-500">
-                  {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Mantenha esta aba aberta.
-                </p>
-              </div>
-            )}
-            {semSaldo && !gerando && (
-              <div className="mt-3">
-                <Aviso tipo="atencao">
-                  Faltam créditos pra este vídeo. <Link href="/planos" className="underline">Veja os planos e pacotes.</Link>
-                </Aviso>
               </div>
             )}
           </Cartao>
