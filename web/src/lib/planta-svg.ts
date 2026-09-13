@@ -21,6 +21,15 @@ export type OpcoesSvg = {
    * lugares diferentes e o ponto não cai onde a pessoa tocou.
    */
   vista?: { x0: number; y0: number; largura: number; altura: number };
+  /**
+   * Desenha só a geometria: paredes, portas, janelas e o preenchimento dos cômodos, sem
+   * nome, área, cota nem rodapé.
+   *
+   * É o que vai pra IA na hora de humanizar. Modelo de imagem reescreve texto e erra
+   * número -- mandar a planta com "12,50 m²" volta com "l2,SO n²". A planta técnica, com
+   * os números certos, continua sendo a saída separada e é ela que vale como medida.
+   */
+  semTexto?: boolean;
 };
 
 function escapar(t: string) {
@@ -58,7 +67,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
     partes.push(`<rect y="${topo}" width="${L}" height="${A - topo}" fill="url(#g)"/>`);
   }
 
-  if (planta.nome) {
+  if (planta.nome && !o.semTexto) {
     partes.push(
       `<text x="16" y="30" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 1.25)}" font-weight="700" fill="#0f2d5b">${escapar(planta.nome)}</text>`
     );
@@ -110,7 +119,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
   }
 
   // ---- cotas de cada parede ----
-  if (planta.cotas) {
+  if (planta.cotas && !o.semTexto) {
     for (const c of planta.comodos) {
       for (let i = 0; i < c.pontos.length; i++) {
         const a = c.pontos[i];
@@ -133,6 +142,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
 
   // ---- nome e área de cada cômodo ----
   for (const c of planta.comodos) {
+    if (o.semTexto) break;
     const m = centro(c.pontos);
     const a = area(c.pontos);
     if (a < 0.6) continue;
@@ -151,6 +161,10 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
   // ---- rodapé: área total, autor e aviso ----
   const total = planta.comodos.reduce((s, c) => s + area(c.pontos), 0);
   const yRod = A - 16;
+  if (o.semTexto) {
+    partes.push("</svg>");
+    return { svg: partes.join(""), largura: L, altura: A };
+  }
   partes.push(
     `<text x="16" y="${yRod}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 0.95)}" font-weight="700" fill="#0f2d5b">Área total ${metrosQuadrados(total)}</text>`
   );

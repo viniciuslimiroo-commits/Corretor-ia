@@ -26,6 +26,7 @@ import {
   type Ponto,
 } from "@/lib/planta";
 import { plantaParaSvg } from "@/lib/planta-svg";
+import { ESTILOS } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -118,6 +119,9 @@ export default function PaginaPlanta() {
   const caixa = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState<{ telaX: number; telaY: number; x0: number; y0: number } | null>(null);
   const [cantoRetangulo, setCantoRetangulo] = useState<Ponto | null>(null);
+  const [estiloIa, setEstiloIa] = useState(ESTILOS[0].valor);
+  const [decorando, setDecorando] = useState<"humanizada" | "maquete" | null>(null);
+  const [decorado, setDecorado] = useState<{ jobId: string; url: string } | null>(null);
 
   /**
    * Janela visível, em metros. É ESTADO, não coisa calculada a cada desenho -- de
@@ -335,6 +339,42 @@ export default function PaginaPlanta() {
     abrirEspacoPara(novo.pontos);
     setSelecionado(novo.id);
     setResultado(null);
+  }
+
+  /**
+   * Manda a planta pra IA decorar. Vira um job normal, então quem acompanha é o
+   * /api/job/[id] de sempre -- mesma fila, mesmo estorno automático se falhar.
+   */
+  async function decorar(vista: "humanizada" | "maquete") {
+    if (planta.comodos.length === 0 || decorando) return;
+    setDecorando(vista);
+    setErro(null);
+    setDecorado(null);
+    try {
+      const token = await c.token();
+      const r = await fetch("/api/planta/humanizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planta, vista, estilo: estiloIa, imovelId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      for (let i = 0; i < 60; i++) {
+        await new Promise((z) => setTimeout(z, 3000));
+        const j = await (await fetch(`/api/job/${d.jobId}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+        if (j.status === "concluido" && j.url) {
+          setDecorado({ jobId: d.jobId, url: j.url });
+          c.recarregar?.();
+          return;
+        }
+        if (j.status === "falhou" || j.erro) throw new Error(j.erro ?? "A IA não conseguiu decorar essa planta. O crédito volta sozinho.");
+      }
+      throw new Error("Demorou demais. Se o crédito foi cobrado, ele volta sozinho.");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao decorar.");
+    } finally {
+      setDecorando(null);
+    }
   }
 
   async function salvar() {
@@ -628,6 +668,48 @@ export default function PaginaPlanta() {
               </div>
             </Cartao>
           )}
+
+          {/* ---- decorar a planta com IA ---- */}
+          <Cartao>
+            <Rotulo>Decorar com IA · 1 crédito</Rotulo>
+            <p className="text-sm text-neutral-500">
+              A mesma planta, com móveis, piso e sombra. A técnica com as medidas continua salva do lado.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {ESTILOS.slice(0, 6).map((e) => (
+                <Chip key={e.valor} ativo={estiloIa === e.valor} onClick={() => setEstiloIa(e.valor)}>
+                  {e.rotulo}
+                </Chip>
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Botao onClick={() => decorar("humanizada")} disabled={!!decorando || planta.comodos.length === 0} className="py-2.5">
+                {decorando === "humanizada" ? "Decorando…" : "Vista de cima"}
+              </Botao>
+              <Botao variante="secundaria" onClick={() => decorar("maquete")} disabled={!!decorando || planta.comodos.length === 0} className="py-2.5">
+                {decorando === "maquete" ? "Montando…" : "Maquete 3D"}
+              </Botao>
+            </div>
+            {decorando && <p className="mt-2 text-xs text-neutral-500">Leva cerca de meio minuto.</p>}
+            {decorado && (
+              <div className="mt-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={decorado.url} alt="Planta decorada" className="w-full rounded-lg border border-neutral-200" />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <a href={decorado.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
+                    <Icone nome="download" className="h-4 w-4" />
+                    Baixar
+                  </a>
+                </div>
+                <div className="mt-2">
+                  <Compartilhar token={c.token} jobId={decorado.jobId} texto="Planta do imóvel:" />
+                </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  Sai como imagem ilustrativa. Os móveis são sugestão da IA; quem vale como medida é a planta técnica.
+                </p>
+              </div>
+            )}
+          </Cartao>
         </aside>
       </div>
     </AppShell>
