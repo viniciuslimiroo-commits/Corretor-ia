@@ -6,7 +6,7 @@ import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
 import { MODELOS_POR_ID } from "@/lib/materiais";
 import { montarMaterial, type BlocoMaterial, type FotoMaterial } from "@/lib/material-pdf";
 
-// Monta o material escolhido na Biblioteca e devolve o PDF.
+// Monta o material escolhido em Materiais e devolve o PDF.
 //
 // NÃO gasta crédito: é diagramação, não IA. Mesmo critério da planta e do terreno.
 //

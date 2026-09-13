@@ -9,7 +9,11 @@ import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { CATEGORIAS, type Categoria } from "@/lib/materiais";
 import { guardarSelecao } from "@/lib/selecao-material";
 
-// Biblioteca: tudo que a pessoa já produziu num lugar só, pra escolher e virar material.
+// Materiais: tudo que a pessoa já produziu num lugar só, pra escolher e virar material.
+//
+// Chamava-se "Biblioteca" e o nome estava errado: biblioteca é onde coisa fica guardada, e
+// esta tela é onde o material é feito. Guardar é meio; o fim é o arquivo que vai pro
+// cliente. Por isso o botão de criar vem antes da grade, não depois.
 //
 // Por que não é um terceiro lugar onde o arquivo mora: ela LÊ os mesmos jobs e vídeos que
 // o Histórico e a galeria do imóvel. A diferença é o propósito -- aqui o critério é
@@ -38,7 +42,7 @@ function quando(iso: string) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
-export default function Biblioteca() {
+export default function Materiais() {
   const c = useConta();
   const router = useRouter();
   const [itens, setItens] = useState<Item[] | null>(null);
@@ -52,7 +56,7 @@ export default function Biblioteca() {
 
   const buscar = useCallback(async () => {
     const t = await token();
-    const r = await fetch("/api/biblioteca", { headers: { Authorization: `Bearer ${t}` } });
+    const r = await fetch("/api/materiais", { headers: { Authorization: `Bearer ${t}` } });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error);
     return d as { itens: Item[]; imoveis: { id: string; titulo: string }[] };
@@ -90,14 +94,14 @@ export default function Biblioteca() {
   function criarMaterial(ids: string[]) {
     if (ids.length === 0) return;
     guardarSelecao(ids);
-    router.push("/biblioteca/material");
+    router.push("/materiais/montar");
   }
 
   if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
   if (!c.user || !c.conta) {
     return (
       <main className="p-12">
-        <Link href="/login" className="underline">Entre para ver sua biblioteca.</Link>
+        <Link href="/login" className="underline">Entre para ver seus materiais.</Link>
       </main>
     );
   }
@@ -108,7 +112,7 @@ export default function Biblioteca() {
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Biblioteca</h1>
+          <h1 className="text-2xl font-semibold">Materiais</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Tudo que você já criou. Marque o que quer usar e monte um book, um catálogo ou uma apresentação.
           </p>
@@ -118,7 +122,7 @@ export default function Biblioteca() {
           disabled={selecionaveis.length === 0}
           title={selecionados.length ? `${selecionados.length} escolhidas` : "Usa as imagens que estão à vista"}
         >
-          <Icone nome="biblioteca" className="h-4 w-4" />
+          <Icone nome="materiais" className="h-4 w-4" />
           {selecionados.length ? `Criar material · ${selecionados.length}` : "Criar material"}
         </Botao>
       </div>
@@ -170,7 +174,7 @@ export default function Biblioteca() {
           <p className="text-sm text-neutral-500">Carregando…</p>
         ) : vazia ? (
           <Cartao>
-            <p className="font-medium">Sua biblioteca está vazia.</p>
+            <p className="font-medium">Você ainda não tem material.</p>
             <p className="mt-1 text-sm text-neutral-600">
               Tudo que você gerar aparece aqui: foto editada, planta, terreno e vídeo. Comece por{" "}
               <Link href="/editar" className="text-marca-indigo underline">uma foto</Link> ou por uma{" "}
@@ -248,7 +252,7 @@ export default function Biblioteca() {
             <div className="ml-auto flex items-center gap-2">
               <Botao variante="discreta" onClick={() => setMarcados([])}>Limpar</Botao>
               <Botao onClick={() => criarMaterial(selecionados)}>
-                <Icone nome="biblioteca" className="h-4 w-4" />
+                <Icone nome="materiais" className="h-4 w-4" />
                 Criar material
               </Botao>
             </div>

@@ -9,8 +9,8 @@ import { Cartao, Icone, Rotulo } from "./ui";
 // então o produto não tinha porta de entrada -- quem voltava no dia seguinte não via o que
 // já tinha feito nem lembrava do que existe além de editar foto.
 //
-// Três coisas, nesta ordem: continuar de onde parou, as ferramentas, e os imóveis. É
-// também a semente da Biblioteca -- o lugar onde o material produzido volta a aparecer.
+// Três coisas, nesta ordem: continuar de onde parou, as ferramentas, e os imóveis. O que
+// foi produzido volta a aparecer aqui e, inteiro, em Materiais.
 
 // Os nomes vêm das rotas /api/historico e /api/imoveis. Conferidos lá, não supostos:
 // errei isso na primeira versão (chamei a miniatura de "depois") e a seção sumia calada.
@@ -22,7 +22,7 @@ const FERRAMENTAS = [
   { href: "/video", icone: "video", titulo: "Vídeo e tour 360°", texto: "As fotos viram vídeo com movimento, música e sua marca. Sem crédito." },
   { href: "/planta", icone: "planta", titulo: "Planta baixa", texto: "Desenhe os cômodos, mobílie e veja a área calculada. Sem crédito." },
   { href: "/terreno", icone: "terreno", titulo: "Terreno e lote", texto: "Marque as medidas na foto, limpe o mato ou mostre a casa construída." },
-  { href: "/biblioteca", icone: "biblioteca", titulo: "Biblioteca e materiais", texto: "Tudo que você criou. Vira book, catálogo ou apresentação em PDF. Sem crédito." },
+  { href: "/materiais", icone: "materiais", titulo: "Materiais", texto: "Tudo que você criou vira book, catálogo ou apresentação em PDF, com a sua marca. Sem crédito." },
 ];
 
 function quando(iso: string) {
@@ -88,12 +88,12 @@ export default function Inicio({ conta, token }: { conta: Conta; token: () => Pr
         <section className="mt-6">
           <div className="mb-2 flex items-baseline justify-between">
             <Rotulo>Seu material</Rotulo>
-            <Link href="/biblioteca" className="text-xs text-marca-indigo underline">ver tudo na Biblioteca</Link>
+            <Link href="/materiais" className="text-xs text-marca-indigo underline">ver tudo em Materiais</Link>
           </div>
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6">
             {geracoes.map((g) => (
               <li key={g.id}>
-                <Link href="/biblioteca" className="block overflow-hidden rounded-xl border border-neutral-200 bg-white transition hover:border-marca-indigo">
+                <Link href="/materiais" className="block overflow-hidden rounded-xl border border-neutral-200 bg-white transition hover:border-marca-indigo">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={g.miniatura!} alt="" className="aspect-square w-full object-cover" />
                   <span className="block truncate px-2 py-1.5 text-[11px] text-neutral-600">

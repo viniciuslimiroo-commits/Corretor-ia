@@ -64,7 +64,7 @@ export default function MontarMaterial() {
 
   const buscar = useCallback(async () => {
     const t = await token();
-    const r = await fetch("/api/biblioteca", { headers: { Authorization: `Bearer ${t}` } });
+    const r = await fetch("/api/materiais", { headers: { Authorization: `Bearer ${t}` } });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error);
     return d as { itens: Item[]; imoveis: Imovel[] };
@@ -161,7 +161,7 @@ export default function MontarMaterial() {
       const blocos = def.variosImoveis
         ? grupos.map((g) => ({ imovelId: g.imovelId, titulo: g.titulo, subtitulo: g.subtitulo, preco: precoPorImovel[g.chave] ?? "", jobIds: g.ids }))
         : [{ imovelId: grupos[0]?.imovelId ?? null, titulo: titulo || (grupos[0]?.titulo ?? "Imóvel"), subtitulo, preco, jobIds: dentroDoLimite }];
-      const r = await fetch("/api/material", {
+      const r = await fetch("/api/materiais/gerar", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body: JSON.stringify({ modelo, titulo, subtitulo, preco, descricao, blocos }),
@@ -192,7 +192,7 @@ export default function MontarMaterial() {
   return (
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <p className="text-sm">
-        <Link href="/biblioteca" className="text-neutral-500 hover:text-marca-indigo">← Biblioteca</Link>
+        <Link href="/materiais" className="text-neutral-500 hover:text-marca-indigo">← Materiais</Link>
       </p>
 
       <h1 className="mt-2 text-2xl font-semibold">Montar material</h1>
@@ -210,7 +210,7 @@ export default function MontarMaterial() {
         <Cartao className="mt-6">
           <p className="font-medium">Nenhuma imagem escolhida.</p>
           <p className="mt-1 text-sm text-neutral-600">
-            Volte pra <Link href="/biblioteca" className="text-marca-indigo underline">Biblioteca</Link>, marque as imagens na ordem que quiser e clique em
+            Volte pra <Link href="/materiais" className="text-marca-indigo underline">Materiais</Link>, marque as imagens na ordem que quiser e clique em
             &quot;Criar material&quot;. A primeira marcada vira a capa.
           </p>
         </Cartao>

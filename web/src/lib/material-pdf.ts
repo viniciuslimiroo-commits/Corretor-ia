@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import sharp from "sharp";
 import { MODELOS_POR_ID, separarTopicos, type ModeloMaterial } from "./materiais";
 
-// O gerador de material da Biblioteca: pega as fotos que a pessoa escolheu e devolve um
+// O gerador de material de Materiais: pega as fotos que a pessoa escolheu e devolve um
 // PDF pronto pra mandar. Seis modelos, um motor só -- capa, grade, foto cheia e página de
 // contato são as mesmas peças remontadas.
 //

@@ -163,7 +163,7 @@ export default function PaginaImovel() {
   }
 
   /**
-   * Book, PDF de WhatsApp, apresentação: tudo isso mora na Biblioteca agora. Daqui a gente
+   * Book, PDF de WhatsApp, apresentação: tudo isso mora em Materiais agora. Daqui a gente
    * só leva as fotos deste imóvel já marcadas, com a capa na frente -- o montador é um só,
    * pra não existirem dois caminhos que geram o mesmo PDF com telas diferentes.
    */
@@ -171,7 +171,7 @@ export default function PaginaImovel() {
     const prontas = (geracoes ?? []).filter((g) => g.status === "concluido" && g.depois);
     const comCapaNaFrente = [...prontas].sort((a, b) => (a.capa ? -1 : b.capa ? 1 : 0));
     guardarSelecao(comCapaNaFrente.map((g) => g.id));
-    router.push("/biblioteca/material");
+    router.push("/materiais/montar");
   }
 
   // Busca sem tocar em estado: quem escreve na tela é sempre um callback de promessa.
@@ -314,7 +314,7 @@ export default function PaginaImovel() {
                   {baixando ? "Preparando…" : "Baixar tudo"}
                 </Botao>
                 <Botao onClick={montarMaterial} title="Book, PDF de WhatsApp, catálogo ou apresentação, com as fotos deste imóvel">
-                  <Icone nome="biblioteca" className="h-4 w-4" />
+                  <Icone nome="materiais" className="h-4 w-4" />
                   Criar material
                 </Botao>
               </>

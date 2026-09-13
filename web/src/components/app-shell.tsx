@@ -47,8 +47,11 @@ export default function AppShell({
     { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false },
     { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
-    { href: "/biblioteca", rotulo: "Biblioteca", icone: "biblioteca", soIcone: false },
-    // Equipe virou só ícone quando a Biblioteca entrou: o nome inteiro dos dois não cabe
+    // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
+    // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
+    // ("me manda o material do imóvel"), e serve pros dois lados: o que ele tem e o que monta.
+    { href: "/materiais", rotulo: "Materiais", icone: "materiais", soIcone: false },
+    // Equipe virou só ícone quando Materiais entrou: o nome inteiro dos dois não cabe
     // junto do resto na barra de 1152px.
     // `secundario` = no celular sai da barra de baixo e vai pro "Mais": nove ícones numa
     // tela de 375px viram 41px cada, onde ninguém acerta o dedo.

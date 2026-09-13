@@ -4,11 +4,11 @@ import { assinar } from "@/lib/armazenamento";
 import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
 import { categoriaDoTipo } from "@/lib/materiais";
 
-// Biblioteca: tudo que a pessoa já produziu num lugar só -- foto editada, planta, terreno
+// Materiais: tudo que a pessoa já produziu num lugar só -- foto editada, planta, terreno
 // e vídeo -- pra escolher e virar material. É a mesma fonte do Histórico e da galeria do
 // imóvel, só que sem o recorte: aqui o critério é "serve pra montar alguma coisa".
 //
-// Não duplica arquivo: a Biblioteca é uma LEITURA de jobs e videos, não um terceiro
+// Não duplica arquivo: Materiais é uma LEITURA de jobs e videos, não um terceiro
 // lugar onde a foto passa a morar.
 
 export async function GET(req: NextRequest) {
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   // Falhar alto: consulta quebrada não pode virar "nada ainda" na tela.
-  if (erroJobs) return NextResponse.json({ error: `Erro lendo a biblioteca: ${erroJobs.message}` }, { status: 500 });
+  if (erroJobs) return NextResponse.json({ error: `Erro lendo seus materiais: ${erroJobs.message}` }, { status: 500 });
 
   const daFoto = await Promise.all(
     (jobs ?? []).map(async (j) => {

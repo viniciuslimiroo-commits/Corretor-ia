@@ -1,4 +1,4 @@
-// Passa a seleção da Biblioteca pro montador de material.
+// Passa a seleção da tela de Materiais pro montador.
 //
 // Por que não vai na URL: trinta uuid dão mais de mil caracteres de query, e a ordem
 // importa (a primeira imagem é a capa). sessionStorage guarda a ordem, morre quando a

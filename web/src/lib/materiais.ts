@@ -1,4 +1,4 @@
-// Os modelos de material que a Biblioteca sabe montar. Só metadado: a tela lê isto pra
+// Os modelos de material que a tela de Materiais sabe montar. Só metadado: a tela lê isto pra
 // desenhar as opções e o servidor lê o mesmo pra validar o que chegou. Nada de pdf-lib
 // nem sharp aqui -- este arquivo é importado pelo navegador.
 
@@ -83,7 +83,7 @@ export const MODELOS: DefModelo[] = [
 
 export const MODELOS_POR_ID: Record<string, DefModelo> = Object.fromEntries(MODELOS.map((m) => [m.id, m]));
 
-/** As categorias que a Biblioteca usa pra filtrar, deduzidas do `tipo` do job. */
+/** As categorias que a tela de Materiais usa pra filtrar, deduzidas do `tipo` do job. */
 export type Categoria = "foto" | "planta" | "terreno" | "video";
 
 export function categoriaDoTipo(tipo: string): Categoria {

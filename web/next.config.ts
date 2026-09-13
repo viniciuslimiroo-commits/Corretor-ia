@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
     "/api/video/**": ["./bin/ffmpeg", "./assets/**"],
   },
   serverExternalPackages: ["ffmpeg-static"],
+
+  // /biblioteca virou /materiais no mesmo dia em que nasceu. O redirect fica porque o
+  // endereço antigo já saiu daqui em mensagem, e link que morre é pior que rota a mais.
+  async redirects() {
+    return [
+      { source: "/biblioteca", destination: "/materiais", permanent: true },
+      { source: "/biblioteca/material", destination: "/materiais/montar", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;
