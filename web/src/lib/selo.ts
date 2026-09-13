@@ -19,8 +19,16 @@ import { ACOES_POR_ID } from "./acoes";
 // não carimbar: sujaria uma foto honesta e ensinaria o comprador a ignorar o selo
 // justamente nas fotos em que ele importa.
 // O texto de cada ação mora no catálogo (acoes.ts), ao lado do prompt que a define.
-// Ação desconhecida recebe o selo genérico: na dúvida, avisar é o lado seguro.
-export function textoDoSelo(acao: string): string | null {
+//
+// `seloDoJob` vem gravado na linha do job e VENCE o catálogo: quem criou o job sabe o que
+// foi feito ali. É o que permite avisos que o catálogo de fotos não tem como saber -- o
+// mais importante deles, na casa desenhada num terreno vazio, é dizer que a casa não está
+// incluída. O genérico "editada digitalmente" não avisa isso, e é justamente esse o aviso
+// que protege o corretor.
+//
+// Ação desconhecida e sem selo próprio recebe o genérico: na dúvida, avisar é o lado seguro.
+export function textoDoSelo(acao: string, seloDoJob?: string | null): string | null {
+  if (typeof seloDoJob === "string" && seloDoJob.trim()) return seloDoJob.trim();
   const def = ACOES_POR_ID[acao];
   return def ? def.selo : "Imagem ilustrativa · editada digitalmente";
 }

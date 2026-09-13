@@ -367,7 +367,7 @@ export default function PaginaPlanta() {
           c.recarregar?.();
           return;
         }
-        if (j.status === "falhou" || j.erro) throw new Error(j.erro ?? "A IA não conseguiu decorar essa planta. O crédito volta sozinho.");
+        if (j.status === "falhou" || j.error) throw new Error(j.error ?? "A IA não conseguiu decorar essa planta. O crédito volta sozinho.");
       }
       throw new Error("Demorou demais. Se o crédito foi cobrado, ele volta sozinho.");
     } catch (e) {

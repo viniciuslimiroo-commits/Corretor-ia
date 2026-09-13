@@ -123,7 +123,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // O selo é queimado ANTES de guardar, de propósito: assim a única cópia que existe
     // já está carimbada. Carimbar só na hora do download deixaria a versão sem aviso
     // acessível por quem pegasse a URL assinada.
-    const textoSelo = textoDoSelo(job!.tipo);
+    const textoSelo = textoDoSelo(job!.tipo, job!.selo);
     const bytesFinais = await aplicarSelo(bytesCrus, textoSelo);
     const dim = await sharp(bytesFinais).metadata();
 

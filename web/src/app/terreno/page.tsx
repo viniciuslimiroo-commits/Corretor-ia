@@ -7,7 +7,8 @@ import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
-import { Aviso, Botao, Cartao, Icone, Rotulo } from "@/components/ui";
+import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { ACAO_TERRENO_POR_ID, ACOES_TERRENO, EXTRAS_CASA, LIMITE_TEXTO_LIVRE } from "@/lib/terreno-ia";
 
 // Terreno com medidas. A pessoa toca nos cantos do lote na foto, digita os metros de
 // cada lado e a área, e o desenho sai por cima da foto -- na hora, na tela, e depois
@@ -73,6 +74,13 @@ export default function Terreno() {
   const [resultado, setResultado] = useState<{ jobId: string; url: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
+  const [acaoIa, setAcaoIa] = useState(ACOES_TERRENO[0].id);
+  const [camposIa, setCamposIa] = useState<Record<string, string>>({});
+  const [extras, setExtras] = useState<string[]>(["jardim"]);
+  const [textoIa, setTextoIa] = useState("");
+  const [referencia, setReferencia] = useState<File | null>(null);
+  const [gerandoIa, setGerandoIa] = useState(false);
+  const [resultadoIa, setResultadoIa] = useState<{ jobId: string; url: string } | null>(null);
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
@@ -125,6 +133,43 @@ export default function Terreno() {
     setResultado(null);
   }
 
+  /** Manda a foto pra IA. Vira job normal: mesma fila, mesmo estorno automático se falhar. */
+  async function gerarIa() {
+    if (!foto || gerandoIa) return;
+    setGerandoIa(true);
+    setErro(null);
+    setResultadoIa(null);
+    try {
+      const token = await c.token();
+      const f = new FormData();
+      f.append("foto", foto);
+      f.append("acao", acaoIa);
+      f.append("texto", textoIa);
+      f.append("extras", extras.join(","));
+      for (const campo of acaoTerreno.campos ?? []) f.append(campo.chave, camposIa[campo.chave] ?? campo.padrao);
+      if (referencia) f.append("referencia", referencia);
+      if (imovelId) f.append("imovelId", imovelId);
+      const r = await fetch("/api/terreno/ia", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: f });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      for (let i = 0; i < 40; i++) {
+        await new Promise((z) => setTimeout(z, 3000));
+        const j = await (await fetch(`/api/job/${d.jobId}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+        if (j.status === "concluido" && j.url) {
+          setResultadoIa({ jobId: d.jobId, url: j.url });
+          c.recarregar?.();
+          return;
+        }
+        if (j.status === "falhou" || j.error) throw new Error(j.error ?? "A IA não conseguiu. O crédito volta sozinho.");
+      }
+      throw new Error("Demorou demais. Se o crédito foi cobrado, ele volta sozinho.");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao gerar.");
+    } finally {
+      setGerandoIa(false);
+    }
+  }
+
   async function gerar() {
     if (!foto || pontos.length < 3) return;
     setGerando(true);
@@ -162,6 +207,7 @@ export default function Terreno() {
 
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
   const fechado = pontos.length >= 3;
+  const acaoTerreno = ACAO_TERRENO_POR_ID[acaoIa] ?? ACOES_TERRENO[0];
   const traco = Math.max(2, (caixaPx || 640) * PROPORCAO_TRACO * espessura.fator);
 
   return (
@@ -180,7 +226,12 @@ export default function Terreno() {
       </div>
 
       <h1 className="text-2xl font-semibold">Terreno com medidas</h1>
-      <p className="mt-1 text-sm text-neutral-500">Toque nos cantos do lote na foto, digite os metros de cada lado e a área. Não gasta crédito.</p>
+      {/* antes da foto o texto não pode mandar tocar nos cantos: não existe foto pra tocar */}
+      <p className="mt-1 text-sm text-neutral-500">
+        {foto
+          ? "Toque nos cantos do lote, digite os metros de cada lado e a área. Não gasta crédito."
+          : "Envie a foto do terreno. Depois dá pra marcar os cantos, as medidas de cada lado e a área total. Não gasta crédito."}
+      </p>
 
       {erro && <div className="mt-4"><Aviso tipo="erro">{erro}</Aviso></div>}
 
@@ -333,6 +384,100 @@ export default function Terreno() {
               </div>
             </div>
           </Cartao>
+
+          {foto && (
+            <Cartao>
+              <Rotulo>Transformar com IA · 1 crédito</Rotulo>
+              <p className="text-sm text-neutral-500">
+                Quem olha foto de mato não enxerga a casa. Isto é ilustração e sai avisando; as medidas acima continuam exatas e de graça.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {ACOES_TERRENO.map((a) => (
+                  <Chip key={a.id} ativo={acaoIa === a.id} onClick={() => setAcaoIa(a.id)}>
+                    {a.rotulo}
+                  </Chip>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">{acaoTerreno.descricao}</p>
+
+              {acaoTerreno.campos?.map((campo) => (
+                <div key={campo.chave} className="mt-3">
+                  <span className="mb-1 block text-xs text-neutral-500">{campo.rotulo}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {campo.opcoes.map((o) => (
+                      <Chip key={o.valor} ativo={(camposIa[campo.chave] ?? campo.padrao) === o.valor} onClick={() => setCamposIa((c2) => ({ ...c2, [campo.chave]: o.valor }))}>
+                        {o.rotulo}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {acaoIa === "construir" && (
+                <div className="mt-3">
+                  <span className="mb-1 block text-xs text-neutral-500">Incluir</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {EXTRAS_CASA.map((e) => (
+                      <Chip
+                        key={e.valor}
+                        ativo={extras.includes(e.valor)}
+                        onClick={() => setExtras((l) => (l.includes(e.valor) ? l.filter((v) => v !== e.valor) : [...l, e.valor]))}
+                      >
+                        {e.rotulo}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {acaoIa === "livre" && (
+                <textarea
+                  value={textoIa}
+                  onChange={(e) => setTextoIa(e.target.value.slice(0, LIMITE_TEXTO_LIVRE))}
+                  rows={3}
+                  placeholder="Ex.: põe um galpão de 200 m² e cascalho na entrada"
+                  className={campo + " mt-3 resize-none"}
+                />
+              )}
+
+              {acaoTerreno.aceitaReferencia && (
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-neutral-600">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setReferencia(e.target.files?.[0] ?? null)}
+                    className="block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-1.5 file:text-xs file:text-neutral-700"
+                  />
+                </label>
+              )}
+              {acaoTerreno.aceitaReferencia && (
+                <p className="mt-1 text-xs text-neutral-400">
+                  {referencia ? `Referência: ${referencia.name}` : "Opcional: foto de uma casa parecida com a que você quer."}
+                </p>
+              )}
+
+              <Botao onClick={gerarIa} disabled={!!gerandoIa || (acaoIa === "livre" && textoIa.trim().length < 3)} className="mt-3 w-full py-2.5">
+                {gerandoIa ? "Gerando…" : `${acaoTerreno.rotulo} · 1 crédito`}
+              </Botao>
+              {gerandoIa && <p className="mt-2 text-center text-xs text-neutral-500">Leva cerca de meio minuto.</p>}
+
+              {resultadoIa && (
+                <div className="mt-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={resultadoIa.url} alt="Terreno transformado" className="w-full rounded-lg border border-neutral-200" />
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <a href={resultadoIa.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
+                      <Icone nome="download" className="h-4 w-4" />
+                      Baixar
+                    </a>
+                  </div>
+                  <div className="mt-2">
+                    <Compartilhar token={c.token} jobId={resultadoIa.jobId} texto="Olha o terreno:" />
+                  </div>
+                </div>
+              )}
+            </Cartao>
+          )}
 
           <Cartao>
             <div className="mb-3">
