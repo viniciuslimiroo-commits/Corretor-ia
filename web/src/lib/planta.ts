@@ -9,6 +9,9 @@
 // Porta, Janela e Mobiliário, com área automática. Aqui o essencial pro anúncio:
 // cômodos com área automática, portas, janelas e cotas.
 
+import type { Movel } from "./moveis";
+import { MOVEL_POR_TIPO } from "./moveis";
+
 export type Ponto = { x: number; y: number };
 
 export type Comodo = {
@@ -54,6 +57,8 @@ export type Planta = {
   passo: number;
   comodos: Comodo[];
   aberturas: Abertura[];
+  /** Móveis posicionados pela pessoa. Catálogo e símbolos em `moveis.ts`. */
+  moveis: Movel[];
   /** Mostrar as medidas de cada parede. */
   cotas: boolean;
 };
@@ -256,12 +261,32 @@ export function limparPlanta(bruto: unknown): { planta: Planta; erro: null } | {
     });
   }
 
+  const moveisBrutos = Array.isArray(b.moveis) ? b.moveis.slice(0, 200) : [];
+  const moveis: Movel[] = [];
+  for (const mb of moveisBrutos) {
+    const m = (mb && typeof mb === "object" ? mb : {}) as Record<string, unknown>;
+    const def = MOVEL_POR_TIPO[String(m.tipo)];
+    if (!def || !ehPonto(m.p)) continue;
+    const larg = Number(m.largura);
+    const alt = Number(m.altura);
+    moveis.push({
+      id: typeof m.id === "string" ? m.id.slice(0, 40) : `m${moveis.length}`,
+      tipo: def.tipo,
+      p: m.p as Ponto,
+      largura: Number.isFinite(larg) ? Math.min(30, Math.max(0.1, larg)) : def.largura,
+      altura: Number.isFinite(alt) ? Math.min(30, Math.max(0.1, alt)) : def.altura,
+      angulo: Number.isFinite(Number(m.angulo)) ? ((Number(m.angulo) % 360) + 360) % 360 : 0,
+      travado: m.travado === true,
+    });
+  }
+
   return {
     planta: {
       nome: typeof b.nome === "string" ? b.nome.replace(/[\r\n]+/g, " ").trim().slice(0, 60) : "",
       passo: Number(b.passo) === 0.25 || Number(b.passo) === 1 ? Number(b.passo) : PASSO_PADRAO,
       comodos,
       aberturas,
+      moveis,
       cotas: b.cotas !== false,
     },
     erro: null,
