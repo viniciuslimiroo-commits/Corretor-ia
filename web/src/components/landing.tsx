@@ -48,7 +48,7 @@ export default function Landing() {
           <nav className="ml-auto hidden items-center gap-5 text-sm text-neutral-600 sm:flex">
             <a href="#como" className="hover:text-marca-indigo">Como funciona</a>
             <a href="#recursos" className="hover:text-marca-indigo">Recursos</a>
-            <a href="#imobiliarias" className="hover:text-marca-indigo">Imobiliárias</a>
+            <a href="#imobiliarias" className="hover:text-marca-indigo">Pra quem é</a>
             <Link href="/planos" className="hover:text-marca-indigo">Planos</Link>
           </nav>
           <Link href="/login" className="ml-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50">Entrar</Link>
@@ -200,30 +200,62 @@ export default function Landing() {
       </section>
 
       {/* ---------- imobiliárias ---------- */}
+      {/* Três públicos, nomeados. Antes havia uma seção só, "Para imobiliárias", e o
+          autônomo -- que é a maioria -- não se via em lugar nenhum. Corrigir isso apagando
+          a imobiliária seria o erro oposto: ela é o maior ticket e tem necessidade
+          própria (marca central, controle de uso, muita gente), não é "equipe maior". */}
       <section id="imobiliarias" className="scroll-mt-20 bg-marca-indigo py-14 text-white">
-        <div className="mx-auto grid max-w-6xl gap-8 px-5 lg:grid-cols-12 lg:items-center">
-          <div className="lg:col-span-7">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-pessego">Quando são mais de um</p>
-            <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">Uma conta para o time inteiro</h2>
-            <p className="mt-3 max-w-xl text-white/80">Corretor com assistente, dupla de corretores ou imobiliária inteira. Cada um entra com o próprio e-mail, os créditos são compartilhados, quem gerencia vê o uso de cada um, e o mesmo logo e WhatsApp saem nas fotos, nos vídeos e nos links de todo mundo.</p>
-            <ul className="mt-5 grid gap-2 text-sm text-white/90 sm:grid-cols-2">
-              <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-pessego" /> Plano por equipe, não por cadeira</li>
-              <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-pessego" /> Convite por e-mail, sem instalar nada</li>
-              <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-pessego" /> Marca da imobiliária como padrão</li>
-              <li className="flex items-center gap-2"><Icone nome="check" className="h-4 w-4 text-marca-pessego" /> Anual com dois meses grátis</li>
-            </ul>
-          </div>
-          <div className="grid gap-3 lg:col-span-5">
-            {[equipe, imobiliaria].map((o) => (
-              <div key={o.id} className="rounded-2xl bg-white/10 p-5 ring-1 ring-white/20">
-                <p className="text-sm font-semibold uppercase tracking-wider text-marca-pessego">{o.rotulo.replace(" mensal", "")}</p>
-                <p className="mt-1 text-3xl font-semibold">
-                  {formatarReais(o.preco)}<span className="text-base font-normal text-white/70">/mês</span>
-                </p>
-                <p className="text-sm text-white/80">{o.creditos} créditos por mês · até {o.pessoas} pessoas</p>
-              </div>
-            ))}
-            <Link href="/planos#imobiliaria" className="inline-flex items-center justify-center rounded-lg bg-marca-coral px-5 py-3 font-medium text-white hover:bg-marca-coral-escuro">Ver planos de equipe</Link>
+        <div className="mx-auto max-w-6xl px-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-pessego">Pra quem é</p>
+          <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">Do corretor sozinho à imobiliária inteira</h2>
+          <p className="mt-3 max-w-2xl text-white/80">
+            O mesmo produto, cobrado pelo tamanho da conta. Você começa sozinho e cresce sem trocar de ferramenta —
+            o material que já fez continua lá.
+          </p>
+
+          <div className="mt-8 grid gap-4 lg:grid-cols-3">
+            <div className="flex flex-col rounded-2xl bg-white/10 p-5 ring-1 ring-white/20">
+              <p className="text-sm font-semibold uppercase tracking-wider text-marca-pessego">Corretor</p>
+              <p className="mt-1 text-3xl font-semibold">
+                {formatarReais(pro.preco)}<span className="text-base font-normal text-white/70">/mês</span>
+              </p>
+              <p className="text-sm text-white/80">{pro.creditos} fotos por mês · 1 pessoa</p>
+              <ul className="mt-4 flex-1 space-y-2 text-sm text-white/90">
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-pessego" /> Sem CNPJ e sem equipe: só o seu e-mail</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-pessego" /> Seu nome, CRECI e WhatsApp nas fotos</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-pessego" /> Vídeo, tour, planta e terreno sem crédito</li>
+              </ul>
+              <Link href="/login" className="mt-5 inline-flex items-center justify-center rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium hover:bg-white/25">Testar grátis</Link>
+            </div>
+
+            <div className="flex flex-col rounded-2xl bg-white/10 p-5 ring-1 ring-white/20">
+              <p className="text-sm font-semibold uppercase tracking-wider text-marca-pessego">Equipe</p>
+              <p className="mt-1 text-3xl font-semibold">
+                {formatarReais(equipe.preco)}<span className="text-base font-normal text-white/70">/mês</span>
+              </p>
+              <p className="text-sm text-white/80">{equipe.creditos} créditos por mês · até {equipe.pessoas} pessoas</p>
+              <ul className="mt-4 flex-1 space-y-2 text-sm text-white/90">
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-pessego" /> Pra dupla de corretores ou corretor com assistente</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-pessego" /> Créditos no bolo, sem dividir por cadeira</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-pessego" /> Convite por e-mail, sem instalar nada</li>
+              </ul>
+              <Link href="/planos#imobiliaria" className="mt-5 inline-flex items-center justify-center rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium hover:bg-white/25">Ver o plano Equipe</Link>
+            </div>
+
+            <div className="flex flex-col rounded-2xl bg-white p-5 text-neutral-900 shadow-lg">
+              <p className="text-sm font-semibold uppercase tracking-wider text-marca-coral">Imobiliária</p>
+              <p className="mt-1 text-3xl font-semibold">
+                {formatarReais(imobiliaria.preco)}<span className="text-base font-normal text-neutral-500">/mês</span>
+              </p>
+              <p className="text-sm text-neutral-600">{imobiliaria.creditos} créditos por mês · até {imobiliaria.pessoas} pessoas</p>
+              <ul className="mt-4 flex-1 space-y-2 text-sm text-neutral-700">
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-teal" /> A marca da casa entra sozinha no material de todo corretor</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-teal" /> O gestor vê quanto cada um gerou e gastou</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-teal" /> Corretor novo entra e já produz no padrão da casa</li>
+                <li className="flex gap-2"><Icone nome="check" className="mt-0.5 h-4 w-4 shrink-0 text-marca-teal" /> Anual com dois meses grátis</li>
+              </ul>
+              <Link href="/planos#imobiliaria" className="mt-5 inline-flex items-center justify-center rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white hover:bg-marca-coral-escuro">Ver o plano Imobiliária</Link>
+            </div>
           </div>
         </div>
       </section>
