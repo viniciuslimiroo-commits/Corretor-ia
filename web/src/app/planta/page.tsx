@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import {
@@ -13,10 +13,13 @@ import {
   area,
   areaTotal,
   distancia,
-  encaixar,
+  grudarNoDesenho,
   limites,
   metros,
   metrosQuadrados,
+  projetarNaParede,
+  proximoGiro,
+  retangulo,
   type Abertura,
   type Comodo,
   type Planta,
@@ -32,11 +35,20 @@ import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 // tela só converte pra pixel. O mesmo SVG que aparece aqui é o que o servidor exporta,
 // então não existe "na tela ficou diferente do arquivo".
 //
-// Desenho por TOQUE: cada toque marca um canto; o ponto gruda na grade de meio metro e
-// se alinha com o canto anterior quando está quase reto. É o que faz alguém desenhar
-// uma planta decente com o dedo.
+// Desenho por TOQUE: cada toque marca um canto. O ponto gruda, nesta ordem, num canto que
+// já existe, numa parede que já existe, e só então na grade -- é o que faz o cômodo novo
+// COLAR no anterior, porque num imóvel de verdade eles dividem parede. Depois disso o
+// ponto ainda se alinha com o canto anterior quando está quase reto.
+//
+// A prévia e a camada de toque usam a MESMA janela (`vista`), passada pro plantaParaSvg.
+// Sem isso o SVG se centraliza sozinho dentro da caixa e o ponto não cai onde se tocou.
 
-type Ferramenta = "comodo" | "porta" | "janela" | "apagar";
+type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "mover" | "apagar";
+
+/** A caixa de desenho tem proporção fixa: assim o zoom não muda o formato dela. */
+const PROPORCAO = 4 / 3;
+const LARGURA_MIN = 3; // metros visíveis no zoom máximo
+const LARGURA_MAX = 80;
 
 let seq = 0;
 const novoId = (p: string) => `${p}${Date.now().toString(36)}${seq++}`;
@@ -55,18 +67,64 @@ export default function PaginaPlanta() {
   const [resultado, setResultado] = useState<{ jobId: string; url: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
+  const [pan, setPan] = useState<{ telaX: number; telaY: number; x0: number; y0: number } | null>(null);
+  const [cantoRetangulo, setCantoRetangulo] = useState<Ponto | null>(null);
 
-  // Área visível em metros: cresce com o desenho, com um mínimo pra não ficar apertado.
-  const vista = useMemo(() => {
-    const l = limites(planta, 1.5);
-    const largura = Math.max(12, l.x1 - l.x0, ...rascunho.map((p) => p.x + 2));
-    const altura = Math.max(9, l.y1 - l.y0, ...rascunho.map((p) => p.y + 2));
-    return { x0: Math.min(l.x0, 0), y0: Math.min(l.y0, 0), largura, altura };
-  }, [planta, rascunho]);
+  /**
+   * Janela visível, em metros. É ESTADO, não coisa calculada a cada desenho -- de
+   * propósito.
+   *
+   * Quando ela se reenquadrava sozinha, cada cômodo terminado mudava a escala e o centro,
+   * e o desenho fugia debaixo do dedo: o arrasto seguinte caía num ponto diferente do que
+   * a pessoa mirou. Agora a janela só muda quando a pessoa manda (zoom, arrastar,
+   * enquadrar) ou quando o desenho passaria da borda -- e aí ela cresce, nunca recentra.
+   */
+  const [vistaBase, setVistaBase] = useState({ x0: -1, y0: -1, largura: 12 });
+  const vista = { ...vistaBase, altura: vistaBase.largura / PROPORCAO };
+
+  /** Enquadramento que faz a planta inteira caber, na proporção da caixa. */
+  function enquadramentoDe(pl: Planta) {
+    const l = limites(pl, 1.2);
+    let largura = Math.max(10, l.x1 - l.x0);
+    let altura = Math.max(10 / PROPORCAO, l.y1 - l.y0);
+    if (largura / altura > PROPORCAO) altura = largura / PROPORCAO;
+    else largura = altura * PROPORCAO;
+    return { x0: (l.x0 + l.x1) / 2 - largura / 2, y0: (l.y0 + l.y1) / 2 - altura / 2, largura };
+  }
+
+  /** Cresce a janela só o suficiente pra caber os pontos novos. Nunca encolhe, nunca recentra. */
+  function abrirEspacoPara(pontos: Ponto[]) {
+    if (pontos.length === 0) return;
+    setVistaBase((v) => {
+      const altura = v.largura / PROPORCAO;
+      let x0 = v.x0;
+      let y0 = v.y0;
+      let x1 = v.x0 + v.largura;
+      let y1 = v.y0 + altura;
+      for (const p of pontos) {
+        x0 = Math.min(x0, p.x - 0.8);
+        y0 = Math.min(y0, p.y - 0.8);
+        x1 = Math.max(x1, p.x + 0.8);
+        y1 = Math.max(y1, p.y + 0.8);
+      }
+      let largura = x1 - x0;
+      if (largura / (y1 - y0) < PROPORCAO) largura = (y1 - y0) * PROPORCAO;
+      if (largura <= v.largura + 1e-6 && x0 >= v.x0 - 1e-6 && y0 >= v.y0 - 1e-6) return v;
+      return { x0, y0, largura: Math.min(LARGURA_MAX, largura) };
+    });
+  }
 
   const escalaTela = 46;
   const svgLargura = Math.round(vista.largura * escalaTela);
   const svgAltura = Math.round(vista.altura * escalaTela);
+
+  /** Zoom mantendo o centro. fator < 1 aproxima. */
+  function aplicarZoom(fator: number) {
+    const cx = vista.x0 + vista.largura / 2;
+    const cy = vista.y0 + vista.altura / 2;
+    const largura = Math.min(LARGURA_MAX, Math.max(LARGURA_MIN, vista.largura * fator));
+    setVistaBase({ x0: cx - largura / 2, y0: cy - largura / PROPORCAO / 2, largura });
+  }
 
   function posicao(e: ReactPointerEvent): Ponto | null {
     const r = caixa.current?.getBoundingClientRect();
@@ -79,7 +137,8 @@ export default function PaginaPlanta() {
   function pontoDeTrabalho(e: ReactPointerEvent): Ponto | null {
     const cru = posicao(e);
     if (!cru) return null;
-    const grudado = encaixar(cru, planta.passo);
+    // gruda primeiro no que já foi desenhado (canto > parede > grade), depois alinha
+    const { p: grudado } = grudarNoDesenho(cru, planta, planta.passo, rascunho);
     return alinhar(rascunho[rascunho.length - 1], grudado, planta.passo * 1.4);
   }
 
@@ -93,6 +152,17 @@ export default function PaginaPlanta() {
       return;
     }
     if (ferramenta === "porta" || ferramenta === "janela") {
+      // tocar de novo numa porta que já existe gira ela em vez de criar outra:
+      // são as quatro formas de abrir (dois lados da parede × duas mãos)
+      const jaTem = planta.aberturas.find((a) => distancia(a.p, p) < 0.6);
+      if (jaTem) {
+        if (jaTem.tipo === "porta") {
+          const g = proximoGiro(jaTem);
+          setPlanta((pl) => ({ ...pl, aberturas: pl.aberturas.map((a) => (a.id === jaTem.id ? { ...a, ...g } : a)) }));
+          setResultado(null);
+        }
+        return;
+      }
       const encaixe = encaixarNaParede(p);
       const nova: Abertura = {
         id: novoId("a"),
@@ -100,6 +170,8 @@ export default function PaginaPlanta() {
         p: encaixe?.p ?? p,
         angulo: encaixe?.angulo ?? 0,
         largura: ferramenta === "porta" ? LARGURA_PORTA : LARGURA_JANELA,
+        lado: 1,
+        giro: 1,
       };
       setPlanta((pl) => ({ ...pl, aberturas: [...pl.aberturas, nova] }));
       setResultado(null);
@@ -127,17 +199,68 @@ export default function PaginaPlanta() {
       for (let i = 0; i < cm.pontos.length; i++) {
         const a = cm.pontos[i];
         const b = cm.pontos[(i + 1) % cm.pontos.length];
-        const vx = b.x - a.x;
-        const vy = b.y - a.y;
-        const comp2 = vx * vx + vy * vy;
-        if (comp2 < 1e-6) continue;
-        const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / comp2));
-        const q = { x: a.x + vx * t, y: a.y + vy * t };
+        const q = projetarNaParede(p, a, b);
+        if (!q) continue;
         const d = distancia(p, q);
-        if (!melhor || d < melhor.d) melhor = { p: q, angulo: (Math.atan2(vy, vx) * 180) / Math.PI, d };
+        if (!melhor || d < melhor.d) melhor = { p: q, angulo: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI, d };
       }
     }
     return melhor && melhor.d < 1.2 ? { p: melhor.p, angulo: melhor.angulo } : null;
+  }
+
+  /** Fecha o retângulo arrastado. Quase todo cômodo é retângulo: um gesto em vez de 5 toques. */
+  function fecharRetangulo(fim: Ponto) {
+    const ini = cantoRetangulo;
+    setCantoRetangulo(null);
+    if (!ini || Math.abs(fim.x - ini.x) < planta.passo || Math.abs(fim.y - ini.y) < planta.passo) return;
+    const novo: Comodo = {
+      id: novoId("c"),
+      nome: NOMES_SUGERIDOS[planta.comodos.length] ?? "",
+      pontos: retangulo(ini, fim),
+      cor: CORES_COMODO[planta.comodos.length % CORES_COMODO.length],
+    };
+    setPlanta((pl) => ({ ...pl, comodos: [...pl.comodos, novo] }));
+    abrirEspacoPara(novo.pontos);
+    setSelecionado(novo.id);
+    setResultado(null);
+  }
+
+  function aoApertar(e: ReactPointerEvent) {
+    if (ferramenta === "mover") {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setPan({ telaX: e.clientX, telaY: e.clientY, x0: vista.x0, y0: vista.y0 });
+      return;
+    }
+    if (ferramenta === "retangulo") {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setCantoRetangulo(pontoDeTrabalho(e));
+      return;
+    }
+    tocar(e);
+  }
+
+  function aoMover(e: ReactPointerEvent) {
+    if (pan) {
+      const r = caixa.current?.getBoundingClientRect();
+      if (!r) return;
+      const porPixel = vista.largura / r.width;
+      setVistaBase({
+        x0: pan.x0 - (e.clientX - pan.telaX) * porPixel,
+        y0: pan.y0 - (e.clientY - pan.telaY) * porPixel,
+        largura: vista.largura,
+      });
+      return;
+    }
+    setCursor(pontoDeTrabalho(e));
+  }
+
+  function aoSoltar(e: ReactPointerEvent) {
+    if (pan) return setPan(null);
+    if (ferramenta === "retangulo" && cantoRetangulo) {
+      const fim = pontoDeTrabalho(e);
+      if (fim) fecharRetangulo(fim);
+      else setCantoRetangulo(null);
+    }
   }
 
   function dentroDoPoligono(p: Ponto, poli: Ponto[]) {
@@ -159,6 +282,7 @@ export default function PaginaPlanta() {
       cor: CORES_COMODO[planta.comodos.length % CORES_COMODO.length],
     };
     setPlanta((pl) => ({ ...pl, comodos: [...pl.comodos, novo] }));
+    abrirEspacoPara(novo.pontos);
     setRascunho([]);
     setSelecionado(novo.id);
     setResultado(null);
@@ -211,7 +335,8 @@ export default function PaginaPlanta() {
   }
 
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
-  const previa = plantaParaSvg({ ...planta, nome: "" }, { escala: escalaTela, grade: true });
+  // MESMA janela da camada de toque: é o que garante que o ponto cai onde se tocou
+  const previa = plantaParaSvg({ ...planta, nome: "" }, { escala: escalaTela, grade: true, vista });
   const total = areaTotal(planta);
   const comodoSelecionado = planta.comodos.find((x) => x.id === selecionado) ?? null;
   const px = (x: number) => ((x - vista.x0) / vista.largura) * 100;
@@ -232,7 +357,7 @@ export default function PaginaPlanta() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Planta baixa</h1>
-          <p className="mt-1 text-sm text-neutral-500">Toque nos cantos de cada cômodo. As medidas e a área saem sozinhas. Não gasta crédito.</p>
+          <p className="mt-1 text-sm text-neutral-500">Arraste um retângulo por cômodo, ou marque canto a canto. Cômodo novo cola no anterior; medidas e área saem sozinhas. Não gasta crédito.</p>
         </div>
         <p className="text-sm text-neutral-600">
           {planta.comodos.length} {planta.comodos.length === 1 ? "cômodo" : "cômodos"} · <strong>{metrosQuadrados(total)}</strong>
@@ -245,25 +370,34 @@ export default function PaginaPlanta() {
         <section className="lg:col-span-8">
           <Cartao className="p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Chip ativo={ferramenta === "comodo"} onClick={() => setFerramenta("comodo")}>Cômodo</Chip>
+              <Chip ativo={ferramenta === "retangulo"} onClick={() => setFerramenta("retangulo")}>Retângulo</Chip>
+              <Chip ativo={ferramenta === "comodo"} onClick={() => setFerramenta("comodo")}>Cômodo livre</Chip>
               <Chip ativo={ferramenta === "porta"} onClick={() => setFerramenta("porta")}>Porta</Chip>
               <Chip ativo={ferramenta === "janela"} onClick={() => setFerramenta("janela")}>Janela</Chip>
+              <Chip ativo={ferramenta === "mover"} onClick={() => setFerramenta("mover")}>Mover</Chip>
               <Chip ativo={ferramenta === "apagar"} onClick={() => setFerramenta("apagar")}>Apagar</Chip>
-              <span className="ml-auto flex items-center gap-3 text-xs text-neutral-500">
-                <button onClick={desfazerPonto} className="underline">desfazer</button>
-                {rascunho.length >= 3 && (
-                  <button onClick={fecharComodo} className="rounded bg-marca-coral px-2 py-1 font-medium text-white">fechar cômodo</button>
-                )}
+              <span className="ml-auto flex items-center gap-1">
+                <button onClick={() => aplicarZoom(1 / 0.75)} title="Afastar" aria-label="Afastar" className="h-7 w-7 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">−</button>
+                <button onClick={() => aplicarZoom(0.75)} title="Aproximar" aria-label="Aproximar" className="h-7 w-7 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">+</button>
+                <button onClick={() => setVistaBase(enquadramentoDe(planta))} title="Enquadrar tudo" className="rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100">enquadrar</button>
               </span>
             </div>
 
             <div
               ref={caixa}
               className="relative w-full overflow-hidden rounded-xl border border-neutral-200 bg-white"
-              style={{ aspectRatio: `${svgLargura} / ${svgAltura}`, touchAction: "none", cursor: "crosshair" }}
-              onPointerDown={tocar}
-              onPointerMove={(e) => setCursor(pontoDeTrabalho(e))}
-              onPointerLeave={() => setCursor(null)}
+              style={{
+                aspectRatio: `${svgLargura} / ${svgAltura}`,
+                touchAction: "none",
+                cursor: ferramenta === "mover" ? (pan ? "grabbing" : "grab") : "crosshair",
+              }}
+              onPointerDown={aoApertar}
+              onPointerMove={aoMover}
+              onPointerUp={aoSoltar}
+              onPointerLeave={() => {
+                setCursor(null);
+                setPan(null);
+              }}
             >
               <div className="pointer-events-none absolute inset-0" dangerouslySetInnerHTML={{ __html: previa.svg.replace("<svg ", '<svg style="width:100%;height:100%" ').replace(/width="\d+" height="\d+"/, "") }} />
 
@@ -275,7 +409,29 @@ export default function PaginaPlanta() {
                 {rascunho.length >= 1 && cursor && ferramenta === "comodo" && (
                   <line x1={px(rascunho[rascunho.length - 1].x)} y1={py(rascunho[rascunho.length - 1].y)} x2={px(cursor.x)} y2={py(cursor.y)} stroke="#f06b4f" strokeWidth={2} strokeDasharray="6 4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                 )}
+                {cantoRetangulo && cursor && (
+                  <rect
+                    x={Math.min(px(cantoRetangulo.x), px(cursor.x))}
+                    y={Math.min(py(cantoRetangulo.y), py(cursor.y))}
+                    width={Math.abs(px(cursor.x) - px(cantoRetangulo.x))}
+                    height={Math.abs(py(cursor.y) - py(cantoRetangulo.y))}
+                    fill="#f06b4f"
+                    fillOpacity={0.15}
+                    stroke="#f06b4f"
+                    strokeWidth={3}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
               </svg>
+              {cantoRetangulo && cursor && (
+                <span
+                  className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-marca-indigo px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                  style={{ left: `${(px(cantoRetangulo.x) + px(cursor.x)) / 2}%`, top: `${(py(cantoRetangulo.y) + py(cursor.y)) / 2}%` }}
+                >
+                  {metros(Math.abs(cursor.x - cantoRetangulo.x))} × {metros(Math.abs(cursor.y - cantoRetangulo.y))}
+                </span>
+              )}
               {rascunho.map((p, i) => (
                 <span key={i} className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-marca-coral" style={{ left: `${px(p.x)}%`, top: `${py(p.y)}%` }} />
               ))}
@@ -290,7 +446,7 @@ export default function PaginaPlanta() {
                   <button
                     key={cm.id}
                     onPointerDown={(e) => {
-                      if (ferramenta !== "comodo") return;
+                      if (ferramenta !== "comodo" && ferramenta !== "retangulo") return;
                       e.stopPropagation();
                       setSelecionado(cm.id);
                     }}
@@ -302,15 +458,29 @@ export default function PaginaPlanta() {
               })}
             </div>
 
-            <p className="mt-2 text-xs text-neutral-500">
-              {ferramenta === "comodo"
-                ? rascunho.length === 0
-                  ? "Toque no primeiro canto do cômodo. Os pontos grudam na grade de meio metro e as paredes saem retas sozinhas."
-                  : `${rascunho.length} ${rascunho.length === 1 ? "canto" : "cantos"}. Toque no primeiro canto de novo, ou em "fechar cômodo".`
-                : ferramenta === "apagar"
-                  ? "Toque numa porta, janela ou dentro de um cômodo pra apagar."
-                  : "Toque perto da parede: a abertura gruda nela sozinha."}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+              <p>
+                {ferramenta === "retangulo"
+                  ? "Arraste de um canto ao outro. O cômodo novo cola sozinho na parede do que já está desenhado."
+                  : ferramenta === "comodo"
+                    ? rascunho.length === 0
+                      ? "Toque em cada canto. O ponto gruda primeiro num canto ou parede que já existe, depois na grade."
+                      : `${rascunho.length} ${rascunho.length === 1 ? "canto" : "cantos"}. Toque no primeiro canto de novo, ou em "fechar cômodo".`
+                    : ferramenta === "mover"
+                      ? "Arraste pra andar pela planta. Use − e + pra afastar e aproximar."
+                      : ferramenta === "apagar"
+                        ? "Toque numa porta, janela ou dentro de um cômodo pra apagar."
+                        : ferramenta === "porta"
+                          ? "Toque perto da parede pra colocar. Toque de novo numa porta pra virar o lado que ela abre."
+                          : "Toque perto da parede: a janela gruda nela sozinha."}
+              </p>
+              <span className="flex shrink-0 items-center gap-3">
+                <button onClick={desfazerPonto} className="underline">desfazer</button>
+                {rascunho.length >= 3 && (
+                  <button onClick={fecharComodo} className="rounded bg-marca-coral px-2 py-1 font-medium text-white">fechar cômodo</button>
+                )}
+              </span>
+            </div>
           </Cartao>
         </section>
 

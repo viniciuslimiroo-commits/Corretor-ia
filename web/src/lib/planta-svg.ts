@@ -13,6 +13,14 @@ export type OpcoesSvg = {
   rodape?: string;
   /** Nome e CRECI do corretor, se quiser carimbar. */
   autor?: string;
+  /**
+   * Janela visível, em metros. Sem isto a função enquadra a planta sozinha.
+   *
+   * A tela PRECISA passar a mesma janela que usa na camada de toque: o SVG é centralizado
+   * dentro da caixa, então dois enquadramentos diferentes desenham a mesma planta em
+   * lugares diferentes e o ponto não cai onde a pessoa tocou.
+   */
+  vista?: { x0: number; y0: number; largura: number; altura: number };
 };
 
 function escapar(t: string) {
@@ -22,9 +30,17 @@ function escapar(t: string) {
 /** Desenha a planta e devolve o SVG e o tamanho em pixels. */
 export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string; largura: number; altura: number } {
   const escala = o.escala ?? 60;
-  const lim = limites(planta, 1.2);
-  const L = Math.max(200, Math.round((lim.x1 - lim.x0) * escala));
-  const A = Math.max(200, Math.round((lim.y1 - lim.y0) * escala) + (o.rodape ? 44 : 0) + (planta.nome ? 46 : 0));
+  const lim = o.vista
+    ? { x0: o.vista.x0, y0: o.vista.y0, x1: o.vista.x0 + o.vista.largura, y1: o.vista.y0 + o.vista.altura }
+    : limites(planta, 1.2);
+  // com janela explícita o tamanho é exatamente o dela: qualquer mínimo aqui desalinharia
+  // o desenho da camada de toque, que é justamente o que a janela existe pra evitar
+  const L = o.vista
+    ? Math.round(o.vista.largura * escala)
+    : Math.max(200, Math.round((lim.x1 - lim.x0) * escala));
+  const A = o.vista
+    ? Math.round(o.vista.altura * escala) + (o.rodape ? 44 : 0) + (planta.nome ? 46 : 0)
+    : Math.max(200, Math.round((lim.y1 - lim.y0) * escala) + (o.rodape ? 44 : 0) + (planta.nome ? 46 : 0));
   const topo = planta.nome ? 46 : 0;
   const px = (x: number) => ((x - lim.x0) * escala).toFixed(1);
   const py = (y: number) => ((y - lim.y0) * escala + topo).toFixed(1);
@@ -62,12 +78,25 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
     const g = `transform="translate(${x} ${y}) rotate(${a.angulo})"`;
     partes.push(`<g ${g}><rect x="${-meia}" y="${-parede}" width="${meia * 2}" height="${parede * 2}" fill="#ffffff"/></g>`);
     if (a.tipo === "porta") {
-      // batente + arco de abertura, como em planta de arquiteto
+      // Batente, folha e arco de abertura, como em planta de arquiteto.
+      //
+      // A folha tem o comprimento do vão (2*meia) e gira em torno da dobradiça: fechada
+      // encosta no outro batente, aberta fica perpendicular à parede. `giro` diz em qual
+      // batente está a dobradiça e `lado` para que lado da parede ela abre -- é o que o
+      // arquiteto marca na planta e o que decide se a porta bate no móvel ou não.
+      //
+      // O arco antigo saía da própria dobradiça, o que não é o caminho da folha.
+      const lado = a.lado === -1 ? -1 : 1;
+      const giro = a.giro === -1 ? -1 : 1;
+      const dobradica = giro > 0 ? -meia : meia; // x da dobradiça
+      const fechada = -dobradica; // ponta da folha com a porta fechada (o outro batente)
+      const aberta = -lado * meia * 2; // y da ponta com a porta aberta (perpendicular)
+      const sentido = giro * lado > 0 ? 0 : 1; // lado do arco, deduzido dos dois eixos
       partes.push(
         `<g ${g}>` +
           `<line x1="${-meia}" y1="0" x2="${meia}" y2="0" stroke="#0f2d5b" stroke-width="${Math.max(1, parede / 3)}"/>` +
-          `<path d="M ${-meia} 0 A ${meia * 2} ${meia * 2} 0 0 1 ${-meia} ${-meia * 2}" fill="none" stroke="#0f2d5b" stroke-width="${Math.max(1, parede / 3)}" stroke-dasharray="4 3"/>` +
-          `<line x1="${-meia}" y1="0" x2="${-meia}" y2="${-meia * 2}" stroke="#0f2d5b" stroke-width="${Math.max(1.5, parede / 2)}"/>` +
+          `<path d="M ${fechada} 0 A ${meia * 2} ${meia * 2} 0 0 ${sentido} ${dobradica} ${aberta}" fill="none" stroke="#0f2d5b" stroke-width="${Math.max(1, parede / 3)}" stroke-dasharray="4 3"/>` +
+          `<line x1="${dobradica}" y1="0" x2="${dobradica}" y2="${aberta}" stroke="#0f2d5b" stroke-width="${Math.max(1.5, parede / 2)}"/>` +
           `</g>`
       );
     } else {

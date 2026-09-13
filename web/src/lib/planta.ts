@@ -28,7 +28,25 @@ export type Abertura = {
   angulo: number;
   /** Largura em metros. */
   largura: number;
+  /** Só porta: para que lado da parede a folha abre. 1 e -1 são os dois lados. */
+  lado?: 1 | -1;
+  /** Só porta: em qual batente fica a dobradiça. 1 = esquerda, -1 = direita. */
+  giro?: 1 | -1;
 };
+
+/** As quatro formas de uma porta abrir, na ordem em que o toque alterna entre elas. */
+export const GIROS_DE_PORTA: { lado: 1 | -1; giro: 1 | -1 }[] = [
+  { lado: 1, giro: 1 },
+  { lado: 1, giro: -1 },
+  { lado: -1, giro: -1 },
+  { lado: -1, giro: 1 },
+];
+
+/** Próxima combinação de abertura da porta (dá a volta). */
+export function proximoGiro(a: Abertura): { lado: 1 | -1; giro: 1 | -1 } {
+  const i = GIROS_DE_PORTA.findIndex((g) => g.lado === (a.lado ?? 1) && g.giro === (a.giro ?? 1));
+  return GIROS_DE_PORTA[(i + 1) % GIROS_DE_PORTA.length];
+}
 
 export type Planta = {
   nome: string;
@@ -121,6 +139,64 @@ export function alinhar(anterior: Ponto | undefined, p: Ponto, tolerancia = 0.6)
   return p;
 }
 
+/**
+ * Encaixa o ponto no desenho que já existe, e só depois na grade.
+ *
+ * É isto que faz o cômodo novo colar no que já está lá: num imóvel de verdade os cômodos
+ * DIVIDEM parede, e grudar só na grade de 50 cm deixa fresta ou sobreposição sempre que a
+ * pessoa erra meio metro. A ordem importa -- canto existente vence parede existente, que
+ * vence a grade -- porque canto é a informação mais forte que a pessoa já deu.
+ */
+export function grudarNoDesenho(
+  p: Ponto,
+  planta: Planta,
+  passo: number,
+  extras: Ponto[] = []
+): { p: Ponto; preso: "canto" | "parede" | "grade" } {
+  const tol = Math.max(passo * 0.85, 0.3);
+
+  let melhorCanto: { q: Ponto; d: number } | null = null;
+  for (const q of [...planta.comodos.flatMap((c) => c.pontos), ...extras]) {
+    const d = distancia(p, q);
+    if (d <= tol && (!melhorCanto || d < melhorCanto.d)) melhorCanto = { q, d };
+  }
+  if (melhorCanto) return { p: { ...melhorCanto.q }, preso: "canto" };
+
+  let melhorParede: { q: Ponto; d: number } | null = null;
+  for (const c of planta.comodos) {
+    for (let i = 0; i < c.pontos.length; i++) {
+      const q = projetarNaParede(p, c.pontos[i], c.pontos[(i + 1) % c.pontos.length]);
+      if (!q) continue;
+      const d = distancia(p, q);
+      if (d <= tol && (!melhorParede || d < melhorParede.d)) melhorParede = { q, d };
+    }
+  }
+  // na parede, ainda arredonda ao longo dela pra medida não sair quebrada
+  if (melhorParede) return { p: encaixar(melhorParede.q, passo / 2), preso: "parede" };
+
+  return { p: encaixar(p, passo), preso: "grade" };
+}
+
+/** Ponto do segmento a-b mais próximo de p (null se o segmento for degenerado). */
+export function projetarNaParede(p: Ponto, a: Ponto, b: Ponto): Ponto | null {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const comp2 = vx * vx + vy * vy;
+  if (comp2 < 1e-6) return null;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / comp2));
+  return { x: a.x + vx * t, y: a.y + vy * t };
+}
+
+/** Retângulo a partir de dois cantos opostos, no sentido horário. A maioria dos cômodos é assim. */
+export function retangulo(a: Ponto, b: Ponto): Ponto[] {
+  return [
+    { x: a.x, y: a.y },
+    { x: b.x, y: a.y },
+    { x: b.x, y: b.y },
+    { x: a.x, y: b.y },
+  ];
+}
+
 export function areaTotal(planta: Planta): number {
   return planta.comodos.reduce((s, c) => s + area(c.pontos), 0);
 }
@@ -175,6 +251,8 @@ export function limparPlanta(bruto: unknown): { planta: Planta; erro: null } | {
       p: a.p as Ponto,
       angulo: Number.isFinite(Number(a.angulo)) ? ((Number(a.angulo) % 360) + 360) % 360 : 0,
       largura: Number.isFinite(largura) ? Math.min(4, Math.max(0.4, largura)) : LARGURA_PORTA,
+      lado: Number(a.lado) === -1 ? -1 : 1,
+      giro: Number(a.giro) === -1 ? -1 : 1,
     });
   }
 
