@@ -148,7 +148,7 @@ export const ACOES: DefAcao[] = [
     id: "mobiliar",
     rotulo: "Mobiliar",
     grupo: "decorar",
-    descricao: "Coloca móveis e decoração num ambiente vazio.",
+    descricao: "Para ambiente VAZIO: coloca móveis e decoração. Se a foto já tem móveis, use Renovar — aqui eles seriam trocados.",
     parametros: [
       { chave: "tipo_espaco", rotulo: "Tipo de espaço", tipo: "opcoes", opcoes: TIPOS_ESPACO, padrao: "auto", permiteOutro: true },
       { chave: "estilo", rotulo: "Estilo", tipo: "opcoes", opcoes: ESTILOS, padrao: "moderno", permiteOutro: true },
@@ -175,7 +175,7 @@ export const ACOES: DefAcao[] = [
     id: "renovar",
     rotulo: "Renovar",
     grupo: "decorar",
-    descricao: "Reforma virtual: acabamentos, piso, paredes e luz novos.",
+    descricao: "Para ambiente JÁ MOBILIADO: reforma virtual com acabamento, piso, parede e luz novos.",
     parametros: [
       { chave: "tipo_espaco", rotulo: "Tipo de espaço", tipo: "opcoes", opcoes: TIPOS_ESPACO, padrao: "auto", permiteOutro: true },
       { chave: "estilo", rotulo: "Estilo", tipo: "opcoes", opcoes: ESTILOS, padrao: "moderno", permiteOutro: true },
@@ -200,7 +200,7 @@ export const ACOES: DefAcao[] = [
     id: "esvaziar",
     rotulo: "Esvaziar",
     grupo: "decorar",
-    descricao: "Tira móveis e objetos, deixando o ambiente vazio.",
+    descricao: "Tira os móveis e objetos e devolve o ambiente vazio. Bom antes de mobiliar de outro jeito.",
     parametros: [],
     mascara: "nao",
     provedores: ["fal-ai/flux-pro/kontext", "fal-ai/nano-banana/edit"],

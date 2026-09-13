@@ -4,6 +4,9 @@ import { useState } from "react";
 import type { DefAcao, Parametro } from "@/lib/acoes";
 import { Chip, Rotulo } from "./ui";
 
+/** Quantos chips aparecem antes do "mais N". Seis cabe em duas linhas no celular. */
+const VISIVEIS = 6;
+
 // Desenha os controles de uma ação a partir do catálogo. Chips pra opções, um campo
 // "Outro" quando a ação permite, e área de texto pra parâmetro livre. Nada aqui sabe o
 // que é "estilo" ou "piso": é tudo dado, então ação nova não exige tela nova.
@@ -21,11 +24,25 @@ function ControleOpcoes({
   const [modoOutro, setModoOutro] = useState(!ehOpcao && !!valor);
   const mostrandoOutro = modoOutro || (!ehOpcao && !!valor);
 
+  /**
+   * Listas longas (12 tipos de espaço, 10 pisos, 10 paredes) viram um paredão de chips.
+   *
+   * A saída NÃO é cortar opção: cada uma muda o prompt de verdade, e quem tem área gourmet
+   * ou ladrilho hidráulico recebe resultado pior sem ela. É dobrar as menos comuns atrás de
+   * "mais" -- e já começar aberto se a escolhida estiver lá dentro, senão a pessoa não vê
+   * o que selecionou.
+   */
+  const todas = def.opcoes ?? [];
+  const escondeAlgumas = todas.length > VISIVEIS + 2;
+  const iEscolhida = todas.findIndex((o) => o.valor === valor);
+  const [verTodas, setVerTodas] = useState(false);
+  const mostradas = !escondeAlgumas || verTodas || iEscolhida >= VISIVEIS ? todas : todas.slice(0, VISIVEIS);
+
   return (
     <div>
       <Rotulo>{def.rotulo}</Rotulo>
       <div className="flex flex-wrap gap-2">
-        {def.opcoes?.map((o) => (
+        {mostradas.map((o) => (
           <Chip
             key={o.valor}
             ativo={!mostrandoOutro && valor === o.valor}
@@ -37,6 +54,15 @@ function ControleOpcoes({
             {o.rotulo}
           </Chip>
         ))}
+        {escondeAlgumas && mostradas.length < todas.length && (
+          <button
+            type="button"
+            onClick={() => setVerTodas(true)}
+            className="rounded-full border border-dashed border-neutral-300 px-3 py-1.5 text-sm text-neutral-500 hover:border-neutral-400 hover:text-neutral-700"
+          >
+            mais {todas.length - mostradas.length}
+          </button>
+        )}
         {def.permiteOutro && (
           <Chip
             ativo={mostrandoOutro}
