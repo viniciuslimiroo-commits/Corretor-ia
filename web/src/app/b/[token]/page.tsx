@@ -261,9 +261,18 @@ export default async function BookPublico({ params }: { params: Promise<{ token:
         {c.local && (
           <section className="border-b border-neutral-200 py-6">
             <h2 className="text-lg font-semibold">{c.local.titulo}</h2>
-            <p className="mt-2 text-[17px] font-semibold" style={{ color: cor }}>
+            {/* O endereço abre o mapa no app do celular. Link de busca, não API: sem chave,
+                sem cota, e com rota a partir de onde a pessoa está. */}
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.local.endereco)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block text-[17px] font-semibold underline decoration-2 underline-offset-4"
+              style={{ color: cor }}
+            >
               {c.local.endereco}
-            </p>
+            </a>
+            <p className="mt-1 text-xs text-neutral-400">Toque para abrir no mapa</p>
             {c.local.nota && <p className="mt-1.5 text-sm text-neutral-600">{c.local.nota}</p>}
             {c.local.mapa && (
               // eslint-disable-next-line @next/next/no-img-element

@@ -435,10 +435,18 @@ export function montarPagina(
     if (mapa) {
       const alturaMapa = Math.max(160, A - y - 80);
       caixas.push({ tipo: "imagem", x: MARGEM, y: y + 8, l: util, a: alturaMapa, jobId: mapa, modo: "conter", foco: pagina.foco?.[mapa] });
-    } else if (ctx.link) {
-      // Sem mapa, o QR do imóvel faz o trabalho: quem aponta a câmera vê onde é.
-      caixas.push({ tipo: "qr", x: MARGEM, y: y + 8, l: ladoQr, a: ladoQr, conteudo: ctx.link });
-      por(texto("Aponte a câmera pra ver no mapa", medir, { x: MARGEM, y: y + ladoQr + 18, l: util, tamanho: 9, cor: CINZA, maxLinhas: 1 }));
+    } else if (pagina.textos.endereco?.trim()) {
+      // Sem figura de mapa, o QR abre o ENDEREÇO no app de mapa do celular.
+      //
+      // É um link de busca do Google Maps, não uma API: não tem chave, não tem cota e não
+      // tem custo. E pra quem recebe é melhor que uma figura -- abre o mapa de verdade,
+      // com rota a partir de onde a pessoa está.
+      //
+      // Antes daqui este QR apontava pro link público do IMÓVEL com a legenda "ver no
+      // mapa", que prometia mapa e entregava outra coisa.
+      const busca = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pagina.textos.endereco.trim().slice(0, 160))}`;
+      caixas.push({ tipo: "qr", x: MARGEM, y: y + 8, l: ladoQr, a: ladoQr, conteudo: busca });
+      por(texto("Aponte a câmera pra abrir no mapa", medir, { x: MARGEM, y: y + ladoQr + 18, l: util, tamanho: 9, cor: CINZA, maxLinhas: 1 }));
     }
     rodape();
     return { id: pagina.id, largura: L, altura: A, caixas };
