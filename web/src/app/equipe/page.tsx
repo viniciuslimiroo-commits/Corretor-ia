@@ -6,7 +6,7 @@ import { useConta } from "@/lib/use-conta";
 import { PESSOAS_POR_PLANO, rotuloDoPlano } from "@/lib/planos";
 import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
-import { Aviso, Botao, Cartao, Icone, Rotulo } from "@/components/ui";
+import { Aviso, Botao, BotaoConfirma, Cartao, Icone, Rotulo } from "@/components/ui";
 
 // Equipe: a conta compartilhada. Serve pro corretor com assistente, pra dupla de
 // corretores e pra imobiliária -- por isso ela se chama EQUIPE e não "imobiliária". Quem
@@ -189,9 +189,16 @@ export default function Equipe() {
                 </Link>
               )}
               {papel !== "dono" && (
-                <Botao variante="perigo" onClick={() => window.confirm("Sair da equipe? Você volta a usar seus créditos pessoais.") && chamar("/api/equipe/membros", json({ sair: true }, "DELETE"))} disabled={ocupado} className="text-xs">
+                <BotaoConfirma
+                  pergunta="Sair da equipe?"
+                  detalhe="Você volta a usar seus créditos pessoais. O que já produziu continua seu."
+                  confirmar="Sair"
+                  aoConfirmar={() => chamar("/api/equipe/membros", json({ sair: true }, "DELETE"))}
+                  disabled={ocupado}
+                  className="text-xs"
+                >
                   Sair da equipe
-                </Botao>
+                </BotaoConfirma>
               )}
             </div>
           </div>
@@ -227,9 +234,16 @@ export default function Equipe() {
                               {m.papel === "gestor" ? "tornar corretor" : "tornar gestor"}
                             </button>
                           )}
-                          <button onClick={() => window.confirm(`Remover ${m.nome || m.email} da equipe?`) && chamar("/api/equipe/membros", json({ userId: m.userId }, "DELETE"))} disabled={ocupado} className="text-xs text-red-600 underline">
+                          <BotaoConfirma
+                            pergunta={`Remover ${m.nome || m.email}?`}
+                            detalhe="A pessoa perde o acesso aos créditos da equipe. O que ela já produziu continua no acervo dela."
+                            confirmar="Remover"
+                            aoConfirmar={() => chamar("/api/equipe/membros", json({ userId: m.userId }, "DELETE"))}
+                            disabled={ocupado}
+                            className="px-0 py-0 text-xs underline"
+                          >
                             remover
-                          </button>
+                          </BotaoConfirma>
                         </div>
                       )}
                     </li>

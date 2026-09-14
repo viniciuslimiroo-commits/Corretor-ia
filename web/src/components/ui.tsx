@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 // Peças pequenas da interface, no padrão da marca. Nada de biblioteca: Tailwind e
 // as cores marca-* definidas em globals.css. Manter poucas variantes e usar sempre
@@ -26,6 +26,85 @@ export function Botao({
     <button className={`${base} ${estilos[variante]} ${className}`} {...rest}>
       {children}
     </button>
+  );
+}
+
+/**
+ * Botão de ação que não tem volta, com a confirmação DENTRO da página.
+ *
+ * Existe porque `window.confirm` não é confiável: o navegador pode suprimir o diálogo --
+ * depois de "impedir que esta página crie mais caixas", dentro de webview, em app
+ * embutido -- e aí ele devolve `false` na hora, sem mostrar nada. O clique vira nada, e
+ * quem está usando conclui que o botão está quebrado. Foi exatamente o que aconteceu com
+ * "Apagar" em Materiais, e valia pra TODA ação destrutiva do app.
+ *
+ * Aqui a pergunta é HTML: aparece sempre, em qualquer navegador, e ainda cabe explicar o
+ * que a ação faz -- coisa que uma caixinha de sistema com "OK/Cancelar" nunca fez bem.
+ */
+export function BotaoConfirma({
+  children,
+  pergunta,
+  detalhe,
+  confirmar = "Apagar",
+  aoConfirmar,
+  variante = "perigo",
+  className = "",
+  disabled,
+  title,
+}: {
+  children: ReactNode;
+  /** A pergunta, curta. "Apagar 3 imagens?" */
+  pergunta: string;
+  /** O que a pessoa precisa saber ANTES de clicar. O que quebra, o que sobrevive. */
+  detalhe?: string;
+  confirmar?: string;
+  aoConfirmar: () => void;
+  variante?: Variante;
+  className?: string;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [armado, setArmado] = useState(false);
+
+  useEffect(() => {
+    if (!armado) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setArmado(false);
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [armado]);
+
+  return (
+    <span className="relative inline-flex">
+      <Botao variante={variante} onClick={() => setArmado((v) => !v)} disabled={disabled} className={className} title={title}>
+        {children}
+      </Botao>
+      {armado && (
+        <>
+          {/* Clique fora fecha. Fixo e transparente, igual aos outros menus do app. */}
+          <span className="fixed inset-0 z-40" onClick={() => setArmado(false)} />
+          <span className="absolute top-full right-0 z-50 mt-1.5 w-64 rounded-xl border border-neutral-200 bg-white p-3 text-left shadow-lg">
+            <span className="block text-sm font-medium text-neutral-900">{pergunta}</span>
+            {detalhe && <span className="mt-1 block text-xs leading-relaxed text-neutral-500">{detalhe}</span>}
+            <span className="mt-3 flex items-center justify-end gap-2">
+              <button onClick={() => setArmado(false)} className="rounded-lg px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setArmado(false);
+                  aoConfirmar();
+                }}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              >
+                {confirmar}
+              </button>
+            </span>
+          </span>
+        </>
+      )}
+    </span>
   );
 }
 

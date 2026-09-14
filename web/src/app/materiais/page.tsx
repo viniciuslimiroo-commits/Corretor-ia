@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
-import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { CATEGORIAS, type Categoria } from "@/lib/materiais";
 import { guardarSelecao } from "@/lib/selecao-material";
 
@@ -53,6 +53,7 @@ export default function Materiais() {
   const [busca, setBusca] = useState("");
   const [marcados, setMarcados] = useState<string[]>([]);
   const [apagando, setApagando] = useState(false);
+  const [emUso, setEmUso] = useState<string | null>(null);
   const { user, token } = c;
 
   const buscar = useCallback(async () => {
@@ -114,11 +115,8 @@ export default function Materiais() {
    * servidor responde que alguma imagem está num book -- e aí ela diz QUAIS books, porque
    * "tem certeza?" sem dizer o que quebra não é pergunta, é formalidade.
    */
-  async function apagarMarcados() {
+  async function apagarMarcados(forcarAgora = false) {
     if (selecionados.length === 0 || apagando) return;
-    const quantos = selecionados.length;
-    if (!window.confirm(`Apagar ${quantos} ${quantos === 1 ? "imagem" : "imagens"} de vez? Isso não tem volta e não devolve crédito.`)) return;
-
     setApagando(true);
     setErro(null);
     try {
@@ -138,16 +136,17 @@ export default function Materiais() {
         return { ok: r.ok, status: r.status, d };
       };
 
-      let saida = await pedir(false);
+      const saida = await pedir(forcarAgora);
+      // Em uso num book: em vez de perguntar de novo num diálogo, o aviso fica NA TELA,
+      // dizendo em quais books, com o botão de confirmar ao lado.
       if (saida.status === 409 && saida.d.emUso) {
-        if (!window.confirm(`${saida.d.error} Apagar assim mesmo?`)) {
-          setApagando(false);
-          return;
-        }
-        saida = await pedir(true);
+        setEmUso(saida.d.error ?? "Estas imagens estão em algum book.");
+        setApagando(false);
+        return;
       }
       if (!saida.ok) throw new Error(saida.d.error ?? "Não consegui apagar.");
 
+      setEmUso(null);
       setMarcados([]);
       const d = await buscar();
       setItens(d.itens);
@@ -173,10 +172,16 @@ export default function Materiais() {
         <div className="flex flex-wrap items-center gap-2">
           {/* Só aparece com algo marcado: botão de apagar sempre à vista convida ao acidente. */}
           {selecionados.length > 0 && (
-            <Botao variante="perigo" onClick={apagarMarcados} disabled={apagando} title="Apaga do banco e do armazenamento. Não tem volta.">
+            <BotaoConfirma
+              pergunta={`Apagar ${selecionados.length} ${selecionados.length === 1 ? "imagem" : "imagens"}?`}
+              detalhe="Sai do seu acervo e do armazenamento. Não tem volta e não devolve crédito."
+              confirmar="Apagar"
+              aoConfirmar={() => apagarMarcados(false)}
+              disabled={apagando}
+            >
               <Icone nome="lixeira" className="h-4 w-4" />
               {apagando ? "Apagando…" : `Apagar · ${selecionados.length}`}
-            </Botao>
+            </BotaoConfirma>
           )}
           <Botao
             onClick={() => criarMaterial(selecionados.length ? selecionados : selecionaveis.slice(0, MAX_DE_UMA_VEZ).map((i) => i.id))}
@@ -192,6 +197,22 @@ export default function Materiais() {
       {erro && (
         <div className="mt-4">
           <Aviso tipo="erro">{erro}</Aviso>
+        </div>
+      )}
+
+      {emUso && (
+        <div className="mt-4">
+          <Aviso tipo="atencao">
+            {emUso}
+            <span className="mt-2 flex flex-wrap gap-2">
+              <button onClick={() => apagarMarcados(true)} disabled={apagando} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+                {apagando ? "Apagando…" : "Apagar assim mesmo"}
+              </button>
+              <button onClick={() => setEmUso(null)} className="rounded-lg px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">
+                Cancelar
+              </button>
+            </span>
+          </Aviso>
         </div>
       )}
 

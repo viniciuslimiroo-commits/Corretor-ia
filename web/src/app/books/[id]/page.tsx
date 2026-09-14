@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import { useBook } from "@/lib/use-book";
-import { Aviso, Botao, Icone } from "@/components/ui";
+import { Aviso, Botao, BotaoConfirma, Icone } from "@/components/ui";
 import Pagina, { type DadosPagina } from "@/components/book/pagina";
 import PainelPagina from "@/components/book/painel-pagina";
 import GavetaMidia from "@/components/book/gaveta-midia";
@@ -163,6 +163,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     token,
   });
 
+  const manuaisNoBook = book.documento.paginas.filter((p) => p.origem === "manual").length;
   const indice = Math.min(atual, book.documento.paginas.length - 1);
   const paginaAtual = book.documento.paginas[indice];
 
@@ -325,11 +326,6 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
    * documento novo. Recarregar é de propósito: o autosave em voo sobrescreveria.
    */
   async function refazer() {
-    const manuais = book.documento.paginas.filter((p) => p.origem === "manual").length;
-    const aviso = manuais
-      ? `Refazer vai reorganizar as fotos e reescrever os textos automáticos. As ${manuais} ${manuais === 1 ? "página que você editou fica" : "páginas que você editou ficam"} como estão. Continuar?`
-      : "Refazer vai reorganizar as fotos e reescrever os textos. Continuar?";
-    if (!window.confirm(aviso)) return;
     setRefazendo(true);
     setErro(null);
     try {
@@ -381,7 +377,6 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   }
 
   async function apagar() {
-    if (!window.confirm("Apagar este book? As fotos continuam em Materiais — some só a montagem.")) return;
     setApagando(true);
     try {
       const r = await fetch(`/api/books/${carga.book.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
@@ -477,10 +472,22 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
           </span>
 
           <span className="hidden lg:block">
-            <Botao variante="secundaria" onClick={refazer} disabled={refazendo} className="px-3 py-1.5 text-xs" title="Refazer pelo automático, mantendo o que você editou">
+            <BotaoConfirma
+              variante="secundaria"
+              pergunta="Refazer o book?"
+              detalhe={
+                manuaisNoBook
+                  ? `As fotos são reorganizadas e os textos automáticos reescritos. ${manuaisNoBook === 1 ? "A página que você editou fica" : `As ${manuaisNoBook} páginas que você editou ficam`} como está.`
+                  : "As fotos são reorganizadas e os textos automáticos reescritos."
+              }
+              confirmar="Refazer"
+              aoConfirmar={refazer}
+              disabled={refazendo}
+              className="px-3 py-1.5 text-xs"
+            >
               <Icone nome="magica" className="h-4 w-4" />
               {refazendo ? "Refazendo…" : "Refazer"}
-            </Botao>
+            </BotaoConfirma>
           </span>
 
           <Botao variante="secundaria" onClick={() => setPrevia("celular")} className="px-2.5 py-1.5 text-xs lg:px-3" title="Pré-visualizar">
@@ -522,10 +529,16 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
           </Botao>
 
           <span className="hidden lg:block">
-            <Botao variante="perigo" onClick={apagar} disabled={apagando} className="px-2 py-1 text-xs">
+            <BotaoConfirma
+              pergunta="Apagar este book?"
+              detalhe="As fotos continuam em Materiais — some só a montagem."
+              aoConfirmar={apagar}
+              disabled={apagando}
+              className="px-2 py-1 text-xs"
+            >
               <Icone nome="lixeira" className="h-4 w-4" />
               Apagar
-            </Botao>
+            </BotaoConfirma>
           </span>
 
           {/* ⋯ do celular */}

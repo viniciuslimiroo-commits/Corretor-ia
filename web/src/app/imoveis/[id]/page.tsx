@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
 import Compartilhar from "@/components/compartilhar";
-import { Aviso, Botao, Cartao, Icone } from "@/components/ui";
+import { Aviso, Botao, BotaoConfirma, Cartao, Icone } from "@/components/ui";
 import { guardarSelecao } from "@/lib/selecao-material";
 import FichaTecnica, { type Ficha } from "@/components/ficha-tecnica";
 
@@ -245,7 +245,6 @@ export default function PaginaImovel() {
   }
 
   async function excluir() {
-    if (!window.confirm("Excluir este imóvel? As fotos continuam no seu histórico; só o agrupamento some.")) return;
     setOcupado(true);
     try {
       const resp = await fetch(`/api/imoveis/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
@@ -321,10 +320,17 @@ export default function PaginaImovel() {
               </>
             )}
             <Compartilhar token={token} imovelId={imovel.id} compartilhadoInicial={imovel.compartilhado} texto={`Olha as fotos de ${imovel.titulo}:`} compacto />
-            <Botao variante="perigo" onClick={excluir} disabled={ocupado} className="px-2 py-1 text-xs">
+            <BotaoConfirma
+              pergunta="Excluir este imóvel?"
+              detalhe="As fotos continuam no seu histórico e em Materiais; some só o agrupamento."
+              confirmar="Excluir"
+              aoConfirmar={excluir}
+              disabled={ocupado}
+              className="px-2 py-1 text-xs"
+            >
               <Icone nome="lixeira" className="h-4 w-4" />
               Excluir
-            </Botao>
+            </BotaoConfirma>
           </div>
 
         </div>

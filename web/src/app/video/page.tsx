@@ -28,7 +28,7 @@ import {
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
-import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -345,7 +345,6 @@ export default function PaginaVideo() {
   }
 
   async function apagarVideo(id: string) {
-    if (!window.confirm("Apagar este vídeo?")) return;
     await fetch(`/api/video/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
     setVideos((lista) => (lista ?? []).filter((v) => v.id !== id));
     if (resultado?.videoId === id) setResultado(null);
@@ -707,9 +706,15 @@ export default function PaginaVideo() {
                         {v.status === "falhou" && " · falhou"}
                       </p>
                     </div>
-                    <button onClick={() => apagarVideo(v.id)} className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600" title="Apagar">
+                    <BotaoConfirma
+                      pergunta="Apagar este vídeo?"
+                      detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."
+                      aoConfirmar={() => apagarVideo(v.id)}
+                      className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                      title="Apagar"
+                    >
                       <Icone nome="lixeira" className="h-4 w-4" />
-                    </button>
+                    </BotaoConfirma>
                   </li>
                 ))}
               </ul>
