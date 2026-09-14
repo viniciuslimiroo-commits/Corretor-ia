@@ -26,17 +26,31 @@ US$ 100 com auto top-up ligado. Uma imobiliária cheia gasta ≈ US$ 55/mês.
 https://vercel.com/limiro-brasil/~/settings/billing → Upgrade to Pro. Hobby proíbe uso
 comercial e limita cron a 1×/dia. Nada muda no código.
 
-## 4. Supabase Pro + e-mail de login (você, US$ 25/mês)
+## 4. E-mail de login: Resend (você, 10 min, grátis) — BLOQUEIA O LANÇAMENTO
 
-1. https://supabase.com/dashboard/org/_/billing → Change plan → Pro. Spend cap ligado.
-2. **Resend** (grátis até 3.000 e-mails/mês): https://resend.com → Add domain
-   `encena.app.br` → colar os registros DNS que ele mostra no Registro.br → API key →
-   me passar (colar no `web/.env.local` como `RESEND_API_KEY`, sem mandar no chat).
+O e-mail embutido do Supabase manda **2 e-mails por hora no projeto inteiro**. O terceiro
+corretor que tentar entrar não recebe link nenhum — e foi isso que travou o login pelo
+celular em 14/09/2026.
 
-**Depois (eu):** SMTP no Supabase (host `smtp.resend.com`, porta 465, usuário `resend`,
-senha = API key, remetente `Encena <login@encena.app.br>`) e o template do link mágico em
-português. Sem isso o Supabase grátis manda 3 e-mails por hora: o terceiro corretor que
-tentar entrar não recebe o link.
+Esse teto **não é ajustável**. Não é questão de plano nem de painel: a API responde
+`401 Custom SMTP required to configure RATE_LIMIT_EMAIL_SENT`. O único jeito de subir é
+ter SMTP próprio. (Registrado assim porque eu mesmo já mandei procurar no painel uma
+opção que não existe.)
+
+1. https://resend.com → criar conta (grátis, 3.000 e-mails/mês, sem cartão).
+2. **API Keys → Create API Key → Full access.** Colar no `web/.env.local` como
+   `RESEND_API_KEY=re_...` — não precisa mandar no chat.
+3. **Domains → Add domain `encena.app.br`** → colar os registros que ele mostra na mesma
+   zona DNS do item 1. (Sem domínio verificado a Resend só entrega no seu próprio e-mail:
+   dá pra testar, não dá pra atender corretor.)
+4. `cd web && node scripts/configurar-email.mjs`
+
+O script faz o resto sozinho: SMTP no Supabase, limite de 2 → 100 e-mails/hora, e os
+textos dos e-mails em português com o código de 8 dígitos. `--ver` mostra como está hoje
+sem mudar nada.
+
+Supabase Pro (US$ 25/mês) é assunto separado — vale pelo backup diário e pelo banco sem
+pausa, não pelo e-mail.
 
 ## 5. Ativar a Stripe (você, 15 min)
 

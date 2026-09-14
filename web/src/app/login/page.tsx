@@ -13,6 +13,12 @@ import { supabase } from "@/lib/supabase";
 //
 // Cadastro é o mesmo formulário: com senha, "criar conta" registra e manda a confirmação;
 // com link, a primeira entrada já cria a conta.
+//
+// O MESMO e-mail traz um código de 8 dígitos, e ele existe por causa do celular: o
+// aplicativo de e-mail abre o link no navegador DELE, não no Chrome onde a pessoa estava.
+// O link entra -- mas dentro daquela janelinha, que some quando ela volta pro navegador
+// de verdade, e a impressão é "cliquei e não entrou". Digitar o código resolve porque a
+// sessão nasce onde a pessoa está.
 
 type Modo = "link" | "senha";
 
@@ -21,6 +27,8 @@ export default function Login() {
   const [modo, setModo] = useState<Modo>("link");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [codigo, setCodigo] = useState("");
+  const [pedeCodigo, setPedeCodigo] = useState(false);
   const [criando, setCriando] = useState(false);
   const [enviado, setEnviado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -35,7 +43,8 @@ export default function Login() {
     if (m.includes("email not confirmed")) return "Confirme o e-mail que mandamos antes de entrar.";
     if (m.includes("user already registered")) return "Esse e-mail já tem conta. Entre com a senha ou peça o link.";
     if (m.includes("password should be at least")) return "A senha precisa ter pelo menos 6 caracteres.";
-    if (m.includes("rate limit") || m.includes("too many")) return "Muitas tentativas. Espere um minuto e tente de novo.";
+    if (m.includes("expired") || m.includes("invalid") || m.includes("otp")) return "Código errado ou vencido. Peça outro e-mail.";
+    if (m.includes("rate limit") || m.includes("too many")) return "Muitos e-mails em pouco tempo. Espere alguns minutos — ou entre com senha.";
     return msg;
   }
 
@@ -47,7 +56,22 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: origem() } });
     setCarregando(false);
     if (error) return setErro(traduzir(error.message));
-    setEnviado("Link enviado. Confira sua caixa de entrada, e o spam, e clique nele.");
+    setCodigo("");
+    setPedeCodigo(true);
+    setEnviado("Enviamos pra " + email + ". Clique no botão do e-mail — ou digite aqui o código de 8 dígitos.");
+  }
+
+  async function entrarComCodigo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+    setCarregando(true);
+    setErro(null);
+    // `type: "email"` serve tanto pro código de quem já tem conta quanto pro de quem
+    // acabou de criar: são templates diferentes, mesma verificação.
+    const { error } = await supabase.auth.verifyOtp({ email, token: codigo.replace(/\D/g, ""), type: "email" });
+    setCarregando(false);
+    if (error) return setErro(traduzir(error.message));
+    router.push("/");
   }
 
   async function entrarComSenha(e: React.FormEvent) {
@@ -77,7 +101,7 @@ export default function Login() {
 
   async function esqueci() {
     if (!supabase || !email) return setErro("Digite o e-mail primeiro.");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${origem()}/marca` });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${origem()}/senha` });
     if (error) return setErro(traduzir(error.message));
     setEnviado("Mandamos um link pra você definir uma senha nova.");
   }
@@ -97,7 +121,38 @@ export default function Login() {
       {enviado ? (
         <div className="mt-6 rounded-lg border border-marca-teal/40 bg-marca-teal/10 p-3 text-sm text-marca-indigo">
           {enviado}
-          <button onClick={() => setEnviado(null)} className="mt-2 block text-xs underline">voltar</button>
+          {pedeCodigo && (
+            <form onSubmit={entrarComCodigo} className="mt-3 flex flex-col gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="00000000"
+                maxLength={9}
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+                className="w-full rounded-lg border border-marca-teal/50 bg-white px-3 py-2.5 text-center font-mono text-lg tracking-[0.35em] focus:border-marca-indigo focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={carregando || codigo.replace(/\D/g, "").length < 6}
+                className="rounded-lg bg-marca-indigo px-4 py-2.5 font-medium text-white hover:opacity-90 disabled:opacity-40"
+              >
+                {carregando ? "Conferindo…" : "Entrar com o código"}
+              </button>
+            </form>
+          )}
+          {erro && <p className="mt-2 text-sm text-red-600">{erro}</p>}
+          <button
+            onClick={() => {
+              setEnviado(null);
+              setPedeCodigo(false);
+              setErro(null);
+            }}
+            className="mt-2 block text-xs underline"
+          >
+            voltar
+          </button>
         </div>
       ) : (
         <>

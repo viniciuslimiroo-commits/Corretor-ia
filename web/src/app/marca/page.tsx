@@ -184,6 +184,18 @@ export default function Configuracoes() {
               </div>
             </div>
           </Cartao>
+
+          {/* Não é marca, é acesso -- mas é aqui que a pessoa procura quando quer mexer na
+              própria conta, e sem este link a única porta pra senha é um e-mail. */}
+          <Cartao>
+            <Rotulo>Entrar sem esperar e-mail</Rotulo>
+            <p className="mt-2 text-xs text-neutral-500">
+              Defina uma senha e entre direto no celular, sem depender do link chegar na caixa.
+            </p>
+            <Link href="/senha" className="mt-3 inline-block text-sm font-medium text-marca-indigo underline">
+              Definir senha
+            </Link>
+          </Cartao>
         </aside>
       </div>
     </AppShell>
