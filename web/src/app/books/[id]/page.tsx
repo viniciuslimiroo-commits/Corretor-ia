@@ -119,7 +119,9 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   const [previa, setPrevia] = useState<"celular" | "impresso" | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [alvo, setAlvo] = useState<string | null>(null);
-  const [recado, setRecado] = useState<string | null>(null);
+  const [recado, setRecado] = useState<{ texto: string; comDesfazer: boolean } | null>(null);
+  const [menuBaixar, setMenuBaixar] = useState(false);
+  const [exportando, setExportando] = useState<"leve" | "alta" | null>(null);
   const centro = useRef<HTMLDivElement | null>(null);
 
   const book = useBook({
@@ -143,9 +145,13 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     [book.documento.paginas.length]
   );
 
-  /** Aviso curto com desfazer, no lugar de modal de confirmação. */
-  const avisar = useCallback((texto: string) => {
-    setRecado(texto);
+  /**
+   * Aviso curto no rodapé. Com desfazer quando a ação MUDA o book (no lugar de um modal
+   * de confirmação); sem, quando só informa -- oferecer "desfazer" depois de baixar um
+   * arquivo é prometer algo que não existe.
+   */
+  const avisar = useCallback((texto: string, comDesfazer = false) => {
+    setRecado({ texto, comDesfazer });
     setTimeout(() => setRecado(null), 8000);
   }, []);
 
@@ -174,12 +180,62 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
       if (e.key === "ArrowUp" || e.key === "ArrowLeft") irPara(indice - 1);
       if (e.key === "Delete" && paginaAtual && podeRemover(paginaAtual)) {
         book.aplicar((d) => remover(d, paginaAtual.id));
-        avisar("Página removida do book. A foto continua em Materiais.");
+        avisar("Página removida do book. A foto continua em Materiais.", true);
       }
     }
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [indice, irPara, book, paginaAtual, previa, gaveta, avisar]);
+
+  /**
+   * Gera e baixa o PDF. Salva o que estiver pendente antes: o arquivo tem que sair com o
+   * que está na tela, não com a versão de oito segundos atrás.
+   *
+   * `paraWhatsApp` abre a conversa com o texto pronto depois de baixar. O navegador não
+   * anexa arquivo por conta própria -- por isso o aviso diz pra anexar, em vez de fingir
+   * que já foi.
+   */
+  async function baixar(qualidade: "leve" | "alta", paraWhatsApp = false) {
+    setMenuBaixar(false);
+    setExportando(qualidade);
+    setErro(null);
+    book.salvarAgora();
+    try {
+      const r = await fetch(`/api/books/${carga.book.id}/exportar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ qualidade }),
+      });
+      if (!r.ok) {
+        const texto = await r.text();
+        let d: { error?: string } = {};
+        try {
+          if (texto) d = JSON.parse(texto);
+        } catch {
+          d = { error: `O servidor respondeu ${r.status}.` };
+        }
+        throw new Error(d.error ?? "Não consegui gerar o PDF.");
+      }
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = r.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "book.pdf";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      const mb = (blob.size / 1024 / 1024).toFixed(1).replace(".", ",");
+      if (paraWhatsApp) {
+        const texto = `Olha o material de ${carga.book.titulo ?? "este imóvel"}:`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+        avisar(`PDF de ${mb} MB baixado. Anexe na conversa que abriu.`);
+      } else {
+        avisar(`PDF de ${mb} MB baixado.`);
+      }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao gerar o PDF.");
+    } finally {
+      setExportando(null);
+    }
+  }
 
   async function apagar() {
     if (!window.confirm("Apagar este book? As fotos continuam em Materiais — some só a montagem.")) return;
@@ -280,6 +336,31 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
             <Icone nome="olho" className="h-4 w-4" />
             Pré-visualizar
           </Botao>
+
+          <span className="relative">
+            <Botao variante="secundaria" onClick={() => setMenuBaixar((v) => !v)} disabled={!!exportando} className="px-3 py-1.5 text-xs">
+              <Icone nome="download" className="h-4 w-4" />
+              {exportando === "alta" ? "Gerando…" : "Baixar"}
+            </Botao>
+            {menuBaixar && (
+              <span className="absolute top-full right-0 z-40 mt-1 w-56 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
+                <button onClick={() => baixar("leve")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                  <strong className="block text-sm font-medium">Para WhatsApp</strong>
+                  <span className="text-neutral-500">Leve, abre rápido no celular</span>
+                </button>
+                <button onClick={() => baixar("alta")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                  <strong className="block text-sm font-medium">Para imprimir</strong>
+                  <span className="text-neutral-500">300 dpi · arquivo maior e mais lento</span>
+                </button>
+              </span>
+            )}
+          </span>
+
+          <Botao onClick={() => baixar("leve", true)} disabled={!!exportando} className="px-3 py-1.5 text-xs">
+            <Icone nome="whatsapp" className="h-4 w-4" />
+            {exportando === "leve" ? "Gerando…" : "Mandar"}
+          </Botao>
+
           <Botao variante="perigo" onClick={apagar} disabled={apagando} className="px-2 py-1 text-xs">
             <Icone nome="lixeira" className="h-4 w-4" />
             Apagar
@@ -432,10 +513,12 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
       {/* aviso curto no lugar de modal: some sozinho e tem desfazer */}
       {recado && (
         <div className="pointer-events-auto fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full bg-neutral-900 px-4 py-2 text-sm text-white shadow-lg">
-          {recado}
-          <button onClick={() => { book.desfazer(); setRecado(null); }} className="font-semibold underline">
-            Desfazer
-          </button>
+          {recado.texto}
+          {recado.comDesfazer && (
+            <button onClick={() => { book.desfazer(); setRecado(null); }} className="font-semibold underline">
+              Desfazer
+            </button>
+          )}
         </div>
       )}
     </div>

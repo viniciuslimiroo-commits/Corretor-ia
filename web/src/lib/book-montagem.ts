@@ -115,9 +115,12 @@ export function escolherCapa(imagens: ImagemDisponivel[], capaMarcada?: string |
 /** A ficha técnica, só com o que está preenchido. Campo vazio não vira linha em branco. */
 export function fichaDoImovel(i: ImovelMontagem): { rotulo: string; valor: string }[] {
   const linhas: { rotulo: string; valor: string }[] = [];
+  // Número sai no formato daqui: 96,5 e não 96.5. O ponto decimal num material que vai
+  // pro cliente brasileiro parece erro de sistema.
   const por = (rotulo: string, valor: unknown, sufixo = "") => {
     if (valor === null || valor === undefined || valor === "") return;
-    linhas.push({ rotulo, valor: `${valor}${sufixo}` });
+    const texto = typeof valor === "number" ? String(valor).replace(".", ",") : String(valor);
+    linhas.push({ rotulo, valor: `${texto}${sufixo}` });
   };
   por("Área útil", i.area_util, " m²");
   por("Área total", i.area_total, " m²");
@@ -154,6 +157,10 @@ export function montar(d: DadosMontagem): DocumentoBook {
 
   const paginas: Pagina[] = [];
 
+  // A descrição vai na capa só onde ela cabe e não se repete: nos tipos deitados o texto
+  // tem página própria, e escrever nos dois lugares é o mesmo parágrafo duas vezes.
+  const descricaoNaCapa = !def.paginasFixas.includes("texto") && def.formato !== "widescreen";
+
   paginas.push({
     id: novoId(),
     tipo: "capa",
@@ -163,6 +170,7 @@ export function montar(d: DadosMontagem): DocumentoBook {
       titulo: d.imovel.titulo,
       subtitulo: d.imovel.endereco ?? "",
       ...(def.usaPreco && d.imovel.preco ? { preco: d.imovel.preco } : {}),
+      ...(descricaoNaCapa && d.imovel.descricao ? { descricao: d.imovel.descricao } : {}),
     },
   });
 

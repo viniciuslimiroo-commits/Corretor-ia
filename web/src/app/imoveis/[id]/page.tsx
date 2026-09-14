@@ -8,12 +8,13 @@ import AppShell from "@/components/app-shell";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, Cartao, Icone } from "@/components/ui";
 import { guardarSelecao } from "@/lib/selecao-material";
+import FichaTecnica, { type Ficha } from "@/components/ficha-tecnica";
 
 // Um imóvel: a galeria. Cada geração mostra o "depois" e vira "antes" com um toque;
 // dá pra escolher a capa, compartilhar uma foto só, baixar pro anúncio e tirar do
 // imóvel. "Editar nova foto" manda pro editor já com este imóvel selecionado.
 
-type Imovel = { id: string; titulo: string; endereco: string | null; compartilhado: boolean };
+type Imovel = { id: string; titulo: string; endereco: string | null; compartilhado: boolean; ficha: Ficha };
 type Geracao = {
   id: string;
   acao: string;
@@ -326,6 +327,18 @@ export default function PaginaImovel() {
             </Botao>
           </div>
 
+        </div>
+      )}
+
+      {imovel && (
+        <div className="mt-5">
+          <FichaTecnica
+            ficha={imovel.ficha ?? {}}
+            aoSalvar={async (mudancas) => {
+              await patchImovel(mudancas);
+              await carregar();
+            }}
+          />
         </div>
       )}
 

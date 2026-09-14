@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
 import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
+import { CHAVES_FICHA, limparFicha } from "@/lib/ficha-imovel";
 
 // Um imóvel: dados e a galeria de gerações dele, cada uma com antes e depois assinados.
 
 async function imovelDoUsuario(db: NonNullable<Awaited<ReturnType<typeof usuarioDaRota>>["db"]>, id: string, userId: string) {
   const { data } = await db
     .from("properties")
-    .select("id, titulo, endereco, capa_job_id, share_token, criado_em, atualizado_em")
+    // Asterisco de propósito: os campos de ficha entraram na migração 11 e listar nome por
+    // nome faria a consulta falhar inteira em base que ainda não migrou.
+    .select("*")
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -51,7 +54,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   );
 
   return NextResponse.json({
-    imovel: { id: imovel.id, titulo: imovel.titulo ?? "Imóvel", endereco: imovel.endereco, compartilhado: !!imovel.share_token, criadoEm: imovel.criado_em, atualizadoEm: imovel.atualizado_em },
+    imovel: {
+      id: imovel.id,
+      titulo: imovel.titulo ?? "Imóvel",
+      endereco: imovel.endereco,
+      compartilhado: !!imovel.share_token,
+      criadoEm: imovel.criado_em,
+      atualizadoEm: imovel.atualizado_em,
+      ficha: Object.fromEntries(CHAVES_FICHA.map((k) => [k, (imovel as Record<string, unknown>)[k] ?? null])),
+    },
     geracoes,
   });
 }
@@ -66,7 +77,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 404 });
 
   const corpo = await req.json().catch(() => ({}));
-  const mudancas: Record<string, string | null> = {};
+  const mudancas: Record<string, string | number | null> = { ...limparFicha(corpo) };
   if (typeof corpo.titulo === "string") {
     const t = corpo.titulo.trim().slice(0, 80);
     if (!t) return NextResponse.json({ error: "O nome não pode ficar vazio." }, { status: 400 });

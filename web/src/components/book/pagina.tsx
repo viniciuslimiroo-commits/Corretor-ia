@@ -2,6 +2,7 @@
 
 import { useMemo, useRef } from "react";
 import type { Caixa, PaginaLayout } from "@/lib/book-layout";
+import { ALTURA_ACIMA_DA_BASE } from "@/lib/book-constantes";
 
 // O DESENHISTA DE TELA. O gêmeo do pdf-lib: recebe as mesmas caixas e só posiciona.
 //
@@ -22,6 +23,8 @@ import type { Caixa, PaginaLayout } from "@/lib/book-layout";
 // A interação (soltar imagem, arrastar pra enquadrar) é OPCIONAL e só liga na página
 // selecionada. Sem ela o componente é o mesmo em miniatura, na prévia e na faixa lateral.
 
+export { ALTURA_ACIMA_DA_BASE };
+
 export type DadosPagina = {
   layout: PaginaLayout;
   urls: Record<string, string>;
@@ -36,9 +39,6 @@ export type Interacao = {
   /** Clique numa caixa de imagem (abre a gaveta pra trocar). */
   aoClicarImagem?: (jobId: string, indiceNaPagina: number) => void;
 };
-
-/** Proporção do em-box acima da base. Usada aqui e no PDF -- as duas têm que combinar. */
-export const ALTURA_ACIMA_DA_BASE = 0.8;
 
 function Texto({ c, escala }: { c: Extract<Caixa, { tipo: "texto" }>; escala: number }) {
   return (
