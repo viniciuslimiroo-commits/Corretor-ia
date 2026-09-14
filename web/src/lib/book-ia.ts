@@ -248,9 +248,14 @@ export async function escreverTextos(
     return "";
   };
 
+  // Maiúscula na primeira letra, sempre. O modelo devolve ora "Varanda", ora "varanda", e
+  // a lista sai com os dois numa página impressa -- reparado no PDF do primeiro book com
+  // as duas listas. Pedir no prompt acerta quase sempre; fazer aqui acerta sempre.
+  const comMaiuscula = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
   const lista = (v: unknown, max: number, rotulo: string) =>
     (Array.isArray(v) ? v : [])
-      .map((d) => limpar(d, 60).replace(/\.+$/, ""))
+      .map((d) => comMaiuscula(limpar(d, 60).replace(/\.+$/, "")))
       .filter(Boolean)
       .slice(0, max)
       .map((d, i) => sePassar(d, `${rotulo} ${i + 1}`))
