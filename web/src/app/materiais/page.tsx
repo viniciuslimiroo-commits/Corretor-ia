@@ -418,7 +418,7 @@ export default function Materiais() {
       <div className="mt-2">
         <Rotulo>Como funciona</Rotulo>
         <p className="text-sm text-neutral-600">
-          O material sai em PDF com a sua marca de <Link href="/configuracoes" className="text-marca-indigo underline">Minha marca</Link>, o aviso
+          O material sai em PDF com a sua marca de <Link href="/marca" className="text-marca-indigo underline">Minha marca</Link>, o aviso
           de imagem ilustrativa e o QR do link do imóvel, quando ele estiver compartilhado. <strong>Não gasta crédito</strong>: é diagramação, não IA.
         </p>
       </div>

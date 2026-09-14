@@ -82,7 +82,7 @@ export default function AppShell({
     // tela de 375px viram 41px cada, onde ninguém acerta o dedo.
     { href: "/equipe", rotulo: "Equipe", icone: "equipe", soIcone: true, secundario: true },
     { href: "/historico", rotulo: "Histórico", icone: "historico", soIcone: true, secundario: true },
-    { href: "/configuracoes", rotulo: "Minha marca", icone: "configuracoes", soIcone: true, secundario: true },
+    { href: "/marca", rotulo: "Minha marca", icone: "marca", soIcone: true, secundario: true },
   ];
   const ativo = (href: string) => (href === "/" ? rota === "/" : rota.startsWith(href));
 

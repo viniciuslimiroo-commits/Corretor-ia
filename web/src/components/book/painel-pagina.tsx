@@ -215,7 +215,7 @@ export default function PainelPagina({
       {pagina.tipo === "contato" && (
         <p className="-mt-2 text-xs text-neutral-500">
           Nome, CRECI, WhatsApp, logo e QR vêm de{" "}
-          <a href="/configuracoes" className="text-marca-indigo underline">Minha marca</a>. Esta página não sai do book.
+          <a href="/marca" className="text-marca-indigo underline">Minha marca</a>. Esta página não sai do book.
         </p>
       )}
       {pagina.tipo === "ficha" && <p className="-mt-2 text-xs text-neutral-500">Os dados vêm do imóvel. Editar lá vale para todos os materiais dele.</p>}

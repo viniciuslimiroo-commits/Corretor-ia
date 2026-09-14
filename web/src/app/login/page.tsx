@@ -77,7 +77,7 @@ export default function Login() {
 
   async function esqueci() {
     if (!supabase || !email) return setErro("Digite o e-mail primeiro.");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${origem()}/configuracoes` });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${origem()}/marca` });
     if (error) return setErro(traduzir(error.message));
     setEnviado("Mandamos um link pra você definir uma senha nova.");
   }

@@ -644,7 +644,7 @@ export default function PaginaVideo() {
                 <span>
                   Tela final com meu contato
                   <span className="block text-xs text-neutral-500">
-                    Nome, CRECI, WhatsApp e logo de <Link href="/configuracoes" className="underline">Minha marca</Link>.
+                    Nome, CRECI, WhatsApp e logo de <Link href="/marca" className="underline">Minha marca</Link>.
                   </span>
                 </span>
               </label>

@@ -267,6 +267,17 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
         </svg>
       );
+    // Carimbo: a marca do corretor é o que fica CARIMBADO no canto da foto e assinado no
+    // rodapé de todo material. A engrenagem dizia "ajustes técnicos" numa tela que só tem
+    // logo, cor, nome, CRECI e WhatsApp -- e ajuste técnico ninguém tem orgulho de abrir.
+    case "marca":
+      return (
+        <svg {...p}>
+          <path d="M9 4.5A2.5 2.5 0 0 1 14 4.5c0 1.6-1.2 2.4-1.6 3.9-.2.8-.2 1.4-.2 2.1h-1.4c0-.7 0-1.3-.2-2.1C10.2 6.9 9 6.1 9 4.5Z" />
+          <path d="M5 14.5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v1.5H5v-1.5Z" />
+          <rect x="4" y="17.5" width="16" height="2.5" rx="1" />
+        </svg>
+      );
     case "download":
       return (
         <svg {...p}>
