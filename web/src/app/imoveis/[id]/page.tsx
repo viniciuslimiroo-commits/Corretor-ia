@@ -173,7 +173,7 @@ export default function PaginaImovel() {
     const prontas = (geracoes ?? []).filter((g) => g.status === "concluido" && g.depois);
     const comCapaNaFrente = [...prontas].sort((a, b) => (a.capa ? -1 : b.capa ? 1 : 0));
     guardarSelecao(comCapaNaFrente.map((g) => g.id));
-    router.push("/books?novo=1");
+    router.push("/materiais?novo=1");
   }
 
   // Busca sem tocar em estado: quem escreve na tela é sempre um callback de promessa.

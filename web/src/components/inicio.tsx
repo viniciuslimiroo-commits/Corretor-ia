@@ -22,7 +22,7 @@ const FERRAMENTAS = [
   { href: "/video", icone: "video", titulo: "Vídeo e tour 360°", texto: "As fotos viram vídeo com movimento, música e sua marca. Sem crédito." },
   { href: "/planta", icone: "planta", titulo: "Planta baixa", texto: "Desenhe os cômodos, mobílie e veja a área calculada. Sem crédito." },
   { href: "/terreno", icone: "terreno", titulo: "Terreno e lote", texto: "Marque as medidas na foto, limpe o mato ou mostre a casa construída." },
-  { href: "/materiais", icone: "materiais", titulo: "Materiais", texto: "Tudo que você criou vira book, catálogo ou apresentação em PDF, com a sua marca. Sem crédito." },
+  { href: "/materiais", icone: "materiais", titulo: "Materiais", texto: "Book, catálogo, portfólio e apresentação em PDF, com a sua marca. Sem crédito." },
 ];
 
 function quando(iso: string) {
@@ -88,7 +88,7 @@ export default function Inicio({ conta, token }: { conta: Conta; token: () => Pr
         <section className="mt-6">
           <div className="mb-2 flex items-baseline justify-between">
             <Rotulo>Seu material</Rotulo>
-            <Link href="/materiais" className="text-xs text-marca-indigo underline">ver tudo em Materiais</Link>
+            <Link href="/acervo" className="text-xs text-marca-indigo underline">ver tudo no Acervo</Link>
           </div>
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6">
             {geracoes.map((g) => (

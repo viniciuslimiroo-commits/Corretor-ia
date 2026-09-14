@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { chamarSincrono } from "@/lib/fal";
+import { conferirFatos } from "@/lib/book-fatos";
 
 // Roteiro da narração escrito por IA a partir do que a pessoa já preencheu (título,
 // preço, local, legendas das cenas). Curto de propósito: 3 a 4 frases, cabe em 20-25s
@@ -34,10 +35,41 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join("\n");
 
-  try {
-    const saida = (await chamarSincrono("fal-ai/any-llm", { model: MODELO, prompt, temperature: 0.7, max_tokens: 220 }, falKey, 40_000)) as { output?: string; error?: string | null };
+  // O guarda de fatos vale aqui também. A narração vai num vídeo que o corretor publica,
+  // e "a 5 minutos do shopping" dito em voz alta é tão afirmação quanto escrito num PDF.
+  //
+  // Aqui o "cadastro" é o que a PESSOA digitou nesta tela: título, preço, local e
+  // observações. Qualquer número fora disso é invenção do modelo.
+  const doFormulario = {
+    id: null,
+    titulo,
+    endereco: local,
+    preco,
+    descricao: [observacoes, ...legendas].filter(Boolean).join(" "),
+  };
+
+  async function narrar(pedido: string): Promise<string> {
+    const saida = (await chamarSincrono("fal-ai/any-llm", { model: MODELO, prompt: pedido, temperature: 0.7, max_tokens: 220 }, falKey as string, 40_000)) as { output?: string; error?: string | null };
     if (saida.error) throw new Error(saida.error);
-    const roteiro = (saida.output ?? "").replace(/^["“]|["”]$/g, "").replace(/\s+/g, " ").trim().slice(0, 700);
+    return (saida.output ?? "").replace(/^["“]|["”]$/g, "").replace(/\s+/g, " ").trim().slice(0, 700);
+  }
+
+  try {
+    let roteiro = await narrar(prompt);
+    const v1 = conferirFatos(roteiro, doFormulario);
+    if (v1.length > 0) {
+      const recado = v1.map((x) => `"${x.trecho.trim()}"`).join("; ");
+      roteiro = await narrar(`${prompt}
+
+A resposta anterior foi recusada porque afirmou o que eu não te dei: ${recado}. Escreva de novo sem esses números.`);
+      const v2 = conferirFatos(roteiro, doFormulario);
+      if (v2.length > 0) {
+        return NextResponse.json(
+          { error: `A IA insistiu em afirmar o que você não escreveu (${v2.map((x) => x.trecho.trim()).join(", ")}). Escreva a narração você mesmo.` },
+          { status: 422 }
+        );
+      }
+    }
     if (roteiro.length < 10) throw new Error("resposta vazia");
     return NextResponse.json({ roteiro });
   } catch (e) {

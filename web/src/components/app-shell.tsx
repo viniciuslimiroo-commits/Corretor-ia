@@ -30,7 +30,7 @@ export type Conta = {
 const CRIAR = [
   { href: "/editar", rotulo: "Editar uma foto", para: "Mobiliar, renovar, tirar objeto, trocar céu", custo: "1 crédito por foto", icone: "foto", gratis: false },
   { href: "/video", rotulo: "Fazer um vídeo", para: "Do imóvel, com música e narração", custo: "Créditos conforme o tamanho", icone: "video", gratis: false },
-  { href: "/books?novo=1", rotulo: "Montar um material", para: "Book, PDF de WhatsApp, catálogo, portfólio", custo: "Não gasta crédito", icone: "materiais", gratis: true },
+  { href: "/materiais?novo=1", rotulo: "Montar um material", para: "Book, PDF de WhatsApp, catálogo, portfólio", custo: "Não gasta crédito", icone: "materiais", gratis: true },
 ];
 
 export default function AppShell({
@@ -65,8 +65,12 @@ export default function AppShell({
     // Materiais), e por isso "onde eu crio?" não tinha resposta óbvia: dependia do que ia
     // ser criado. Agora a navegação só diz ONDE as coisas estão, e a criação inteira --
     // foto, vídeo e material -- é um botão só, visível em toda tela.
-    { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false, soMobile: true },
-    { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false, soMobile: true },
+    // Editar e Vídeo saíram da barra de baixo também.
+    //
+    // Enquanto ficavam lá, a mesma ação tinha duas superfícies e só uma dizia o preço: o
+    // menu "+ Criar" avisa "1 crédito", a barra não avisava nada. E navegação que às vezes
+    // navega e às vezes cria não é navegação. Agora, em qualquer tela e em qualquer
+    // tamanho, criar é o botão -- e o botão sempre mostra o custo antes.
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
@@ -74,8 +78,8 @@ export default function AppShell({
     // Acervo e o INSUMO (foto, planta, terreno, video); Materiais e o ENTREGAVEL (book,
     // catalogo, apresentacao). Chamar os dois de "Materiais" era a colisao que fazia a
     // pessoa procurar o book na tela das fotos.
-    { href: "/materiais", rotulo: "Acervo", icone: "materiais", soIcone: false },
-    { href: "/books", rotulo: "Materiais", icone: "planta", soIcone: false },
+    { href: "/acervo", rotulo: "Acervo", icone: "materiais", soIcone: false },
+    { href: "/materiais", rotulo: "Materiais", icone: "planta", soIcone: false },
     // Equipe virou só ícone quando Materiais entrou: o nome inteiro dos dois não cabe
     // junto do resto na barra de 1152px.
     // `secundario` = no celular sai da barra de baixo e vai pro "Mais": nove ícones numa

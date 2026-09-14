@@ -3,7 +3,8 @@ import { usuarioDaRota } from "@/lib/auth-rota";
 import { chamarSincrono } from "@/lib/fal";
 import { limparDocumento } from "@/lib/book-documento";
 import { faltaMigracao, RECADO_MIGRACAO, imovelDeMontagem, imagensDoImovel, urlsDoDocumento } from "@/lib/book-servidor";
-import { fichaDoImovel, legendaDaImagem } from "@/lib/book-montagem";
+import { fichaDoImovel, legendaDaImagem, type ImovelMontagem } from "@/lib/book-montagem";
+import { conferirFatos } from "@/lib/book-fatos";
 
 // Escreve UM campo de UMA página. Não reescreve o book inteiro: texto gerado em bloco
 // ninguém lê antes de mandar, e o corretor assina embaixo do que sai daqui.
@@ -94,10 +95,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // ---- o que o modelo sabe do imóvel ----
   const linhas: string[] = [];
   let descricaoDoImovel: string | null = null;
+  let imovel: ImovelMontagem | null = null;
   if (book.property_id) {
     const dados = await imovelDeMontagem(db, userId, book.property_id);
     if (dados) {
       const i = dados.imovel;
+      imovel = i;
       if (i.titulo) linhas.push(`Imóvel: ${i.titulo}.`);
       if (i.endereco) linhas.push(`Endereço: ${i.endereco}.`);
       if (i.preco) linhas.push(`Preço: ${i.preco}.`);
@@ -136,27 +139,66 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const prompt = [regra.instrucao, REGRAS_GERAIS, "", "Dados do imóvel:", ...linhas].join("\n");
 
-  try {
+  // A chave numa const local: dentro da closure o TypeScript perde o estreitamento feito
+  // pelo `if (!falKey) return` lá em cima.
+  const chave: string = falKey;
+
+  /** Uma tentativa: chama o modelo e devolve o texto já aparado. */
+  async function escrever(pedido: string): Promise<string> {
     const saida = (await chamarSincrono(
       urlDaFoto ? "fal-ai/any-llm/vision" : "fal-ai/any-llm",
-      { model: MODELO, prompt, temperature: 0.6, max_tokens: 300, ...(urlDaFoto ? { image_urls: [urlDaFoto] } : {}) },
-      falKey,
+      { model: MODELO, prompt: pedido, temperature: 0.6, max_tokens: 300, ...(urlDaFoto ? { image_urls: [urlDaFoto] } : {}) },
+      chave,
       45_000
     )) as { output?: string; error?: string | null };
     if (saida.error) throw new Error(saida.error);
-
-    const texto = (saida.output ?? "")
+    const bruto = (saida.output ?? "")
       .replace(/^["“'`]+|["”'`]+$/g, "")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, regra.max);
     // Legenda não leva ponto final. Pedir no prompt funciona quase sempre; cortar aqui
     // funciona sempre, e "quase" aparece embaixo de uma foto no material do cliente.
-    const limpo = campo === "legenda" || campo === "legenda2" ? texto.replace(/\s*\.+$/, "") : texto;
+    return campo === "legenda" || campo === "legenda2" ? bruto.replace(/\s*\.+$/, "") : bruto;
+  }
+
+  try {
+    let limpo = await escrever(prompt);
+
+    // ---- O GUARDA DE FATOS, também aqui ----
+    //
+    // Faltava, e é o furo mais sério que esta sessão produziu: a criação automática passava
+    // por `conferirFatos` e este botão não, embora a tela ofereça a mesma coisa com a mesma
+    // cara. Porteira com porta lateral aberta não é porteira -- bastava clicar "Escrever
+    // com IA" num campo pra a regra deixar de valer.
+    //
+    // Uma segunda tentativa nomeando o que reprovou, e só. Se insistir, devolve erro em vez
+    // de texto: num anúncio de imóvel, não escrever é melhor que escrever errado.
+    if (imovel) {
+      const v1 = conferirFatos(limpo, imovel);
+      if (v1.length > 0) {
+        const recado = v1.map((x) => `"${x.trecho.trim()}" (${x.motivo})`).join("; ");
+        limpo = await escrever(
+          `${prompt}\n\nA sua resposta anterior foi recusada porque afirmou o que não está na ficha: ${recado}. Escreva de novo SEM esses números.`
+        );
+        const v2 = conferirFatos(limpo, imovel);
+        if (v2.length > 0) {
+          return NextResponse.json(
+            {
+              error: `A IA insistiu em afirmar o que não está no cadastro (${v2.map((x) => x.trecho.trim()).join(", ")}). Não vou escrever isso — prefira o seu texto.`,
+            },
+            { status: 422 }
+          );
+        }
+      }
+    }
+
     if (limpo.length < 2) throw new Error("resposta vazia");
 
-    // Não devolve de volta o que já estava lá: se o modelo só ecoou, o botão parece quebrado.
-    if (jaEscrito && limpo === jaEscrito) throw new Error("veio igual ao que já estava");
+    // Eco só é erro em texto LONGO. Numa legenda de quatro palavras, devolver o mesmo é o
+    // modelo concordando -- e transformar concordância em erro ensina a pessoa a não clicar.
+    const ehProsa = campo === "descricao" || campo === "corpo";
+    if (ehProsa && jaEscrito && limpo === jaEscrito) throw new Error("veio igual ao que já estava");
     if (descricaoDoImovel && campo !== "descricao" && limpo === descricaoDoImovel.trim()) throw new Error("veio igual à descrição do imóvel");
 
     return NextResponse.json({ texto: limpo });
