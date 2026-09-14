@@ -56,6 +56,29 @@ type CenaUI = {
   melhorar: boolean;
 };
 
+/**
+ * Quanto tempo a geração costuma levar.
+ *
+ * O que pesa é a cena animada: o modelo de vídeo recebe `duracao × 24` quadros, e 8s
+ * pedem 161 -- o máximo que ele aceita, e a requisição mais cara que dá pra fazer. As
+ * outras cenas são ffmpeg local e andam rápido. Números medidos, não chutados.
+ */
+function esperaEmSegundos(cenas: { tipo: string; duracao: number }[]): number {
+  let s = 20; // montagem final, miniatura, upload
+  for (const c of cenas) {
+    if (c.tipo === "animada") s += 45 + c.duracao * 18;
+    else if (c.tipo === "tour360") s += c.duracao * 7;
+    else s += c.duracao * 2;
+  }
+  return Math.round(s);
+}
+
+function relogio(seg: number): string {
+  const m = Math.floor(seg / 60);
+  const r = seg % 60;
+  return m > 0 ? `${m}min ${String(r).padStart(2, "0")}s` : `${r}s`;
+}
+
 /** Proporção 2:1 (com folga) é a assinatura de uma foto 360 equirretangular. */
 async function pareceEquirect(f: File): Promise<boolean> {
   if (!f.type.startsWith("image/")) return false;
@@ -104,6 +127,19 @@ export default function PaginaVideo() {
 
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string } | null>(null);
+  /** Segundos desde que a geração começou. Barra que anda sozinha não distingue
+   *  "processando" de "travado" -- quem paga 2 créditos e olha isso por três minutos
+   *  conclui que quebrou. O relógio e a estimativa fazem essa distinção. */
+  const [segundosGerando, setSegundosGerando] = useState(0);
+
+  useEffect(() => {
+    if (!gerando) {
+      setSegundosGerando(0);
+      return;
+    }
+    const t = setInterval(() => setSegundosGerando((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [gerando]);
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
@@ -134,6 +170,7 @@ export default function PaginaVideo() {
     .join(" · ");
 
   const custo = custoDoVideo(espec);
+  const esperaTotal = esperaEmSegundos(espec.cenas.map((c) => ({ tipo: c.tipo, duracao: c.duracao ?? 4 })));
   const duracao = duracaoEstimada(espec);
 
   const carregarVideos = useCallback(async () => {
@@ -533,7 +570,8 @@ export default function PaginaVideo() {
                           {s.tipo === "animada" && (
                             <span className="basis-full text-[11px] leading-relaxed text-neutral-500">
                               {ANIMACOES.find((a) => a.id === s.animacao)?.descricao} <strong className="font-medium text-neutral-700">Só a câmera se move</strong> — o
-                              imóvel fica como está, e não entra pessoa, bicho nem móvel novo.
+                              imóvel fica como está, e não entra pessoa, bicho nem móvel novo. Leva{" "}
+                              <strong className="font-medium text-neutral-700">alguns minutos</strong> pra ficar pronta: quanto maior a duração, mais demora.
                             </span>
                           )}
                           {s.tipo === "tour360" && (
@@ -544,7 +582,10 @@ export default function PaginaVideo() {
                             </select>
                           )}
                           <select value={s.duracao} onChange={(e) => mudarCena(s.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Duração">
-                            {(s.tipo === "tour360" ? [4, 6, 8, 10] : [3, 4, 5, 6, 8]).map((d) => (
+                            {/* Cena animada para em 5s: 8s pedem 161 quadros ao modelo, o
+                                máximo que ele aceita, e a espera passou de 8 minutos num
+                                teste real. Tempo de espera é parte do preço. */}
+                            {(s.tipo === "tour360" ? [4, 6, 8, 10] : s.tipo === "animada" ? [3, 4, 5] : [3, 4, 5, 6, 8]).map((d) => (
                               <option key={d} value={d}>{d} s</option>
                             ))}
                           </select>
@@ -589,6 +630,15 @@ export default function PaginaVideo() {
                 <p className="mt-2 text-xs text-neutral-500">
                   {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Mantenha esta aba aberta.
                 </p>
+                <p className="mt-1 text-xs text-neutral-400">
+                  {relogio(segundosGerando)} de {esperaTotal <= 60 ? "menos de 1 min" : `cerca de ${Math.round(esperaTotal / 60)} min`} esperados.
+                </p>
+                {segundosGerando > esperaTotal * 2 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Está demorando mais que o normal. A fila da IA às vezes engarrafa — costuma sair. Se passar de 15 minutos, feche e tente de novo: o
+                    crédito de uma cena que não voltou é devolvido.
+                  </p>
+                )}
               </div>
             )}
             {semSaldo && !gerando && (

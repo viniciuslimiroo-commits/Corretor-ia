@@ -182,7 +182,12 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const urlImagem = await assinar(db, fontes[0]);
           const preset = ANIMACOES.find((a) => a.id === cena.animacao) ?? ANIMACOES[1];
           const aspect = espec.formato === "16:9" ? "16:9" : espec.formato === "9:16" ? "9:16" : "1:1";
-          const frames = Math.min(161, Math.max(17, Math.round(dur * 24) + 1));
+          // Teto de 121 quadros (5s), não os 161 que o modelo aceita.
+          //
+          // Medido em produção: 161 quadros a 720p passaram de 8 minutos na fila, e a
+          // pessoa fica olhando uma barra achando que travou. Os 40 quadros a mais não
+          // valem dobrar a espera -- e a tela agora nem oferece mais de 5s por cena.
+          const frames = Math.min(121, Math.max(17, Math.round(dur * 24) + 1));
           const d = await despachar(
             MODELO_ANIMACAO,
             {
