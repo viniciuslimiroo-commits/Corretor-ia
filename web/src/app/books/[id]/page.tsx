@@ -122,7 +122,22 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   const [recado, setRecado] = useState<{ texto: string; comDesfazer: boolean } | null>(null);
   const [menuBaixar, setMenuBaixar] = useState(false);
   const [exportando, setExportando] = useState<"leve" | "alta" | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [ligandoLink, setLigandoLink] = useState(false);
+  const [painelCelular, setPainelCelular] = useState(false);
+  const [menuMais, setMenuMais] = useState(false);
   const centro = useRef<HTMLDivElement | null>(null);
+  // No celular a página acompanha a largura da tela; no computador vale o zoom da barra.
+  const [larguraTela, setLarguraTela] = useState(1200);
+  useEffect(() => {
+    // clientWidth, não innerWidth: innerWidth cresce junto com a página quando algo
+    // estoura pra fora da tela, e aí a conta de largura se retroalimenta.
+    const medir = () => setLarguraTela(document.documentElement.clientWidth || window.innerWidth);
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, []);
+  const larguraPagina = larguraTela < 1024 ? Math.min(LARGURA_BASE, larguraTela - 48) : LARGURA_BASE * zoom;
 
   const book = useBook({
     id: carga.book.id,
@@ -237,6 +252,36 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     }
   }
 
+  /**
+   * Publica o book como página e copia o endereço. Um segundo clique copia de novo, em
+   * vez de desligar -- desligar por engano quebraria o link que a pessoa já mandou. Quem
+   * quiser desligar usa o "desligar" que aparece no aviso.
+   */
+  async function alternarLink(ligar = true) {
+    setLigandoLink(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/books/${carga.book.id}/compartilhar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ ligar }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setLink(d.url ?? null);
+      if (d.url) {
+        await navigator.clipboard.writeText(d.url).catch(() => {});
+        avisar("Link copiado. Quem tiver o link vê este book.");
+      } else {
+        avisar("Link desligado. Quem já tinha o endereço não vê mais.");
+      }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao criar o link.");
+    } finally {
+      setLigandoLink(false);
+    }
+  }
+
   async function apagar() {
     if (!window.confirm("Apagar este book? As fotos continuam em Materiais — some só a montagem.")) return;
     setApagando(true);
@@ -312,7 +357,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
             <Icone nome="cima" className="h-4 w-4 rotate-90" />
           </button>
 
-          <span className="mx-1 flex items-center gap-1 rounded-lg border border-neutral-200 px-1">
+          {/* Zoom só no computador: no celular a página já vem na largura da tela. */}
+          <span className="mx-1 hidden items-center gap-1 rounded-lg border border-neutral-200 px-1 lg:flex">
             <button
               onClick={() => setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(zoom) - 1)] ?? 0.6)}
               disabled={zoom === ZOOMS[0]}
@@ -332,39 +378,83 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
             </button>
           </span>
 
-          <Botao variante="secundaria" onClick={() => setPrevia("celular")} className="px-3 py-1.5 text-xs">
+          <Botao variante="secundaria" onClick={() => setPrevia("celular")} className="px-2.5 py-1.5 text-xs lg:px-3" title="Pré-visualizar">
             <Icone nome="olho" className="h-4 w-4" />
-            Pré-visualizar
+            <span className="hidden lg:inline">Pré-visualizar</span>
           </Botao>
 
-          <span className="relative">
-            <Botao variante="secundaria" onClick={() => setMenuBaixar((v) => !v)} disabled={!!exportando} className="px-3 py-1.5 text-xs">
-              <Icone nome="download" className="h-4 w-4" />
-              {exportando === "alta" ? "Gerando…" : "Baixar"}
+          {/* Baixar / link / apagar: no computador ficam à mostra; no celular vão pro "⋯",
+              senão a barra passa da largura da tela e o editor nasce torto. */}
+          <span className="relative hidden items-center gap-1.5 lg:flex">
+            <span className="relative">
+              <Botao variante="secundaria" onClick={() => setMenuBaixar((v) => !v)} disabled={!!exportando} className="px-3 py-1.5 text-xs">
+                <Icone nome="download" className="h-4 w-4" />
+                {exportando === "alta" ? "Gerando…" : "Baixar"}
+              </Botao>
+              {menuBaixar && (
+                <span className="absolute top-full right-0 z-40 mt-1 w-56 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
+                  <button onClick={() => baixar("leve")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                    <strong className="block text-sm font-medium">Para WhatsApp</strong>
+                    <span className="text-neutral-500">Leve, abre rápido no celular</span>
+                  </button>
+                  <button onClick={() => baixar("alta")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                    <strong className="block text-sm font-medium">Para imprimir</strong>
+                    <span className="text-neutral-500">300 dpi · arquivo maior e mais lento</span>
+                  </button>
+                </span>
+              )}
+            </span>
+
+            <Botao variante="secundaria" onClick={() => alternarLink(true)} disabled={ligandoLink} className="px-3 py-1.5 text-xs" title={link ? "Link ativo — clique para copiar de novo" : "Publicar como página e copiar o link"}>
+              <Icone nome="link" className="h-4 w-4" />
+              {ligandoLink ? "…" : link ? "Link" : "Criar link"}
             </Botao>
-            {menuBaixar && (
-              <span className="absolute top-full right-0 z-40 mt-1 w-56 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
-                <button onClick={() => baixar("leve")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
-                  <strong className="block text-sm font-medium">Para WhatsApp</strong>
-                  <span className="text-neutral-500">Leve, abre rápido no celular</span>
-                </button>
-                <button onClick={() => baixar("alta")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
-                  <strong className="block text-sm font-medium">Para imprimir</strong>
-                  <span className="text-neutral-500">300 dpi · arquivo maior e mais lento</span>
-                </button>
-              </span>
-            )}
           </span>
 
-          <Botao onClick={() => baixar("leve", true)} disabled={!!exportando} className="px-3 py-1.5 text-xs">
+          <Botao onClick={() => baixar("leve", true)} disabled={!!exportando} className="px-2.5 py-1.5 text-xs lg:px-3">
             <Icone nome="whatsapp" className="h-4 w-4" />
             {exportando === "leve" ? "Gerando…" : "Mandar"}
           </Botao>
 
-          <Botao variante="perigo" onClick={apagar} disabled={apagando} className="px-2 py-1 text-xs">
-            <Icone nome="lixeira" className="h-4 w-4" />
-            Apagar
-          </Botao>
+          <span className="hidden lg:block">
+            <Botao variante="perigo" onClick={apagar} disabled={apagando} className="px-2 py-1 text-xs">
+              <Icone nome="lixeira" className="h-4 w-4" />
+              Apagar
+            </Botao>
+          </span>
+
+          {/* ⋯ do celular */}
+          <span className="relative lg:hidden">
+            <button
+              onClick={() => setMenuMais((v) => !v)}
+              className="rounded-lg px-2 py-1.5 text-lg leading-none text-neutral-500 hover:bg-neutral-100"
+              aria-label="Mais opções"
+            >
+              ⋯
+            </button>
+            {menuMais && (
+              <>
+                <span className="fixed inset-0 z-30" onClick={() => setMenuMais(false)} />
+                <span className="absolute top-full right-0 z-40 mt-1 w-60 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
+                  <button onClick={() => { setMenuMais(false); baixar("leve"); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                    <strong className="block text-sm font-medium">Baixar para WhatsApp</strong>
+                    <span className="text-neutral-500">Leve, abre rápido no celular</span>
+                  </button>
+                  <button onClick={() => { setMenuMais(false); baixar("alta"); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                    <strong className="block text-sm font-medium">Baixar para imprimir</strong>
+                    <span className="text-neutral-500">300 dpi · arquivo maior e mais lento</span>
+                  </button>
+                  <button onClick={() => { setMenuMais(false); alternarLink(true); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
+                    <strong className="block text-sm font-medium">{link ? "Copiar o link de novo" : "Criar link da página"}</strong>
+                    <span className="text-neutral-500">Abre no celular, sem baixar nada</span>
+                  </button>
+                  <button onClick={() => { setMenuMais(false); apagar(); }} className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">
+                    Apagar book
+                  </button>
+                </span>
+              </>
+            )}
+          </span>
         </div>
       </header>
 
@@ -384,7 +474,10 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
 
       <div className="flex min-h-0 flex-1">
         {/* ---- faixa de páginas, com arrastar ---- */}
-        <nav className="w-[116px] shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2">
+        {/* No celular a faixa de páginas some: o corretor rola as páginas na coluna do
+            meio e mexe na selecionada pela gaveta de baixo. Arrastar miniatura de 96px num
+            dedo não funciona, e fingir que funciona é pior do que assumir a divisão. */}
+        <nav className="hidden w-[116px] shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2 lg:block">
           <ul className="flex flex-col gap-1">
             {book.documento.paginas.map((p, i) => (
               <li
@@ -447,7 +540,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
         </nav>
 
         {/* ---- as páginas ---- */}
-        <div ref={centro} className="flex-1 overflow-auto p-6">
+        <div ref={centro} className="flex-1 overflow-auto p-4 pb-24 sm:p-6 lg:pb-6">
           <div className="mx-auto flex w-fit flex-col items-center gap-6">
             {book.documento.paginas.map((p, i) =>
               book.layout[i] ? (
@@ -459,7 +552,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                 >
                   <Pagina
                     dados={dados(i)}
-                    largura={LARGURA_BASE * zoom}
+                    largura={larguraPagina}
                     interacao={
                       i === indice
                         ? {
@@ -477,15 +570,14 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                 </div>
               ) : null
             )}
-            <p className="max-w-[520px] pb-10 text-center text-xs text-neutral-500">
-              Exportar em PDF é o próximo passo. O resto já funciona: arraste as páginas pra reordenar, clique numa foto pra trocar, arraste a foto dentro do
-              quadro pra enquadrar — e tudo salva sozinho.
+            <p className="w-full max-w-[520px] pb-10 text-center text-xs text-neutral-500">
+              Arraste as páginas pra reordenar, clique numa foto pra trocar, arraste a foto dentro do quadro pra enquadrar. Tudo salva sozinho.
             </p>
           </div>
         </div>
 
         {/* ---- painel da página ---- */}
-        <aside className="w-[236px] shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-3">
+        <aside className="hidden w-[236px] shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-3 lg:block">
           {paginaAtual && (
             <PainelPagina
               pagina={paginaAtual}
@@ -509,6 +601,50 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
           titulo={gaveta?.modo === "adicionar" ? "Adicionar página" : "Trocar a foto"}
         />
       </div>
+
+      {/* ---- no celular: gaveta de baixo com o painel da página selecionada ---- */}
+      {paginaAtual && (
+        <div className="lg:hidden">
+          {painelCelular ? (
+            <div className="fixed inset-x-0 bottom-0 z-30 max-h-[62vh] overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white p-4 shadow-2xl">
+              <button onClick={() => setPainelCelular(false)} className="mb-2 ml-auto block rounded p-1 text-neutral-400" aria-label="Fechar">
+                <Icone nome="fechar" className="h-4 w-4" />
+              </button>
+              <PainelPagina
+                pagina={paginaAtual}
+                numero={indice + 1}
+                documento={book.documento}
+                aoMudar={book.aplicar}
+                aoAbrirGaveta={() => {
+                  setPainelCelular(false);
+                  setGaveta({ modo: "trocar" });
+                }}
+                aoIrPara={irPara}
+              />
+            </div>
+          ) : (
+            <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-neutral-200 bg-white px-3 py-2">
+              <button onClick={() => irPara(indice - 1)} disabled={indice === 0} className="rounded-lg p-2 text-neutral-500 disabled:opacity-30" aria-label="Anterior">
+                <Icone nome="cima" className="h-5 w-5 -rotate-90" />
+              </button>
+              <span className="text-xs text-neutral-500">
+                {indice === 0 ? "capa" : `${indice + 1} de ${book.documento.paginas.length}`}
+              </span>
+              <button
+                onClick={() => irPara(indice + 1)}
+                disabled={indice === book.documento.paginas.length - 1}
+                className="rounded-lg p-2 text-neutral-500 disabled:opacity-30"
+                aria-label="Próxima"
+              >
+                <Icone nome="baixo" className="h-5 w-5 -rotate-90" />
+              </button>
+              <Botao onClick={() => setPainelCelular(true)} className="ml-auto px-3 py-1.5 text-xs">
+                Editar esta página
+              </Botao>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* aviso curto no lugar de modal: some sozinho e tem desfazer */}
       {recado && (

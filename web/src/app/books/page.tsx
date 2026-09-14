@@ -330,7 +330,8 @@ export default function Books() {
                     <p className="truncate text-sm text-neutral-500">{b.rotuloTipo}</p>
                     <p className="mt-2 text-xs text-neutral-400">
                       {b.paginas} {b.paginas === 1 ? "página" : "páginas"} · {quando(b.atualizadoEm)}
-                      {b.compartilhado && " · link ativo"}
+                      {b.compartilhado &&
+                        (b.aberturas > 0 ? ` · ${b.aberturas} ${b.aberturas === 1 ? "abertura" : "aberturas"}` : " · link ativo")}
                     </p>
                   </div>
                 </Link>
