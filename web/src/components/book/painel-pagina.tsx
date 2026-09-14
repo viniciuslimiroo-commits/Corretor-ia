@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { definirLayout, definirTexto, duplicar, limiteDeImagens, podeRemover, remover, type DocumentoBook, type Pagina } from "@/lib/book-documento";
 import type { LayoutFoto } from "@/lib/book-tipos";
 import { Icone, Rotulo } from "@/components/ui";
@@ -35,6 +36,19 @@ const CAMPOS: Record<string, Campo[]> = {
 };
 
 const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", ficha: "Ficha técnica", texto: "Texto", contato: "Contato" };
+
+/**
+ * Onde a IA pode escrever. Deliberadamente curto: título e subtítulo da capa são o nome e
+ * o endereço do imóvel, e preço é preço -- campo que a IA não encosta é campo que ela não
+ * tem como inventar.
+ */
+const ESCREVE_IA: Record<string, string[]> = {
+  capa: ["descricao"],
+  foto: ["legenda", "legenda2", "corpo"],
+  planta: ["legenda"],
+  texto: ["titulo", "corpo"],
+  contato: ["chamada"],
+};
 
 /** Os três templates de página de foto. Três, e só: mais que isso vira editor gráfico. */
 const LAYOUTS: { id: LayoutFoto; rotulo: string; desenho: React.ReactNode }[] = [
@@ -76,6 +90,7 @@ export default function PainelPagina({
   aoMudar,
   aoAbrirGaveta,
   aoIrPara,
+  aoEscreverIA,
 }: {
   pagina: Pagina;
   numero: number;
@@ -83,7 +98,26 @@ export default function PainelPagina({
   aoMudar: (fn: (d: DocumentoBook) => DocumentoBook) => void;
   aoAbrirGaveta: () => void;
   aoIrPara: (indice: number) => void;
+  /** Devolve o texto escrito, ou lança com a mensagem que vai aparecer embaixo do campo. */
+  aoEscreverIA?: (paginaId: string, campo: string) => Promise<string>;
 }) {
+  const [escrevendo, setEscrevendo] = useState<string | null>(null);
+  const [erroIA, setErroIA] = useState<{ campo: string; texto: string } | null>(null);
+
+  async function escrever(campo: string, max: number) {
+    if (!aoEscreverIA || escrevendo) return;
+    setEscrevendo(campo);
+    setErroIA(null);
+    try {
+      const texto = await aoEscreverIA(pagina.id, campo);
+      aoMudar((d) => definirTexto(d, pagina.id, campo, texto.slice(0, max)));
+    } catch (e) {
+      setErroIA({ campo, texto: e instanceof Error ? e.message : "Não consegui escrever agora." });
+    } finally {
+      setEscrevendo(null);
+    }
+  }
+
   const campos = (CAMPOS[pagina.tipo] ?? []).filter((c) => {
     if (c.chave === "legenda2") return pagina.layout === "duas";
     if (c.chave === "corpo" && pagina.tipo === "foto") return pagina.layout === "foto_texto";
@@ -172,7 +206,20 @@ export default function PainelPagina({
       {/* ---- textos ---- */}
       {campos.map((campo) => (
         <label key={campo.chave} className="block text-sm">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{campo.rotulo}</span>
+          <span className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{campo.rotulo}</span>
+            {aoEscreverIA && (ESCREVE_IA[pagina.tipo] ?? []).includes(campo.chave) && (
+              <button
+                type="button"
+                onClick={() => escrever(campo.chave, campo.max)}
+                disabled={!!escrevendo}
+                title={pagina.textos[campo.chave]?.trim() ? "Reescrever com IA — dá pra desfazer" : "Escrever com IA — dá pra desfazer"}
+                className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-marca-indigo transition hover:bg-marca-pessego/50 disabled:opacity-40"
+              >
+                {escrevendo === campo.chave ? "escrevendo…" : pagina.textos[campo.chave]?.trim() ? "Reescrever" : "Escrever com IA"}
+              </button>
+            )}
+          </span>
           {campo.linhas ? (
             <textarea
               value={pagina.textos[campo.chave] ?? ""}
@@ -189,6 +236,7 @@ export default function PainelPagina({
               className="w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-sm focus:border-marca-indigo focus:outline-none"
             />
           )}
+          {erroIA?.campo === campo.chave && <span className="mt-0.5 block text-[11px] text-amber-600">{erroIA.texto}</span>}
           {campo.dica && <span className="mt-0.5 block text-[11px] text-neutral-400">{campo.dica}</span>}
           {/* O contador só aparece perto do limite: antes disso é ruído. */}
           {(pagina.textos[campo.chave]?.length ?? 0) > campo.max * 0.8 && (

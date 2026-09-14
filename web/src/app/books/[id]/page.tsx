@@ -282,6 +282,28 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     }
   }
 
+  /**
+   * Escreve um campo com IA. O texto entra pelo mesmo caminho de uma digitação -- vira
+   * uma alteração normal do documento, então o Ctrl+Z desfaz e o autosave grava sozinho.
+   * Sem crédito: a listagem de books promete que não gasta.
+   */
+  async function escreverComIA(paginaId: string, campo: string): Promise<string> {
+    const r = await fetch(`/api/books/${carga.book.id}/textos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ paginaId, campo }),
+    });
+    const bruto = await r.text();
+    let d: { texto?: string; error?: string } = {};
+    try {
+      d = JSON.parse(bruto);
+    } catch {
+      throw new Error("Resposta inesperada do servidor.");
+    }
+    if (!r.ok || !d.texto) throw new Error(d.error ?? "Não consegui escrever agora.");
+    return d.texto;
+  }
+
   async function apagar() {
     if (!window.confirm("Apagar este book? As fotos continuam em Materiais — some só a montagem.")) return;
     setApagando(true);
@@ -586,6 +608,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
               aoMudar={book.aplicar}
               aoAbrirGaveta={() => setGaveta({ modo: "trocar" })}
               aoIrPara={irPara}
+              aoEscreverIA={escreverComIA}
             />
           )}
         </aside>
@@ -620,6 +643,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                   setGaveta({ modo: "trocar" });
                 }}
                 aoIrPara={irPara}
+                aoEscreverIA={escreverComIA}
               />
             </div>
           ) : (
