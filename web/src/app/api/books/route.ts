@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
-import { membroDe } from "@/lib/cobranca";
+import { marcaEfetiva, membroDe } from "@/lib/cobranca";
 import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { montar } from "@/lib/book-montagem";
+import { montarAutomatico, type Relatorio } from "@/lib/book-ia";
 import { imagensDoDocumento, type DocumentoBook } from "@/lib/book-documento";
 import { faltaMigracao, imagensDoImovel, imovelDeMontagem, jobsParaImagens, RECADO_MIGRACAO } from "@/lib/book-servidor";
 
@@ -14,8 +15,14 @@ import { faltaMigracao, imagensDoImovel, imovelDeMontagem, jobsParaImagens, RECA
 //
 // O POST já devolve o book montado e gravado: o caminho principal do produto é clicar uma
 // vez e ver o book pronto, não preencher formulário.
+//
+// Com `auto: true` a IA entra: ela OLHA as fotos (que cômodo é, qual está melhor) e
+// ESCREVE os textos. O que ela não faz, nunca, é criar fato -- metragem, quartos, vagas,
+// endereço, condomínio e preço saem do cadastro, e `book-fatos` reprova qualquer número
+// sem origem antes de entrar no documento. Se a IA falhar, o book sai pela montagem
+// determinística mesmo assim.
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function GET(req: NextRequest) {
   const s = await usuarioDaRota(req);
@@ -122,8 +129,25 @@ export async function POST(req: NextRequest) {
   }
 
   const imovel = dados?.imovel ?? { id: null, titulo: "Meu material", endereco: null, capa_job_id: null };
-  const documento = montar({ tipo: def.id, imovel, imagens });
-  const membro = await membroDe(db, userId);
+  const [membro, marca] = await Promise.all([membroDe(db, userId), marcaEfetiva(db, userId)]);
+
+  // A identidade visual entra AQUI, na criação: a cor da imobiliária vira a cor do book.
+  // Antes ficava indefinida e o layout caía no azul padrão -- que por acaso é o da Encena,
+  // então ninguém percebia até um corretor com marca vermelha exportar um book azul.
+  const cor = /^#?[0-9a-f]{6}$/i.test(marca.cor_marca ?? "") ? (marca.cor_marca as string) : undefined;
+
+  const automatico = corpo?.auto === true;
+  let documento;
+  let relatorio: Relatorio | null = null;
+  if (automatico) {
+    const feito = await montarAutomatico({ db, userId, tipo: def.id, imovel, imagens, cor, falKey: process.env.FAL_KEY });
+    documento = feito.documento;
+    relatorio = feito.relatorio;
+  } else {
+    documento = montar({ tipo: def.id, imovel, imagens, cor });
+    // Sem IA a página de destaques nasce vazia; tirar é melhor do que entregar em branco.
+    documento = { ...documento, paginas: documento.paginas.filter((p) => p.tipo !== "destaques") };
+  }
 
   const { data: criado, error } = await db
     .from("books")
@@ -153,5 +177,6 @@ export async function POST(req: NextRequest) {
       imagens: imagensDoDocumento(documento).length,
       deFora: Math.max(0, imagens.length - imagensDoDocumento(documento).length),
     },
+    relatorio,
   });
 }

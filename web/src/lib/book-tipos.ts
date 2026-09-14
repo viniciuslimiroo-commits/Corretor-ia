@@ -19,7 +19,17 @@ export const DIMENSOES: Record<Formato, { largura: number; altura: number }> = {
   widescreen: { largura: 960, altura: 540 },
 };
 
-export type TipoPagina = "capa" | "foto" | "planta" | "ficha" | "texto" | "contato";
+/**
+ * A lista é o valor, e o tipo sai DELA -- não o contrário.
+ *
+ * Havia duas listas: esta e uma cópia dentro do validador de documento. Acrescentar um
+ * tipo de página aqui compilava, montava e gravava certo, e as páginas novas sumiam
+ * calado na hora de LER do banco, porque a cópia não conhecia o nome. Uma lista só, e o
+ * validador importa daqui: agora não tem como divergir.
+ */
+export const TIPOS_PAGINA = ["capa", "foto", "planta", "destaques", "localizacao", "ficha", "texto", "contato"] as const;
+
+export type TipoPagina = (typeof TIPOS_PAGINA)[number];
 
 /** Como a página de foto se organiza. Três opções, de propósito -- não é editor gráfico. */
 export type LayoutFoto = "cheia" | "duas" | "foto_texto";
@@ -50,7 +60,7 @@ export const TIPOS: DefBook[] = [
     maxFotos: 24,
     usaPreco: true,
     variosImoveis: false,
-    paginasFixas: ["capa", "ficha", "contato"],
+    paginasFixas: ["capa", "destaques", "localizacao", "ficha", "contato"],
     fotoPorPagina: false,
   },
   {
@@ -72,7 +82,7 @@ export const TIPOS: DefBook[] = [
     maxFotos: 20,
     usaPreco: false,
     variosImoveis: false,
-    paginasFixas: ["capa", "ficha", "contato"],
+    paginasFixas: ["capa", "destaques", "localizacao", "ficha", "contato"],
     fotoPorPagina: true,
   },
   {
@@ -83,7 +93,7 @@ export const TIPOS: DefBook[] = [
     maxFotos: 20,
     usaPreco: false,
     variosImoveis: false,
-    paginasFixas: ["capa", "texto", "ficha", "contato"],
+    paginasFixas: ["capa", "texto", "destaques", "localizacao", "ficha", "contato"],
     fotoPorPagina: true,
   },
   {

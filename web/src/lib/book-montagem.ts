@@ -14,6 +14,11 @@ export type ImagemDisponivel = {
   tipo: string;
   /** job.parametros.tipo_espaco, quando a ação tinha esse parâmetro. */
   tipoEspaco?: string | null;
+  /**
+   * 0 a 10, da leitura de imagem (book-ia). Só a montagem automática preenche; no caminho
+   * manual fica ausente e o desempate continua sendo a ordem em que a pessoa marcou.
+   */
+  qualidade?: number;
   criadoEm: string;
   imovelId?: string | null;
   imovelTitulo?: string | null;
@@ -44,9 +49,30 @@ export type ImovelMontagem = {
  * então boa parte do book se ordena sozinho, de graça, sem IA nenhuma. Foto sem espaço
  * conhecido entra depois das conhecidas, e a pessoa arrasta se quiser.
  */
-const ORDEM_VISITA = ["entrada", "sala", "integrado", "jantar", "cozinha", "escritorio", "quarto", "infantil", "banheiro", "varanda", "gourmet"];
+const ORDEM_VISITA = [
+  "fachada", "entrada", "sala", "integrado", "jantar", "cozinha", "escritorio", "quarto",
+  "infantil", "closet", "banheiro", "area_servico", "varanda", "gourmet", "quintal",
+  // Área comum vem por último: é do prédio, não da unidade, e quem está comprando quer
+  // ver o imóvel antes do salão de festas.
+  "piscina", "salao", "academia", "playground",
+];
 
-const ROTULO_ESPACO: Record<string, string> = Object.fromEntries(TIPOS_ESPACO.filter((e) => e.valor !== "auto").map((e) => [e.valor, e.rotulo]));
+/**
+ * Rótulo de cada ambiente. Os de TIPOS_ESPACO vêm da pessoa (ela escolheu ao editar a
+ * foto); os de baixo só a leitura de imagem produz, e existem aqui pra que a legenda
+ * automática saiba escrever "Piscina" em vez de ficar vazia.
+ */
+const ROTULO_ESPACO: Record<string, string> = {
+  ...Object.fromEntries(TIPOS_ESPACO.filter((e) => e.valor !== "auto").map((e) => [e.valor, e.rotulo])),
+  fachada: "Fachada",
+  closet: "Closet",
+  area_servico: "Área de serviço",
+  quintal: "Quintal",
+  piscina: "Piscina",
+  salao: "Salão de festas",
+  academia: "Academia",
+  playground: "Playground",
+};
 
 /** Imagem de fora da casa: entra como fachada, antes dos cômodos. */
 function ehExterna(img: ImagemDisponivel): boolean {
@@ -149,10 +175,14 @@ export function montar(d: DadosMontagem): DocumentoBook {
   const capa = escolherCapa(d.imagens, d.imovel.capa_job_id);
 
   // A capa sai da sequência: foto repetida na página 4 parece descuido do software.
+  // Ordem: o cômodo manda, a qualidade desempata, a data desempata o desempate. É a
+  // qualidade que decide qual das três fotos da sala abre o cômodo -- e, quando o tipo tem
+  // teto de fotos, quais ficam de fora. Sem nota (caminho manual) tudo vale 5 e a ordem
+  // continua sendo a de sempre.
   const restantes = d.imagens
     .filter((i) => i.jobId !== capa?.jobId)
     .slice()
-    .sort((a, b) => peso(a) - peso(b) || (a.criadoEm < b.criadoEm ? -1 : 1))
+    .sort((a, b) => peso(a) - peso(b) || (b.qualidade ?? 5) - (a.qualidade ?? 5) || (a.criadoEm < b.criadoEm ? -1 : 1))
     .slice(0, Math.max(0, def.maxFotos - 1));
 
   const paginas: Pagina[] = [];
@@ -184,6 +214,26 @@ export function montar(d: DadosMontagem): DocumentoBook {
 
   if (def.paginasFixas.includes("texto") && d.imovel.descricao) {
     paginas.push({ id: novoId(), tipo: "texto", origem: "auto", imagens: [], textos: { titulo: d.imovel.titulo, corpo: d.imovel.descricao } });
+  }
+
+  // Destaques e localização vêm ANTES das fotos: a leitura de 16 materiais reais mostrou
+  // a mesma ordem em todos -- capa, promessa, onde fica, e só então o passeio pelas fotos.
+  //
+  // A página de destaques nasce vazia aqui de propósito. `montar()` é puro e não chama
+  // IA; quem preenche é a montagem automática (book-ia), e se ela não rodar a página cai
+  // fora na hora de gravar em vez de sair em branco no material do cliente.
+  if (def.paginasFixas.includes("destaques")) {
+    paginas.push({ id: novoId(), tipo: "destaques", origem: "auto", imagens: [], textos: { titulo: "O que faz diferença", corpo: "" } });
+  }
+
+  if (def.paginasFixas.includes("localizacao") && d.imovel.endereco) {
+    paginas.push({
+      id: novoId(),
+      tipo: "localizacao",
+      origem: "auto",
+      imagens: [],
+      textos: { titulo: "Localização", endereco: d.imovel.endereco, corpo: "" },
+    });
   }
 
   const fotos = restantes.filter((i) => !ehPlanta(i));

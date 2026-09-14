@@ -10,9 +10,14 @@ import { TIPOS, paginasEstimadas, tipoSugerido, type TipoBook } from "@/lib/book
 
 // Meus books: a lista do que já foi montado, e a porta para montar outro.
 //
-// Criar tem três escolhas, nessa ordem: o imóvel, as imagens e o tipo. As duas últimas já
-// vêm respondidas -- todas as imagens marcadas, e o tipo sugerido pelo que existe --, de
-// forma que o caminho principal continua sendo clicar em "Montar" e pronto.
+// Dois caminhos, e o primeiro é o principal:
+//
+//   AUTOMÁTICO -- escolhe o imóvel e pronto. O sistema olha as fotos, separa as melhores,
+//     põe na ordem da visita, escreve os textos, monta as páginas e aplica a sua marca.
+//   ESCOLHER EU MESMO -- os três passos de sempre: imóvel, imagens, tipo.
+//
+// O manual continua existindo porque corretor com material próprio quer mandar na ordem.
+// Mas quem abre a tela pela primeira vez cai no automático, que é onde o produto ganha.
 //
 // As imagens vêm de /api/materiais, a mesma Biblioteca. Nenhuma listagem nova.
 
@@ -34,6 +39,15 @@ type Imovel = { id: string; titulo: string; fotos: number; capa: string | null }
 /** Item de /api/materiais. */
 type ItemBiblioteca = { id: string; categoria: string; rotulo: string; detalhe: string; criadoEm: string; imovel: { id: string } | null; miniatura: string | null };
 
+/** O que dizer enquanto monta. Descreve o que o servidor está fazendo, na ordem real. */
+const PASSOS = [
+  "Olhando cada foto…",
+  "Separando as melhores e pondo na ordem da visita…",
+  "Escrevendo os textos com os dados do imóvel…",
+  "Montando as páginas e aplicando a sua marca…",
+  "Quase lá…",
+];
+
 function quando(iso: string) {
   const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (min < 60) return `há ${Math.max(1, min)} min`;
@@ -54,7 +68,18 @@ export default function Books() {
   const [imagens, setImagens] = useState<ItemBiblioteca[] | null>(null);
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [montando, setMontando] = useState(false);
+  const [modo, setModo] = useState<"auto" | "manual">("auto");
+  const [recado, setRecado] = useState(0);
   const { user, token } = c;
+
+  // Montar automaticamente leva de 10 a 40 segundos: a IA olha cada foto. Barra de
+  // progresso mentiria (não dá pra saber a fração); dizer o que está acontecendo, não.
+  useEffect(() => {
+    if (!montando || modo !== "auto") return;
+    setRecado(0);
+    const t = setInterval(() => setRecado((r) => Math.min(r + 1, PASSOS.length - 1)), 5000);
+    return () => clearInterval(t);
+  }, [montando, modo]);
 
   const buscar = useCallback(async () => {
     const t = await token();
@@ -124,18 +149,27 @@ export default function Books() {
     setMarcadas((m) => (m.includes(jobId) ? m.filter((x) => x !== jobId) : [...m, jobId]));
   }
 
-  async function montar() {
-    if (!imovelEscolhido || marcadas.length === 0) return;
+  async function montar(auto = false) {
+    if (!imovelEscolhido) return;
+    if (!auto && marcadas.length === 0) return;
     setMontando(true);
     setErro(null);
     try {
       const r = await fetch("/api/books", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ imovelId: imovelEscolhido, tipo: tipoEscolhido, jobIds: marcadas }),
+        // No automático não mandamos jobIds: quem escolhe as imagens é o servidor, olhando.
+        body: JSON.stringify(auto ? { imovelId: imovelEscolhido, tipo: tipoEscolhido, auto: true } : { imovelId: imovelEscolhido, tipo: tipoEscolhido, jobIds: marcadas }),
       });
       const d = await r.json();
       if (!r.ok) throw Object.assign(new Error(d.error), { migracao: !!d.migracao });
+      // O relatório atravessa pro editor pela sessão do navegador: é recado de uma vez só,
+      // não merece coluna no banco nem parâmetro na URL.
+      if (d.relatorio) {
+        try {
+          sessionStorage.setItem(`book:${d.book.id}:relatorio`, JSON.stringify(d.relatorio));
+        } catch {}
+      }
       router.push(`/books/${d.book.id}`);
     } catch (e) {
       const err = e as Error & { migracao?: boolean };
@@ -177,6 +211,29 @@ export default function Books() {
 
       {criando && (
         <Cartao className="mt-5">
+          {/* Os dois caminhos. O automático primeiro, e marcado como tal. */}
+          <div className="mb-5 grid gap-2 sm:grid-cols-2">
+            {([
+              ["auto", "Criar automaticamente", "O sistema olha as fotos, escolhe as melhores, escreve os textos e monta tudo."],
+              ["manual", "Escolher eu mesmo", "Você marca as imagens, na ordem que quiser, e escolhe o tipo."],
+            ] as const).map(([id, titulo, texto]) => (
+              <button
+                key={id}
+                onClick={() => setModo(id)}
+                className={
+                  "rounded-xl border p-3 text-left transition " +
+                  (modo === id ? "border-marca-coral bg-marca-pessego/30 ring-2 ring-marca-coral/25" : "border-neutral-200 bg-white hover:border-neutral-400")
+                }
+              >
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold">{titulo}</span>
+                  {id === "auto" && <span className="text-[10px] uppercase tracking-wider text-neutral-400">recomendado</span>}
+                </span>
+                <span className="mt-1 block text-xs text-neutral-500">{texto}</span>
+              </button>
+            ))}
+          </div>
+
           <Rotulo>1 · De qual imóvel</Rotulo>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {comFotos.map((i) => (
@@ -205,7 +262,7 @@ export default function Books() {
             ))}
           </ul>
 
-          {imovelEscolhido && (
+          {imovelEscolhido && modo === "manual" && (
             <div className="mt-5">
               <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
                 <Rotulo>2 · Quais imagens</Rotulo>
@@ -258,7 +315,7 @@ export default function Books() {
           )}
 
           <div className="mt-5">
-            <Rotulo>3 · Que tipo de book</Rotulo>
+            <Rotulo>{modo === "auto" ? "2 · Que tipo de book" : "3 · Que tipo de book"}</Rotulo>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {TIPOS.filter((t) => !t.variosImoveis).map((t) => (
                 <button
@@ -286,12 +343,29 @@ export default function Books() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Botao onClick={montar} disabled={montando || !imovelEscolhido || marcadas.length === 0}>
-              {montando ? "Montando…" : "Montar book"}
-            </Botao>
-            <Botao variante="discreta" onClick={() => setCriando(false)}>Cancelar</Botao>
-            <span className="text-xs text-neutral-500">Sai pronto. Editar depois é opcional.</span>
+            {modo === "auto" ? (
+              <Botao onClick={() => montar(true)} disabled={montando || !imovelEscolhido}>
+                <Icone nome="magica" className="h-4 w-4" />
+                {montando ? "Montando…" : "Criar automaticamente"}
+              </Botao>
+            ) : (
+              <Botao onClick={() => montar(false)} disabled={montando || !imovelEscolhido || marcadas.length === 0}>
+                {montando ? "Montando…" : "Montar book"}
+              </Botao>
+            )}
+            <Botao variante="discreta" onClick={() => setCriando(false)} disabled={montando}>Cancelar</Botao>
+            <span className="text-xs text-neutral-500">
+              {montando && modo === "auto" ? PASSOS[recado] : "Sai pronto. Editar depois é opcional."}
+            </span>
           </div>
+
+          {modo === "auto" && !montando && (
+            <p className="mt-3 border-t border-neutral-100 pt-3 text-[11px] leading-relaxed text-neutral-500">
+              A IA lê as fotos e escreve os textos. <strong className="font-medium text-neutral-700">Ela não inventa característica:</strong> metragem,
+              quartos, vagas, endereço, condomínio e preço saem só do cadastro do imóvel, e toda frase com número que não bate é descartada antes de entrar
+              no book.
+            </p>
+          )}
         </Cartao>
       )}
 

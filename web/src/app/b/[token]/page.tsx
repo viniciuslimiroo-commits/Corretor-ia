@@ -29,6 +29,8 @@ type Conteudo = {
   descricao: string | null;
   capa: string | null;
   fotos: Foto[];
+  destaques: { titulo: string; itens: string[] } | null;
+  local: { titulo: string; endereco: string; nota: string; mapa: string | null } | null;
   ficha: { rotulo: string; valor: string }[];
   dono: { nome: string | null; creci: string | null; whatsapp: string | null; logo: string | null; cor: string | null };
 };
@@ -98,6 +100,15 @@ async function carregar(token: string): Promise<Conteudo | null> {
   const capaPagina = documento.paginas.find((p) => p.tipo === "capa");
   const capaJob = capaPagina?.imagens[0];
 
+  const pagDestaques = documento.paginas.find((p) => p.tipo === "destaques");
+  const itens = (pagDestaques?.textos.corpo ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const pagLocal = documento.paginas.find((p) => p.tipo === "localizacao");
+  const jobDoMapa = pagLocal?.imagens[0];
+
   const fotos: Foto[] = [];
   for (const p of documento.paginas) {
     if (p.tipo !== "foto" && p.tipo !== "planta") continue;
@@ -117,6 +128,15 @@ async function carregar(token: string): Promise<Conteudo | null> {
     descricao: capaPagina?.textos.descricao || imovel?.descricao || null,
     capa: capaJob ? (urls[capaJob] ?? null) : null,
     fotos,
+    destaques: itens.length ? { titulo: pagDestaques?.textos.titulo || "O que faz diferença", itens } : null,
+    local: pagLocal?.textos.endereco
+      ? {
+          titulo: pagLocal.textos.titulo || "Localização",
+          endereco: pagLocal.textos.endereco,
+          nota: pagLocal.textos.corpo ?? "",
+          mapa: jobDoMapa ? (urls[jobDoMapa] ?? null) : null,
+        }
+      : null,
     ficha: imovel ? fichaDoImovel(imovel) : [],
     dono: {
       nome: marca.nome,
@@ -175,6 +195,34 @@ export default async function BookPublico({ params }: { params: Promise<{ token:
               </p>
             )}
             {c.descricao && <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">{c.descricao}</p>}
+          </section>
+        )}
+
+        {c.destaques && (
+          <section className="border-b border-neutral-200 py-6">
+            <h2 className="text-lg font-semibold">{c.destaques.titulo}</h2>
+            <ul className="mt-3 flex flex-col gap-2">
+              {c.destaques.itens.map((item) => (
+                <li key={item} className="flex items-start gap-2.5 text-[15px] text-neutral-700">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-[1px]" style={{ background: cor }} />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {c.local && (
+          <section className="border-b border-neutral-200 py-6">
+            <h2 className="text-lg font-semibold">{c.local.titulo}</h2>
+            <p className="mt-2 text-[17px] font-semibold" style={{ color: cor }}>
+              {c.local.endereco}
+            </p>
+            {c.local.nota && <p className="mt-1.5 text-sm text-neutral-600">{c.local.nota}</p>}
+            {c.local.mapa && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={c.local.mapa} alt="Mapa" className="mt-4 w-full rounded-xl object-contain" loading="lazy" />
+            )}
           </section>
         )}
 

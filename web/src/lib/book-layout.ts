@@ -293,6 +293,92 @@ export function montarPagina(
     return { id: pagina.id, largura: L, altura: A, caixas };
   }
 
+  // ---------- destaques: a ficha virada frase ----------
+  // Lista, não parágrafo: o cliente não lê o material inteiro, ele varre. Cada linha do
+  // campo "corpo" vira um item, e é o corretor quem decide quantos — sem contador mágico.
+  if (pagina.tipo === "destaques") {
+    caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: 8, cor });
+    por(texto(pagina.textos.titulo || "O que faz diferença", medir, { x: MARGEM, y: MARGEM + 26, l: util, tamanho: 24, negrito: true, maxLinhas: 1 }));
+
+    const itens = (pagina.textos.corpo ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    const colunas = deitado ? 2 : 1;
+    const gap = 20;
+    const larguraItem = (util - gap * (colunas - 1)) / colunas;
+    // Lista curta respira mais: seis itens de 14pt grudados no topo de um A4 deixam meia
+    // página em branco e o material parece que travou no meio.
+    const tamanho = itens.length <= 4 ? 17 : itens.length <= 6 ? 15 : 13;
+    const passo = itens.length <= 4 ? 62 : itens.length <= 6 ? 50 : 42;
+
+    const topo = MARGEM + 86;
+    const disponivel = A - 56 - topo;
+    const linhas = Math.ceil(itens.length / colunas);
+    // E o bloco fica no centro óptico do que sobrou, em vez de encostado no título: assim
+    // a folga vira composição e não sobra.
+    const inicio = topo + Math.max(0, (disponivel - linhas * passo) / 2);
+
+    itens.forEach((item, i) => {
+      const x = MARGEM + (i % colunas) * (larguraItem + gap);
+      const y = inicio + Math.floor(i / colunas) * passo;
+      if (y + passo > A - 56) return;
+      // Marcador quadrado na cor da marca: bolinha vira ruído quando a lista tem oito itens.
+      caixas.push({ tipo: "retangulo", x, y: y + tamanho * 0.42, l: 7, a: 7, cor });
+      por(texto(item, medir, { x: x + 22, y, l: larguraItem - 22, tamanho, maxLinhas: 2 }));
+    });
+    rodape();
+    return { id: pagina.id, largura: L, altura: A, caixas };
+  }
+
+  // ---------- localização ----------
+  // O endereço é do cadastro e aparece grande; o mapa é opcional. Sem imagem, a página
+  // continua de pé em vez de abrir um buraco branco.
+  if (pagina.tipo === "localizacao") {
+    caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: 8, cor });
+    por(texto(pagina.textos.titulo || "Localização", medir, { x: MARGEM, y: MARGEM + 26, l: util, tamanho: 24, negrito: true, maxLinhas: 1 }));
+
+    const mapa = pagina.imagens[0];
+    const topo = MARGEM + 84;
+
+    // Com mapa, o texto fica em cima e a imagem toma o resto. Sem mapa, o bloco inteiro
+    // (endereço + observação + QR) vai pro centro do que sobrou -- página com endereço
+    // grudado no título e dois terços em branco parece material inacabado.
+    const ladoQr = 170;
+    const medirEnd = (yy: number) => texto(pagina.textos.endereco ?? "", medir, { x: MARGEM, y: yy, l: util * 0.8, tamanho: mapa ? 18 : 24, negrito: true, cor, maxLinhas: 3 });
+    const medirNota = (yy: number) => texto(pagina.textos.corpo ?? "", medir, { x: MARGEM, y: yy, l: util * 0.8, tamanho: 12, cor: "#414a57", maxLinhas: 4 });
+
+    let y = topo;
+    if (!mapa) {
+      const alturaBloco =
+        (medirEnd(0)?.alturaUsada ?? 0) + 12 + (medirNota(0)?.alturaUsada ?? 0) + (ctx.link ? ladoQr + 40 : 0);
+      y = topo + Math.max(0, (A - 70 - topo - alturaBloco) / 2);
+    }
+
+    const end = medirEnd(y);
+    if (end) {
+      caixas.push(end.caixa);
+      y += end.alturaUsada + 12;
+    }
+    const nota = medirNota(y);
+    if (nota) {
+      caixas.push(nota.caixa);
+      y += nota.alturaUsada + 20;
+    }
+
+    if (mapa) {
+      const alturaMapa = Math.max(160, A - y - 80);
+      caixas.push({ tipo: "imagem", x: MARGEM, y: y + 8, l: util, a: alturaMapa, jobId: mapa, modo: "conter", foco: pagina.foco?.[mapa] });
+    } else if (ctx.link) {
+      // Sem mapa, o QR do imóvel faz o trabalho: quem aponta a câmera vê onde é.
+      caixas.push({ tipo: "qr", x: MARGEM, y: y + 8, l: ladoQr, a: ladoQr, conteudo: ctx.link });
+      por(texto("Aponte a câmera pra ver no mapa", medir, { x: MARGEM, y: y + ladoQr + 18, l: util, tamanho: 9, cor: CINZA, maxLinhas: 1 }));
+    }
+    rodape();
+    return { id: pagina.id, largura: L, altura: A, caixas };
+  }
+
   if (pagina.tipo === "texto") {
     caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: 8, cor });
     let y = MARGEM + 34;

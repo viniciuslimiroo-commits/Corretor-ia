@@ -43,6 +43,8 @@ type Book = {
   faltaRegistro: boolean;
 };
 
+type Relatorio = { fotosVistas: number; fotosNoBook: number; textosPorIA: boolean; reprovados: string[] };
+
 type Carga = {
   book: Book;
   documento: DocumentoBook;
@@ -126,6 +128,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   const [ligandoLink, setLigandoLink] = useState(false);
   const [painelCelular, setPainelCelular] = useState(false);
   const [menuMais, setMenuMais] = useState(false);
+  // Recado de uma vez só, deixado pela tela de criação quando o book saiu no automático.
+  const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
   const centro = useRef<HTMLDivElement | null>(null);
   // No celular a página acompanha a largura da tela; no computador vale o zoom da barra.
   const [larguraTela, setLarguraTela] = useState(1200);
@@ -138,6 +142,16 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     return () => window.removeEventListener("resize", medir);
   }, []);
   const larguraPagina = larguraTela < 1024 ? Math.min(LARGURA_BASE, larguraTela - 48) : LARGURA_BASE * zoom;
+
+  useEffect(() => {
+    const chave = `book:${carga.book.id}:relatorio`;
+    try {
+      const cru = sessionStorage.getItem(chave);
+      if (!cru) return;
+      sessionStorage.removeItem(chave);
+      setRelatorio(JSON.parse(cru) as Relatorio);
+    } catch {}
+  }, [carga.book.id]);
 
   const book = useBook({
     id: carga.book.id,
@@ -483,6 +497,34 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
       {(erro || book.erro) && (
         <div className="px-4 pt-3">
           <Aviso tipo="erro">{erro ?? book.erro}</Aviso>
+        </div>
+      )}
+
+      {/* Montado sozinho: diz o que foi feito -- e, principalmente, o que foi BARRADO.
+          Mostrar a frase que a IA tentou e não passou é o que torna a regra verificável
+          por quem assina o material, em vez de uma promessa na tela de criação. */}
+      {relatorio && (
+        <div className="px-4 pt-3">
+          <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3">
+            <Icone nome="magica" className="mt-0.5 h-4 w-4 shrink-0 text-marca-indigo" />
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-medium">
+                Book montado sozinho · {relatorio.fotosNoBook} {relatorio.fotosNoBook === 1 ? "foto" : "fotos"} na ordem da visita
+                {relatorio.textosPorIA ? ", textos escritos pela IA" : ""}
+              </p>
+              {relatorio.reprovados.length > 0 ? (
+                <p className="mt-1 text-xs text-neutral-600">
+                  Descartei {relatorio.reprovados.length} {relatorio.reprovados.length === 1 ? "frase" : "frases"} que afirmavam coisa fora do cadastro:{" "}
+                  <span className="text-neutral-500">{relatorio.reprovados.join(" · ")}</span>
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-neutral-500">Números e endereço saíram do cadastro do imóvel. Confira e ajuste o que quiser.</p>
+              )}
+            </div>
+            <button onClick={() => setRelatorio(null)} className="shrink-0 rounded p-1 text-neutral-400 hover:text-neutral-700" aria-label="Fechar">
+              <Icone nome="fechar" className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
       {carga.book.faltaRegistro && (

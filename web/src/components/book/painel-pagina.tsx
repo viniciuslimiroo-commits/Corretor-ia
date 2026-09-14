@@ -31,11 +31,20 @@ const CAMPOS: Record<string, Campo[]> = {
     { chave: "titulo", rotulo: "Título", max: 90 },
     { chave: "corpo", rotulo: "Texto", max: 1200, linhas: 8 },
   ],
+  destaques: [
+    { chave: "titulo", rotulo: "Título da página", max: 40 },
+    { chave: "corpo", rotulo: "Características", max: 400, linhas: 7, dica: "Uma por linha. Só o que está no cadastro do imóvel." },
+  ],
+  localizacao: [
+    { chave: "titulo", rotulo: "Título da página", max: 40 },
+    { chave: "endereco", rotulo: "Endereço", max: 120, dica: "Vem do imóvel. Editar aqui vale só neste book." },
+    { chave: "corpo", rotulo: "Observação", max: 220, linhas: 3, dica: "Opcional. Escreva só o que você sabe que é verdade." },
+  ],
   ficha: [{ chave: "titulo", rotulo: "Título da página", max: 60 }],
   contato: [{ chave: "chamada", rotulo: "Chamada", max: 60, dica: "“Vamos visitar?”, “Quer conhecer?”" }],
 };
 
-const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", ficha: "Ficha técnica", texto: "Texto", contato: "Contato" };
+const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", destaques: "Destaques", localizacao: "Localização", ficha: "Ficha técnica", texto: "Texto", contato: "Contato" };
 
 /**
  * Onde a IA pode escrever. Deliberadamente curto: título e subtítulo da capa são o nome e
@@ -48,6 +57,11 @@ const ESCREVE_IA: Record<string, string[]> = {
   planta: ["legenda"],
   texto: ["titulo", "corpo"],
   contato: ["chamada"],
+  // Destaques e endereço NÃO entram: destaque é fato da ficha e endereço é endereço.
+  // A IA escreve a lista na criação automática, onde o guarda de fatos confere cada item;
+  // um botão solto aqui reabriria a porta sem a porteira.
+  destaques: [],
+  localizacao: [],
 };
 
 /** Os três templates de página de foto. Três, e só: mais que isso vira editor gráfico. */
@@ -160,6 +174,14 @@ export default function PainelPagina({
         </p>
       )}
       {pagina.tipo === "ficha" && <p className="-mt-2 text-xs text-neutral-500">Os dados vêm do imóvel. Editar lá vale para todos os materiais dele.</p>}
+      {pagina.tipo === "destaques" && (
+        <p className="-mt-2 text-xs text-neutral-500">Escritos a partir da ficha do imóvel. A IA arruma a frase, não inventa número.</p>
+      )}
+      {pagina.tipo === "localizacao" && (
+        <p className="-mt-2 text-xs text-neutral-500">
+          Sem mapa, sai o QR do imóvel. Se você tem um print do mapa em Materiais, arraste pra cá.
+        </p>
+      )}
 
       {/* ---- template da página ---- */}
       {pagina.tipo === "foto" && (

@@ -1,4 +1,4 @@
-import { DIMENSOES, TIPO_POR_ID, type Formato, type LayoutFoto, type TipoBook, type TipoPagina } from "./book-tipos";
+import { DIMENSOES, TIPO_POR_ID, TIPOS_PAGINA, type Formato, type LayoutFoto, type TipoBook, type TipoPagina } from "./book-tipos";
 
 // O documento do book: o que fica guardado em books.documento.
 //
@@ -132,6 +132,10 @@ export function porImagem(d: DocumentoBook, id: string, jobId: string, indice?: 
 export function limiteDeImagens(p: Pagina, tipoBook?: TipoBook): number {
   if (p.tipo === "capa") return tipoBook === "whatsapp" ? 5 : 1;
   if (p.tipo === "planta") return 1;
+  // Localização aceita UMA imagem, que na prática é o print do mapa. Não existe mapa
+  // próprio na Encena: o corretor guarda em Materiais o recorte que ele já usa e arrasta
+  // pra cá. Mapa de verdade pede chave de API e custo por visualização.
+  if (p.tipo === "localizacao") return 1;
   if (p.tipo !== "foto") return 0;
   return p.layout === "duas" ? 2 : 1;
 }
@@ -206,7 +210,6 @@ export function imagensDoDocumento(d: DocumentoBook): string[] {
 
 // ---------- validação ----------
 
-const TIPOS_PAGINA: TipoPagina[] = ["capa", "foto", "planta", "ficha", "texto", "contato"];
 const LAYOUTS: LayoutFoto[] = ["cheia", "duas", "foto_texto"];
 
 /**
