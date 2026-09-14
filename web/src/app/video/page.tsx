@@ -484,21 +484,25 @@ export default function PaginaVideo() {
                             <>
                               <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto</Chip>
                               {s.temAntes && <Chip ativo={s.tipo === "antes_depois"} onClick={() => mudarCena(s.chave, { tipo: "antes_depois" })}>Antes e depois</Chip>}
-                              <Chip ativo={s.tipo === "animada"} onClick={() => mudarCena(s.chave, { tipo: "animada" })} title={`+${CREDITOS.animada} créditos: a IA anima a câmera de verdade`}>
-                                ✨ Animar (+{CREDITOS.animada})
+                              <Chip
+                                ativo={s.tipo === "animada"}
+                                onClick={() => mudarCena(s.chave, { tipo: "animada" })}
+                                title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`}
+                              >
+                                ✨ Mover a câmera (+{CREDITOS.animada})
                               </Chip>
                             </>
                           )}
                           {s.eh360 && (
                             <>
-                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Câmera de verdade dentro da foto 360">🧭 Tour 360</Chip>
+                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Sua foto 360 (ou panorâmica) vira passeio: a câmera anda dentro dela de verdade, sem IA e sem crédito.">🧭 Passear na sua 360</Chip>
                               <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto comum</Chip>
                             </>
                           )}
                           {s.ehClipe && (
                             <>
                               <Chip ativo={s.tipo === "clipe"} onClick={() => mudarCena(s.chave, { tipo: "clipe" })}>Clipe</Chip>
-                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Vídeo 360</Chip>
+                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Passear na sua 360</Chip>
                               {s.tipo === "clipe" && (
                                 <label className="flex items-center gap-1.5 text-sm text-neutral-700">
                                   <input type="checkbox" checked={s.melhorar} onChange={(e) => mudarCena(s.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
@@ -522,6 +526,15 @@ export default function PaginaVideo() {
                                 <option key={a.id} value={a.id}>{a.rotulo}</option>
                               ))}
                             </select>
+                          )}
+                          {/* O que vai sair, escrito, antes de gastar crédito. O nome do
+                              movimento sozinho não diz o resultado -- foi o que fez
+                              "Animar" e "Caminhar" serem entendidos errado. */}
+                          {s.tipo === "animada" && (
+                            <span className="basis-full text-[11px] leading-relaxed text-neutral-500">
+                              {ANIMACOES.find((a) => a.id === s.animacao)?.descricao} <strong className="font-medium text-neutral-700">Só a câmera se move</strong> — o
+                              imóvel fica como está, e não entra pessoa, bicho nem móvel novo.
+                            </span>
                           )}
                           {s.tipo === "tour360" && (
                             <select value={s.movimento} onChange={(e) => mudarCena(s.chave, { movimento: e.target.value as Movimento360Id })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Movimento da câmera 360" title={MOVIMENTOS_360.find((m) => m.id === s.movimento)?.descricao}>

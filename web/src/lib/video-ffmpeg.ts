@@ -95,15 +95,42 @@ export function pill(o: OpcoesPill): string {
   return `drawtext=${partes.join(":")}`;
 }
 
+/**
+ * O POUSO: os últimos quadros de todo take ficam parados.
+ *
+ * Take que termina com a câmera ainda em movimento corta em falso -- e, na montagem, ou
+ * a transição come o movimento ou o corte fica seco. Com o movimento terminando um pouco
+ * antes do fim, sobram quadros limpos e estabilizados: o mesmo que um operador faz ao
+ * encostar a câmera antes de cortar.
+ *
+ * A duração da cena NÃO muda: o movimento é que se completa mais cedo. Assim nada precisa
+ * ser recalculado na montagem, na narração ou no custo.
+ */
+const SEGUNDOS_DE_POUSO = 0.45;
+
+/** Quantos quadros de movimento a cena tem, já descontado o pouso. */
+function quadrosDeMovimento(duracao: number): number {
+  const total = Math.round(duracao * FPS);
+  return Math.max(2, total - Math.round(Math.min(SEGUNDOS_DE_POUSO, duracao * 0.25) * FPS));
+}
+
 function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string {
   const d = frames;
   const centroX = `iw/2-(iw/zoom/2)`;
   const centroY = `ih/2-(ih/zoom/2)`;
+
+  // `p` é o andamento do movimento: vai de 0 a 1 ANTES do fim da cena (o resto é o pouso)
+  // e segue uma curva em S -- começa devagar, acelera, desacelera. Era linear, e linear
+  // significa velocidade máxima no último quadro: o movimento parava de supetão.
+  const m = quadrosDeMovimento(d / FPS);
+  const t = `min(on/${m},1)`;
+  const p = `(${t}*${t}*(3-2*${t}))`;
+
   const receitas: Record<EfeitoId, { z: string; x: string; y: string }> = {
-    aproximar: { z: `min(1+0.10*on/${d},1.10)`, x: centroX, y: centroY },
-    afastar: { z: `max(1.10-0.10*on/${d},1)`, x: centroX, y: centroY },
-    esquerda: { z: "1.08", x: `(iw-iw/zoom)*(1-on/${d})`, y: centroY },
-    direita: { z: "1.08", x: `(iw-iw/zoom)*(on/${d})`, y: centroY },
+    aproximar: { z: `1+0.10*${p}`, x: centroX, y: centroY },
+    afastar: { z: `1.10-0.10*${p}`, x: centroX, y: centroY },
+    esquerda: { z: "1.08", x: `(iw-iw/zoom)*(1-${p})`, y: centroY },
+    direita: { z: "1.08", x: `(iw-iw/zoom)*${p}`, y: centroY },
     parado: { z: "1", x: "0", y: "0" },
   };
   const r = receitas[efeito];
@@ -148,7 +175,11 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
   if (o.legenda) filtros.push(pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }));
-  return ["-ss", "0", "-t", o.duracao.toFixed(2), "-i", o.clipe, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
+  // O clipe entra CURTO de propósito e o `tpad` clona o último quadro até fechar a
+  // duração: os últimos instantes ficam parados. Vale pro vídeo da pessoa e, sobretudo,
+  // pro clipe da IA -- que termina onde o modelo parou, muitas vezes no meio do gesto.
+  const corte = Math.max(0.5, o.duracao - Math.min(SEGUNDOS_DE_POUSO, o.duracao * 0.25));
+  return ["-ss", "0", "-t", corte.toFixed(2), "-i", o.clipe, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
 /** Suavização em S: começa e termina devagar, como uma câmera de verdade. */
@@ -206,8 +237,11 @@ export function argsCena360(o: {
   // não pesa e o olho não percebe. Yaw continua por quadro, que é o que dá suavidade.
   const PASSO_LENTO = 6;
   const linhas: string[] = [];
+  const emMovimento = quadrosDeMovimento(o.duracao);
   for (let f = 0; f < quadros; f++) {
-    const t = suave(f / (quadros - 1));
+    // Depois de `emMovimento` a câmera fica onde chegou: é o pouso. `suave` já dava a
+    // curva em S; o que faltava era o instante parado no fim.
+    const t = suave(Math.min(f / Math.max(1, emMovimento - 1), 1));
     const yaw = preset.yaw[0] + (preset.yaw[1] - preset.yaw[0]) * t;
     const pitch = preset.pitch[0] + (preset.pitch[1] - preset.pitch[0]) * t;
     const fov = preset.fov[0] + (preset.fov[1] - preset.fov[0]) * t;

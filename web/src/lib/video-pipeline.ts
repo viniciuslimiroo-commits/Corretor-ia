@@ -9,7 +9,7 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, VOZES, duracaoDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -185,7 +185,22 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const frames = Math.min(161, Math.max(17, Math.round(dur * 24) + 1));
           const d = await despachar(
             MODELO_ANIMACAO,
-            { prompt: preset.prompt, image_url: urlImagem, aspect_ratio: aspect, resolution: "720p", num_frames: frames, frames_per_second: 24, video_write_mode: "balanced", enable_safety_checker: false, enable_prompt_expansion: false },
+            {
+              prompt: preset.prompt,
+              // O que segura gente, bicho e parede nova. Faltava, e era a causa do
+              // "Caminhar" gerar uma pessoa andando: a proibição estava só no positivo.
+              negative_prompt: NEGATIVO_VIDEO,
+              image_url: urlImagem,
+              aspect_ratio: aspect,
+              resolution: "720p",
+              num_frames: frames,
+              frames_per_second: 24,
+              video_write_mode: "balanced",
+              enable_safety_checker: false,
+              // Expansão desligada: o modelo reescrevendo o prompt é o modelo desfazendo
+              // as proibições que acabamos de escrever.
+              enable_prompt_expansion: false,
+            },
             falKey
           );
           await salvar({ animada: { cena: i, statusUrl: d.status_url, responseUrl: d.response_url } });

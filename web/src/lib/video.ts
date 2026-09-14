@@ -34,33 +34,66 @@ export const EFEITOS: { id: EfeitoId; rotulo: string }[] = [
 ];
 
 // Cena animada: a foto vira um clipe de câmera em movimento por um modelo de
-// image-to-video. Os presets são o que corretor pede com essas palavras.
+// image-to-video.
+//
+// TUDO AQUI É MOVIMENTO DE CÂMERA. Nenhum preset pede ação, personagem ou mudança de
+// cena -- e isso precisa estar dito no prompt com todas as letras, porque o modelo lê
+// "walking" e é capaz de desenhar alguém andando. Foi o que aconteceu: "Caminhar" gerou
+// uma pessoa dentro do ambiente. O nome do preset fala com o corretor; o prompt fala com
+// o modelo, e o modelo só entende "the CAMERA moves".
+//
+// O que segura de verdade é o NEGATIVO. Proibição dentro do prompt positivo é sugestão;
+// `negative_prompt` é instrução -- e o campo existe na API do wan desde sempre, só não
+// estava sendo usado.
+
+/**
+ * O que NENHUM vídeo de imóvel pode inventar. Vale para todos os presets.
+ *
+ * Duas famílias: gente e bicho (que não existiam na foto e viram problema jurídico num
+ * anúncio), e mudança estrutural -- parede, porta, janela, móvel que aparece ou some.
+ * O corretor está vendendo aquele imóvel, não uma variação dele.
+ */
+export const NEGATIVO_VIDEO = [
+  "people, person, human, man, woman, child, family, realtor, agent, crowd, silhouette, reflection of a person",
+  "animals, pets, dog, cat",
+  "new furniture, furniture appearing or disappearing, moving furniture, new doors, new windows, new walls",
+  "changing architecture, morphing walls, warping geometry, distorted perspective, floating objects",
+  "text, captions, subtitles, watermark, logo, price tag, phone number, call to action, end card, title card",
+  "cartoon, illustration, painting, oversaturated, flicker, jitter",
+].join(", ");
+
+/** O que TODO preset repete: é câmera, e o imóvel fica como está. */
+const REGRA_CAMERA =
+  "Only the camera moves. The room, the architecture, the furniture, the walls, doors, windows, floor and ceiling stay exactly as in the original photo, unchanged and undistorted. Consistent natural lighting. Photorealistic real-estate footage. The shot ends by decelerating smoothly to a still frame.";
+
 export type AnimacaoId = "drone" | "caminhar" | "girar" | "aproximar";
 
 export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; prompt: string }[] = [
   {
     id: "drone",
-    rotulo: "Drone",
-    descricao: "Câmera voando devagar sobre a fachada ou o terreno.",
-    prompt: "Slow cinematic aerial drone shot gliding forward and gently rising over the property, smooth steady motion, natural daylight, photorealistic, no people, no text.",
+    rotulo: "Sobrevoo",
+    descricao: "A câmera sobe e avança devagar sobre a fachada ou o terreno.",
+    prompt: `Slow cinematic aerial drone shot: the camera glides forward and rises gently over the property, smooth and steady. ${REGRA_CAMERA}`,
   },
   {
     id: "caminhar",
-    rotulo: "Caminhar",
-    descricao: "Entrar no ambiente andando, como numa visita.",
-    prompt: "Slow smooth walking dolly shot moving forward into the room, steady handheld-free camera, natural light, photorealistic, everything stays in place, no people, no text.",
+    rotulo: "Entrar no ambiente",
+    descricao: "A câmera avança pelo cômodo, como quem entra. Não entra ninguém na cena.",
+    // "as if the camera operator were walking" e não "a person walking": a diferença entre
+    // descrever o MOVIMENTO e pedir um PERSONAGEM.
+    prompt: `Simulate a smooth forward camera movement through the room, as if the camera operator were slowly walking into the space, steady dolly-in, no camera shake. ${REGRA_CAMERA}`,
   },
   {
     id: "girar",
-    rotulo: "Girar",
-    descricao: "A câmera gira devagar mostrando o ambiente.",
-    prompt: "Slow smooth camera orbit panning around the space, revealing the room, steady motion, natural light, photorealistic, no people, no text.",
+    rotulo: "Girar em volta",
+    descricao: "A câmera gira devagar no próprio eixo, mostrando o ambiente.",
+    prompt: `Slow smooth camera orbit panning around the space to reveal the room, steady motion. ${REGRA_CAMERA}`,
   },
   {
     id: "aproximar",
-    rotulo: "Aproximar",
-    descricao: "Zoom suave com profundidade de verdade.",
-    prompt: "Slow cinematic push-in towards the center of the scene with subtle parallax, steady, natural light, photorealistic, no people, no text.",
+    rotulo: "Aproximar com profundidade",
+    descricao: "Zoom lento com parallax de verdade, como se a câmera avançasse.",
+    prompt: `Slow cinematic push-in towards the centre of the scene with subtle parallax and real depth. ${REGRA_CAMERA}`,
   },
 ];
 
