@@ -103,15 +103,22 @@ export async function POST(req: NextRequest) {
     if (ids.length === 0) return NextResponse.json({ error: "Escolha os imóveis do catálogo." }, { status: 400 });
 
     const itens: ImovelDoCatalogo[] = [];
+    const semFoto: string[] = [];
     for (const pid of ids) {
       const d = await imovelDeMontagem(db, userId, pid);
       if (!d) continue;
       const imgs = await imagensDoImovel(db, userId, pid);
-      if (imgs.length === 0) continue;
+      if (imgs.length === 0) {
+        semFoto.push(d.imovel.titulo);
+        continue;
+      }
       itens.push({ imovel: d.imovel, imagens: imgs });
     }
     if (itens.length === 0) {
-      return NextResponse.json({ error: "Nenhum dos imóveis escolhidos tem imagem pronta." }, { status: 400 });
+      // Nomeia quem ficou de fora: "nenhum tem imagem" num imóvel cheio de fotos manda a
+      // pessoa procurar no lugar errado.
+      const quais = semFoto.length ? ` Sem imagem pronta: ${semFoto.join(", ")}.` : "";
+      return NextResponse.json({ error: `Não consegui montar o catálogo.${quais}` }, { status: 400 });
     }
 
     // No automático a IA escolhe a foto de cada imóvel; sem ele, vale a regra de sempre.

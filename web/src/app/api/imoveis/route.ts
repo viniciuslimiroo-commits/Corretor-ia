@@ -11,10 +11,24 @@ export async function GET(req: NextRequest) {
   if (s.erro) return s.erro;
   const { db, userId } = s;
 
-  const [{ data: imoveis }, { data: jobs }] = await Promise.all([
+  const [{ data: imoveis, error: erroImoveis }, { data: jobs, error: erroJobs }] = await Promise.all([
     db.from("properties").select("id, titulo, endereco, capa_job_id, share_token, criado_em, atualizado_em").eq("user_id", userId).order("atualizado_em", { ascending: false }),
     db.from("jobs").select("id, property_id, output_path, criado_em").eq("user_id", userId).eq("status", "concluido").not("property_id", "is", null).order("criado_em", { ascending: false }),
   ]);
+
+  // Falha na consulta de jobs NÃO pode virar "0 fotos".
+  //
+  // Era o que acontecia: o erro era engolido, `jobs` vinha null, e todo imóvel aparecia
+  // vazio -- na tela, na escolha do book e no catálogo, que recusava com "nenhum dos
+  // imóveis tem imagem pronta" num imóvel cheio de fotos. Visto de verdade numa chamada
+  // em produção, e some sozinho na próxima tentativa, que é o pior tipo de bug.
+  // Dizer que não deu é sempre melhor que responder zero com cara de resposta.
+  if (erroImoveis || erroJobs) {
+    return NextResponse.json(
+      { error: `Não consegui ler seus imóveis agora (${(erroImoveis ?? erroJobs)?.message?.slice(0, 120)}). Tente de novo.` },
+      { status: 503 }
+    );
+  }
 
   const porImovel = new Map<string, { id: string; output_path: string | null }[]>();
   for (const j of jobs ?? []) {
