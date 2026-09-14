@@ -29,7 +29,9 @@ type Conteudo = {
   descricao: string | null;
   capa: string | null;
   fotos: Foto[];
-  destaques: { titulo: string; itens: string[] } | null;
+  destaques: { titulo: string; itens: string[] }[];
+  /** Catálogo: um cartão por imóvel, em vez do passeio de fotos. */
+  imoveis: { titulo: string; endereco: string; preco: string; ficha: string; url: string | null }[];
   local: { titulo: string; endereco: string; nota: string; mapa: string | null } | null;
   ficha: { rotulo: string; valor: string }[];
   dono: { nome: string | null; creci: string | null; whatsapp: string | null; logo: string | null; cor: string | null };
@@ -101,13 +103,29 @@ async function carregar(token: string): Promise<Conteudo | null> {
   const capaJob = capaPagina?.imagens[0];
 
   const pagDestaques = documento.paginas.find((p) => p.tipo === "destaques");
-  const itens = (pagDestaques?.textos.corpo ?? "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const emLista = (chave: string) =>
+    (pagDestaques?.textos[chave] ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+  const grupos = [
+    { titulo: pagDestaques?.textos.titulo || "O imóvel", itens: emLista("corpo") },
+    { titulo: pagDestaques?.textos.titulo2 || "O que tem a mais", itens: emLista("corpo2") },
+  ].filter((g) => g.itens.length > 0);
 
   const pagLocal = documento.paginas.find((p) => p.tipo === "localizacao");
   const jobDoMapa = pagLocal?.imagens[0];
+
+  const imoveis = documento.paginas
+    .filter((p) => p.tipo === "imovel")
+    .map((p) => ({
+      titulo: p.textos.titulo ?? "",
+      endereco: p.textos.endereco ?? "",
+      preco: p.textos.preco ?? "",
+      ficha: p.textos.ficha ?? "",
+      url: p.imagens[0] ? (urls[p.imagens[0]] ?? null) : null,
+    }))
+    .filter((i) => i.titulo);
 
   const fotos: Foto[] = [];
   for (const p of documento.paginas) {
@@ -128,7 +146,8 @@ async function carregar(token: string): Promise<Conteudo | null> {
     descricao: capaPagina?.textos.descricao || imovel?.descricao || null,
     capa: capaJob ? (urls[capaJob] ?? null) : null,
     fotos,
-    destaques: itens.length ? { titulo: pagDestaques?.textos.titulo || "O que faz diferença", itens } : null,
+    destaques: grupos,
+    imoveis,
     local: pagLocal?.textos.endereco
       ? {
           titulo: pagLocal.textos.titulo || "Localização",
@@ -198,17 +217,44 @@ export default async function BookPublico({ params }: { params: Promise<{ token:
           </section>
         )}
 
-        {c.destaques && (
+        {c.imoveis.length > 0 && (
           <section className="border-b border-neutral-200 py-6">
-            <h2 className="text-lg font-semibold">{c.destaques.titulo}</h2>
-            <ul className="mt-3 flex flex-col gap-2">
-              {c.destaques.itens.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-[15px] text-neutral-700">
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-[1px]" style={{ background: cor }} />
-                  {item}
+            <ul className="flex flex-col gap-6">
+              {c.imoveis.map((i) => (
+                <li key={i.titulo + i.endereco}>
+                  {i.url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={i.url} alt="" className="aspect-[4/3] w-full rounded-xl object-cover" loading="lazy" />
+                  )}
+                  <p className="mt-2.5 text-lg font-semibold">{i.titulo}</p>
+                  {i.endereco && <p className="text-sm text-neutral-500">{i.endereco}</p>}
+                  {i.preco && (
+                    <p className="mt-1.5 text-xl font-bold" style={{ color: cor }}>
+                      {i.preco}
+                    </p>
+                  )}
+                  {i.ficha && <p className="mt-0.5 text-sm text-neutral-600">{i.ficha}</p>}
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {c.destaques.length > 0 && (
+          <section className="flex flex-col gap-5 border-b border-neutral-200 py-6">
+            {c.destaques.map((g) => (
+              <div key={g.titulo}>
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{g.titulo}</h2>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {g.itens.map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-[15px] text-neutral-700">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-[1px]" style={{ background: cor }} />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </section>
         )}
 

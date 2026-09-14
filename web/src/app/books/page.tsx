@@ -69,6 +69,8 @@ export default function Books() {
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [montando, setMontando] = useState(false);
   const [modo, setModo] = useState<"auto" | "manual">("auto");
+  /** Só o catálogo usa: os outros tipos falam de um imóvel só. */
+  const [imoveisDoCatalogo, setImoveisDoCatalogo] = useState<string[]>([]);
   const [recado, setRecado] = useState(0);
   const { user, token } = c;
 
@@ -145,13 +147,19 @@ export default function Books() {
     else setImovelEscolhido(null);
   }
 
+  const ehCatalogo = tipoEscolhido === "catalogo";
+
+  function alternarImovelDoCatalogo(id: string) {
+    setImoveisDoCatalogo((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
+  }
+
   function alternar(jobId: string) {
     setMarcadas((m) => (m.includes(jobId) ? m.filter((x) => x !== jobId) : [...m, jobId]));
   }
 
   async function montar(auto = false) {
-    if (!imovelEscolhido) return;
-    if (!auto && marcadas.length === 0) return;
+    if (ehCatalogo ? imoveisDoCatalogo.length === 0 : !imovelEscolhido) return;
+    if (!ehCatalogo && !auto && marcadas.length === 0) return;
     setMontando(true);
     setErro(null);
     try {
@@ -159,7 +167,13 @@ export default function Books() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         // No automático não mandamos jobIds: quem escolhe as imagens é o servidor, olhando.
-        body: JSON.stringify(auto ? { imovelId: imovelEscolhido, tipo: tipoEscolhido, auto: true } : { imovelId: imovelEscolhido, tipo: tipoEscolhido, jobIds: marcadas }),
+        body: JSON.stringify(
+          ehCatalogo
+            ? { tipo: tipoEscolhido, imovelIds: imoveisDoCatalogo, auto }
+            : auto
+              ? { imovelId: imovelEscolhido, tipo: tipoEscolhido, auto: true }
+              : { imovelId: imovelEscolhido, tipo: tipoEscolhido, jobIds: marcadas }
+        ),
       });
       const d = await r.json();
       if (!r.ok) throw Object.assign(new Error(d.error), { migracao: !!d.migracao });
@@ -234,15 +248,17 @@ export default function Books() {
             ))}
           </div>
 
-          <Rotulo>1 · De qual imóvel</Rotulo>
+          <Rotulo>{ehCatalogo ? `1 · Quais imóveis (${imoveisDoCatalogo.length} ${imoveisDoCatalogo.length === 1 ? "escolhido" : "escolhidos"})` : "1 · De qual imóvel"}</Rotulo>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {comFotos.map((i) => (
               <li key={i.id}>
                 <button
-                  onClick={() => escolherImovel(i.id)}
+                  onClick={() => (ehCatalogo ? alternarImovelDoCatalogo(i.id) : escolherImovel(i.id))}
                   className={
                     "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition " +
-                    (imovelEscolhido === i.id ? "border-marca-coral bg-marca-pessego/30" : "border-neutral-200 hover:border-neutral-400")
+                    ((ehCatalogo ? imoveisDoCatalogo.includes(i.id) : imovelEscolhido === i.id)
+                      ? "border-marca-coral bg-marca-pessego/30"
+                      : "border-neutral-200 hover:border-neutral-400")
                   }
                 >
                   {i.capa ? (
@@ -262,7 +278,7 @@ export default function Books() {
             ))}
           </ul>
 
-          {imovelEscolhido && modo === "manual" && (
+          {imovelEscolhido && modo === "manual" && !ehCatalogo && (
             <div className="mt-5">
               <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
                 <Rotulo>2 · Quais imagens</Rotulo>
@@ -317,7 +333,7 @@ export default function Books() {
           <div className="mt-5">
             <Rotulo>{modo === "auto" ? "2 · Que tipo de book" : "3 · Que tipo de book"}</Rotulo>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {TIPOS.filter((t) => !t.variosImoveis).map((t) => (
+              {TIPOS.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTipoEscolhido(t.id)}
@@ -334,7 +350,13 @@ export default function Books() {
                   </span>
                   <span className="mt-1 block text-xs text-neutral-500">{t.para}</span>
                   <span className="mt-1.5 block text-[11px] text-neutral-400">
-                    {quantas ? `${paginasEstimadas(t.id, quantas)} páginas com estas imagens` : `até ${t.maxFotos} imagens`}
+                    {t.variosImoveis
+                      ? imoveisDoCatalogo.length
+                        ? `${imoveisDoCatalogo.length + 2} páginas com estes imóveis`
+                        : `um imóvel por página, até ${t.maxFotos}`
+                      : quantas
+                        ? `${paginasEstimadas(t.id, quantas)} páginas com estas imagens`
+                        : `até ${t.maxFotos} imagens`}
                     {sugestao?.tipo === t.id ? ` · recomendado: ${sugestao.porque}` : ""}
                   </span>
                 </button>
@@ -344,13 +366,13 @@ export default function Books() {
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {modo === "auto" ? (
-              <Botao onClick={() => montar(true)} disabled={montando || !imovelEscolhido}>
+              <Botao onClick={() => montar(true)} disabled={montando || (ehCatalogo ? imoveisDoCatalogo.length === 0 : !imovelEscolhido)}>
                 <Icone nome="magica" className="h-4 w-4" />
-                {montando ? "Montando…" : "Criar automaticamente"}
+                {montando ? "Montando…" : ehCatalogo ? "Criar catálogo" : "Criar automaticamente"}
               </Botao>
             ) : (
-              <Botao onClick={() => montar(false)} disabled={montando || !imovelEscolhido || marcadas.length === 0}>
-                {montando ? "Montando…" : "Montar book"}
+              <Botao onClick={() => montar(false)} disabled={montando || (ehCatalogo ? imoveisDoCatalogo.length === 0 : !imovelEscolhido || marcadas.length === 0)}>
+                {montando ? "Montando…" : ehCatalogo ? "Montar catálogo" : "Montar book"}
               </Botao>
             )}
             <Botao variante="discreta" onClick={() => setCriando(false)} disabled={montando}>Cancelar</Botao>
@@ -359,7 +381,15 @@ export default function Books() {
             </span>
           </div>
 
-          {modo === "auto" && !montando && (
+          {ehCatalogo && !montando && (
+            <p className="mt-3 border-t border-neutral-100 pt-3 text-[11px] leading-relaxed text-neutral-500">
+              No catálogo, cada imóvel ocupa uma página, com os mesmos campos no mesmo lugar — é o que deixa comparar.
+              <strong className="font-medium text-neutral-700"> Nome, endereço, preço e ficha saem do cadastro</strong>, sem texto de venda por imóvel.
+              {modo === "auto" ? " No automático, a IA só escolhe qual foto de cada imóvel entra." : ""}
+            </p>
+          )}
+
+          {modo === "auto" && !ehCatalogo && !montando && (
             <p className="mt-3 border-t border-neutral-100 pt-3 text-[11px] leading-relaxed text-neutral-500">
               A IA lê as fotos e escreve os textos. <strong className="font-medium text-neutral-700">Ela não inventa característica:</strong> metragem,
               quartos, vagas, endereço, condomínio e preço saem só do cadastro do imóvel, e toda frase com número que não bate é descartada antes de entrar

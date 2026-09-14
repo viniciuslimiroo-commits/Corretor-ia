@@ -32,27 +32,35 @@ const CAMPOS: Record<string, Campo[]> = {
     { chave: "corpo", rotulo: "Texto", max: 1200, linhas: 8 },
   ],
   destaques: [
-    { chave: "titulo", rotulo: "Título da página", max: 40 },
-    { chave: "corpo", rotulo: "Características", max: 400, linhas: 7, dica: "Uma por linha. Só o que está no cadastro do imóvel." },
+    { chave: "titulo", rotulo: "Título da 1ª lista", max: 40 },
+    { chave: "corpo", rotulo: "O que o imóvel é", max: 400, linhas: 6, dica: "Uma por linha. Sai da ficha do imóvel." },
+    { chave: "titulo2", rotulo: "Título da 2ª lista", max: 40 },
+    { chave: "corpo2", rotulo: "O que ele tem a mais", max: 400, linhas: 5, dica: "Uma por linha. Sai dos ambientes que aparecem nas fotos. Vazio, a lista some." },
   ],
   localizacao: [
     { chave: "titulo", rotulo: "Título da página", max: 40 },
     { chave: "endereco", rotulo: "Endereço", max: 120, dica: "Vem do imóvel. Editar aqui vale só neste book." },
     { chave: "corpo", rotulo: "Observação", max: 220, linhas: 3, dica: "Opcional. Escreva só o que você sabe que é verdade." },
   ],
+  imovel: [
+    { chave: "titulo", rotulo: "Nome do imóvel", max: 90 },
+    { chave: "endereco", rotulo: "Endereço", max: 120 },
+    { chave: "preco", rotulo: "Preço", max: 40 },
+    { chave: "ficha", rotulo: "Ficha curta", max: 90, dica: "Ex.: 96,5 m² · 3 dorms · 2 vagas" },
+  ],
   ficha: [{ chave: "titulo", rotulo: "Título da página", max: 60 }],
   contato: [{ chave: "chamada", rotulo: "Chamada", max: 60, dica: "“Vamos visitar?”, “Quer conhecer?”" }],
 };
 
-const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", destaques: "Destaques", localizacao: "Localização", ficha: "Ficha técnica", texto: "Texto", contato: "Contato" };
+const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", destaques: "Destaques", localizacao: "Localização", ficha: "Ficha técnica", texto: "Texto", contato: "Contato", imovel: "Imóvel" };
 
 /**
- * Onde a IA pode escrever. Deliberadamente curto: título e subtítulo da capa são o nome e
- * o endereço do imóvel, e preço é preço -- campo que a IA não encosta é campo que ela não
- * tem como inventar.
+ * Onde a IA pode escrever. Deliberadamente curto: subtítulo da capa é o endereço e preço é
+ * preço -- campo que a IA não encosta é campo que ela não tem como inventar. O título da
+ * capa entra porque ali ela só reescreve o nome que já está cadastrado, mais apresentável.
  */
 const ESCREVE_IA: Record<string, string[]> = {
-  capa: ["descricao"],
+  capa: ["titulo", "descricao"],
   foto: ["legenda", "legenda2", "corpo"],
   planta: ["legenda"],
   texto: ["titulo", "corpo"],
@@ -62,6 +70,8 @@ const ESCREVE_IA: Record<string, string[]> = {
   // um botão solto aqui reabriria a porta sem a porteira.
   destaques: [],
   localizacao: [],
+  // Página de imóvel do catálogo: tudo ali é dado do cadastro. Nenhum campo pra IA.
+  imovel: [],
 };
 
 /** Os três templates de página de foto. Três, e só: mais que isso vira editor gráfico. */
@@ -105,6 +115,7 @@ export default function PainelPagina({
   aoAbrirGaveta,
   aoIrPara,
   aoEscreverIA,
+  aoBuscarMapa,
 }: {
   pagina: Pagina;
   numero: number;
@@ -114,9 +125,26 @@ export default function PainelPagina({
   aoIrPara: (indice: number) => void;
   /** Devolve o texto escrito, ou lança com a mensagem que vai aparecer embaixo do campo. */
   aoEscreverIA?: (paginaId: string, campo: string) => Promise<string>;
+  /** Busca o mapa do endereço cadastrado e devolve o jobId da imagem. */
+  aoBuscarMapa?: (paginaId: string) => Promise<void>;
 }) {
   const [escrevendo, setEscrevendo] = useState<string | null>(null);
   const [erroIA, setErroIA] = useState<{ campo: string; texto: string } | null>(null);
+  const [buscandoMapa, setBuscandoMapa] = useState(false);
+  const [erroMapa, setErroMapa] = useState<string | null>(null);
+
+  async function buscarMapa() {
+    if (!aoBuscarMapa || buscandoMapa) return;
+    setBuscandoMapa(true);
+    setErroMapa(null);
+    try {
+      await aoBuscarMapa(pagina.id);
+    } catch (e) {
+      setErroMapa(e instanceof Error ? e.message : "Não consegui buscar o mapa.");
+    } finally {
+      setBuscandoMapa(false);
+    }
+  }
 
   async function escrever(campo: string, max: number) {
     if (!aoEscreverIA || escrevendo) return;
@@ -175,12 +203,28 @@ export default function PainelPagina({
       )}
       {pagina.tipo === "ficha" && <p className="-mt-2 text-xs text-neutral-500">Os dados vêm do imóvel. Editar lá vale para todos os materiais dele.</p>}
       {pagina.tipo === "destaques" && (
-        <p className="-mt-2 text-xs text-neutral-500">Escritos a partir da ficha do imóvel. A IA arruma a frase, não inventa número.</p>
+        <p className="-mt-2 text-xs text-neutral-500">
+          A 1ª lista sai da ficha do imóvel, a 2ª dos ambientes que aparecem nas fotos. A IA arruma a frase, não inventa fato.
+        </p>
+      )}
+      {pagina.tipo === "imovel" && (
+        <p className="-mt-2 text-xs text-neutral-500">Tudo aqui vem do cadastro do imóvel. Editar nesta página vale só neste catálogo.</p>
       )}
       {pagina.tipo === "localizacao" && (
-        <p className="-mt-2 text-xs text-neutral-500">
-          Sem mapa, sai o QR do imóvel. Se você tem um print do mapa em Materiais, arraste pra cá.
-        </p>
+        <div className="-mt-2">
+          <p className="text-xs text-neutral-500">Sem mapa, sai o QR do imóvel. Você também pode arrastar um print de Materiais pra cá.</p>
+          {aoBuscarMapa && pagina.imagens.length === 0 && (
+            <button
+              onClick={buscarMapa}
+              disabled={buscandoMapa}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-neutral-200 py-1.5 text-xs text-neutral-700 transition hover:border-marca-coral disabled:opacity-50"
+            >
+              <Icone nome="imoveis" className="h-3.5 w-3.5" />
+              {buscandoMapa ? "Buscando…" : "Buscar o mapa do endereço"}
+            </button>
+          )}
+          {erroMapa && <p className="mt-1 text-[11px] text-amber-600">{erroMapa}</p>}
+        </div>
       )}
 
       {/* ---- template da página ---- */}

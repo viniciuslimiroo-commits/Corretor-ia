@@ -27,7 +27,7 @@ export const DIMENSOES: Record<Formato, { largura: number; altura: number }> = {
  * calado na hora de LER do banco, porque a cópia não conhecia o nome. Uma lista só, e o
  * validador importa daqui: agora não tem como divergir.
  */
-export const TIPOS_PAGINA = ["capa", "foto", "planta", "destaques", "localizacao", "ficha", "texto", "contato"] as const;
+export const TIPOS_PAGINA = ["capa", "foto", "planta", "destaques", "localizacao", "ficha", "texto", "contato", "imovel"] as const;
 
 export type TipoPagina = (typeof TIPOS_PAGINA)[number];
 

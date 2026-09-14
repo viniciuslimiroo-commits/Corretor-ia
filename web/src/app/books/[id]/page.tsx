@@ -128,6 +128,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   const [ligandoLink, setLigandoLink] = useState(false);
   const [painelCelular, setPainelCelular] = useState(false);
   const [menuMais, setMenuMais] = useState(false);
+  const [refazendo, setRefazendo] = useState(false);
   // Recado de uma vez só, deixado pela tela de criação quando o book saiu no automático.
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
   const centro = useRef<HTMLDivElement | null>(null);
@@ -318,6 +319,67 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     return d.texto;
   }
 
+  /**
+   * Refaz o book pelo automático. As páginas que a pessoa editou sobrevivem -- a fusão
+   * acontece no servidor, com a mesma regra da remontagem, e o editor recarrega com o
+   * documento novo. Recarregar é de propósito: o autosave em voo sobrescreveria.
+   */
+  async function refazer() {
+    const manuais = book.documento.paginas.filter((p) => p.origem === "manual").length;
+    const aviso = manuais
+      ? `Refazer vai reorganizar as fotos e reescrever os textos automáticos. As ${manuais} ${manuais === 1 ? "página que você editou fica" : "páginas que você editou ficam"} como estão. Continuar?`
+      : "Refazer vai reorganizar as fotos e reescrever os textos. Continuar?";
+    if (!window.confirm(aviso)) return;
+    setRefazendo(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/books/${carga.book.id}/refazer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+      });
+      const bruto = await r.text();
+      let d: { relatorio?: Relatorio; error?: string } = {};
+      try {
+        d = JSON.parse(bruto);
+      } catch {
+        throw new Error("Resposta inesperada do servidor.");
+      }
+      if (!r.ok) throw new Error(d.error ?? "Não consegui refazer agora.");
+      if (d.relatorio) {
+        try {
+          sessionStorage.setItem(`book:${carga.book.id}:relatorio`, JSON.stringify(d.relatorio));
+        } catch {}
+      }
+      window.location.reload();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao refazer.");
+      setRefazendo(false);
+    }
+  }
+
+  /**
+   * Busca o mapa do endereço e põe na página. A URL assinada volta junto e entra no mapa
+   * de URLs que o editor já usa -- sem isso a página desenharia um quadro vazio até o
+   * próximo carregamento.
+   */
+  async function buscarMapa(paginaId: string) {
+    const r = await fetch(`/api/books/${carga.book.id}/mapa`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+    });
+    const bruto = await r.text();
+    let d: { jobId?: string; url?: string | null; error?: string } = {};
+    try {
+      d = JSON.parse(bruto);
+    } catch {
+      throw new Error("Resposta inesperada do servidor.");
+    }
+    if (!r.ok || !d.jobId) throw new Error(d.error ?? "Não consegui buscar o mapa.");
+    if (d.url) carga.urls[d.jobId] = d.url;
+    book.aplicar((doc) => porImagem(doc, paginaId, d.jobId as string, 0));
+    avisar("Mapa do endereço adicionado.", true);
+  }
+
   async function apagar() {
     if (!window.confirm("Apagar este book? As fotos continuam em Materiais — some só a montagem.")) return;
     setApagando(true);
@@ -414,6 +476,13 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
             </button>
           </span>
 
+          <span className="hidden lg:block">
+            <Botao variante="secundaria" onClick={refazer} disabled={refazendo} className="px-3 py-1.5 text-xs" title="Refazer pelo automático, mantendo o que você editou">
+              <Icone nome="magica" className="h-4 w-4" />
+              {refazendo ? "Refazendo…" : "Refazer"}
+            </Botao>
+          </span>
+
           <Botao variante="secundaria" onClick={() => setPrevia("celular")} className="px-2.5 py-1.5 text-xs lg:px-3" title="Pré-visualizar">
             <Icone nome="olho" className="h-4 w-4" />
             <span className="hidden lg:inline">Pré-visualizar</span>
@@ -479,6 +548,10 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                   <button onClick={() => { setMenuMais(false); baixar("alta"); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
                     <strong className="block text-sm font-medium">Baixar para imprimir</strong>
                     <span className="text-neutral-500">300 dpi · arquivo maior e mais lento</span>
+                  </button>
+                  <button onClick={() => { setMenuMais(false); refazer(); }} disabled={refazendo} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50 disabled:opacity-50">
+                    <strong className="block text-sm font-medium">{refazendo ? "Refazendo…" : "Refazer automaticamente"}</strong>
+                    <span className="text-neutral-500">Reorganiza as fotos e reescreve os textos</span>
                   </button>
                   <button onClick={() => { setMenuMais(false); alternarLink(true); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
                     <strong className="block text-sm font-medium">{link ? "Copiar o link de novo" : "Criar link da página"}</strong>
@@ -651,6 +724,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
               aoAbrirGaveta={() => setGaveta({ modo: "trocar" })}
               aoIrPara={irPara}
               aoEscreverIA={escreverComIA}
+              aoBuscarMapa={buscarMapa}
             />
           )}
         </aside>
@@ -686,6 +760,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                 }}
                 aoIrPara={irPara}
                 aoEscreverIA={escreverComIA}
+                aoBuscarMapa={buscarMapa}
               />
             </div>
           ) : (

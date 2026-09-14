@@ -41,7 +41,14 @@ const REGRAS: Record<string, { max: number; instrucao: string }> = {
   },
   titulo: {
     max: 90,
-    instrucao: "Escreva o título desta página de texto. No máximo 5 palavras, sem ponto final.",
+    instrucao: "Escreva o título desta página. No máximo 5 palavras, sem ponto final.",
+  },
+  // Título da CAPA é caso à parte: nome do imóvel já cadastrado. A IA pode deixar mais
+  // apresentável (de "apto302 t55" pra "Apartamento no Setor Bueno"), nunca criar do zero.
+  titulo_capa: {
+    max: 90,
+    instrucao:
+      "Escreva o título da capa: o tipo do imóvel (apartamento, casa, cobertura, terreno, sobrado) e o BAIRRO, tirados do nome e do endereço cadastrados. No máximo 5 palavras, sem ponto final. NÃO repita número da unidade nem nome de rua -- isso já sai no subtítulo, logo abaixo. Não acrescente adjetivo de venda.",
   },
   chamada: {
     max: 60,
@@ -71,8 +78,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const corpo = await req.json().catch(() => ({}));
   const paginaId = typeof corpo?.paginaId === "string" ? corpo.paginaId : "";
   const campo = typeof corpo?.campo === "string" ? corpo.campo : "";
-  const regra = REGRAS[campo];
-  if (!paginaId || !regra) return NextResponse.json({ error: "Campo sem escrita automática." }, { status: 400 });
+  if (!paginaId || !campo) return NextResponse.json({ error: "Campo sem escrita automática." }, { status: 400 });
 
   const { data: book, error: erroLeitura } = await db.from("books").select("id, property_id, documento, titulo").eq("id", id).eq("user_id", userId).maybeSingle();
   if (erroLeitura && faltaMigracao(erroLeitura)) return NextResponse.json({ error: RECADO_MIGRACAO, migracao: true }, { status: 503 });
@@ -81,6 +87,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const documento = limparDocumento(book.documento);
   const pagina = documento?.paginas.find((p) => p.id === paginaId);
   if (!documento || !pagina) return NextResponse.json({ error: "Página não encontrada." }, { status: 404 });
+
+  const regra = REGRAS[campo === "titulo" && pagina.tipo === "capa" ? "titulo_capa" : campo];
+  if (!regra) return NextResponse.json({ error: "Campo sem escrita automática." }, { status: 400 });
 
   // ---- o que o modelo sabe do imóvel ----
   const linhas: string[] = [];

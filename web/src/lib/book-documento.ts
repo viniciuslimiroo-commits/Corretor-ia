@@ -136,6 +136,9 @@ export function limiteDeImagens(p: Pagina, tipoBook?: TipoBook): number {
   // próprio na Encena: o corretor guarda em Materiais o recorte que ele já usa e arrasta
   // pra cá. Mapa de verdade pede chave de API e custo por visualização.
   if (p.tipo === "localizacao") return 1;
+  // Página de imóvel no catálogo: uma foto, a que vende. Catálogo com três fotos por
+  // imóvel vira book -- e aí não é mais catálogo.
+  if (p.tipo === "imovel") return 1;
   if (p.tipo !== "foto") return 0;
   return p.layout === "duas" ? 2 : 1;
 }
@@ -237,7 +240,11 @@ export function limparDocumento(bruto: unknown): DocumentoBook | null {
     const textos: Record<string, string> = {};
     if (p.textos && typeof p.textos === "object") {
       for (const [k, v] of Object.entries(p.textos as Record<string, unknown>)) {
-        if (typeof v === "string" && /^[a-z_]{1,20}$/.test(k)) textos[k] = v.slice(0, 1200);
+        // Dígito PRECISA passar: `legenda2` e `corpo2` são chaves reais. A versão anterior
+        // desta linha só aceitava [a-z_], então a legenda da segunda foto era gravada e
+        // sumia calada na releitura -- mesmo padrão do whitelist de tipos de página, no
+        // mesmo arquivo. Sanitização que descarta em silêncio esconde bug por meses.
+        if (typeof v === "string" && /^[a-z_][a-z0-9_]{0,19}$/.test(k)) textos[k] = v.slice(0, 1200);
       }
     }
 

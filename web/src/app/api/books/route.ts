@@ -3,8 +3,8 @@ import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
 import { marcaEfetiva, membroDe } from "@/lib/cobranca";
 import { TIPO_POR_ID } from "@/lib/book-tipos";
-import { montar } from "@/lib/book-montagem";
-import { montarAutomatico, type Relatorio } from "@/lib/book-ia";
+import { montar, montarCatalogo, type ImovelDoCatalogo } from "@/lib/book-montagem";
+import { montarAutomatico, comOlhar, verFotos, type Relatorio } from "@/lib/book-ia";
 import { imagensDoDocumento, type DocumentoBook } from "@/lib/book-documento";
 import { faltaMigracao, imagensDoImovel, imovelDeMontagem, jobsParaImagens, RECADO_MIGRACAO } from "@/lib/book-servidor";
 
@@ -91,7 +91,70 @@ export async function POST(req: NextRequest) {
   if (!def) return NextResponse.json({ error: "Tipo de book desconhecido." }, { status: 400 });
 
   const imovelId = typeof corpo?.imovelId === "string" ? corpo.imovelId : null;
+  const imovelIds: string[] = (Array.isArray(corpo?.imovelIds) ? corpo.imovelIds : []).filter((x: unknown): x is string => typeof x === "string").slice(0, 24);
   const jobIds: string[] = (Array.isArray(corpo?.jobIds) ? corpo.jobIds : []).filter((x: unknown): x is string => typeof x === "string").slice(0, 60);
+
+  const [membroCedo, marcaCedo] = await Promise.all([membroDe(db, userId), marcaEfetiva(db, userId)]);
+  const corDaMarca = /^#?[0-9a-f]{6}$/i.test(marcaCedo.cor_marca ?? "") ? (marcaCedo.cor_marca as string) : undefined;
+
+  // ---- catálogo: vários imóveis, um por página ----
+  if (def.variosImoveis) {
+    const ids = imovelIds.length ? imovelIds : imovelId ? [imovelId] : [];
+    if (ids.length === 0) return NextResponse.json({ error: "Escolha os imóveis do catálogo." }, { status: 400 });
+
+    const itens: ImovelDoCatalogo[] = [];
+    for (const pid of ids) {
+      const d = await imovelDeMontagem(db, userId, pid);
+      if (!d) continue;
+      const imgs = await imagensDoImovel(db, userId, pid);
+      if (imgs.length === 0) continue;
+      itens.push({ imovel: d.imovel, imagens: imgs });
+    }
+    if (itens.length === 0) {
+      return NextResponse.json({ error: "Nenhum dos imóveis escolhidos tem imagem pronta." }, { status: 400 });
+    }
+
+    // No automático a IA escolhe a foto de cada imóvel; sem ele, vale a regra de sempre.
+    // Texto não muda: no catálogo tudo é dado do cadastro, e é assim que fica.
+    let vistas = 0;
+    if (corpo?.auto === true) {
+      for (const item of itens) {
+        const vistos = await verFotos(db, userId, item.imagens.map((i) => i.jobId), process.env.FAL_KEY, 8).catch(() => new Map());
+        vistas += vistos.size;
+        item.imagens = comOlhar(item.imagens, vistos).sort((a2, b2) => b2.qualidade - a2.qualidade);
+      }
+    }
+
+    const documentoCat = montarCatalogo({ imoveis: itens, cor: corDaMarca, titulo: marcaCedo.nome ?? undefined });
+    const { data: criadoCat, error: erroCat } = await db
+      .from("books")
+      .insert({
+        user_id: userId,
+        org_id: membroCedo?.orgId ?? null,
+        property_id: null,
+        tipo: def.id,
+        titulo: `Catálogo · ${itens.length} ${itens.length === 1 ? "imóvel" : "imóveis"}`,
+        documento: documentoCat,
+      })
+      .select("id, tipo, titulo, versao")
+      .single();
+    if (erroCat || !criadoCat) {
+      if (faltaMigracao(erroCat)) return NextResponse.json({ error: RECADO_MIGRACAO, migracao: true }, { status: 503 });
+      return NextResponse.json({ error: erroCat?.message ?? "Não consegui criar o catálogo." }, { status: 500 });
+    }
+    return NextResponse.json({
+      book: {
+        id: String(criadoCat.id),
+        tipo: criadoCat.tipo,
+        titulo: criadoCat.titulo,
+        versao: criadoCat.versao,
+        paginas: documentoCat.paginas.length,
+        imagens: imagensDoDocumento(documentoCat).length,
+        deFora: 0,
+      },
+      relatorio: corpo?.auto === true ? { fotosVistas: vistas, fotosNoBook: itens.length, textosPorIA: false, reprovados: [] } : null,
+    });
+  }
 
   let dados: Awaited<ReturnType<typeof imovelDeMontagem>> = null;
   let imagens;
@@ -129,12 +192,11 @@ export async function POST(req: NextRequest) {
   }
 
   const imovel = dados?.imovel ?? { id: null, titulo: "Meu material", endereco: null, capa_job_id: null };
-  const [membro, marca] = await Promise.all([membroDe(db, userId), marcaEfetiva(db, userId)]);
-
   // A identidade visual entra AQUI, na criação: a cor da imobiliária vira a cor do book.
   // Antes ficava indefinida e o layout caía no azul padrão -- que por acaso é o da Encena,
   // então ninguém percebia até um corretor com marca vermelha exportar um book azul.
-  const cor = /^#?[0-9a-f]{6}$/i.test(marca.cor_marca ?? "") ? (marca.cor_marca as string) : undefined;
+  const membro = membroCedo;
+  const cor = corDaMarca;
 
   const automatico = corpo?.auto === true;
   let documento;

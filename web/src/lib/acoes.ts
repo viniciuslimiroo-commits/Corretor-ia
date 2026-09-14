@@ -376,6 +376,7 @@ const ROTULOS_ESPECIAIS: Record<string, string> = {
   terreno_livre: "Terreno editado",
   planta: "Planta baixa",
   planta_humanizada: "Planta humanizada",
+  mapa: "Mapa do endereço",
 };
 
 export function rotuloDoTipo(tipo: string): string {

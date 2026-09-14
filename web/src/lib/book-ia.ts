@@ -4,6 +4,7 @@ import { conferirFatos } from "./book-fatos";
 import { fichaDoImovel, montar, type DadosMontagem, type ImagemDisponivel, type ImovelMontagem } from "./book-montagem";
 import { novoId, type DocumentoBook, type Pagina } from "./book-documento";
 import { TIPO_POR_ID, type TipoBook } from "./book-tipos";
+import { garantirMapa } from "./mapa";
 
 // "Criar automaticamente": do imóvel cadastrado a um book pronto, sem a pessoa escolher
 // nada.
@@ -83,14 +84,17 @@ const PROMPT_OLHAR = [
  * Olha cada foto uma vez na vida. O resultado fica gravado no job: a mesma foto entra em
  * vários books, e pagar de novo pela mesma resposta é desperdício puro.
  */
-export async function verFotos(db: Db, userId: string, jobIds: string[], falKey: string | undefined): Promise<Map<string, Olhar>> {
+export async function verFotos(db: Db, userId: string, jobIds: string[], falKey: string | undefined, maxNovas = 999): Promise<Map<string, Olhar>> {
   const vistos = new Map<string, Olhar>();
   if (jobIds.length === 0) return vistos;
 
   const { data } = await db.from("jobs").select("*").eq("user_id", userId).in("id", jobIds);
   const linhas = ((data ?? []) as LinhaJob[]).filter((j) => j.output_path);
 
-  const porVer: LinhaJob[] = [];
+  // O que já foi visto entra inteiro: custa zero. O teto vale só pras fotos NOVAS, que são
+  // as que vão gastar uma chamada de visão.
+  const ordem = new Map(jobIds.map((id, i) => [id, i]));
+  let porVer: LinhaJob[] = [];
   for (const j of linhas) {
     if (j.visto_em) {
       vistos.set(j.id, { jobId: j.id, ambiente: j.ambiente_ia ?? null, qualidade: Number(j.qualidade_ia ?? 5), legenda: j.legenda_ia ?? "" });
@@ -98,6 +102,7 @@ export async function verFotos(db: Db, userId: string, jobIds: string[], falKey:
       porVer.push(j);
     }
   }
+  porVer = porVer.sort((a, b) => (ordem.get(a.id) ?? 0) - (ordem.get(b.id) ?? 0)).slice(0, Math.max(0, maxNovas));
   if (!falKey || porVer.length === 0) return vistos;
 
   const novos = await emLotes(porVer, EM_PARALELO, async (j) => {
@@ -165,8 +170,10 @@ export function comOlhar(
 
 export type TextosDoBook = {
   descricao: string;
-  tituloDestaques: string;
+  /** O que o cadastro diz que o imóvel É: metragem, cômodos, vagas, ano. */
   destaques: string[];
+  /** O que as fotos mostram que ele TEM a mais: gourmet, piscina, academia, varanda. */
+  extras: string[];
   chamada: string;
   /** O que foi reprovado pelo guarda de fatos, pra aparecer no relatório. */
   reprovados: string[];
@@ -210,10 +217,11 @@ export async function escreverTextos(
 
   const pedido = [
     "Escreva os textos de um material de divulgação de imóvel. Responda SÓ com um JSON, sem markdown:",
-    '{"descricao":"...","tituloDestaques":"...","destaques":["...","..."],"chamada":"..."}',
+    '{"descricao":"...","destaques":["...","..."],"extras":["...","..."],"chamada":"..."}',
     "descricao: 2 ou 3 frases, até 55 palavras, pra abrir o material embaixo do preço. Comece pelo que o imóvel é.",
-    "tituloDestaques: até 4 palavras, o título da página de características (exemplo: 'O que faz diferença').",
-    "destaques: de 3 a 6 itens, cada um com até 8 palavras, sem ponto final. Cada item tem que sair de um dado da ficha ou de um ambiente que aparece nas fotos. Escreva o dado por extenso na língua de quem vende, não repita a ficha crua.",
+    "destaques: de 3 a 5 itens sobre O QUE O IMÓVEL É, cada um saindo de um campo da ficha cadastrada (metragem, dormitórios, suítes, banheiros, vagas, ano, condomínio). Até 8 palavras, sem ponto final, escrito na língua de quem vende e não como a ficha crua.",
+    "extras: de 0 a 4 itens sobre O QUE ELE TEM A MAIS, e SÓ a partir da lista de ambientes que aparecem nas fotos (área gourmet, piscina, academia, varanda, closet, home office, salão de festas, playground, quintal). Até 6 palavras, sem ponto final. Se a lista de ambientes não tiver nada além de sala, quarto, cozinha e banheiro, devolva a lista vazia -- não force.",
+    "Não repita em extras o que já está em destaques.",
     "chamada: até 5 palavras, o convite final pra visitar.",
     REGRAS,
     "",
@@ -240,15 +248,18 @@ export async function escreverTextos(
     return "";
   };
 
-  const destaquesBrutos = (Array.isArray(bruto.destaques) ? bruto.destaques : [])
-    .map((d) => limpar(d, 60).replace(/\.+$/, ""))
-    .filter(Boolean)
-    .slice(0, 6);
+  const lista = (v: unknown, max: number, rotulo: string) =>
+    (Array.isArray(v) ? v : [])
+      .map((d) => limpar(d, 60).replace(/\.+$/, ""))
+      .filter(Boolean)
+      .slice(0, max)
+      .map((d, i) => sePassar(d, `${rotulo} ${i + 1}`))
+      .filter(Boolean);
 
   return {
     descricao: sePassar(limpar(bruto.descricao, 400), "descrição"),
-    tituloDestaques: limpar(bruto.tituloDestaques, 40) || "O que faz diferença",
-    destaques: destaquesBrutos.map((d, i) => sePassar(d, `destaque ${i + 1}`)).filter(Boolean),
+    destaques: lista(bruto.destaques, 5, "destaque"),
+    extras: lista(bruto.extras, 4, "extra"),
     chamada: sePassar(limpar(bruto.chamada, 60), "chamada") || "Vamos visitar?",
     reprovados,
   };
@@ -281,7 +292,17 @@ export async function montarAutomatico(args: {
   const { db, userId, tipo, imovel, imagens, cor, falKey } = args;
   const def = TIPO_POR_ID[tipo] ?? TIPO_POR_ID.book;
 
-  const vistos = await verFotos(db, userId, imagens.map((i) => i.jobId), falKey).catch(() => new Map<string, Olhar>());
+  // Teto de leitura: um imóvel com 60 fotos não vira 60 chamadas de visão pra montar um
+  // book que leva 24. As já vistas custam zero e entram de graça; das novas, entram as mais
+  // recentes até o teto -- foto recente é a que o corretor acabou de editar, e é a que ele
+  // espera ver no book.
+  const teto = Math.max(def.maxFotos + 4, 12);
+  const naOrdemDaFila = imagens
+    .slice()
+    .sort((a2, b2) => (b2.criadoEm < a2.criadoEm ? -1 : 1))
+    .map((i) => i.jobId);
+
+  const vistos = await verFotos(db, userId, naOrdemDaFila, falKey, teto).catch(() => new Map<string, Olhar>());
   const comVista = comOlhar(imagens, vistos);
 
   // Melhor foto primeiro, no geral: é assim que `escolherCapa` — que pega a PRIMEIRA
@@ -317,21 +338,31 @@ export async function montarAutomatico(args: {
     const contato = documento.paginas.find((p) => p.tipo === "contato");
     if (contato && textos.chamada) contato.textos.chamada = textos.chamada;
 
-    const pagDestaques = documento.paginas.find((p) => p.tipo === "destaques");
-    if (pagDestaques && textos.destaques.length) {
-      pagDestaques.textos.titulo = textos.tituloDestaques;
-      pagDestaques.textos.corpo = textos.destaques.join("\n");
-    } else if (pagDestaques) {
-      // Sem IA, a página de destaques ainda vale: sai da ficha, que é fato puro.
-      pagDestaques.textos.corpo = destaquesDaFicha(imovel).join("\n");
-    }
-  } else {
-    const pagDestaques = documento.paginas.find((p) => p.tipo === "destaques");
-    if (pagDestaques) pagDestaques.textos.corpo = destaquesDaFicha(imovel).join("\n");
+  }
+
+  // Os destaques, nas duas listas. As duas têm piso determinístico: a da esquerda sai da
+  // ficha, a da direita dos ambientes que apareceram nas fotos. A IA melhora a frase; se
+  // ela não responder, a página continua de pé e continua verdadeira.
+  const pagDestaques = documento.paginas.find((p) => p.tipo === "destaques");
+  if (pagDestaques) {
+    const doCadastro = textos?.destaques.length ? textos.destaques : destaquesDaFicha(imovel);
+    const dasFotos = textos?.extras.length ? textos.extras : extrasDosAmbientes(comVista.map((i) => i.tipoEspaco));
+    pagDestaques.textos.corpo = doCadastro.join("\n");
+    pagDestaques.textos.corpo2 = dasFotos.join("\n");
+  }
+
+  // O mapa, quando há chave do Mapbox configurada. Sem chave a página de localização
+  // continua de pé com endereço e QR -- por isso isto nunca derruba a montagem.
+  const pagLocal = documento.paginas.find((p) => p.tipo === "localizacao");
+  if (pagLocal && pagLocal.imagens.length === 0) {
+    const mapa = await garantirMapa(db, userId, imovel, cor).catch(() => null);
+    if (mapa) pagLocal.imagens = [mapa];
   }
 
   // Página de destaques sem nada dentro é página em branco no material do cliente.
-  const paginas = documento.paginas.filter((p) => p.tipo !== "destaques" || (p.textos.corpo ?? "").trim().length > 0);
+  const paginas = documento.paginas.filter(
+    (p) => p.tipo !== "destaques" || `${p.textos.corpo ?? ""}${p.textos.corpo2 ?? ""}`.trim().length > 0
+  );
 
   return {
     documento: { ...documento, paginas },
@@ -358,6 +389,37 @@ export function destaquesDaFicha(i: ImovelMontagem): string[] {
   if (i.ano_construcao) itens.push(`Entregue em ${i.ano_construcao}`);
   if (i.condominio) itens.push(`Condomínio de ${i.condominio}`);
   return itens.slice(0, 6);
+}
+
+/**
+ * O "tem a mais" sem IA nenhuma: os ambientes que apareceram nas fotos e que não são o
+ * feijão com arroz de qualquer imóvel. Sala, quarto, cozinha e banheiro todo apartamento
+ * tem -- listar isso como diferencial é ruído, então eles não estão nesta tabela.
+ */
+const EXTRA_DO_AMBIENTE: Record<string, string> = {
+  gourmet: "Área gourmet",
+  varanda: "Varanda",
+  piscina: "Piscina no condomínio",
+  academia: "Academia no condomínio",
+  salao: "Salão de festas",
+  playground: "Playground",
+  closet: "Closet",
+  escritorio: "Espaço para home office",
+  quintal: "Quintal",
+  area_servico: "Área de serviço",
+  entrada: "Hall de entrada",
+};
+
+export function extrasDosAmbientes(ambientes: (string | null | undefined)[]): string[] {
+  const jaTem = new Set<string>();
+  const saida: string[] = [];
+  for (const a of ambientes) {
+    const rotulo = a ? EXTRA_DO_AMBIENTE[a] : null;
+    if (!rotulo || jaTem.has(rotulo)) continue;
+    jaTem.add(rotulo);
+    saida.push(rotulo);
+  }
+  return saida.slice(0, 4);
 }
 
 /** Uma página nova, pronta pra entrar no documento. */

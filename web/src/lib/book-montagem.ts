@@ -223,7 +223,17 @@ export function montar(d: DadosMontagem): DocumentoBook {
   // IA; quem preenche é a montagem automática (book-ia), e se ela não rodar a página cai
   // fora na hora de gravar em vez de sair em branco no material do cliente.
   if (def.paginasFixas.includes("destaques")) {
-    paginas.push({ id: novoId(), tipo: "destaques", origem: "auto", imagens: [], textos: { titulo: "O que faz diferença", corpo: "" } });
+    paginas.push({
+      id: novoId(),
+      tipo: "destaques",
+      origem: "auto",
+      imagens: [],
+      // Duas listas, e a divisão é factual, não retórica: à esquerda o que o cadastro diz
+      // que o imóvel É; à direita o que as fotos mostram que ele TEM a mais. Diferencial
+      // de verdade seria comparação com a vizinhança, e esse dado nós não temos --
+      // inventar superioridade era o caminho fácil e é exatamente o proibido aqui.
+      textos: { titulo: "O imóvel", corpo: "", titulo2: "O que tem a mais", corpo2: "" },
+    });
   }
 
   if (def.paginasFixas.includes("localizacao") && d.imovel.endereco) {
@@ -272,14 +282,84 @@ export function montar(d: DadosMontagem): DocumentoBook {
   return { versao: 1, tipo: def.id, formato: def.formato, identidade: { cor: d.cor, capaEscura: true }, paginas };
 }
 
+/** Uma linha de ficha compacta, do jeito que cabe embaixo do preço num catálogo. */
+export function fichaCurta(i: ImovelMontagem): string {
+  const partes: string[] = [];
+  if (i.area_util) partes.push(`${String(i.area_util).replace(".", ",")} m²`);
+  if (i.dormitorios) partes.push(`${i.dormitorios} ${i.dormitorios === 1 ? "dorm" : "dorms"}`);
+  if (i.suites) partes.push(`${i.suites} ${i.suites === 1 ? "suíte" : "suítes"}`);
+  if (i.vagas) partes.push(`${i.vagas} ${i.vagas === 1 ? "vaga" : "vagas"}`);
+  return partes.join("  ·  ");
+}
+
+export type ImovelDoCatalogo = { imovel: ImovelMontagem; imagens: ImagemDisponivel[] };
+
+/**
+ * O CATÁLOGO: vários imóveis num arquivo, um por página.
+ *
+ * Estrutura diferente do book de propósito. O book passeia por UM imóvel; o catálogo é uma
+ * vitrine, e quem recebe compara. Por isso cada imóvel ocupa exatamente uma página, com os
+ * mesmos campos na mesma posição -- comparar é impossível quando cada ficha sai num lugar.
+ *
+ * E não há texto de venda por imóvel: título, endereço, preço e ficha saem do cadastro,
+ * nada mais. Meia dúzia de parágrafos gerados, um por imóvel, é meia dúzia de chances de
+ * afirmar o que não se sabe.
+ */
+export function montarCatalogo(d: { imoveis: ImovelDoCatalogo[]; cor?: string; titulo?: string }): DocumentoBook {
+  const def = TIPO_POR_ID.catalogo;
+  const paginas: Pagina[] = [];
+
+  const primeira = d.imoveis.find((x) => escolherCapa(x.imagens, x.imovel.capa_job_id));
+  const capa = primeira ? escolherCapa(primeira.imagens, primeira.imovel.capa_job_id) : null;
+
+  paginas.push({
+    id: novoId(),
+    tipo: "capa",
+    origem: "auto",
+    imagens: capa ? [capa.jobId] : [],
+    textos: {
+      titulo: d.titulo || "Imóveis selecionados",
+      subtitulo: `${d.imoveis.length} ${d.imoveis.length === 1 ? "imóvel" : "imóveis"}`,
+    },
+  });
+
+  for (const { imovel, imagens } of d.imoveis.slice(0, def.maxFotos)) {
+    const foto = escolherCapa(imagens, imovel.capa_job_id);
+    paginas.push({
+      id: novoId(),
+      tipo: "imovel",
+      origem: "auto",
+      imagens: foto ? [foto.jobId] : [],
+      textos: {
+        titulo: imovel.titulo,
+        endereco: imovel.endereco ?? "",
+        preco: imovel.preco ?? "",
+        ficha: fichaCurta(imovel),
+      },
+    });
+  }
+
+  paginas.push({ id: novoId(), tipo: "contato", origem: "auto", imagens: [], textos: { chamada: "Qual deles você quer ver?" } });
+
+  return { versao: 1, tipo: def.id, formato: def.formato, identidade: { cor: d.cor, capaEscura: true }, paginas };
+}
+
 /**
  * Remonta preservando o trabalho manual: páginas 'manual' sobrevivem no lugar onde
  * estão, e o resto é refeito pela regra. É o que permite trocar de tipo sem perder o que
  * a pessoa escreveu.
  */
 export function remontar(atual: DocumentoBook, d: DadosMontagem): { documento: DocumentoBook; descartadas: number } {
+  return remontarCom(atual, montar(d));
+}
+
+/**
+ * A fusão em si, separada de quem montou o documento novo. É o que deixa o "refazer
+ * automaticamente" reaproveitar exatamente esta regra: o book novo pode vir da montagem
+ * pura OU da montagem com IA, e o que a pessoa editou sobrevive igual nos dois casos.
+ */
+export function remontarCom(atual: DocumentoBook, novo: DocumentoBook): { documento: DocumentoBook; descartadas: number } {
   const manuais = atual.paginas.filter((p) => p.origem === "manual");
-  const novo = montar(d);
   const usadas = new Set(manuais.flatMap((p) => p.imagens));
   // Tira das páginas novas as imagens que já aparecem numa página que a pessoa editou.
   const semRepetir = novo.paginas

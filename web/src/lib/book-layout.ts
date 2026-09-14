@@ -296,38 +296,103 @@ export function montarPagina(
   // ---------- destaques: a ficha virada frase ----------
   // Lista, não parágrafo: o cliente não lê o material inteiro, ele varre. Cada linha do
   // campo "corpo" vira um item, e é o corretor quem decide quantos — sem contador mágico.
+  // ---------- um imóvel do catálogo ----------
+  // Todos os campos na MESMA posição em todas as páginas, de propósito: catálogo existe
+  // pra comparar, e comparação morre quando o preço de um está embaixo e o do outro ao
+  // lado. Foto em cima, nome, endereço, preço grande, ficha curta. Nada além disso.
+  if (pagina.tipo === "imovel") {
+    const alturaFoto = Math.round(A * (deitado ? 0.62 : 0.52));
+    const foto = pagina.imagens[0];
+    if (foto) {
+      caixas.push({ tipo: "imagem", x: 0, y: 0, l: L, a: alturaFoto, jobId: foto, modo: "cobrir", foco: foco(foto) });
+    } else {
+      caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: alturaFoto, cor: "#e8ebef" });
+    }
+
+    let y = alturaFoto + 34;
+    const t = texto(pagina.textos.titulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: 22, negrito: true, maxLinhas: 2 });
+    if (t) {
+      caixas.push(t.caixa);
+      y += t.alturaUsada + 6;
+    }
+    const end = texto(pagina.textos.endereco ?? "", medir, { x: MARGEM, y, l: util, tamanho: 11, cor: CINZA, maxLinhas: 2 });
+    if (end) {
+      caixas.push(end.caixa);
+      y += end.alturaUsada + 18;
+    }
+    const preco = texto(pagina.textos.preco ?? "", medir, { x: MARGEM, y, l: util, tamanho: 26, negrito: true, cor, maxLinhas: 1 });
+    if (preco) {
+      caixas.push(preco.caixa);
+      y += preco.alturaUsada + 14;
+    }
+    por(texto(pagina.textos.ficha ?? "", medir, { x: MARGEM, y, l: util, tamanho: 12, cor: "#414a57", maxLinhas: 2 }));
+    rodape();
+    return { id: pagina.id, largura: L, altura: A, caixas };
+  }
+
   if (pagina.tipo === "destaques") {
+    const emLista = (chave: string) =>
+      (pagina.textos[chave] ?? "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+
+    const grupos = [
+      { titulo: pagina.textos.titulo || "O imóvel", itens: emLista("corpo") },
+      { titulo: pagina.textos.titulo2 || "O que tem a mais", itens: emLista("corpo2") },
+    ].filter((g) => g.itens.length > 0);
+
     caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: 8, cor });
-    por(texto(pagina.textos.titulo || "O que faz diferença", medir, { x: MARGEM, y: MARGEM + 26, l: util, tamanho: 24, negrito: true, maxLinhas: 1 }));
+    // Com dois grupos o título da página vira o título do primeiro grupo, e cada bloco leva
+    // o seu. Com um grupo só, a página tem um título e ponto -- sem cabeçalho órfão.
+    const doisGrupos = grupos.length > 1;
+    const gapColuna = 28;
+    // Deitado com dois grupos, lado a lado; no resto, um embaixo do outro numa coluna só.
+    const larguraCol = doisGrupos && deitado ? (util - gapColuna) / 2 : util;
 
-    const itens = (pagina.textos.corpo ?? "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, 8);
-    const colunas = deitado ? 2 : 1;
-    const gap = 20;
-    const larguraItem = (util - gap * (colunas - 1)) / colunas;
-    // Lista curta respira mais: seis itens de 14pt grudados no topo de um A4 deixam meia
-    // página em branco e o material parece que travou no meio.
-    const tamanho = itens.length <= 4 ? 17 : itens.length <= 6 ? 15 : 13;
-    const passo = itens.length <= 4 ? 62 : itens.length <= 6 ? 50 : 42;
+    const todos = grupos.reduce((n, g) => n + g.itens.length, 0);
+    const tamanho = todos <= 4 ? 17 : todos <= 7 ? 15 : 13;
+    const passo = todos <= 4 ? 56 : todos <= 7 ? 44 : 38;
 
-    const topo = MARGEM + 86;
-    const disponivel = A - 56 - topo;
-    const linhas = Math.ceil(itens.length / colunas);
-    // E o bloco fica no centro óptico do que sobrou, em vez de encostado no título: assim
-    // a folga vira composição e não sobra.
-    const inicio = topo + Math.max(0, (disponivel - linhas * passo) / 2);
+    let y = MARGEM + 34;
+    if (!doisGrupos) {
+      por(texto(grupos[0]?.titulo ?? "Destaques", medir, { x: MARGEM, y: y + 6, l: util, tamanho: 24, negrito: true, maxLinhas: 1 }));
+      y += 58;
+      // Bloco único vai pro centro óptico do que sobra: encostado no título, sobra meia
+      // página em branco e o material parece que travou no meio.
+      y += Math.max(0, (A - 56 - y - (grupos[0]?.itens.length ?? 0) * passo) / 2);
+    } else {
+      por(texto("Destaques", medir, { x: MARGEM, y: y + 6, l: util, tamanho: 24, negrito: true, maxLinhas: 1 }));
+      y += 62;
+    }
 
-    itens.forEach((item, i) => {
-      const x = MARGEM + (i % colunas) * (larguraItem + gap);
-      const y = inicio + Math.floor(i / colunas) * passo;
-      if (y + passo > A - 56) return;
-      // Marcador quadrado na cor da marca: bolinha vira ruído quando a lista tem oito itens.
-      caixas.push({ tipo: "retangulo", x, y: y + tamanho * 0.42, l: 7, a: 7, cor });
-      por(texto(item, medir, { x: x + 22, y, l: larguraItem - 22, tamanho, maxLinhas: 2 }));
-    });
+    const desenhar = (g: { titulo: string; itens: string[] }, x: number, topo: number, largura: number) => {
+      let yy = topo;
+      if (doisGrupos) {
+        por(texto(g.titulo.toUpperCase(), medir, { x, y: yy, l: largura, tamanho: 9, negrito: true, cor, maxLinhas: 1 }));
+        yy += 26;
+      }
+      g.itens.forEach((item) => {
+        if (yy + passo > A - 56) return;
+        // Marcador quadrado na cor da marca: bolinha vira ruído quando a lista tem oito itens.
+        caixas.push({ tipo: "retangulo", x, y: yy + tamanho * 0.42, l: 7, a: 7, cor });
+        por(texto(item, medir, { x: x + 22, y: yy, l: largura - 22, tamanho, maxLinhas: 2 }));
+        yy += passo;
+      });
+      return yy;
+    };
+
+    if (doisGrupos && deitado) {
+      desenhar(grupos[0], MARGEM, y, larguraCol);
+      desenhar(grupos[1], MARGEM + larguraCol + gapColuna, y, larguraCol);
+    } else if (doisGrupos) {
+      const fim = desenhar(grupos[0], MARGEM, y, util);
+      desenhar(grupos[1], MARGEM, fim + 26, util);
+    } else {
+      desenhar(grupos[0], MARGEM, y, util);
+    }
+
     rodape();
     return { id: pagina.id, largura: L, altura: A, caixas };
   }
