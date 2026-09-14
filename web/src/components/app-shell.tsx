@@ -55,7 +55,7 @@ export default function AppShell({
 
   // `soIcone` = no menu de cima entra só o ícone (com o nome no title). A barra tem
   // 1152px e o nome inteiro não cabe junto do resto; embaixo, no celular, vai completo.
-  const links: { href: string; rotulo: string; icone: string; soIcone: boolean; secundario?: boolean; soMobile?: boolean }[] = [
+  const links: { href: string; rotulo: string; icone: string; soIcone: boolean; secundario?: boolean; soMobile?: boolean; soDesktop?: boolean }[] = [
     // No computador a marca no canto já leva pro início -- dois caminhos pro mesmo lugar
     // gastam a largura que Books precisava. No celular não há marca clicável, então fica.
     { href: "/", rotulo: "Início", icone: "casa", soIcone: false, soMobile: true },
@@ -65,12 +65,22 @@ export default function AppShell({
     // Materiais), e por isso "onde eu crio?" não tinha resposta óbvia: dependia do que ia
     // ser criado. Agora a navegação só diz ONDE as coisas estão, e a criação inteira --
     // foto, vídeo e material -- é um botão só, visível em toda tela.
-    // Editar e Vídeo saíram da barra de baixo também.
+    // Editar e Vídeo VOLTARAM pro menu de cima, escritos.
     //
-    // Enquanto ficavam lá, a mesma ação tinha duas superfícies e só uma dizia o preço: o
-    // menu "+ Criar" avisa "1 crédito", a barra não avisava nada. E navegação que às vezes
-    // navega e às vezes cria não é navegação. Agora, em qualquer tela e em qualquer
-    // tamanho, criar é o botão -- e o botão sempre mostra o custo antes.
+    // Eu os tinha tirado por coerência (navegação = lugar, criação = botão), e o argumento
+    // continua de pé no papel. Mas quem usa todo dia achou pior: ver "Editar" e "Vídeo"
+    // escritos é mais rápido do que abrir um menu pra encontrá-los. Coerência de modelo
+    // mental não vale um clique a mais na ação mais frequente do produto.
+    //
+    // O "+ Criar" fica, e é ele quem carrega o que a barra não carrega: o CUSTO antes do
+    // clique. São caminhos com papéis diferentes -- a barra é atalho pra quem já sabe, o
+    // botão é a porta pra quem está decidindo.
+    //
+    // `soDesktop`: no menu de cima sim, na barra de baixo não. Com eles lá embaixo a barra
+    // do celular ficava com OITO alvos de 47px numa tela de 375 -- medido, e abaixo do que
+    // o dedo acerta. No celular quem cria usa o "+ Criar", que é grande e fica no topo.
+    { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false, soDesktop: true },
+    { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false, soDesktop: true },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
@@ -189,7 +199,7 @@ export default function AppShell({
         {/* navegação no celular: cinco destinos, créditos e "Mais" */}
         <nav className="relative flex items-center justify-around border-t border-neutral-100 xl:hidden">
           {links
-            .filter((l) => !l.secundario)
+            .filter((l) => !l.secundario && !l.soDesktop)
             .map((l) => (
               <Link
                 key={l.href}
