@@ -306,6 +306,77 @@ export function montarPagina(
   // ---------- destaques: a ficha virada frase ----------
   // Lista, não parágrafo: o cliente não lê o material inteiro, ele varre. Cada linha do
   // campo "corpo" vira um item, e é o corretor quem decide quantos — sem contador mágico.
+  // ---------- grade do portfólio ----------
+  // Seis fotos 2x3, com o nome embaixo de cada uma. É material de captação: o que importa
+  // é a quantidade e a variedade do trabalho, não cada imóvel em detalhe.
+  if (pagina.tipo === "grade") {
+    caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: 8, cor });
+    let topo = MARGEM + 20;
+    const t = texto(pagina.textos.titulo ?? "", medir, { x: MARGEM, y: topo, l: util, tamanho: 20, negrito: true, maxLinhas: 1 });
+    if (t) {
+      caixas.push(t.caixa);
+      topo += t.alturaUsada + 18;
+    }
+
+    const colunas = deitado ? 3 : 2;
+    const linhas = Math.ceil(6 / colunas);
+    const gap = 14;
+    const rotulo = 16;
+    const larguraFoto = (util - gap * (colunas - 1)) / colunas;
+    const alturaDisponivel = A - 56 - topo;
+    const alturaCelula = (alturaDisponivel - gap * (linhas - 1)) / linhas;
+    const alturaFoto = Math.max(40, alturaCelula - rotulo);
+
+    for (let i = 0; i < 6; i += 1) {
+      const job = pagina.imagens[i];
+      const x = MARGEM + (i % colunas) * (larguraFoto + gap);
+      const y = topo + Math.floor(i / colunas) * (alturaCelula + gap);
+      if (job) {
+        caixas.push({ tipo: "imagem", x, y, l: larguraFoto, a: alturaFoto, jobId: job, modo: "cobrir", foco: foco(job) });
+      } else {
+        caixas.push({ tipo: "retangulo", x, y, l: larguraFoto, a: alturaFoto, cor: "#eef1f4" });
+      }
+      por(texto(pagina.textos[`legenda${i + 1}`] ?? "", medir, { x, y: y + alturaFoto + 4, l: larguraFoto, tamanho: 8, cor: CINZA, maxLinhas: 1 }));
+    }
+    rodape();
+    return { id: pagina.id, largura: L, altura: A, caixas };
+  }
+
+  // ---------- página de números ----------
+  // Cada linha "Rótulo: valor" vira um cartão. Quem investe lê número antes de foto, e
+  // número espalhado em parágrafo não se compara com outro imóvel.
+  if (pagina.tipo === "numeros") {
+    caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: 8, cor });
+    por(texto(pagina.textos.titulo || "Os números", medir, { x: MARGEM, y: MARGEM + 26, l: util, tamanho: 24, negrito: true, maxLinhas: 1 }));
+
+    const cartoes = (pagina.textos.corpo ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const m = /^([^:]{1,28}):\s*(.+)$/.exec(l);
+        return m ? { rotulo: m[1].trim(), valor: m[2].trim().slice(0, 24) } : null;
+      })
+      .filter((c): c is { rotulo: string; valor: string } => !!c)
+      .slice(0, 8);
+
+    const colunas = deitado ? 4 : 2;
+    const gap = 14;
+    const larguraCard = (util - gap * (colunas - 1)) / colunas;
+    cartoes.forEach((c, i) => {
+      const x = MARGEM + (i % colunas) * (larguraCard + gap);
+      const y = MARGEM + 80 + Math.floor(i / colunas) * 92;
+      caixas.push({ tipo: "retangulo", x, y, l: larguraCard, a: 76, cor: "#f5f7fa" });
+      por(texto(c.rotulo, medir, { x: x + 14, y: y + 18, l: larguraCard - 28, tamanho: 9, cor: CINZA, maxLinhas: 1 }));
+      por(texto(c.valor, medir, { x: x + 14, y: y + 40, l: larguraCard - 28, tamanho: 20, negrito: true, cor, maxLinhas: 1 }));
+    });
+
+    const abaixo = MARGEM + 80 + Math.ceil(cartoes.length / colunas) * 92 + 10;
+    por(texto(pagina.textos.nota ?? "", medir, { x: MARGEM, y: abaixo, l: util * 0.8, tamanho: 12, cor: "#414a57", maxLinhas: 6 }));
+    rodape();
+    return { id: pagina.id, largura: L, altura: A, caixas };
+  }
+
   // ---------- um imóvel do catálogo ----------
   // Todos os campos na MESMA posição em todas as páginas, de propósito: catálogo existe
   // pra comparar, e comparação morre quando o preço de um está embaixo e o do outro ao

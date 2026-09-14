@@ -6,7 +6,7 @@
 // (537 páginas): a ordem canônica é capa → promessa → localização → implantação → lazer →
 // plantas → ficha → contato, e quem foge dela foge sempre no mesmo lugar.
 
-export type TipoBook = "book" | "whatsapp" | "alto_padrao" | "lancamento" | "catalogo";
+export type TipoBook = "book" | "whatsapp" | "alto_padrao" | "lancamento" | "catalogo" | "portfolio" | "investidores";
 
 /** Formato da página. Deixou de ser A4 em tudo: o material de hoje é aberto no celular. */
 export type Formato = "a4_retrato" | "a4_paisagem" | "quadrado" | "widescreen";
@@ -27,7 +27,7 @@ export const DIMENSOES: Record<Formato, { largura: number; altura: number }> = {
  * calado na hora de LER do banco, porque a cópia não conhecia o nome. Uma lista só, e o
  * validador importa daqui: agora não tem como divergir.
  */
-export const TIPOS_PAGINA = ["capa", "foto", "planta", "destaques", "localizacao", "ficha", "texto", "contato", "imovel"] as const;
+export const TIPOS_PAGINA = ["capa", "foto", "planta", "destaques", "localizacao", "ficha", "texto", "contato", "imovel", "grade", "numeros"] as const;
 
 export type TipoPagina = (typeof TIPOS_PAGINA)[number];
 
@@ -94,6 +94,28 @@ export const TIPOS: DefBook[] = [
     usaPreco: false,
     variosImoveis: false,
     paginasFixas: ["capa", "texto", "destaques", "localizacao", "ficha", "contato"],
+    fotoPorPagina: true,
+  },
+  {
+    id: "portfolio",
+    rotulo: "Portfólio",
+    para: "O que você já fez, em grade. É o material de CAPTAÇÃO: mostra trabalho, não imóvel à venda.",
+    formato: "a4_retrato",
+    maxFotos: 36,
+    usaPreco: false,
+    variosImoveis: true,
+    paginasFixas: ["capa", "contato"],
+    fotoPorPagina: false,
+  },
+  {
+    id: "investidores",
+    rotulo: "Apresentação para investidores",
+    para: "Deitado, com uma página de números antes das fotos. Pra quem compra por conta, não pra morar.",
+    formato: "widescreen",
+    maxFotos: 16,
+    usaPreco: true,
+    variosImoveis: false,
+    paginasFixas: ["capa", "numeros", "localizacao", "ficha", "contato"],
     fotoPorPagina: true,
   },
   {

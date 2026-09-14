@@ -81,7 +81,7 @@ export async function montarMaterial(d: DadosMaterial): Promise<Buffer> {
 
   const pdf = await PDFDocument.create();
   pdf.setTitle(d.titulo || "Material");
-  pdf.setCreator("Encena IA");
+  pdf.setCreator("Encena");
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const negrito = await pdf.embedFont(StandardFonts.HelveticaBold);
   const cor = corDaMarca(d.marca.cor);

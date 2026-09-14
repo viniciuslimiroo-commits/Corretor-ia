@@ -90,7 +90,7 @@ export async function montarPdfDoBook(e: EntradaPdf): Promise<Buffer> {
   const ajuste = AJUSTES[e.qualidade];
   const pdf = await PDFDocument.create();
   pdf.setTitle(e.titulo || "Book");
-  pdf.setCreator("Encena IA");
+  pdf.setCreator("Encena");
   const fontes: FontesPdf = {
     normal: await pdf.embedFont(StandardFonts.Helvetica),
     negrito: await pdf.embedFont(StandardFonts.HelveticaBold),

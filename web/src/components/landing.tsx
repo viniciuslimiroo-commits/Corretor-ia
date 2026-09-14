@@ -42,7 +42,7 @@ export default function Landing() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={32} height={32} className="h-8 w-8" />
             <span className="whitespace-nowrap text-xl font-bold tracking-tight text-marca-indigo">
-              Encena <span className="text-marca-teal">IA</span>
+              Encena
             </span>
           </Link>
           <nav className="ml-auto hidden items-center gap-5 text-sm text-neutral-600 sm:flex">
@@ -305,7 +305,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-5 text-xs text-neutral-500">
           <span className="flex items-center gap-1.5 font-semibold text-marca-indigo">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/marca-encena.svg" alt="" width={16} height={16} className="h-4 w-4" /> Encena IA
+            <img src="/marca-encena.svg" alt="" width={16} height={16} className="h-4 w-4" /> Encena
           </span>
           <span className="text-neutral-400">encena.app.br</span>
           <Link href="/termos" className="hover:text-marca-indigo">Termos de uso</Link>

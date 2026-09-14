@@ -72,7 +72,7 @@ export default function AppShell({
           <Link href="/" className="flex shrink-0 items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={30} height={30} className="h-[30px] w-[30px]" />
-            <span className="whitespace-nowrap text-lg font-bold tracking-tight text-marca-indigo">Encena <span className="text-marca-teal">IA</span></span>
+            <span className="whitespace-nowrap text-lg font-bold tracking-tight text-marca-indigo">Encena</span>
           </Link>
 
           {/* Menu completo só a partir de xl. A barra tem no máximo 1152px (max-w-6xl) e a

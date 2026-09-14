@@ -328,7 +328,7 @@ export default async function BookPublico({ params }: { params: Promise<{ token:
         </section>
 
         <p className="pb-6 text-xs text-neutral-400">
-          {c.temEditada ? "Imagens ilustrativas · algumas editadas digitalmente. " : ""}Feito com Encena IA.
+          {c.temEditada ? "Imagens ilustrativas · algumas editadas digitalmente. " : ""}Feito com Encena.
         </p>
       </div>
 

@@ -139,6 +139,9 @@ export function limiteDeImagens(p: Pagina, tipoBook?: TipoBook): number {
   // Página de imóvel no catálogo: uma foto, a que vende. Catálogo com três fotos por
   // imóvel vira book -- e aí não é mais catálogo.
   if (p.tipo === "imovel") return 1;
+  // Grade do portfólio: seis por página, 2x3. É o formato que a leitura dos materiais de
+  // captação mostrou -- mais que isso vira contato sheet, menos vira book.
+  if (p.tipo === "grade") return 6;
   if (p.tipo !== "foto") return 0;
   return p.layout === "duas" ? 2 : 1;
 }

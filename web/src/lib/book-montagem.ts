@@ -222,6 +222,18 @@ export function montar(d: DadosMontagem): DocumentoBook {
   // A página de destaques nasce vazia aqui de propósito. `montar()` é puro e não chama
   // IA; quem preenche é a montagem automática (book-ia), e se ela não rodar a página cai
   // fora na hora de gravar em vez de sair em branco no material do cliente.
+  if (def.paginasFixas.includes("numeros")) {
+    paginas.push({
+      id: novoId(),
+      tipo: "numeros",
+      origem: "auto",
+      imagens: [],
+      // Sai da ficha, não de texto interpretado: número que o investidor compara tem que
+      // vir do cadastro, com o rótulo certo.
+      textos: { titulo: "Os números", corpo: numerosDoImovel(d.imovel).join("\n"), nota: d.imovel.descricao ?? "" },
+    });
+  }
+
   if (def.paginasFixas.includes("destaques")) {
     paginas.push({
       id: novoId(),
@@ -341,6 +353,65 @@ export function montarCatalogo(d: { imoveis: ImovelDoCatalogo[]; cor?: string; t
 
   paginas.push({ id: novoId(), tipo: "contato", origem: "auto", imagens: [], textos: { chamada: "Qual deles você quer ver?" } });
 
+  return { versao: 1, tipo: def.id, formato: def.formato, identidade: { cor: d.cor, capaEscura: true }, paginas };
+}
+
+/** Os números que um investidor compara, saídos da ficha -- não de texto interpretado. */
+export function numerosDoImovel(i: ImovelMontagem): string[] {
+  const linhas: string[] = [];
+  if (i.preco) linhas.push(`Valor: ${i.preco}`);
+  if (i.area_util) linhas.push(`Área útil: ${String(i.area_util).replace(".", ",")} m²`);
+  if (i.area_total) linhas.push(`Área total: ${String(i.area_total).replace(".", ",")} m²`);
+  if (i.dormitorios) linhas.push(`Dormitórios: ${i.dormitorios}`);
+  if (i.vagas) linhas.push(`Vagas: ${i.vagas}`);
+  if (i.ano_construcao) linhas.push(`Ano: ${i.ano_construcao}`);
+  if (i.condominio) linhas.push(`Condomínio: ${i.condominio}`);
+  if (i.iptu) linhas.push(`IPTU: ${i.iptu}`);
+  return linhas.slice(0, 8);
+}
+
+/**
+ * O PORTFÓLIO: o que o corretor já fez, em grade.
+ *
+ * É o único material que não fala de um imóvel à venda -- fala de QUEM VENDE. Por isso não
+ * tem preço, não tem ficha e não tem localização: quem recebe está avaliando o corretor,
+ * não o apartamento. Seis fotos por página, com o nome do imóvel embaixo de cada uma.
+ */
+export function montarPortfolio(d: { imoveis: ImovelDoCatalogo[]; cor?: string; titulo?: string; subtitulo?: string }): DocumentoBook {
+  const def = TIPO_POR_ID.portfolio;
+  const paginas: Pagina[] = [];
+
+  const todas: { jobId: string; nome: string }[] = [];
+  for (const { imovel, imagens } of d.imoveis) {
+    for (const img of imagens.filter((i) => !ehPlanta(i) && !ehTecnica(i))) {
+      todas.push({ jobId: img.jobId, nome: imovel.titulo });
+    }
+  }
+  const capa = todas[0];
+
+  paginas.push({
+    id: novoId(),
+    tipo: "capa",
+    origem: "auto",
+    imagens: capa ? [capa.jobId] : [],
+    textos: {
+      titulo: d.titulo || "Meu portfólio",
+      subtitulo: d.subtitulo || `${d.imoveis.length} ${d.imoveis.length === 1 ? "imóvel" : "imóveis"}`,
+    },
+  });
+
+  // A capa sai da grade: repetir a mesma foto duas páginas depois parece descuido.
+  const restantes = todas.filter((t) => t.jobId !== capa?.jobId).slice(0, def.maxFotos);
+  for (let i = 0; i < restantes.length; i += 6) {
+    const seis = restantes.slice(i, i + 6);
+    const textos: Record<string, string> = i === 0 ? { titulo: "Trabalhos" } : {};
+    seis.forEach((t, k) => {
+      textos[`legenda${k + 1}`] = t.nome;
+    });
+    paginas.push({ id: novoId(), tipo: "grade", origem: "auto", imagens: seis.map((t) => t.jobId), textos });
+  }
+
+  paginas.push({ id: novoId(), tipo: "contato", origem: "auto", imagens: [], textos: { chamada: "Vamos conversar?" } });
   return { versao: 1, tipo: def.id, formato: def.formato, identidade: { cor: d.cor, capaEscura: true }, paginas };
 }
 
