@@ -98,7 +98,7 @@ export default function Materiais() {
   function criarMaterial(ids: string[]) {
     if (ids.length === 0) return;
     guardarSelecao(ids);
-    router.push("/materiais/montar");
+    router.push("/books?novo=1");
   }
 
   if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
@@ -209,9 +209,9 @@ export default function Materiais() {
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Materiais</h1>
+          <h1 className="text-2xl font-semibold">Acervo</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Tudo que você já criou. Marque o que quer usar e monte um book, um catálogo ou uma apresentação.
+            Suas fotos, plantas, terrenos e vídeos. Marque o que quer usar e monte o material.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

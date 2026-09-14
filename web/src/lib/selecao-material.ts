@@ -23,3 +23,12 @@ export function lerSelecao(): string[] {
     return [];
   }
 }
+
+/** Some com a seleção depois de usada: senão ela volta sozinha na próxima criação. */
+export function limparSelecao() {
+  try {
+    sessionStorage.removeItem(CHAVE);
+  } catch {
+    // sem storage: não havia seleção pra limpar
+  }
+}

@@ -318,8 +318,13 @@ export function montarPagina(
       topo += t.alturaUsada + 18;
     }
 
-    const colunas = deitado ? 3 : 2;
-    const linhas = Math.ceil(6 / colunas);
+    // A grade se ajusta à QUANTIDADE, não ao teto. Uma página com três fotos numa moldura
+    // de seis deixa três buracos cinza -- e buraco num material de captação parece trabalho
+    // que não existe. Com poucas fotos a grade vira uma coluna e elas crescem.
+    const fotos = pagina.imagens.filter(Boolean).slice(0, 6);
+    const quantas = Math.max(1, fotos.length);
+    const colunas = deitado ? Math.min(3, quantas) : quantas <= 2 ? 1 : 2;
+    const linhas = Math.ceil(quantas / colunas);
     const gap = 14;
     const rotulo = 16;
     const larguraFoto = (util - gap * (colunas - 1)) / colunas;
@@ -327,17 +332,12 @@ export function montarPagina(
     const alturaCelula = (alturaDisponivel - gap * (linhas - 1)) / linhas;
     const alturaFoto = Math.max(40, alturaCelula - rotulo);
 
-    for (let i = 0; i < 6; i += 1) {
-      const job = pagina.imagens[i];
+    fotos.forEach((job, i) => {
       const x = MARGEM + (i % colunas) * (larguraFoto + gap);
       const y = topo + Math.floor(i / colunas) * (alturaCelula + gap);
-      if (job) {
-        caixas.push({ tipo: "imagem", x, y, l: larguraFoto, a: alturaFoto, jobId: job, modo: "cobrir", foco: foco(job) });
-      } else {
-        caixas.push({ tipo: "retangulo", x, y, l: larguraFoto, a: alturaFoto, cor: "#eef1f4" });
-      }
+      caixas.push({ tipo: "imagem", x, y, l: larguraFoto, a: alturaFoto, jobId: job, modo: "cobrir", foco: foco(job) });
       por(texto(pagina.textos[`legenda${i + 1}`] ?? "", medir, { x, y: y + alturaFoto + 4, l: larguraFoto, tamanho: 8, cor: CINZA, maxLinhas: 1 }));
-    }
+    });
     rodape();
     return { id: pagina.id, largura: L, altura: A, caixas };
   }

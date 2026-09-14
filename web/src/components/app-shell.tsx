@@ -52,8 +52,11 @@ export default function AppShell({
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
     // ("me manda o material do imóvel"), e serve pros dois lados: o que ele tem e o que monta.
-    { href: "/materiais", rotulo: "Materiais", icone: "materiais", soIcone: false },
-    { href: "/books", rotulo: "Books", icone: "planta", soIcone: false },
+    // Acervo e o INSUMO (foto, planta, terreno, video); Materiais e o ENTREGAVEL (book,
+    // catalogo, apresentacao). Chamar os dois de "Materiais" era a colisao que fazia a
+    // pessoa procurar o book na tela das fotos.
+    { href: "/materiais", rotulo: "Acervo", icone: "materiais", soIcone: false },
+    { href: "/books", rotulo: "Materiais", icone: "planta", soIcone: false },
     // Equipe virou só ícone quando Materiais entrou: o nome inteiro dos dois não cabe
     // junto do resto na barra de 1152px.
     // `secundario` = no celular sai da barra de baixo e vai pro "Mais": nove ícones numa
