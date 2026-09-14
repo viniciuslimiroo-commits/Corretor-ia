@@ -21,6 +21,18 @@ export type Conta = {
   org: { id: string; nome: string; papel: "dono" | "gestor" | "corretor"; pessoas: number; limite: number } | null;
 };
 
+/**
+ * Tudo que o produto cria, num lugar só.
+ *
+ * O custo entra no menu de propósito: "quanto custa isso?" é a primeira pergunta de quem
+ * tem 23 créditos, e responder depois do clique é responder tarde.
+ */
+const CRIAR = [
+  { href: "/editar", rotulo: "Editar uma foto", para: "Mobiliar, renovar, tirar objeto, trocar céu", custo: "1 crédito por foto", icone: "foto", gratis: false },
+  { href: "/video", rotulo: "Fazer um vídeo", para: "Do imóvel, com música e narração", custo: "Créditos conforme o tamanho", icone: "video", gratis: false },
+  { href: "/books?novo=1", rotulo: "Montar um material", para: "Book, PDF de WhatsApp, catálogo, portfólio", custo: "Não gasta crédito", icone: "materiais", gratis: true },
+];
+
 export default function AppShell({
   conta,
   aoAssinar,
@@ -37,6 +49,7 @@ export default function AppShell({
 }) {
   const rota = usePathname();
   const [maisAberto, setMaisAberto] = useState(false);
+  const [criarAberto, setCriarAberto] = useState(false);
   const assinante = conta.status === "active" || conta.status === "past_due";
   const gerencia = !conta.org || conta.org.papel !== "corretor";
 
@@ -46,8 +59,14 @@ export default function AppShell({
     // No computador a marca no canto já leva pro início -- dois caminhos pro mesmo lugar
     // gastam a largura que Books precisava. No celular não há marca clicável, então fica.
     { href: "/", rotulo: "Início", icone: "casa", soIcone: false, soMobile: true },
-    { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false },
-    { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false },
+    // Editar e Vídeo saíram daqui e foram pro botão "+ Criar".
+    //
+    // A barra misturava dois VERBOS (Editar, Vídeo) com três LUGARES (Imóveis, Acervo,
+    // Materiais), e por isso "onde eu crio?" não tinha resposta óbvia: dependia do que ia
+    // ser criado. Agora a navegação só diz ONDE as coisas estão, e a criação inteira --
+    // foto, vídeo e material -- é um botão só, visível em toda tela.
+    { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false, soMobile: true },
+    { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false, soMobile: true },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
@@ -101,6 +120,37 @@ export default function AppShell({
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* A ação principal do produto, no mesmo lugar em todas as telas.
+                O custo aparece ANTES do clique: é a pergunta que o corretor faz primeiro. */}
+            <span className="relative">
+              <Botao onClick={() => setCriarAberto((v) => !v)} className="px-3 py-2 text-sm">
+                <span className="text-base leading-none">+</span>
+                Criar
+              </Botao>
+              {criarAberto && (
+                <>
+                  <span className="fixed inset-0 z-30" onClick={() => setCriarAberto(false)} />
+                  <span className="absolute top-full right-0 z-40 mt-1.5 w-72 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
+                    {CRIAR.map((c) => (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        onClick={() => setCriarAberto(false)}
+                        className="flex items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-neutral-50"
+                      >
+                        <Icone nome={c.icone} className="mt-0.5 h-4 w-4 shrink-0 text-marca-indigo" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-neutral-900">{c.rotulo}</span>
+                          <span className="block text-xs text-neutral-500">{c.para}</span>
+                          <span className={"mt-0.5 block text-[11px] " + (c.gratis ? "text-marca-teal" : "text-neutral-400")}>{c.custo}</span>
+                        </span>
+                      </Link>
+                    ))}
+                  </span>
+                </>
+              )}
+            </span>
+
             {/* o nome da imobiliária saiu daqui: empurrava o menu e já aparece em /equipe.
                 Fica no title, pra quem passa o mouse. */}
             <Link
