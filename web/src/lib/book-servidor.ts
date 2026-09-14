@@ -4,7 +4,7 @@ import { assinar } from "./armazenamento";
 import { marcaEfetiva } from "./cobranca";
 import { fichaDoImovel, type ImagemDisponivel, type ImovelMontagem } from "./book-montagem";
 import { montarLayout, type ContextoLayout, type PaginaLayout } from "./book-layout";
-import { medidor } from "./book-medidas";
+import { medirTexto } from "./book-metricas";
 import { imagensDoDocumento, type DocumentoBook } from "./book-documento";
 
 // A cola entre o núcleo puro do book e o mundo: banco, storage e QR. Só servidor.
@@ -133,7 +133,14 @@ export async function resolverQr(paginas: PaginaLayout[]): Promise<PaginaLayout[
   }));
 }
 
-/** O pacote que o editor recebe numa chamada só: layout pronto e imagens assinadas. */
+/**
+ * O pacote que o editor recebe numa chamada só.
+ *
+ * Devolve também o CONTEXTO e os QR já gerados, não só o layout pronto: com eles o
+ * navegador recalcula o layout sozinho a cada tecla, usando a mesma tabela de métricas do
+ * servidor (book-metricas). Sem isso, cada letra digitada pediria uma ida ao servidor pra
+ * saber onde a linha quebra -- e a prévia andaria atrás do texto.
+ */
 export async function prepararLeitura(
   db: Db,
   userId: string,
@@ -141,14 +148,16 @@ export async function prepararLeitura(
   imovel: ImovelMontagem | null,
   shareToken: string | null,
   origem: string
-): Promise<{ layout: PaginaLayout[]; urls: Record<string, string>; logo: string | null }> {
-  const [medir, marca, urls] = await Promise.all([medidor(), marcaEfetiva(db, userId), urlsDoDocumento(db, userId, doc)]);
+): Promise<{ layout: PaginaLayout[]; urls: Record<string, string>; logo: string | null; ctx: ContextoLayout; qrs: Record<string, string> }> {
+  const [marca, urls] = await Promise.all([marcaEfetiva(db, userId), urlsDoDocumento(db, userId, doc)]);
   const ctx: ContextoLayout = {
     marca: { nome: marca.nome, creci: marca.creci, whatsapp: marca.whatsapp, temLogo: !!marca.logo_path },
     ficha: imovel ? fichaDoImovel(imovel) : [],
     link: shareToken ? `${origem.replace(/\/$/, "")}/c/${shareToken}` : null,
   };
-  const layout = await resolverQr(montarLayout(doc, ctx, medir));
+  const layout = await resolverQr(montarLayout(doc, ctx, medirTexto));
   const logo = marca.logo_path ? await assinar(db, marca.logo_path).catch(() => null) : null;
-  return { layout, urls, logo };
+  const qrs: Record<string, string> = {};
+  for (const p of layout) for (const c of p.caixas) if (c.tipo === "qr" && c.png) qrs[c.conteudo] = c.png;
+  return { layout, urls, logo, ctx, qrs };
 }

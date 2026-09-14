@@ -10,8 +10,11 @@ import { TIPOS, paginasEstimadas, tipoSugerido, type TipoBook } from "@/lib/book
 
 // Meus books: a lista do que já foi montado, e a porta para montar outro.
 //
-// É a tela que faz o corretor voltar -- ele entra pra ver o que tem, e (na Fase 2) quem
-// abriu. Por isso a lista mostra a capa de verdade, não um ícone de arquivo.
+// Criar tem três escolhas, nessa ordem: o imóvel, as imagens e o tipo. As duas últimas já
+// vêm respondidas -- todas as imagens marcadas, e o tipo sugerido pelo que existe --, de
+// forma que o caminho principal continua sendo clicar em "Montar" e pronto.
+//
+// As imagens vêm de /api/materiais, a mesma Biblioteca. Nenhuma listagem nova.
 
 type Book = {
   id: string;
@@ -27,6 +30,9 @@ type Book = {
 };
 
 type Imovel = { id: string; titulo: string; fotos: number; capa: string | null };
+
+/** Item de /api/materiais. */
+type ItemBiblioteca = { id: string; categoria: string; rotulo: string; detalhe: string; criadoEm: string; imovel: { id: string } | null; miniatura: string | null };
 
 function quando(iso: string) {
   const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -45,6 +51,8 @@ export default function Books() {
   const [criando, setCriando] = useState(false);
   const [imovelEscolhido, setImovelEscolhido] = useState<string | null>(null);
   const [tipoEscolhido, setTipoEscolhido] = useState<TipoBook>("book");
+  const [imagens, setImagens] = useState<ItemBiblioteca[] | null>(null);
+  const [marcadas, setMarcadas] = useState<string[]>([]);
   const [montando, setMontando] = useState(false);
   const { user, token } = c;
 
@@ -72,32 +80,59 @@ export default function Books() {
       });
   }, [user, buscar]);
 
+  const carregarImagens = useCallback(
+    async (imovel: string) => {
+      const r = await fetch("/api/materiais", { headers: { Authorization: `Bearer ${await token()}` } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      // Vídeo não entra em PDF -- mesma regra da Biblioteca.
+      return ((d.itens ?? []) as ItemBiblioteca[]).filter((i) => i.categoria !== "video" && i.imovel?.id === imovel);
+    },
+    [token]
+  );
+
   const comFotos = useMemo(() => imoveis.filter((i) => i.fotos > 0), [imoveis]);
   const imovel = comFotos.find((i) => i.id === imovelEscolhido) ?? null;
-  const sugestao = imovel ? tipoSugerido(imovel.fotos, 1) : null;
+  const quantas = marcadas.length || imovel?.fotos || 0;
+  const sugestao = quantas ? tipoSugerido(quantas, 1) : null;
+
+  const escolherImovel = useCallback(
+    (id: string) => {
+      setImovelEscolhido(id);
+      setImagens(null);
+      setMarcadas([]);
+      carregarImagens(id)
+        .then((lista) => {
+          setImagens(lista);
+          // Tudo marcado por padrão: o caminho principal é montar sem escolher nada.
+          setMarcadas(lista.map((x) => x.id));
+          setTipoEscolhido(tipoSugerido(lista.length, 1).tipo);
+        })
+        .catch(() => setImagens([]));
+    },
+    [carregarImagens]
+  );
 
   function abrirCriacao() {
-    const primeiro = comFotos[0] ?? null;
-    setImovelEscolhido(primeiro?.id ?? null);
-    if (primeiro) setTipoEscolhido(tipoSugerido(primeiro.fotos, 1).tipo);
     setCriando(true);
+    const primeiro = comFotos[0] ?? null;
+    if (primeiro) escolherImovel(primeiro.id);
+    else setImovelEscolhido(null);
   }
 
-  function escolherImovel(id: string) {
-    setImovelEscolhido(id);
-    const i = comFotos.find((x) => x.id === id);
-    if (i) setTipoEscolhido(tipoSugerido(i.fotos, 1).tipo);
+  function alternar(jobId: string) {
+    setMarcadas((m) => (m.includes(jobId) ? m.filter((x) => x !== jobId) : [...m, jobId]));
   }
 
   async function montar() {
-    if (!imovelEscolhido) return;
+    if (!imovelEscolhido || marcadas.length === 0) return;
     setMontando(true);
     setErro(null);
     try {
       const r = await fetch("/api/books", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ imovelId: imovelEscolhido, tipo: tipoEscolhido }),
+        body: JSON.stringify({ imovelId: imovelEscolhido, tipo: tipoEscolhido, jobIds: marcadas }),
       });
       const d = await r.json();
       if (!r.ok) throw Object.assign(new Error(d.error), { migracao: !!d.migracao });
@@ -126,7 +161,7 @@ export default function Books() {
           <h1 className="text-2xl font-semibold">Books</h1>
           <p className="mt-1 text-sm text-neutral-500">O material do imóvel montado sozinho, guardado e pronto pra mandar. Não gasta crédito.</p>
         </div>
-        {!precisaMigracao && (
+        {!precisaMigracao && !criando && (
           <Botao onClick={abrirCriacao} disabled={comFotos.length === 0}>
             <Icone nome="materiais" className="h-4 w-4" />
             Criar book
@@ -143,7 +178,7 @@ export default function Books() {
       {criando && (
         <Cartao className="mt-5">
           <Rotulo>1 · De qual imóvel</Rotulo>
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {comFotos.map((i) => (
               <li key={i.id}>
                 <button
@@ -170,8 +205,60 @@ export default function Books() {
             ))}
           </ul>
 
+          {imovelEscolhido && (
+            <div className="mt-5">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+                <Rotulo>2 · Quais imagens</Rotulo>
+                {imagens && imagens.length > 0 && (
+                  <span className="pb-1 text-xs text-neutral-500">
+                    {marcadas.length} de {imagens.length} · a ordem de marcação é a ordem das páginas ·{" "}
+                    <button onClick={() => setMarcadas(imagens.map((x) => x.id))} className="text-marca-indigo underline">marcar todas</button>
+                  </span>
+                )}
+              </div>
+              {imagens === null ? (
+                <p className="text-sm text-neutral-500">Carregando as imagens…</p>
+              ) : imagens.length === 0 ? (
+                <p className="text-sm text-neutral-500">Nenhuma imagem pronta neste imóvel.</p>
+              ) : (
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                  {imagens.map((i) => {
+                    const ordem = marcadas.indexOf(i.id) + 1;
+                    return (
+                      <li key={i.id}>
+                        <button
+                          onClick={() => alternar(i.id)}
+                          title={i.rotulo}
+                          className={
+                            "relative block w-full overflow-hidden rounded-lg border-2 transition " +
+                            (ordem > 0 ? "border-marca-coral" : "border-neutral-200 hover:border-neutral-400")
+                          }
+                        >
+                          {i.miniatura ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={i.miniatura} alt="" className="aspect-square w-full object-cover" loading="lazy" />
+                          ) : (
+                            <span className="block aspect-square w-full bg-neutral-100" />
+                          )}
+                          <span
+                            className={
+                              "absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[10px] font-bold " +
+                              (ordem > 0 ? "border-marca-coral bg-marca-coral text-white" : "border-white bg-black/25 text-transparent")
+                            }
+                          >
+                            {ordem > 0 ? ordem : 0}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
           <div className="mt-5">
-            <Rotulo>2 · Que tipo de book</Rotulo>
+            <Rotulo>3 · Que tipo de book</Rotulo>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {TIPOS.filter((t) => !t.variosImoveis).map((t) => (
                 <button
@@ -184,11 +271,13 @@ export default function Books() {
                 >
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="text-sm font-semibold">{t.rotulo}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-neutral-400">{t.formato === "widescreen" ? "deitado" : t.formato === "quadrado" ? "quadrado" : "em pé"}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-neutral-400">
+                      {t.formato === "widescreen" ? "deitado" : t.formato === "quadrado" ? "quadrado" : "em pé"}
+                    </span>
                   </span>
                   <span className="mt-1 block text-xs text-neutral-500">{t.para}</span>
                   <span className="mt-1.5 block text-[11px] text-neutral-400">
-                    {imovel ? `${paginasEstimadas(t.id, imovel.fotos)} páginas com estas fotos` : `até ${t.maxFotos} imagens`}
+                    {quantas ? `${paginasEstimadas(t.id, quantas)} páginas com estas imagens` : `até ${t.maxFotos} imagens`}
                     {sugestao?.tipo === t.id ? ` · recomendado: ${sugestao.porque}` : ""}
                   </span>
                 </button>
@@ -197,7 +286,7 @@ export default function Books() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Botao onClick={montar} disabled={montando || !imovelEscolhido}>
+            <Botao onClick={montar} disabled={montando || !imovelEscolhido || marcadas.length === 0}>
               {montando ? "Montando…" : "Montar book"}
             </Botao>
             <Botao variante="discreta" onClick={() => setCriando(false)}>Cancelar</Botao>

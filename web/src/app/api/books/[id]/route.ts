@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!documento) return NextResponse.json({ error: "Este book está corrompido. Crie outro a partir do imóvel." }, { status: 500 });
 
   const dados = data.property_id ? await imovelDeMontagem(db, userId, data.property_id) : null;
-  const { layout, urls } = await prepararLeitura(db, userId, documento, dados?.imovel ?? null, dados?.shareToken ?? null, origemDoApp(req));
+  const { layout, urls, logo, ctx: contexto, qrs } = await prepararLeitura(db, userId, documento, dados?.imovel ?? null, dados?.shareToken ?? null, origemDoApp(req));
 
   return NextResponse.json({
     book: {
@@ -52,6 +52,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     documento,
     layout,
     urls,
+    logo,
+    // ctx e qrs vão junto pro navegador recalcular o layout sozinho enquanto se digita.
+    ctx: contexto,
+    qrs,
   });
 }
 

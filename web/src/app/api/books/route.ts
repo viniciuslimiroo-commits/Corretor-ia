@@ -89,11 +89,14 @@ export async function POST(req: NextRequest) {
   let dados: Awaited<ReturnType<typeof imovelDeMontagem>> = null;
   let imagens;
 
+  // O imóvel, quando vem, serve pra ficha, capa marcada e QR -- mesmo que as imagens
+  // tenham sido escolhidas a dedo.
   if (imovelId) {
     dados = await imovelDeMontagem(db, userId, imovelId);
     if (!dados) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 404 });
-    imagens = await imagensDoImovel(db, userId, imovelId);
-  } else if (jobIds.length) {
+  }
+
+  if (jobIds.length) {
     const { data } = await db
       .from("jobs")
       .select("id, tipo, parametros, criado_em, property_id")
@@ -101,11 +104,15 @@ export async function POST(req: NextRequest) {
       .eq("status", "concluido")
       .not("output_path", "is", null)
       .in("id", jobIds);
-    // Respeita a ordem em que a pessoa marcou em Materiais -- ela quis dizer alguma coisa.
+    // Respeita a ordem em que a pessoa marcou -- ela quis dizer alguma coisa.
     const porId = new Map(((data ?? []) as { id: string }[]).map((j) => [j.id, j]));
-    imagens = jobsParaImagens(jobIds.map((id) => porId.get(id)).filter(Boolean) as never[]);
-    const comImovel = imagens.find((i) => i.imovelId);
-    if (comImovel?.imovelId) dados = await imovelDeMontagem(db, userId, comImovel.imovelId);
+    imagens = jobsParaImagens(jobIds.map((x) => porId.get(x)).filter(Boolean) as never[]);
+    if (!dados) {
+      const comImovel = imagens.find((i) => i.imovelId);
+      if (comImovel?.imovelId) dados = await imovelDeMontagem(db, userId, comImovel.imovelId);
+    }
+  } else if (imovelId) {
+    imagens = await imagensDoImovel(db, userId, imovelId);
   } else {
     return NextResponse.json({ error: "Escolha um imóvel ou marque as imagens." }, { status: 400 });
   }
