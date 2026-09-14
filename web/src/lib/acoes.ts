@@ -377,6 +377,8 @@ const ROTULOS_ESPECIAIS: Record<string, string> = {
   planta: "Planta baixa",
   planta_humanizada: "Planta humanizada",
   mapa: "Mapa do endereço",
+  // Foto que a pessoa enviou pronta: não passou por IA, não leva selo, não custou crédito.
+  original: "Foto enviada",
 };
 
 export function rotuloDoTipo(tipo: string): string {

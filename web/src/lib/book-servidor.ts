@@ -118,6 +118,26 @@ export async function contextoDoBook(db: Db, userId: string, imovel: ImovelMonta
 }
 
 /** Gera o PNG de cada QR do layout. Os dois desenhistas recebem a MESMA imagem. */
+/**
+ * Alguma imagem deste material passou por IA?
+ *
+ * Decide o aviso do rodapé. Foto enviada pela pessoa e mapa não passam por modelo nenhum;
+ * um material feito só delas não pode sair dizendo "editadas digitalmente".
+ *
+ * Na dúvida devolve `true`: erro de leitura não pode virar a remoção de um aviso legal.
+ */
+const SEM_IA = new Set(["original", "mapa"]);
+
+export async function algumaEditada(db: Db, userId: string, doc: DocumentoBook): Promise<boolean> {
+  const ids = imagensDoDocumento(doc);
+  if (ids.length === 0) return false;
+  const { data, error } = await db.from("jobs").select("id, tipo").eq("user_id", userId).in("id", ids);
+  if (error || !data) return true;
+  const linhas = data as { tipo: string }[];
+  if (linhas.length < ids.length) return true; // alguma não foi lida: assume o lado seguro
+  return linhas.some((j) => !SEM_IA.has(j.tipo));
+}
+
 export async function resolverQr(paginas: PaginaLayout[]): Promise<PaginaLayout[]> {
   const feitos = new Map<string, string>();
   for (const p of paginas) {
@@ -149,11 +169,16 @@ export async function prepararLeitura(
   shareToken: string | null,
   origem: string
 ): Promise<{ layout: PaginaLayout[]; urls: Record<string, string>; logo: string | null; ctx: ContextoLayout; qrs: Record<string, string> }> {
-  const [marca, urls] = await Promise.all([marcaEfetiva(db, userId), urlsDoDocumento(db, userId, doc)]);
+  const [marca, urls, temEditada] = await Promise.all([
+    marcaEfetiva(db, userId),
+    urlsDoDocumento(db, userId, doc),
+    algumaEditada(db, userId, doc),
+  ]);
   const ctx: ContextoLayout = {
     marca: { nome: marca.nome, creci: marca.creci, whatsapp: marca.whatsapp, temLogo: !!marca.logo_path },
     ficha: imovel ? fichaDoImovel(imovel) : [],
     link: shareToken ? `${origem.replace(/\/$/, "")}/c/${shareToken}` : null,
+    temEditada,
   };
   const layout = await resolverQr(montarLayout(doc, ctx, medirTexto));
   const logo = marca.logo_path ? await assinar(db, marca.logo_path).catch(() => null) : null;

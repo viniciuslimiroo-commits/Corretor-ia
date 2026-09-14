@@ -54,6 +54,8 @@ export default function Materiais() {
   const [marcados, setMarcados] = useState<string[]>([]);
   const [apagando, setApagando] = useState(false);
   const [emUso, setEmUso] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(0);
+  const [recado, setRecado] = useState<string | null>(null);
   const { user, token } = c;
 
   const buscar = useCallback(async () => {
@@ -158,6 +160,49 @@ export default function Materiais() {
     }
   }
 
+  /**
+   * Envia foto pronta. Não passa por IA e não debita: é guardar, não gerar.
+   *
+   * O filtro de imóvel manda: se a pessoa está olhando um imóvel, a foto entra nele. É
+   * onde ela está quando percebe que falta uma.
+   */
+  async function enviarFotos(fotos: File[]) {
+    if (fotos.length === 0) return;
+    setEnviando(fotos.length);
+    setErro(null);
+    setRecado(null);
+    try {
+      const form = new FormData();
+      for (const f of fotos.slice(0, 10)) form.append("fotos", f);
+      if (imovelFiltro) form.append("imovelId", imovelFiltro);
+      const r = await fetch("/api/materiais/enviar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await token()}` },
+        body: form,
+      });
+      const bruto = await r.text();
+      let d: { entraram?: { id: string }[]; recusadas?: string[]; error?: string } = {};
+      try {
+        d = JSON.parse(bruto);
+      } catch {
+        throw new Error("Resposta inesperada do servidor.");
+      }
+      if (!r.ok) throw new Error(d.error ?? "Não consegui enviar.");
+      const n = d.entraram?.length ?? 0;
+      setRecado(
+        `${n} ${n === 1 ? "foto entrou" : "fotos entraram"} no acervo, sem gastar crédito.` +
+          (d.recusadas?.length ? ` Ficaram de fora: ${d.recusadas.join(" · ")}` : "")
+      );
+      const novo = await buscar();
+      setItens(novo.itens);
+      setImoveis(novo.imoveis);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao enviar.");
+    } finally {
+      setEnviando(0);
+    }
+  }
+
   const vazia = itens !== null && itens.length === 0;
 
   return (
@@ -183,6 +228,27 @@ export default function Materiais() {
               {apagando ? "Apagando…" : `Apagar · ${selecionados.length}`}
             </BotaoConfirma>
           )}
+          <label
+            className={
+              "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 " +
+              (enviando ? "pointer-events-none opacity-40" : "")
+            }
+            title="Foto que já está pronta. Não passa por IA e não gasta crédito."
+          >
+            <Icone nome="foto" className="h-4 w-4" />
+            {enviando ? `Enviando ${enviando}…` : "Enviar fotos"}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                enviarFotos(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </label>
+
           <Botao
             onClick={() => criarMaterial(selecionados.length ? selecionados : selecionaveis.slice(0, MAX_DE_UMA_VEZ).map((i) => i.id))}
             disabled={selecionaveis.length === 0}
@@ -197,6 +263,12 @@ export default function Materiais() {
       {erro && (
         <div className="mt-4">
           <Aviso tipo="erro">{erro}</Aviso>
+        </div>
+      )}
+
+      {recado && (
+        <div className="mt-4">
+          <Aviso tipo="ok">{recado}</Aviso>
         </div>
       )}
 

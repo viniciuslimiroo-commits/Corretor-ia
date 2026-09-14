@@ -135,6 +135,7 @@ export default function PaginaImovel() {
   const { id } = useParams<{ id: string }>();
   const [imovel, setImovel] = useState<Imovel | null>(null);
   const [geracoes, setGeracoes] = useState<Geracao[] | null>(null);
+  const [enviando, setEnviando] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [titulo, setTitulo] = useState("");
@@ -178,6 +179,35 @@ export default function PaginaImovel() {
   // Busca sem tocar em estado: quem escreve na tela é sempre um callback de promessa.
   // (A regra react-hooks/set-state-in-effect rejeita `await` seguido de setState dentro
   // de algo chamado direto do efeito.)
+  async function enviarFotos(fotos: File[]) {
+    if (fotos.length === 0) return;
+    setEnviando(fotos.length);
+    setErro(null);
+    try {
+      const form = new FormData();
+      for (const f of fotos.slice(0, 10)) form.append("fotos", f);
+      form.append("imovelId", String(id));
+      const r = await fetch("/api/materiais/enviar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await token()}` },
+        body: form,
+      });
+      const bruto = await r.text();
+      let d: { error?: string } = {};
+      try {
+        d = JSON.parse(bruto);
+      } catch {
+        throw new Error("Resposta inesperada do servidor.");
+      }
+      if (!r.ok) throw new Error(d.error ?? "Não consegui enviar.");
+      aplicar(await buscar());
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao enviar.");
+    } finally {
+      setEnviando(0);
+    }
+  }
+
   const buscar = useCallback(async (): Promise<{ imovel: Imovel; geracoes: Geracao[] }> => {
     const t = await token();
     const r = await fetch(`/api/imoveis/${id}`, { headers: { Authorization: `Bearer ${t}` } });
@@ -320,6 +350,29 @@ export default function PaginaImovel() {
               </>
             )}
             <Compartilhar token={token} imovelId={imovel.id} compartilhadoInicial={imovel.compartilhado} texto={`Olha as fotos de ${imovel.titulo}:`} compacto />
+            {/* Foto pronta entra aqui mesmo: é onde a pessoa está quando percebe que falta
+                uma. Não passa por IA e não debita -- guardar não é gerar. */}
+            <label
+              className={
+                "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-50 " +
+                (enviando ? "pointer-events-none opacity-40" : "")
+              }
+              title="Foto que já está pronta. Não gasta crédito."
+            >
+              <Icone nome="foto" className="h-4 w-4" />
+              {enviando ? `Enviando ${enviando}…` : "Enviar fotos"}
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  enviarFotos(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+            </label>
+
             <BotaoConfirma
               pergunta="Excluir este imóvel?"
               detalhe="As fotos continuam no seu histórico e em Materiais; some só o agrupamento."
@@ -355,7 +408,8 @@ export default function PaginaImovel() {
           <Cartao>
             <p className="font-medium">Ainda sem fotos.</p>
             <p className="mt-1 text-sm text-neutral-600">
-              <Link href={`/?imovel=${id}`} className="text-marca-indigo underline">Edite a primeira foto</Link> com este imóvel selecionado e ela aparece aqui.
+              <Link href={`/?imovel=${id}`} className="text-marca-indigo underline">Edite a primeira foto</Link> com este imóvel selecionado — ou use
+              <strong className="font-medium"> Enviar fotos</strong> aí em cima, se as suas já estão prontas.
             </p>
           </Cartao>
         ) : (

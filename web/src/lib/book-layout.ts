@@ -34,12 +34,22 @@ export type ContextoLayout = {
   ficha: { rotulo: string; valor: string }[];
   /** Link público do imóvel. Sem ele não sai QR -- QR que cai em 404 é pior que nenhum. */
   link?: string | null;
+  /**
+   * Alguma imagem deste material passou por IA?
+   *
+   * Decide o aviso do rodapé. Antes era constante: TODO book dizia "algumas editadas
+   * digitalmente", porque até existir foto enviada isso era sempre verdade. Agora seria
+   * mentira ao contrário -- chamar de ilustração o que é registro --, e num material que
+   * vai pro cliente a diferença entre foto real e foto editada é exatamente o que o aviso
+   * existe pra dizer. Ausente = assume que sim, que é o lado seguro.
+   */
+  temEditada?: boolean;
 };
 
 const MARGEM = 40;
 const CINZA = "#6b7380";
 const GRAFITE = "#1a1f26";
-const AVISO = "Imagens ilustrativas · algumas editadas digitalmente";
+const AVISO_EDITADA = "Imagens ilustrativas · algumas editadas digitalmente";
 
 /** Escurece a cor da marca pra virar fundo de capa sem estourar num tom claro. */
 function fundo(hex: string): string {
@@ -135,7 +145,7 @@ export function montarPagina(
     const assinatura = assinaturaDe(ctx);
     if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 30, l: util - 30, tamanho: 8, cor: CINZA }));
     por(texto(String(numero), medir, { x: L - MARGEM - 20, y: A - 30, l: 20, tamanho: 8, cor: CINZA, alinhamento: "direita" }));
-    por(texto(AVISO, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
+    if (ctx.temEditada !== false) por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
   }
 
   if (pagina.tipo === "capa") {
@@ -214,7 +224,7 @@ export function montarPagina(
       if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 78, l: util - 100, tamanho: 11, negrito: true, cor: GRAFITE }));
       if (ctx.link) caixas.push({ tipo: "qr", x: L - MARGEM - 78, y: A - 118, l: 78, a: 78, conteudo: ctx.link });
       if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: MARGEM, y: A - 118, l: 100, a: 34, placa: false });
-      por(texto(AVISO, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
+      if (ctx.temEditada !== false) por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
     } else if (ctx.marca.temLogo) {
       caixas.push({ tipo: "logo", x: MARGEM, y: A - 100, l: 110, a: 45, placa: false });
     }

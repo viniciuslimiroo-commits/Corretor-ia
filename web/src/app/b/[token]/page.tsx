@@ -6,6 +6,7 @@ import { ehToken } from "@/lib/compartilhar";
 import { marcaEfetiva } from "@/lib/cobranca";
 import { limparDocumento, imagensDoDocumento } from "@/lib/book-documento";
 import { fichaDoImovel, type ImovelMontagem } from "@/lib/book-montagem";
+import { algumaEditada } from "@/lib/book-servidor";
 
 // O book como PÁGINA WEB. Quem chega aqui é o cliente do corretor, pelo WhatsApp, no
 // celular -- e é esta página, não o PDF, que transforma o book em canal: ela conta quantas
@@ -34,6 +35,8 @@ type Conteudo = {
   imoveis: { titulo: string; endereco: string; preco: string; ficha: string; url: string | null }[];
   local: { titulo: string; endereco: string; nota: string; mapa: string | null } | null;
   ficha: { rotulo: string; valor: string }[];
+  /** Sem imagem editada por IA, o aviso de "ilustrativas" não aparece: seria falso. */
+  temEditada: boolean;
   dono: { nome: string | null; creci: string | null; whatsapp: string | null; logo: string | null; cor: string | null };
 };
 
@@ -137,7 +140,7 @@ async function carregar(token: string): Promise<Conteudo | null> {
     });
   }
 
-  const marca = await marcaEfetiva(db, book.user_id);
+  const [marca, temEditada] = await Promise.all([marcaEfetiva(db, book.user_id), algumaEditada(db, book.user_id, documento)]);
 
   return {
     titulo: capaPagina?.textos.titulo || (book.titulo as string | null) || imovel?.titulo || "Imóvel",
@@ -157,6 +160,7 @@ async function carregar(token: string): Promise<Conteudo | null> {
         }
       : null,
     ficha: imovel ? fichaDoImovel(imovel) : [],
+    temEditada,
     dono: {
       nome: marca.nome,
       creci: marca.creci,
@@ -324,7 +328,7 @@ export default async function BookPublico({ params }: { params: Promise<{ token:
         </section>
 
         <p className="pb-6 text-xs text-neutral-400">
-          Imagens ilustrativas · algumas editadas digitalmente. Feito com Encena IA.
+          {c.temEditada ? "Imagens ilustrativas · algumas editadas digitalmente. " : ""}Feito com Encena IA.
         </p>
       </div>
 

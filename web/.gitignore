@@ -42,3 +42,6 @@ next-env.d.ts
 
 # ffmpeg estatico baixado no build (scripts/ffmpeg-linux.mjs)
 bin/
+
+# Sessao de teste usada pelos scripts (scripts/tok.json). Nunca versionar.
+scripts/tok.json

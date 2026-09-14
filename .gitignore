@@ -30,3 +30,6 @@ review-e2e/
 
 # Imagens da bateria de testes (pesadas; o log.json fica versionado)
 docs/testes-reais/*.jpg
+
+# Pacote gerado pra analise externa: regeravel, nao versionar.
+projeto-para-analise.zip
