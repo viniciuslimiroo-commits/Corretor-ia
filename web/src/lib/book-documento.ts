@@ -97,6 +97,45 @@ export function inserir(d: DocumentoBook, nova: Pagina, depoisDe?: string): Docu
   return comPaginas(d, lista);
 }
 
+/** Copia a página e põe logo depois dela. A cópia nasce 'manual': foi a pessoa que pediu. */
+export function duplicar(d: DocumentoBook, id: string): DocumentoBook {
+  const i = d.paginas.findIndex((p) => p.id === id);
+  if (i < 0) return d;
+  const copia: Pagina = { ...d.paginas[i], id: novoId(), origem: "manual", textos: { ...d.paginas[i].textos }, imagens: [...d.paginas[i].imagens] };
+  const lista = [...d.paginas];
+  lista.splice(i + 1, 0, copia);
+  return comPaginas(d, lista);
+}
+
+/** Solta uma imagem numa página: entra no lugar indicado, ou no fim se ainda couber. */
+export function porImagem(d: DocumentoBook, id: string, jobId: string, indice?: number): DocumentoBook {
+  return comPaginas(
+    d,
+    d.paginas.map((p) => {
+      if (p.id !== id) return p;
+      const imagens = [...p.imagens];
+      const onde = indice ?? (imagens.length < limiteDeImagens(p, d.tipo) ? imagens.length : 0);
+      imagens[onde] = jobId;
+      return tocar({ ...p, imagens });
+    })
+  );
+}
+
+/**
+ * Quantas imagens o layout daquela página comporta. É o TEMPLATE mandando, não a pessoa --
+ * e é essa regra que impede o book de virar colagem.
+ *
+ * A capa leva cinco só no PDF de WhatsApp, que é página única e traz a grade embaixo. Nos
+ * outros tipos a capa é uma foto só, e oferecer "adicionar 4 imagens" ali seria convidar
+ * pra uma ação que não muda nada na página.
+ */
+export function limiteDeImagens(p: Pagina, tipoBook?: TipoBook): number {
+  if (p.tipo === "capa") return tipoBook === "whatsapp" ? 5 : 1;
+  if (p.tipo === "planta") return 1;
+  if (p.tipo !== "foto") return 0;
+  return p.layout === "duas" ? 2 : 1;
+}
+
 export function definirTexto(d: DocumentoBook, id: string, chave: string, valor: string): DocumentoBook {
   return comPaginas(
     d,
@@ -116,8 +155,19 @@ export function trocarImagem(d: DocumentoBook, id: string, indice: number, jobId
   );
 }
 
+/**
+ * Troca o template da página. O template manda no conteúdo, não o contrário: mudar pra
+ * "uma foto" descarta a segunda em vez de deixar sobra invisível no documento.
+ */
 export function definirLayout(d: DocumentoBook, id: string, layout: LayoutFoto): DocumentoBook {
-  return comPaginas(d, d.paginas.map((p) => (p.id === id ? tocar({ ...p, layout }) : p)));
+  return comPaginas(
+    d,
+    d.paginas.map((p) => {
+      if (p.id !== id) return p;
+      const nova = { ...p, layout };
+      return tocar({ ...nova, imagens: p.imagens.slice(0, limiteDeImagens(nova, d.tipo)) });
+    })
+  );
 }
 
 export function definirFoco(d: DocumentoBook, id: string, jobId: string, x: number, y: number): DocumentoBook {

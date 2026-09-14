@@ -29,7 +29,18 @@ export function useConta() {
       setUser(data.user ?? null);
       setChecando(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
+    // Só troca o `user` quando a PESSOA muda, não a cada evento de sessão.
+    //
+    // Sem isso o app entra em laço: o efeito que lê /api/conta chama token(), token()
+    // chama getSession(), getSession() dispara onAuthStateChange, o callback chamava
+    // setUser com um OBJETO NOVO, a identidade mudava, o efeito rodava de novo. Medido
+    // numa tela só: mais de oitocentas requisições a /api/conta e /api/books, e a conta
+    // batendo no limite de autenticação do Supabase (foi o "Sessão inválida" que apareceu
+    // no teste de produção). Comparar por id corta o ciclo sem mudar comportamento.
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      const novo = session?.user ?? null;
+      setUser((atual) => (atual?.id === novo?.id ? atual : novo));
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 

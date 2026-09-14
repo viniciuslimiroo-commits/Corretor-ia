@@ -38,12 +38,14 @@ export function useBook(o: {
   const enviando = useRef(false);
   const relogio = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historico = useRef<DocumentoBook[]>([]);
+  const refeitos = useRef<DocumentoBook[]>([]);
   // Indireção por ref pra função não se referenciar: o React Compiler desiste de otimizar
   // um useCallback que se chama por dentro, e desistir aqui custaria render a cada tecla.
   const enviarRef = useRef<() => void>(() => {});
   // Contador em estado, não só o ref: o botão de desfazer precisa reagir, e ref não
   // dispara render.
   const [passos, setPassos] = useState(0);
+  const [passosRefazer, setPassosRefazer] = useState(0);
   const { id, token } = o;
 
   /** Recalcula o layout com as métricas do PDF e devolve os QR que já vieram prontos. */
@@ -110,6 +112,9 @@ export function useBook(o: {
         if (novo === atual) return atual;
         historico.current = [...historico.current.slice(-29), atual];
         setPassos((n) => n + 1);
+        // Editar depois de desfazer mata o ramo desfeito -- é o que todo editor faz.
+        refeitos.current = [];
+        setPassosRefazer(0);
         pendente.current = novo;
         setEstado("pendente");
         agendar();
@@ -123,8 +128,26 @@ export function useBook(o: {
     const anterior = historico.current.pop();
     if (!anterior) return;
     setPassos((n) => Math.max(0, n - 1));
-    setDocumento(anterior);
+    setDocumento((atual) => {
+      refeitos.current = [...refeitos.current.slice(-29), atual];
+      setPassosRefazer((n) => n + 1);
+      return anterior;
+    });
     pendente.current = anterior;
+    setEstado("pendente");
+    agendar();
+  }, [agendar]);
+
+  const refazer = useCallback(() => {
+    const proximo = refeitos.current.pop();
+    if (!proximo) return;
+    setPassosRefazer((n) => Math.max(0, n - 1));
+    setDocumento((atual) => {
+      historico.current = [...historico.current.slice(-29), atual];
+      setPassos((n) => n + 1);
+      return proximo;
+    });
+    pendente.current = proximo;
     setEstado("pendente");
     agendar();
   }, [agendar]);
@@ -154,5 +177,5 @@ export function useBook(o: {
     };
   }, []);
 
-  return { documento, layout, estado, erro, aplicar, desfazer, salvarAgora, podeDesfazer: passos > 0 };
+  return { documento, layout, estado, erro, aplicar, desfazer, refazer, salvarAgora, podeDesfazer: passos > 0, podeRefazer: passosRefazer > 0 };
 }

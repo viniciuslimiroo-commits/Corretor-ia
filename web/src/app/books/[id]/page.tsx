@@ -8,16 +8,28 @@ import { useBook } from "@/lib/use-book";
 import { Aviso, Botao, Icone } from "@/components/ui";
 import Pagina, { type DadosPagina } from "@/components/book/pagina";
 import PainelPagina from "@/components/book/painel-pagina";
+import GavetaMidia from "@/components/book/gaveta-midia";
+import Previa from "@/components/book/previa";
 import type { ContextoLayout } from "@/lib/book-layout";
-import { definirCapa, mover, podeRemover, remover, type DocumentoBook } from "@/lib/book-documento";
+import {
+  definirFoco,
+  imagensDoDocumento,
+  inserir,
+  mover,
+  paginaVazia,
+  podeRemover,
+  porImagem,
+  remover,
+  type DocumentoBook,
+} from "@/lib/book-documento";
 
 // O editor do book. Três faixas: páginas à esquerda, a página no meio, o que dá pra mexer
 // nela à direita -- e nada mais.
 //
-// Roda fora do AppShell de propósito: editor é tela cheia.
-//
-// Nesta etapa dá pra reordenar, tirar página, trocar textos e escolher a capa. Trocar foto
-// e exportar chegam no passo seguinte, e a tela diz isso em vez de deixar procurar botão.
+// O que ele NÃO é, de propósito: não há tela em branco, caixa de texto solta, seletor de
+// fonte, roda de cores, camada, régua nem alinhamento. O TEMPLATE segura a estrutura, e é
+// isso que impede alguém sem prática de fazer material feio. Construir Canva aqui dentro
+// multiplicaria a complexidade sem melhorar um book.
 
 type Book = {
   id: string;
@@ -40,7 +52,8 @@ type Carga = {
   qrs: Record<string, string>;
 };
 
-const LARGURA_PAGINA = 520;
+const LARGURA_BASE = 520;
+const ZOOMS = [0.6, 0.8, 1, 1.25, 1.6];
 
 const RECADO: Record<string, string> = {
   salvo: "Salvo",
@@ -56,9 +69,6 @@ export default function PaginaBook() {
   const { id } = useParams<{ id: string }>();
   const [carga, setCarga] = useState<Carga | null>(null);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [atual, setAtual] = useState(0);
-  const [apagando, setApagando] = useState(false);
-  const centro = useRef<HTMLDivElement | null>(null);
   const { user, token } = c;
 
   const buscar = useCallback(async () => {
@@ -95,42 +105,23 @@ export default function PaginaBook() {
   }
   if (!carga) return <main className="p-12 text-sm text-neutral-500">Abrindo o book…</main>;
 
-  return (
-    <Editor
-      carga={carga}
-      token={token}
-      atual={atual}
-      setAtual={setAtual}
-      centro={centro}
-      apagando={apagando}
-      setApagando={setApagando}
-      aoSair={() => router.push("/books")}
-    />
-  );
+  return <Editor carga={carga} token={token} aoSair={() => router.push("/books")} />;
 }
 
-// Componente separado porque o hook do book precisa dos dados carregados -- e hook não
-// pode ficar atrás de `if`.
-function Editor({
-  carga,
-  token,
-  atual,
-  setAtual,
-  centro,
-  apagando,
-  setApagando,
-  aoSair,
-}: {
-  carga: Carga;
-  token: () => Promise<string>;
-  atual: number;
-  setAtual: (n: number) => void;
-  centro: React.RefObject<HTMLDivElement | null>;
-  apagando: boolean;
-  setApagando: (v: boolean) => void;
-  aoSair: () => void;
-}) {
+// Separado porque o hook do book precisa dos dados carregados -- e hook não pode ficar
+// atrás de `if`.
+function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<string>; aoSair: () => void }) {
+  const [atual, setAtual] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
+  const [apagando, setApagando] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [gaveta, setGaveta] = useState<{ modo: "trocar" | "adicionar"; indice?: number } | null>(null);
+  const [previa, setPrevia] = useState<"celular" | "impresso" | null>(null);
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [alvo, setAlvo] = useState<string | null>(null);
+  const [recado, setRecado] = useState<string | null>(null);
+  const centro = useRef<HTMLDivElement | null>(null);
+
   const book = useBook({
     id: carga.book.id,
     inicial: carga.documento,
@@ -140,7 +131,8 @@ function Editor({
     token,
   });
 
-  const paginaAtual = book.documento.paginas[Math.min(atual, book.documento.paginas.length - 1)];
+  const indice = Math.min(atual, book.documento.paginas.length - 1);
+  const paginaAtual = book.documento.paginas[indice];
 
   const irPara = useCallback(
     (i: number) => {
@@ -148,23 +140,46 @@ function Editor({
       setAtual(destino);
       centro.current?.querySelector(`[data-pagina="${destino}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     },
-    [book.documento.paginas.length, setAtual, centro]
+    [book.documento.paginas.length]
   );
+
+  /** Aviso curto com desfazer, no lugar de modal de confirmação. */
+  const avisar = useCallback((texto: string) => {
+    setRecado(texto);
+    setTimeout(() => setRecado(null), 8000);
+  }, []);
 
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
-      const alvo = e.target as HTMLElement | null;
-      if (alvo && (alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA")) return;
+      const alvoTecla = e.target as HTMLElement | null;
+      const digitando = alvoTecla && (alvoTecla.tagName === "INPUT" || alvoTecla.tagName === "TEXTAREA");
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        book.desfazer();
+        if (e.shiftKey) book.refazer();
+        else book.desfazer();
+        return;
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowRight") irPara(atual + 1);
-      if (e.key === "ArrowUp" || e.key === "ArrowLeft") irPara(atual - 1);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        book.refazer();
+        return;
+      }
+      if (digitando) return;
+      if (e.key === "Escape") {
+        if (previa) setPrevia(null);
+        else if (gaveta) setGaveta(null);
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") irPara(indice + 1);
+      if (e.key === "ArrowUp" || e.key === "ArrowLeft") irPara(indice - 1);
+      if (e.key === "Delete" && paginaAtual && podeRemover(paginaAtual)) {
+        book.aplicar((d) => remover(d, paginaAtual.id));
+        avisar("Página removida do book. A foto continua em Materiais.");
+      }
     }
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
-  }, [atual, irPara, book]);
+  }, [indice, irPara, book, paginaAtual, previa, gaveta, avisar]);
 
   async function apagar() {
     if (!window.confirm("Apagar este book? As fotos continuam em Materiais — some só a montagem.")) return;
@@ -180,37 +195,91 @@ function Editor({
   }
 
   const dados = (i: number): DadosPagina => ({ layout: book.layout[i], urls: carga.urls, logo: carga.logo });
+  const usadas = imagensDoDocumento(book.documento);
+
+  function escolherDaGaveta(jobId: string) {
+    if (!gaveta) return;
+    if (gaveta.modo === "adicionar") {
+      const nova = paginaVazia("foto");
+      nova.imagens = [jobId];
+      book.aplicar((d) => inserir(d, nova, paginaAtual?.id));
+      irPara(indice + 1);
+    } else {
+      book.aplicar((d) => porImagem(d, paginaAtual.id, jobId, gaveta.indice));
+    }
+    setGaveta(null);
+  }
+
+  // ---------- prévia ----------
+  if (previa) {
+    return (
+      <Previa
+        modo={previa}
+        paginas={book.layout.map((_, i) => dados(i))}
+        aoTrocarModo={setPrevia}
+        aoFechar={() => setPrevia(null)}
+        titulo={carga.book.titulo ?? "Book"}
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col bg-neutral-100">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-2.5">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-neutral-200 bg-white px-4 py-2.5">
         <Link href="/books" className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-marca-indigo">
           <Icone nome="cima" className="h-4 w-4 -rotate-90" />
           Books
         </Link>
         <span className="min-w-0 truncate text-sm font-semibold">{carga.book.titulo ?? "Book"}</span>
-        <span className="hidden text-xs text-neutral-400 sm:inline">{carga.book.rotuloTipo} · {book.documento.paginas.length} páginas</span>
-        <span
-          className={
-            "text-xs " +
-            (book.estado === "falhou" || book.estado === "conflito" ? "font-medium text-amber-600" : "text-neutral-400")
-          }
-        >
+        <span className="hidden text-xs text-neutral-400 lg:inline">{carga.book.rotuloTipo} · {book.documento.paginas.length} páginas</span>
+        <span className={"text-xs " + (book.estado === "falhou" || book.estado === "conflito" ? "font-medium text-amber-600" : "text-neutral-400")}>
           · {RECADO[book.estado]}
-          {book.estado === "falhou" && (
-            <button onClick={book.salvarAgora} className="ml-1 underline">tentar agora</button>
-          )}
-          {book.estado === "conflito" && (
-            <button onClick={() => window.location.reload()} className="ml-1 underline">recarregar</button>
-          )}
+          {book.estado === "falhou" && <button onClick={book.salvarAgora} className="ml-1 underline">tentar agora</button>}
+          {book.estado === "conflito" && <button onClick={() => window.location.reload()} className="ml-1 underline">recarregar</button>}
         </span>
 
-        <div className="ml-auto flex items-center gap-2">
-          <Botao variante="discreta" onClick={book.desfazer} disabled={!book.podeDesfazer} title="Ctrl+Z">
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={book.desfazer}
+            disabled={!book.podeDesfazer}
+            title="Desfazer (Ctrl+Z)"
+            className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30"
+          >
             <Icone nome="cima" className="h-4 w-4 -rotate-90" />
-            Desfazer
+          </button>
+          <button
+            onClick={book.refazer}
+            disabled={!book.podeRefazer}
+            title="Refazer (Ctrl+Shift+Z)"
+            className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30"
+          >
+            <Icone nome="cima" className="h-4 w-4 rotate-90" />
+          </button>
+
+          <span className="mx-1 flex items-center gap-1 rounded-lg border border-neutral-200 px-1">
+            <button
+              onClick={() => setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(zoom) - 1)] ?? 0.6)}
+              disabled={zoom === ZOOMS[0]}
+              title="Diminuir"
+              className="px-1.5 py-1 text-sm text-neutral-500 hover:text-neutral-800 disabled:opacity-30"
+            >
+              −
+            </button>
+            <span className="w-9 text-center text-[11px] tabular-nums text-neutral-500">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + 1)] ?? 1.6)}
+              disabled={zoom === ZOOMS[ZOOMS.length - 1]}
+              title="Aumentar"
+              className="px-1.5 py-1 text-sm text-neutral-500 hover:text-neutral-800 disabled:opacity-30"
+            >
+              +
+            </button>
+          </span>
+
+          <Botao variante="secundaria" onClick={() => setPrevia("celular")} className="px-3 py-1.5 text-xs">
+            <Icone nome="olho" className="h-4 w-4" />
+            Pré-visualizar
           </Botao>
-          <span className="hidden text-xs text-neutral-400 lg:inline">Não gasta crédito</span>
           <Botao variante="perigo" onClick={apagar} disabled={apagando} className="px-2 py-1 text-xs">
             <Icone nome="lixeira" className="h-4 w-4" />
             Apagar
@@ -223,7 +292,6 @@ function Editor({
           <Aviso tipo="erro">{erro ?? book.erro}</Aviso>
         </div>
       )}
-
       {carga.book.faltaRegistro && (
         <div className="px-4 pt-3">
           <Aviso tipo="atencao">
@@ -234,62 +302,71 @@ function Editor({
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* faixa de páginas */}
-        <nav className="w-[112px] shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2">
-          <ul className="flex flex-col gap-2">
+        {/* ---- faixa de páginas, com arrastar ---- */}
+        <nav className="w-[116px] shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2">
+          <ul className="flex flex-col gap-1">
             {book.documento.paginas.map((p, i) => (
-              <li key={p.id} className="group relative">
+              <li
+                key={p.id}
+                draggable
+                onDragStart={(e) => {
+                  setArrastando(p.id);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/encena-pagina", p.id);
+                }}
+                onDragEnd={() => {
+                  setArrastando(null);
+                  setAlvo(null);
+                }}
+                onDragOver={(e) => {
+                  if (!arrastando || arrastando === p.id) return;
+                  e.preventDefault();
+                  setAlvo(p.id);
+                }}
+                onDragLeave={() => setAlvo((a) => (a === p.id ? null : a))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!arrastando || arrastando === p.id) return;
+                  const destino = book.documento.paginas.findIndex((x) => x.id === p.id);
+                  const movida = arrastando;
+                  book.aplicar((d) => mover(d, movida, destino));
+                  setArrastando(null);
+                  setAlvo(null);
+                  setAtual(destino);
+                }}
+                className={
+                  "group relative rounded transition " +
+                  (alvo === p.id ? "ring-2 ring-marca-coral ring-offset-1 " : "") +
+                  (arrastando === p.id ? "opacity-40 " : "")
+                }
+              >
                 <button
                   onClick={() => irPara(i)}
                   className={
-                    "block w-full overflow-hidden rounded border-2 bg-white transition " +
-                    (i === atual ? "border-marca-coral" : "border-neutral-200 hover:border-neutral-400")
+                    "block w-full cursor-grab overflow-hidden rounded border-2 bg-white transition active:cursor-grabbing " +
+                    (i === indice ? "border-marca-coral" : "border-neutral-200 hover:border-neutral-400")
                   }
-                  title={`Página ${i + 1}`}
+                  title={`Página ${i + 1} — arraste para reordenar`}
                 >
-                  {book.layout[i] && <Pagina dados={dados(i)} largura={92} />}
+                  {book.layout[i] && <Pagina dados={dados(i)} largura={96} />}
                 </button>
-                <span className="mt-0.5 flex items-center justify-center gap-1 text-[10px] text-neutral-400">
-                  <button
-                    onClick={() => {
-                      book.aplicar((d) => mover(d, p.id, i - 1));
-                      irPara(i - 1);
-                    }}
-                    disabled={i === 0}
-                    className="rounded px-1 hover:bg-neutral-100 disabled:opacity-30"
-                    title="Subir"
-                  >
-                    ↑
-                  </button>
-                  {i === 0 ? "capa" : i + 1}
-                  <button
-                    onClick={() => {
-                      book.aplicar((d) => mover(d, p.id, i + 1));
-                      irPara(i + 1);
-                    }}
-                    disabled={i === book.documento.paginas.length - 1}
-                    className="rounded px-1 hover:bg-neutral-100 disabled:opacity-30"
-                    title="Descer"
-                  >
-                    ↓
-                  </button>
-                </span>
-                {podeRemover(p) && (
-                  <button
-                    onClick={() => book.aplicar((d) => remover(d, p.id))}
-                    className="absolute top-1 right-1 rounded-full bg-black/55 p-0.5 text-white opacity-0 transition group-hover:opacity-100"
-                    title="Tirar do book — a foto continua em Materiais"
-                  >
-                    <Icone nome="fechar" className="h-3 w-3" />
-                  </button>
-                )}
+                <span className="block text-center text-[10px] text-neutral-400">{i === 0 ? "capa" : i + 1}</span>
               </li>
             ))}
+            <li>
+              <button
+                onClick={() => setGaveta({ modo: "adicionar" })}
+                className="flex w-full items-center justify-center gap-1 rounded border border-dashed border-neutral-300 py-3 text-[11px] text-neutral-500 hover:border-marca-coral hover:text-marca-indigo"
+              >
+                <Icone nome="mais" className="h-3.5 w-3.5" />
+                página
+              </button>
+            </li>
           </ul>
         </nav>
 
-        {/* as páginas */}
-        <div ref={centro} className="flex-1 overflow-y-auto p-6">
+        {/* ---- as páginas ---- */}
+        <div ref={centro} className="flex-1 overflow-auto p-6">
           <div className="mx-auto flex w-fit flex-col items-center gap-6">
             {book.documento.paginas.map((p, i) =>
               book.layout[i] ? (
@@ -297,33 +374,70 @@ function Editor({
                   key={p.id}
                   data-pagina={i}
                   onClick={() => setAtual(i)}
-                  className={"cursor-pointer shadow-lg ring-1 transition " + (i === atual ? "ring-2 ring-marca-coral" : "ring-black/5")}
+                  className={"shadow-lg ring-1 transition " + (i === indice ? "ring-2 ring-marca-coral" : "cursor-pointer ring-black/5")}
                 >
-                  <Pagina dados={dados(i)} largura={LARGURA_PAGINA} />
+                  <Pagina
+                    dados={dados(i)}
+                    largura={LARGURA_BASE * zoom}
+                    interacao={
+                      i === indice
+                        ? {
+                            aoSoltar: (jobId, idx) => book.aplicar((d) => porImagem(d, p.id, jobId, idx)),
+                            aoMoverFoco: (jobId, dx, dy) =>
+                              book.aplicar((d) => {
+                                const f = d.paginas.find((x) => x.id === p.id)?.foco?.[jobId] ?? { x: 0, y: 0 };
+                                return definirFoco(d, p.id, jobId, f.x - dx, f.y - dy);
+                              }),
+                            aoClicarImagem: (_jobId, idx) => setGaveta({ modo: "trocar", indice: idx }),
+                          }
+                        : undefined
+                    }
+                  />
                 </div>
               ) : null
             )}
             <p className="max-w-[520px] pb-10 text-center text-xs text-neutral-500">
-              Trocar foto, escolher o enquadramento e exportar em PDF chegam no próximo passo. Por enquanto dá pra reordenar, tirar página, trocar os textos e
-              escolher a capa — e tudo isso já fica salvo.
+              Exportar em PDF é o próximo passo. O resto já funciona: arraste as páginas pra reordenar, clique numa foto pra trocar, arraste a foto dentro do
+              quadro pra enquadrar — e tudo salva sozinho.
             </p>
           </div>
         </div>
 
-        {/* painel da página */}
+        {/* ---- painel da página ---- */}
         <aside className="w-[236px] shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-3">
           {paginaAtual && (
             <PainelPagina
               pagina={paginaAtual}
-              numero={Math.min(atual, book.documento.paginas.length - 1) + 1}
+              numero={indice + 1}
               documento={book.documento}
-              urls={carga.urls}
               aoMudar={book.aplicar}
-              aoEscolherCapa={(jobId) => book.aplicar((d) => definirCapa(d, jobId))}
+              aoAbrirGaveta={() => setGaveta({ modo: "trocar" })}
+              aoIrPara={irPara}
             />
           )}
         </aside>
+
+        {/* ---- gaveta da Biblioteca ---- */}
+        <GavetaMidia
+          aberta={!!gaveta}
+          aoFechar={() => setGaveta(null)}
+          token={token}
+          imovelId={carga.book.imovel?.id ?? null}
+          jaNoBook={usadas}
+          aoEscolher={escolherDaGaveta}
+          titulo={gaveta?.modo === "adicionar" ? "Adicionar página" : "Trocar a foto"}
+        />
       </div>
+
+      {/* aviso curto no lugar de modal: some sozinho e tem desfazer */}
+      {recado && (
+        <div className="pointer-events-auto fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full bg-neutral-900 px-4 py-2 text-sm text-white shadow-lg">
+          {recado}
+          <button onClick={() => { book.desfazer(); setRecado(null); }} className="font-semibold underline">
+            Desfazer
+          </button>
+        </div>
+      )}
     </div>
   );
 }

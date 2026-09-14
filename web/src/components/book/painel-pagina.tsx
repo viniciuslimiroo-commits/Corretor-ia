@@ -1,14 +1,15 @@
 "use client";
 
-import { definirTexto, imagensDoDocumento, type DocumentoBook, type Pagina } from "@/lib/book-documento";
-import { Rotulo } from "@/components/ui";
+import { definirLayout, definirTexto, duplicar, limiteDeImagens, podeRemover, remover, type DocumentoBook, type Pagina } from "@/lib/book-documento";
+import type { LayoutFoto } from "@/lib/book-tipos";
+import { Icone, Rotulo } from "@/components/ui";
 
 // O painel da direita: a lista COMPLETA do que dá pra editar naquela página.
 //
-// A régua é essa: se algo não está aqui, não é editável -- e isso é dito, não escondido.
-// Nunca mais de quatro controles. É o que separa este editor de um Canva menor: a unidade
-// de edição é a página, nunca o elemento, e não existe fonte, cor de texto, alinhamento,
-// camada nem caixa flutuante.
+// A régua: se algo não está aqui, não é editável -- e isso é dito, não escondido. A
+// unidade de edição é a página, nunca o elemento. Não existe fonte, cor de texto,
+// alinhamento, camada nem caixa flutuante, e isso é decisão de produto: é o TEMPLATE que
+// segura a estrutura, pra que alguém sem prática não consiga fazer material feio.
 
 type Campo = { chave: string; rotulo: string; max: number; linhas?: number; dica?: string };
 
@@ -22,6 +23,7 @@ const CAMPOS: Record<string, Campo[]> = {
   foto: [
     { chave: "legenda", rotulo: "Legenda", max: 90, dica: "O ambiente. Em branco, a página sai sem legenda." },
     { chave: "legenda2", rotulo: "Legenda da segunda foto", max: 90 },
+    { chave: "corpo", rotulo: "Texto ao lado", max: 600, linhas: 5 },
   ],
   planta: [{ chave: "legenda", rotulo: "Legenda", max: 90 }],
   texto: [
@@ -32,54 +34,142 @@ const CAMPOS: Record<string, Campo[]> = {
   contato: [{ chave: "chamada", rotulo: "Chamada", max: 60, dica: "“Vamos visitar?”, “Quer conhecer?”" }],
 };
 
-const NOME: Record<string, string> = {
-  capa: "Capa",
-  foto: "Foto",
-  planta: "Planta",
-  ficha: "Ficha técnica",
-  texto: "Texto",
-  contato: "Contato",
-};
+const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", ficha: "Ficha técnica", texto: "Texto", contato: "Contato" };
+
+/** Os três templates de página de foto. Três, e só: mais que isso vira editor gráfico. */
+const LAYOUTS: { id: LayoutFoto; rotulo: string; desenho: React.ReactNode }[] = [
+  {
+    id: "cheia",
+    rotulo: "Uma foto",
+    desenho: <span className="block h-full w-full rounded-[2px] bg-neutral-300" />,
+  },
+  {
+    id: "duas",
+    rotulo: "Duas fotos",
+    desenho: (
+      <span className="flex h-full w-full flex-col gap-[2px]">
+        <span className="flex-1 rounded-[2px] bg-neutral-300" />
+        <span className="flex-1 rounded-[2px] bg-neutral-300" />
+      </span>
+    ),
+  },
+  {
+    id: "foto_texto",
+    rotulo: "Foto e texto",
+    desenho: (
+      <span className="flex h-full w-full gap-[2px]">
+        <span className="flex-[3] rounded-[2px] bg-neutral-300" />
+        <span className="flex flex-[2] flex-col gap-[2px] pt-[1px]">
+          <span className="h-[2px] rounded bg-neutral-300" />
+          <span className="h-[2px] rounded bg-neutral-300" />
+          <span className="h-[2px] w-2/3 rounded bg-neutral-300" />
+        </span>
+      </span>
+    ),
+  },
+];
 
 export default function PainelPagina({
   pagina,
   numero,
   documento,
-  urls,
   aoMudar,
-  aoEscolherCapa,
+  aoAbrirGaveta,
+  aoIrPara,
 }: {
   pagina: Pagina;
   numero: number;
   documento: DocumentoBook;
-  urls: Record<string, string>;
   aoMudar: (fn: (d: DocumentoBook) => DocumentoBook) => void;
-  aoEscolherCapa: (jobId: string) => void;
+  aoAbrirGaveta: () => void;
+  aoIrPara: (indice: number) => void;
 }) {
   const campos = (CAMPOS[pagina.tipo] ?? []).filter((c) => {
-    // A segunda legenda só aparece quando existe uma segunda foto.
-    if (c.chave === "legenda2") return pagina.imagens.length > 1;
+    if (c.chave === "legenda2") return pagina.layout === "duas";
+    if (c.chave === "corpo" && pagina.tipo === "foto") return pagina.layout === "foto_texto";
     return true;
   });
 
-  const capaAtual = documento.paginas.find((p) => p.tipo === "capa")?.imagens[0];
-  const outras = imagensDoDocumento(documento).filter((x) => x !== capaAtual);
+  const faltamImagens = limiteDeImagens(pagina, documento.tipo) - pagina.imagens.filter(Boolean).length;
 
   return (
     <div className="flex flex-col gap-3">
-      <div>
+      <div className="flex items-start justify-between gap-2">
         <Rotulo>{pagina.tipo === "capa" ? "Capa" : `Página ${numero} · ${NOME[pagina.tipo] ?? pagina.tipo}`}</Rotulo>
-        {pagina.tipo === "contato" && (
-          <p className="-mt-1 text-xs text-neutral-500">
-            Nome, CRECI, WhatsApp, logo e QR vêm de{" "}
-            <a href="/configuracoes" className="text-marca-indigo underline">Minha marca</a>. Esta página não pode ser removida.
-          </p>
-        )}
-        {pagina.tipo === "ficha" && (
-          <p className="-mt-1 text-xs text-neutral-500">Os dados vêm do imóvel. Editar lá vale para todos os materiais dele.</p>
-        )}
+        <div className="flex shrink-0 gap-1">
+          <button
+            onClick={() => {
+              aoMudar((d) => duplicar(d, pagina.id));
+              aoIrPara(numero); // a cópia entra logo depois
+            }}
+            title="Duplicar página"
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+          >
+            <Icone nome="lote" className="h-4 w-4" />
+          </button>
+          {podeRemover(pagina) && (
+            <button
+              onClick={() => aoMudar((d) => remover(d, pagina.id))}
+              title="Tirar do book — a foto continua em Materiais"
+              className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+            >
+              <Icone nome="lixeira" className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
+      {pagina.tipo === "contato" && (
+        <p className="-mt-2 text-xs text-neutral-500">
+          Nome, CRECI, WhatsApp, logo e QR vêm de{" "}
+          <a href="/configuracoes" className="text-marca-indigo underline">Minha marca</a>. Esta página não sai do book.
+        </p>
+      )}
+      {pagina.tipo === "ficha" && <p className="-mt-2 text-xs text-neutral-500">Os dados vêm do imóvel. Editar lá vale para todos os materiais dele.</p>}
+
+      {/* ---- template da página ---- */}
+      {pagina.tipo === "foto" && (
+        <div>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Formato da página</span>
+          <div className="grid grid-cols-3 gap-1.5">
+            {LAYOUTS.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => aoMudar((d) => definirLayout(d, pagina.id, l.id))}
+                title={l.rotulo}
+                className={
+                  "rounded-md border p-1 transition " +
+                  ((pagina.layout ?? "cheia") === l.id ? "border-marca-coral bg-marca-pessego/40" : "border-neutral-200 hover:border-neutral-400")
+                }
+              >
+                <span className="block h-9 w-full p-[3px]">{l.desenho}</span>
+                <span className="mt-0.5 block text-[9px] leading-tight text-neutral-500">{l.rotulo}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---- imagens da página ---- */}
+      {limiteDeImagens(pagina, documento.tipo) > 0 && (
+        <div>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            {limiteDeImagens(pagina, documento.tipo) === 1 ? "Imagem" : "Imagens"}
+          </span>
+          <button
+            onClick={aoAbrirGaveta}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-neutral-200 py-1.5 text-xs text-neutral-700 hover:border-marca-coral"
+          >
+            <Icone nome="foto" className="h-3.5 w-3.5" />
+            {faltamImagens > 0 ? `Adicionar ${faltamImagens === 1 ? "imagem" : `${faltamImagens} imagens`}` : "Trocar imagem"}
+          </button>
+          <span className="mt-1 block text-[11px] text-neutral-400">
+            Na página, arraste a foto dentro do quadro pra escolher o que aparece.
+          </span>
+        </div>
+      )}
+
+      {/* ---- textos ---- */}
       {campos.map((campo) => (
         <label key={campo.chave} className="block text-sm">
           <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{campo.rotulo}</span>
@@ -109,34 +199,10 @@ export default function PainelPagina({
         </label>
       ))}
 
-      {pagina.tipo === "capa" && outras.length > 0 && (
-        <div>
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Trocar a capa</span>
-          <ul className="grid grid-cols-3 gap-1.5">
-            {outras.slice(0, 12).map((jobId) => (
-              <li key={jobId}>
-                <button
-                  onClick={() => aoEscolherCapa(jobId)}
-                  className="block w-full overflow-hidden rounded border border-neutral-200 transition hover:border-marca-coral"
-                  title="Usar como capa"
-                >
-                  {urls[jobId] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={urls[jobId]} alt="" className="aspect-square w-full object-cover" />
-                  ) : (
-                    <span className="block aspect-square w-full bg-neutral-100" />
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <span className="mt-1 block text-[11px] text-neutral-400">A foto que sair da capa volta pro lugar da que entrou.</span>
-        </div>
-      )}
-
-      {pagina.tipo === "foto" && (
-        <p className="text-[11px] text-neutral-400">Trocar a foto e ajustar o enquadramento chegam no próximo passo.</p>
-      )}
+      <p className="mt-1 border-t border-neutral-100 pt-2 text-[11px] text-neutral-400">
+        A tipografia, as margens e as cores são do modelo, iguais em todos os books. É o que faz o material parecer feito por agência.
+      </p>
+      <span className="sr-only">{documento.paginas.length} páginas</span>
     </div>
   );
 }
