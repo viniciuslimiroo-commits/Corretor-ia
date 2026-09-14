@@ -48,11 +48,25 @@ const CAMPOS: Record<string, Campo[]> = {
     { chave: "preco", rotulo: "Preço", max: 40 },
     { chave: "ficha", rotulo: "Ficha curta", max: 90, dica: "Ex.: 96,5 m² · 3 dorms · 2 vagas" },
   ],
+  grade: [
+    { chave: "titulo", rotulo: "Título da página", max: 40 },
+    { chave: "legenda1", rotulo: "Nome da 1ª foto", max: 60 },
+    { chave: "legenda2", rotulo: "Nome da 2ª foto", max: 60 },
+    { chave: "legenda3", rotulo: "Nome da 3ª foto", max: 60 },
+    { chave: "legenda4", rotulo: "Nome da 4ª foto", max: 60 },
+    { chave: "legenda5", rotulo: "Nome da 5ª foto", max: 60 },
+    { chave: "legenda6", rotulo: "Nome da 6ª foto", max: 60 },
+  ],
+  numeros: [
+    { chave: "titulo", rotulo: "Título da página", max: 40 },
+    { chave: "corpo", rotulo: "Números", max: 400, linhas: 7, dica: "Um por linha, no formato “Rótulo: valor”. Sai da ficha do imóvel." },
+    { chave: "nota", rotulo: "Observação", max: 400, linhas: 4, dica: "Opcional, abaixo dos números." },
+  ],
   ficha: [{ chave: "titulo", rotulo: "Título da página", max: 60 }],
   contato: [{ chave: "chamada", rotulo: "Chamada", max: 60, dica: "“Vamos visitar?”, “Quer conhecer?”" }],
 };
 
-const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", destaques: "Destaques", localizacao: "Localização", ficha: "Ficha técnica", texto: "Texto", contato: "Contato", imovel: "Imóvel" };
+const NOME: Record<string, string> = { capa: "Capa", foto: "Foto", planta: "Planta", destaques: "Destaques", localizacao: "Localização", ficha: "Ficha técnica", texto: "Texto", contato: "Contato", imovel: "Imóvel", grade: "Grade de fotos", numeros: "Números" };
 
 /**
  * Onde a IA pode escrever. Deliberadamente curto: subtítulo da capa é o endereço e preço é
@@ -72,6 +86,9 @@ const ESCREVE_IA: Record<string, string[]> = {
   localizacao: [],
   // Página de imóvel do catálogo: tudo ali é dado do cadastro. Nenhum campo pra IA.
   imovel: [],
+  // Grade é nome de imóvel; números é ficha. Nada aqui é língua, é dado.
+  grade: [],
+  numeros: [],
 };
 
 /** Os três templates de página de foto. Três, e só: mais que isso vira editor gráfico. */
@@ -206,6 +223,12 @@ export default function PainelPagina({
         <p className="-mt-2 text-xs text-neutral-500">
           A 1ª lista sai da ficha do imóvel, a 2ª dos ambientes que aparecem nas fotos. A IA arruma a frase, não inventa fato.
         </p>
+      )}
+      {pagina.tipo === "numeros" && (
+        <p className="-mt-2 text-xs text-neutral-500">Um por linha, “Rótulo: valor”. Saem da ficha do imóvel — editar aqui vale só neste material.</p>
+      )}
+      {pagina.tipo === "grade" && (
+        <p className="-mt-2 text-xs text-neutral-500">Seis fotos por página. O nome embaixo de cada uma é o do imóvel de onde ela veio.</p>
       )}
       {pagina.tipo === "imovel" && (
         <p className="-mt-2 text-xs text-neutral-500">Tudo aqui vem do cadastro do imóvel. Editar nesta página vale só neste catálogo.</p>

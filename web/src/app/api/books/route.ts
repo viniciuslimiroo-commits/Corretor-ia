@@ -3,7 +3,7 @@ import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
 import { marcaEfetiva, membroDe } from "@/lib/cobranca";
 import { TIPO_POR_ID } from "@/lib/book-tipos";
-import { montar, montarCatalogo, type ImovelDoCatalogo } from "@/lib/book-montagem";
+import { montar, montarCatalogo, montarPortfolio, type ImovelDoCatalogo } from "@/lib/book-montagem";
 import { montarAutomatico, comOlhar, verFotos, type Relatorio } from "@/lib/book-ia";
 import { imagensDoDocumento, type DocumentoBook } from "@/lib/book-documento";
 import { faltaMigracao, imagensDoImovel, imovelDeMontagem, jobsParaImagens, RECADO_MIGRACAO } from "@/lib/book-servidor";
@@ -132,7 +132,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const documentoCat = montarCatalogo({ imoveis: itens, cor: corDaMarca, titulo: marcaCedo.nome ?? undefined });
+    // Catálogo e portfólio partem dos mesmos dados e entregam coisas diferentes: o
+    // catálogo mostra imóveis à venda, um por página, com preço; o portfólio mostra
+    // TRABALHO, em grade, sem preço. Misturar os dois foi o que a portabilidade pela
+    // metade fez por algumas horas.
+    const documentoCat =
+      def.id === "portfolio"
+        ? montarPortfolio({ imoveis: itens, cor: corDaMarca, titulo: marcaCedo.nome ? `Portfólio · ${marcaCedo.nome}` : undefined })
+        : montarCatalogo({ imoveis: itens, cor: corDaMarca, titulo: marcaCedo.nome ?? undefined });
     const { data: criadoCat, error: erroCat } = await db
       .from("books")
       .insert({
@@ -140,7 +147,10 @@ export async function POST(req: NextRequest) {
         org_id: membroCedo?.orgId ?? null,
         property_id: null,
         tipo: def.id,
-        titulo: `Catálogo · ${itens.length} ${itens.length === 1 ? "imóvel" : "imóveis"}`,
+        titulo:
+          def.id === "portfolio"
+            ? `Portfólio · ${itens.length} ${itens.length === 1 ? "imóvel" : "imóveis"}`
+            : `Catálogo · ${itens.length} ${itens.length === 1 ? "imóvel" : "imóveis"}`,
         documento: documentoCat,
       })
       .select("id, tipo, titulo, versao")

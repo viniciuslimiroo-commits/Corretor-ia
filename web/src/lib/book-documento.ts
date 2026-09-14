@@ -218,6 +218,9 @@ export function imagensDoDocumento(d: DocumentoBook): string[] {
 
 const LAYOUTS: LayoutFoto[] = ["cheia", "duas", "foto_texto"];
 
+/** O maior `limiteDeImagens` de qualquer tipo de página. Sanitização não pode cortar abaixo disso. */
+const MAX_IMAGENS_POR_PAGINA = 6;
+
 /**
  * Limpa o que veio do banco ou do navegador. Nada aqui confia na entrada: o documento é
  * jsonb, então uma linha velha, um cliente com bug ou um curioso no devtools podem mandar
@@ -266,7 +269,11 @@ export function limparDocumento(bruto: unknown): DocumentoBook | null {
       tipo,
       origem: p.origem === "manual" ? "manual" : "auto",
       layout: typeof p.layout === "string" && LAYOUTS.includes(p.layout as LayoutFoto) ? (p.layout as LayoutFoto) : undefined,
-      imagens: (Array.isArray(p.imagens) ? p.imagens : []).filter((x): x is string => typeof x === "string").slice(0, 4),
+      // O teto tem que acompanhar o tipo de página que MAIS aceita imagens (hoje a grade
+      // do portfólio, com 6). Estava fixo em 4, e a grade perdia duas fotos na releitura --
+      // gravava seis, lia quatro, em silêncio. Terceira vez que uma constante duplicada
+      // neste arquivo engole conteúdo: ver o whitelist de tipos e a regex das chaves.
+      imagens: (Array.isArray(p.imagens) ? p.imagens : []).filter((x): x is string => typeof x === "string").slice(0, MAX_IMAGENS_POR_PAGINA),
       textos,
       ...(Object.keys(foco).length ? { foco } : {}),
     });
