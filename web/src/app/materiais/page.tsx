@@ -52,6 +52,7 @@ export default function Materiais() {
   const [imovelFiltro, setImovelFiltro] = useState("");
   const [busca, setBusca] = useState("");
   const [marcados, setMarcados] = useState<string[]>([]);
+  const [apagando, setApagando] = useState(false);
   const { user, token } = c;
 
   const buscar = useCallback(async () => {
@@ -106,6 +107,58 @@ export default function Materiais() {
     );
   }
 
+  /**
+   * Apagar de vez: sai do banco e do armazenamento.
+   *
+   * Duas perguntas, não uma. A primeira é a de sempre. A segunda só aparece quando o
+   * servidor responde que alguma imagem está num book -- e aí ela diz QUAIS books, porque
+   * "tem certeza?" sem dizer o que quebra não é pergunta, é formalidade.
+   */
+  async function apagarMarcados() {
+    if (selecionados.length === 0 || apagando) return;
+    const quantos = selecionados.length;
+    if (!window.confirm(`Apagar ${quantos} ${quantos === 1 ? "imagem" : "imagens"} de vez? Isso não tem volta e não devolve crédito.`)) return;
+
+    setApagando(true);
+    setErro(null);
+    try {
+      const pedir = async (forcar: boolean) => {
+        const r = await fetch("/api/materiais/apagar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ ids: selecionados, forcar }),
+        });
+        const bruto = await r.text();
+        let d: { error?: string; emUso?: boolean; apagados?: number } = {};
+        try {
+          d = JSON.parse(bruto);
+        } catch {
+          throw new Error("Resposta inesperada do servidor.");
+        }
+        return { ok: r.ok, status: r.status, d };
+      };
+
+      let saida = await pedir(false);
+      if (saida.status === 409 && saida.d.emUso) {
+        if (!window.confirm(`${saida.d.error} Apagar assim mesmo?`)) {
+          setApagando(false);
+          return;
+        }
+        saida = await pedir(true);
+      }
+      if (!saida.ok) throw new Error(saida.d.error ?? "Não consegui apagar.");
+
+      setMarcados([]);
+      const d = await buscar();
+      setItens(d.itens);
+      setImoveis(d.imoveis);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao apagar.");
+    } finally {
+      setApagando(false);
+    }
+  }
+
   const vazia = itens !== null && itens.length === 0;
 
   return (
@@ -117,14 +170,23 @@ export default function Materiais() {
             Tudo que você já criou. Marque o que quer usar e monte um book, um catálogo ou uma apresentação.
           </p>
         </div>
-        <Botao
-          onClick={() => criarMaterial(selecionados.length ? selecionados : selecionaveis.slice(0, MAX_DE_UMA_VEZ).map((i) => i.id))}
-          disabled={selecionaveis.length === 0}
-          title={selecionados.length ? `${selecionados.length} escolhidas` : "Usa as imagens que estão à vista"}
-        >
-          <Icone nome="materiais" className="h-4 w-4" />
-          {selecionados.length ? `Criar material · ${selecionados.length}` : "Criar material"}
-        </Botao>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Só aparece com algo marcado: botão de apagar sempre à vista convida ao acidente. */}
+          {selecionados.length > 0 && (
+            <Botao variante="perigo" onClick={apagarMarcados} disabled={apagando} title="Apaga do banco e do armazenamento. Não tem volta.">
+              <Icone nome="lixeira" className="h-4 w-4" />
+              {apagando ? "Apagando…" : `Apagar · ${selecionados.length}`}
+            </Botao>
+          )}
+          <Botao
+            onClick={() => criarMaterial(selecionados.length ? selecionados : selecionaveis.slice(0, MAX_DE_UMA_VEZ).map((i) => i.id))}
+            disabled={selecionaveis.length === 0}
+            title={selecionados.length ? `${selecionados.length} escolhidas` : "Usa as imagens que estão à vista"}
+          >
+            <Icone nome="materiais" className="h-4 w-4" />
+            {selecionados.length ? `Criar material · ${selecionados.length}` : "Criar material"}
+          </Botao>
+        </div>
       </div>
 
       {erro && (
