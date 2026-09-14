@@ -42,8 +42,10 @@ export default function AppShell({
 
   // `soIcone` = no menu de cima entra só o ícone (com o nome no title). A barra tem
   // 1152px e o nome inteiro não cabe junto do resto; embaixo, no celular, vai completo.
-  const links: { href: string; rotulo: string; icone: string; soIcone: boolean; secundario?: boolean }[] = [
-    { href: "/", rotulo: "Início", icone: "casa", soIcone: false },
+  const links: { href: string; rotulo: string; icone: string; soIcone: boolean; secundario?: boolean; soMobile?: boolean }[] = [
+    // No computador a marca no canto já leva pro início -- dois caminhos pro mesmo lugar
+    // gastam a largura que Books precisava. No celular não há marca clicável, então fica.
+    { href: "/", rotulo: "Início", icone: "casa", soIcone: false, soMobile: true },
     { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false },
     { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false },
     { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
@@ -51,6 +53,7 @@ export default function AppShell({
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
     // ("me manda o material do imóvel"), e serve pros dois lados: o que ele tem e o que monta.
     { href: "/materiais", rotulo: "Materiais", icone: "materiais", soIcone: false },
+    { href: "/books", rotulo: "Books", icone: "planta", soIcone: false },
     // Equipe virou só ícone quando Materiais entrou: o nome inteiro dos dois não cabe
     // junto do resto na barra de 1152px.
     // `secundario` = no celular sai da barra de baixo e vai pro "Mais": nove ícones numa
@@ -76,7 +79,7 @@ export default function AppShell({
               marca + 6 itens + créditos + botões passam disso -- abaixo daqui vale a barra
               de baixo. Mexeu em item do menu? Confira a colisão em 1280 e 1024. */}
           <nav className="ml-1 hidden min-w-0 items-center gap-0.5 xl:flex">
-            {links.map((l) => (
+            {links.filter((l) => !l.soMobile).map((l) => (
               <Link
                 key={l.href}
                 href={l.href}

@@ -139,11 +139,18 @@ export function montarPagina(
   }
 
   if (pagina.tipo === "capa") {
-    // A capa da página única do WhatsApp é mais baixa: ela ainda precisa caber preço,
-    // descrição, quatro fotos e o contato embaixo. Com 56% da altura, a grade descia
-    // 20pt para fora do papel -- achado rodando a montagem contra as fotos reais.
+    // Altura da foto de capa, em três casos:
+    //
+    // - página única do WhatsApp: baixa (330), porque ainda precisa caber preço,
+    //   descrição, quatro fotos e o contato embaixo. Com 56% a grade descia 20pt pra fora
+    //   do papel -- achado rodando a montagem contra as fotos reais;
+    // - capa com preço ou descrição: 56%, deixando a metade de baixo pro texto;
+    // - capa SEM nenhum dos dois: 78%. Reservar 44% da página pra texto que não existe
+    //   deixa um vazio branco enorme embaixo da foto, e é o que acontece hoje em todo
+    //   imóvel -- os campos de ficha só passam a existir com a migração 11.
     const umaPaginaSo = pagina.imagens.length > 1;
-    const alturaFoto = deitado ? A : umaPaginaSo ? 330 : Math.round(A * 0.56);
+    const temTextoAbaixo = !!(pagina.textos.preco?.trim() || pagina.textos.descricao?.trim());
+    const alturaFoto = deitado ? A : umaPaginaSo ? 330 : Math.round(A * (temTextoAbaixo ? 0.56 : 0.78));
     const primeira = pagina.imagens[0];
     if (primeira) {
       caixas.push({ tipo: "imagem", x: 0, y: 0, l: L, a: alturaFoto, jobId: primeira, modo: "cobrir", foco: foco(primeira) });
