@@ -6,6 +6,7 @@ import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
 import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, type Referencia } from "@/lib/terreno-ia";
 import { ETAPA_OBRA_POR_ID } from "@/lib/obra-etapas";
+import { limparFaixaDoSelo } from "@/lib/selo";
 
 // Terreno com IA: limpar o mato, terraplanar, murar, construir a casa que a pessoa quer,
 // ou pedir por texto. Uma imagem de IA, 1 crédito -- as linhas e medidas do lote continuam
@@ -77,6 +78,16 @@ export async function POST(req: NextRequest) {
       .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
       .jpeg({ quality: 92 })
       .toBuffer();
+    // Da SEGUNDA etapa em diante, a foto que chega é o resultado da anterior, e resultado
+    // sai carimbado. Sem limpar a faixa, o modelo redesenha o aviso e o app carimba outro
+    // por cima -- aconteceu em duas rodadas de teste. A saída desta etapa é carimbada
+    // normalmente; o que some é só a cópia que entra no modelo.
+    //
+    // Na PRIMEIRA não: ali a entrada é a foto da pessoa, que não tem selo nenhum. Limpar
+    // assim mesmo deixou uma faixa espelhada no rodapé que o modelo leu como texto e
+    // devolveu em rabisco ilegível. Limpeza sem sujeira pra limpar é só estrago.
+    const etapaObra = ETAPA_OBRA_POR_ID[idAcao];
+    if (etapaObra && etapaObra.ordem > 1) bytesFoto = await limparFaixaDoSelo(bytesFoto);
   } catch {
     return NextResponse.json({ error: "Não consegui ler essa imagem." }, { status: 400 });
   }

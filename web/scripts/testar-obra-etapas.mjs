@@ -89,6 +89,36 @@ conferir(
   "e as quatro pedem os mesmos campos"
 );
 
+console.log("\n--- padrão do imóvel (popular · médio · alto) ---");
+for (const [padrao, marca] of [["popular", /Minha Casa Minha Vida/], ["medio", /middle-class/], ["alto", /high-end/]]) {
+  const p = ETAPA_OBRA_POR_ID.obra_pronta.prompt({ ...COM, padrao }, "nenhuma");
+  conferir(marca.test(p), `padrão "${padrao}" chega no prompt da casa pronta`);
+}
+// O padrão precisa viajar nas QUATRO: a fundação de uma casa popular é menor que a de uma
+// alto padrão, e se só a última etapa souber disso a obra muda de porte no fim.
+for (const etapa of ETAPAS_OBRA) {
+  const p = etapa.prompt({ ...COM, padrao: "popular" }, "nenhuma");
+  conferir(/Minha Casa Minha Vida/.test(p), `${etapa.id}: carrega o padrão escolhido`);
+}
+
+console.log("\n--- foto de referência (a casa que a construtora vende) ---");
+for (const etapa of ETAPAS_OBRA) {
+  const casa = etapa.prompt(COM, "casa");
+  conferir(/SECOND image is a photo of the house/.test(casa), `${etapa.id}: usa a foto de referência`);
+  conferir(/Never copy the surroundings/.test(casa), `${etapa.id}: e não traz o terreno da referência junto`);
+
+  const planta = etapa.prompt(COM, "planta");
+  conferir(/SECOND image is the FLOOR PLAN/.test(planta), `${etapa.id}: entende planta como planta`);
+  conferir(/Never draw the plan itself/.test(planta), `${etapa.id}: e não desenha a planta na foto`);
+
+  const nenhuma = etapa.prompt(COM, "nenhuma");
+  conferir(!/SECOND image/.test(nenhuma), `${etapa.id}: sem referência, não cita segunda imagem`);
+}
+conferir(
+  ETAPAS_OBRA.every((e) => e.aceitaReferencia === true),
+  "as quatro etapas aceitam referência (senão a rota nem manda o arquivo)"
+);
+
 console.log("\n--- o selo ---");
 conferir(
   ETAPAS_OBRA.every((e) => /Imagem ilustrativa/.test(e.selo)),

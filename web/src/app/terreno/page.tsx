@@ -221,6 +221,12 @@ export default function Terreno() {
         f.append("acao", etapa.id);
         f.append("equipe", comEquipe ? "1" : "");
         for (const campo of etapa.campos ?? []) f.append(campo.chave, camposIa[campo.chave] ?? campo.padrao);
+        // A mesma referência vai em TODAS as etapas: é a casa final, e a obra inteira tem
+        // que estar subindo em direção a ela desde a fundação.
+        if (referencia) {
+          f.append("referencia", referencia);
+          f.append("tipoReferencia", tipoReferencia);
+        }
         if (imovelId) f.append("imovelId", imovelId);
 
         const r = await fetch("/api/terreno/ia", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: f });
@@ -298,6 +304,10 @@ export default function Terreno() {
         descricao: "Quatro imagens encadeadas: fundação, estrutura, cobertura e a casa pronta. Cada uma nasce da anterior, então é a mesma casa subindo.",
         selo: ETAPAS_OBRA[0].selo,
         campos: ETAPAS_OBRA[0].campos,
+        // A referência vale nas quatro etapas: a fundação já sai com a pegada daquela
+        // casa. É a personalização que nenhuma lista de opções alcança -- a construtora
+        // tem UM modelo, e é ele que o corretor precisa mostrar subindo.
+        aceitaReferencia: true,
         prompt: () => "",
       }
     : (ACAO_TERRENO_POR_ID[acaoIa] ?? ACOES_TERRENO[0]);

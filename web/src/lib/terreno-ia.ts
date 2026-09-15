@@ -53,11 +53,49 @@ const MANTER =
   // "não invente texto seu" -- agora diz.
   ` Do not add any text, labels, captions or watermark of your own, and do not remove or alter anything already printed on the photograph.`;
 
+// PORTE e PADRÃO são coisas diferentes, e estavam na mesma lista ("Alto padrão" convivia
+// com "Térrea" e "Sobrado"). Quem vende lote não escolhe entre térrea e alto padrão --
+// escolhe térrea POPULAR ou térrea ALTO PADRÃO, e são casas completamente diferentes.
 export const TIPOS_CASA = [
   { valor: "terrea", rotulo: "Térrea", en: "single-storey house" },
   { valor: "sobrado", rotulo: "Sobrado", en: "two-storey house" },
-  { valor: "alto_padrao", rotulo: "Alto padrão", en: "large high-end two-storey house" },
   { valor: "chacara", rotulo: "Casa de campo", en: "country house with a wide porch" },
+];
+
+/**
+ * O padrão do imóvel, do jeito que o mercado brasileiro fala.
+ *
+ * É o eixo que mais muda a imagem e o que faltava: "moderna" não diz se é uma casa de
+ * financiamento popular ou uma de mil metros. O texto de cada um descreve MATERIAL e
+ * ACABAMENTO, não adjetivo -- "simples" não gera imagem, "telha de fibrocimento, janela
+ * de alumínio pequena, portão de correr" gera.
+ */
+export const PADROES_CASA = [
+  {
+    valor: "popular",
+    rotulo: "Popular",
+    en:
+      "a compact, simple Brazilian working-class house of the kind financed by Minha Casa Minha Vida:" +
+      " plain rendered and painted masonry walls in a light colour, a simple low-pitched roof with fibre-cement or plain ceramic tiles," +
+      " small white aluminium window frames, a plain front door, no porch or a very small one," +
+      " an uncovered concrete parking slab instead of a garage, and a low rendered front wall with a simple sliding metal gate",
+  },
+  {
+    valor: "medio",
+    rotulo: "Médio",
+    en:
+      "a comfortable Brazilian middle-class house: rendered and painted masonry with a ceramic tile roof," +
+      " a covered carport for one or two cars, a small front veranda, larger aluminium window frames," +
+      " a tidy rendered perimeter wall with a metal gate and a small front garden",
+  },
+  {
+    valor: "alto",
+    rotulo: "Alto padrão",
+    en:
+      "a high-end Brazilian house: generous proportions and ceiling heights, large floor-to-ceiling glass panes with slim dark frames," +
+      " a mix of exposed concrete, natural stone cladding and wood, a wide covered garage," +
+      " designed outdoor lighting and professional landscaping",
+  },
 ];
 
 export const ESTILOS_CASA = [
@@ -113,6 +151,7 @@ export const ACOES_TERRENO: AcaoTerreno[] = [
     aceitaReferencia: true,
     campos: [
       { chave: "tipo", rotulo: "Tipo", opcoes: TIPOS_CASA, padrao: "terrea" },
+      { chave: "padrao", rotulo: "Padrão", opcoes: PADROES_CASA, padrao: "medio" },
       { chave: "estilo", rotulo: "Estilo", opcoes: ESTILOS_CASA, padrao: "moderna" },
       { chave: "enquadramento", rotulo: "Enquadramento", opcoes: ENQUADRAMENTOS, padrao: "aerea" },
     ],
@@ -124,6 +163,11 @@ export const ACOES_TERRENO: AcaoTerreno[] = [
       return (
         `Build a house standing on the empty land in the FIRST image: a ${rot(TIPOS_CASA, p.tipo, TIPOS_CASA[0].en)},` +
         ` ${rot(ESTILOS_CASA, p.estilo, ESTILOS_CASA[0].en)}.` +
+        // O padrão vem DEPOIS do estilo de propósito: quando os dois puxam pra lados
+        // diferentes ("moderna" + "popular"), o que o corretor precisa que vença é o
+        // padrão -- casa popular com cara de moderna existe; casa popular do tamanho de
+        // uma alto padrão não vende lote nenhum, vende decepção.
+        ` The finishing standard is what matters most here: it must read as ${rot(PADROES_CASA, p.padrao, PADROES_CASA[1].en)}.` +
         (extras.length ? ` Include ${extras.join(", ")}.` : "") +
         (referencia === "casa"
           ? ` Use the SECOND image as the reference for the architecture: same overall look, roof type, materials, proportions and colours. Do not copy its surroundings, its terrain, its neighbours or its background -- only the house itself.`

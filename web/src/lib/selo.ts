@@ -97,3 +97,42 @@ export async function aplicarSelo(bytes: Buffer, texto: string | null): Promise<
     .jpeg({ quality: 92 })
     .toBuffer();
 }
+
+/**
+ * Cobre a faixa onde o selo mora, pra a imagem poder voltar pra IA sem o aviso junto.
+ *
+ * Existe por causa da obra no terreno, que é encadeada: a etapa seguinte recebe a imagem
+ * da anterior, e a anterior já saiu carimbada. O modelo então REDESENHAVA o "Imagem
+ * ilustrativa" e o app carimbava outro por cima -- dois avisos sobrepostos. Pedir no
+ * prompt pra não copiar funcionou em metade das rodadas, que é o mesmo que não funcionar.
+ *
+ * Não é "tirar o selo": nada é guardado assim. Isto roda sobre a cópia que vai como
+ * ENTRADA da próxima etapa, e a saída dela é carimbada de novo, como toda imagem de IA.
+ * A única cópia que existe no storage continua tendo o aviso queimado no pixel.
+ *
+ * A faixa é preenchida com o espelho dos pixels logo acima dela: o modelo recebe
+ * continuação plausível da foto em vez de uma tarja, que ele copiaria igual.
+ */
+export async function limparFaixaDoSelo(bytes: Buffer): Promise<Buffer> {
+  const meta = await sharp(bytes).metadata();
+  const largura = meta.width ?? 0;
+  const altura = meta.height ?? 0;
+  if (!largura || !altura) return bytes;
+
+  // Mesma geometria de `aplicarSelo`, com folga: o tamanho da caixa depende do texto, e
+  // aqui não se sabe qual era. Errar pra mais custa uma tira de céu ou de asfalto.
+  const margem = Math.max(8, Math.round(largura * 0.015));
+  const alturaCaixa = Math.round(largura * 0.016) * 2;
+  const faixa = Math.min(altura - 1, Math.round((alturaCaixa + margem * 2) * 1.4));
+  if (faixa < 4) return bytes;
+
+  const espelho = await sharp(bytes)
+    .extract({ left: 0, top: altura - faixa * 2, width: largura, height: faixa })
+    .flip()
+    .toBuffer();
+
+  return sharp(bytes)
+    .composite([{ input: espelho, top: altura - faixa, left: 0 }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}

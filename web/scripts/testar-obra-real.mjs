@@ -56,10 +56,17 @@ if (!token) {
 fs.mkdirSync(SAIDA, { recursive: true });
 fs.copyFileSync(FOTO, path.join(SAIDA, "00-terreno-original.jpg"));
 
-const PROJETO = { tipo: process.env.TIPO ?? "terrea", estilo: process.env.ESTILO ?? "moderna" };
+// O padrão faltava aqui, e a primeira rodada "popular" saiu média sem ninguém perceber:
+// o que o script não manda, a rota preenche com o padrão do campo. Parâmetro de teste que
+// não chega no servidor é teste testando outra coisa.
+const PROJETO = {
+  tipo: process.env.TIPO ?? "terrea",
+  estilo: process.env.ESTILO ?? "moderna",
+  padrao: process.env.PADRAO ?? "medio",
+};
 const EQUIPE = process.env.EQUIPE === "1";
 console.log(`conta: ${email}`);
-console.log(`projeto: ${PROJETO.tipo} · ${PROJETO.estilo} · equipe ${EQUIPE ? "ligada" : "desligada"}\n`);
+console.log(`projeto: ${PROJETO.tipo} · ${PROJETO.padrao} · ${PROJETO.estilo} · equipe ${EQUIPE ? "ligada" : "desligada"}\n`);
 
 let entrada = new File([fs.readFileSync(FOTO)], "lote.jpg", { type: "image/jpeg" });
 const comeco = Date.now();
@@ -72,8 +79,7 @@ for (const etapa of ETAPAS_OBRA) {
   f.set("foto", entrada);
   f.set("acao", etapa.id);
   f.set("equipe", EQUIPE ? "1" : "");
-  f.set("tipo", PROJETO.tipo);
-  f.set("estilo", PROJETO.estilo);
+  for (const [chave, valor] of Object.entries(PROJETO)) f.set(chave, valor);
 
   const r = await fetch(`${BASE}/api/terreno/ia`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: f });
   const d = await r.json();

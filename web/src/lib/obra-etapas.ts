@@ -1,4 +1,4 @@
-import { ESTILOS_CASA, TIPOS_CASA, type AcaoTerreno } from "./terreno-ia";
+import { ESTILOS_CASA, PADROES_CASA, TIPOS_CASA, type AcaoTerreno, type Referencia } from "./terreno-ia";
 
 // A obra do início ao fim: o lote como está, a fundação, a alvenaria, a cobertura e a
 // casa pronta. Existe porque a imagem única já responde "como ficaria" -- e não responde
@@ -38,7 +38,36 @@ const MESMO_LUGAR =
 function aCasa(p: Record<string, string>): string {
   const tipo = TIPOS_CASA.find((t) => t.valor === p.tipo)?.en ?? TIPOS_CASA[0].en;
   const estilo = ESTILOS_CASA.find((e) => e.valor === p.estilo)?.en ?? ESTILOS_CASA[0].en;
-  return `a ${tipo}, ${estilo}`;
+  const padrao = PADROES_CASA.find((x) => x.valor === p.padrao)?.en ?? PADROES_CASA[1].en;
+  return `a ${tipo}, ${estilo}, built to the standard of ${padrao}`;
+}
+
+/**
+ * A segunda imagem: a casa que a pessoa quer de verdade.
+ *
+ * É a personalização que vale mais que qualquer lista de opções -- a construtora tem UM
+ * modelo, a imobiliária vende AQUELA planta, e nenhum conjunto de chips descreve isso. A
+ * referência vale nas QUATRO etapas, não só na última: a fundação já tem que sair com a
+ * pegada daquela casa, senão a obra muda de projeto no meio.
+ */
+function comReferencia(referencia: Referencia, oQueFazerNestaEtapa: string): string {
+  if (referencia === "casa") {
+    return (
+      ` The SECOND image is a photo of the house that will be built here.` +
+      ` Follow it: same overall shape, same footprint proportions, same roof type, same window and door positions, same materials and colours.` +
+      ` ${oQueFazerNestaEtapa}` +
+      ` Never copy the surroundings, the terrain, the neighbours or the background of the second image -- only the house itself.`
+    );
+  }
+  if (referencia === "planta") {
+    return (
+      ` The SECOND image is the FLOOR PLAN of the house that will be built here.` +
+      ` Follow it: the same footprint outline, the same number and arrangement of rooms, the same proportions, the same window and door positions.` +
+      ` ${oQueFazerNestaEtapa}` +
+      ` Never draw the plan itself into the photograph.`
+    );
+  }
+  return "";
 }
 
 /**
@@ -60,6 +89,7 @@ const equipe = (p: Record<string, string>, permitido: boolean) =>
 // "Construir a casa", de propósito -- quem já usou aquela tela não reaprende nada.
 const CAMPOS_PROJETO = [
   { chave: "tipo", rotulo: "Tipo", opcoes: TIPOS_CASA, padrao: "terrea" },
+  { chave: "padrao", rotulo: "Padrão", opcoes: PADROES_CASA, padrao: "medio" },
   { chave: "estilo", rotulo: "Estilo", opcoes: ESTILOS_CASA, padrao: "moderna" },
 ];
 
@@ -83,8 +113,10 @@ export const ETAPAS_OBRA: EtapaObra[] = [
     // O nome do tipo de casa puxa a imagem da casa pronta. A correção é dizer o que se vê
     // no chão -- vala, sapata, ferragem, bloco -- e proibir o vertical três vezes, de
     // jeitos diferentes, porque uma proibição só ele atropela.
-    prompt: (p) =>
+    aceitaReferencia: true,
+    prompt: (p, referencia) =>
       `Show this same plot of land on the FIRST WEEK of a building site, when only the foundation exists.` +
+      comReferencia(referencia, "In THIS image, only the foundation of that house exists: mark its footprint on the ground and build nothing above it.") +
       ` The ground is cleared and levelled, and on it there are: excavated footing trenches, poured concrete pad footings, concrete ground beams and short stub columns with exposed steel rebar sticking up,` +
       ` laid out in the rectangular outline that ${aCasa(p)} will later occupy.` +
       ` Stacks of concrete blocks, bags of cement, a pile of sand and a pile of gravel sit at the side of the plot.` +
@@ -100,8 +132,10 @@ export const ETAPAS_OBRA: EtapaObra[] = [
     espera: "Subindo os pilares e a alvenaria…",
     descricao: "Os pilares e as paredes de tijolo subindo sobre a fundação da etapa anterior.",
     selo: "Imagem ilustrativa · obra simulada, não existe no terreno",
-    prompt: (p) =>
+    aceitaReferencia: true,
+    prompt: (p, referencia) =>
       `Advance the construction shown in this image to the structural stage: concrete columns and beams raised on the existing foundation,` +
+      comReferencia(referencia, "In THIS image that house is still raw brickwork: the walls follow its layout, but there is no roof, no plaster, no paint and no glass yet.") +
       ` and unfinished red brick walls built up to full height following exactly the same outline already marked on the ground,` +
       ` forming ${aCasa(p)}. Openings for doors and windows are left empty. No roof yet, no plaster, no paint, no glass.` +
       ` Keep the same footprint, the same position and the same proportions as the foundation in the image -- this is the same house, one stage later.` +
@@ -115,11 +149,13 @@ export const ETAPAS_OBRA: EtapaObra[] = [
     espera: "Fechando o telhado…",
     descricao: "O telhado fechado e as esquadrias colocadas, ainda sem acabamento.",
     selo: "Imagem ilustrativa · obra simulada, não existe no terreno",
-    prompt: (p) =>
+    aceitaReferencia: true,
+    prompt: (p, referencia) =>
       // O tipo e o estilo precisam estar AQUI, e não só nas outras etapas: o telhado é o
       // que denuncia o estilo, e sem esta linha o modelo cobria casa colonial com laje
       // plana de casa moderna. Foi o teste que pegou.
       `Advance the construction shown in this image to the roofing stage of ${aCasa(p)}:` +
+      comReferencia(referencia, "Give it the same roof shape and roofing material as that house. In THIS image the walls are still raw grey render, unpainted.") +
       ` the roof structure built and fully covered, with the roof shape and roofing material that this architectural style calls for,` +
       ` window and door frames installed with glass, and the walls plastered but still unpainted, in raw grey render.` +
       ` Keep the same footprint, the same wall positions, the same openings and the same proportions as in the image -- this is the same house, one stage later.` +
@@ -134,8 +170,10 @@ export const ETAPAS_OBRA: EtapaObra[] = [
     espera: "Pintando e entregando a casa…",
     descricao: "A casa acabada, pintada, com o jardim e a entrada prontos.",
     selo: "Imagem ilustrativa · casa sugerida, não incluída no terreno",
-    prompt: (p) =>
+    aceitaReferencia: true,
+    prompt: (p, referencia) =>
       `Show the construction in this image finished and delivered: ${aCasa(p)}, fully painted and finished,` +
+      comReferencia(referencia, "The finished house must look like that house: same façade, same materials, same colours, same window and door design.") +
       ` with the façade materials, the paving of the driveway and entrance, cut grass and simple landscaping in the yard.` +
       ` Keep the same footprint, the same roof shape, the same window and door positions and the same proportions as in the image -- this is the same house, completed.` +
       ` Remove every trace of the construction site: no scaffolding, no building materials, no rubble, no sand, no site fencing.` +
