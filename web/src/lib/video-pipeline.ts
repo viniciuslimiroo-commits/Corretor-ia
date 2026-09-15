@@ -10,7 +10,7 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -351,7 +351,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const clipe = local(`clipe${i}${extensaoDe(fonte) === ".mov" ? ".mov" : ".mp4"}`);
         await baixar(db, fonte, clipe);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaClipe({ clipe, saida, W, H, duracao: dur, legenda: cena.legenda, melhorar: cena.melhorar }));
+        const r = await rodarFfmpeg(argsCenaClipe({ clipe, saida, W, H, duracao: dur, legenda: cena.legenda, melhorar: cena.melhorar, inicio: cena.inicio }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else {
         const [fonte] = await fontesDaCena(db, userId, cena);
@@ -453,8 +453,14 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         narracao = local(`narracao${extensaoDe(p.narracaoPath)}`);
         await baixar(db, p.narracaoPath, narracao);
       }
-      const total = p.duracoes.reduce((s, d) => s + d, 0) - (espec.transicao === "suave" ? LIMITES.transicaoSegundos * (p.clipes.length - 1) : 0);
-      const fimDoCarimbo = p.telaFinalRenderizada ? total - LIMITES.telaFinalSegundos + (espec.transicao === "suave" ? LIMITES.transicaoSegundos : 0) : undefined;
+      // As emendas vêm do espec (cada cena escolhe a sua) e são a MESMA lista que a tela
+      // usa pra estimar a duração. Um clipe a mais que o esperado (a tela final) sai
+      // coberto pelo `emenda()` do montador, que tem padrão.
+      const emendas = emendasDoVideo(espec).slice(0, Math.max(0, p.clipes.length - 1));
+      const somaEmendas = emendas.reduce((s, e) => s + e.segundos, 0);
+      const total = p.duracoes.reduce((s, d) => s + d, 0) - somaEmendas;
+      const ultimaEmenda = emendas[emendas.length - 1]?.segundos ?? 0;
+      const fimDoCarimbo = p.telaFinalRenderizada ? total - LIMITES.telaFinalSegundos + ultimaEmenda : undefined;
       const subtitulo = [espec.preco, espec.local].filter(Boolean).join(" · ");
       const saida = local("video.mp4");
       const r = await rodarFfmpeg(
@@ -464,7 +470,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           saida,
           W,
           H,
-          transicao: espec.transicao,
+          emendas,
           musica,
           narracao,
           titulo: espec.titulo || undefined,
@@ -476,12 +482,11 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }),
         280_000
       );
-      // A miniatura sai da cena escolhida como capa: o começo dela na linha do tempo (as
-      // transições suaves sobrepõem 0,6s a cada emenda) mais um pouco, pra não pegar o
-      // quadro em que a transição ainda está terminando.
+      // A miniatura sai da cena escolhida como capa: o começo dela na linha do tempo (cada
+      // emenda sobrepõe o tempo dela) mais um pouco, pra não pegar o quadro em que a
+      // transição ainda está terminando.
       const k = Math.min(Math.max(0, espec.capa ?? 0), espec.cenas.length - 1);
-      const sobreposicao = espec.transicao === "suave" ? LIMITES.transicaoSegundos : 0;
-      const inicioDaCapa = p.duracoes.slice(0, k).reduce((s, d) => s + d, 0) - k * sobreposicao;
+      const inicioDaCapa = p.duracoes.slice(0, k).reduce((s, d) => s + d, 0) - emendas.slice(0, k).reduce((s, e) => s + e.segundos, 0);
       const segundoDaCapa = Math.max(0, inicioDaCapa + Math.min(1.5, (p.duracoes[k] ?? 4) / 2));
       const thumb = local("thumb.jpg");
       await rodarFfmpeg(argsMiniatura(saida, thumb, segundoDaCapa), 30_000).catch(() => null);

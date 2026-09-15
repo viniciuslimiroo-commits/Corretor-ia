@@ -72,14 +72,14 @@ console.log("--- 1. o contrato ---");
   conferir(e2.musicaVolume === LIMITES.musicaVolumePadrao, "sem volume informado, o padrão");
 }
 {
-  const a = argsMontagem({ clipes: ["a.mp4", "b.mp4"], duracoes: [4, 4], saida: "s.mp4", W: 1080, H: 1920, transicao: "suave", musica: "m.m4a", narracao: "v.mp3", musicaVolume: 0.6, vozVolume: 1.4, vozInicio: 2 });
+  const a = argsMontagem({ clipes: ["a.mp4", "b.mp4"], duracoes: [4, 4], saida: "s.mp4", W: 1080, H: 1920, emendas: [{ xfade: "dissolve", segundos: 0.6 }], musica: "m.m4a", narracao: "v.mp3", musicaVolume: 0.6, vozVolume: 1.4, vozInicio: 2 });
   const f = a[a.indexOf("-filter_complex") + 1];
   conferir(f.includes("sidechaincompress"), "o filtro tem ducking");
   conferir(f.includes("asplit=2"), "a voz é dividida (ouvir + servir de gatilho)");
   conferir(f.includes("adelay=2000|2000"), "o início vira atraso em ms", "2s");
   conferir(f.includes("volume=1.40"), "volume da voz");
   conferir(f.includes("volume=0.60"), "volume da música");
-  const semVoz = argsMontagem({ clipes: ["a.mp4"], duracoes: [4], saida: "s.mp4", W: 1080, H: 1920, transicao: "corte", musica: "m.m4a", musicaVolume: 0.5 });
+  const semVoz = argsMontagem({ clipes: ["a.mp4"], duracoes: [4], saida: "s.mp4", W: 1080, H: 1920, emendas: [], musica: "m.m4a", musicaVolume: 0.5 });
   const f2 = semVoz[semVoz.indexOf("-filter_complex") + 1];
   conferir(!f2.includes("sidechaincompress"), "sem voz, sem ducking");
   conferir(f2.includes("volume=0.50"), "sem voz, a música fica no volume pedido");
@@ -103,7 +103,7 @@ rodar(
     saida,
     W: 360,
     H: 640,
-    transicao: "corte",
+    emendas: [],
     musica: MUSICA,
     narracao: voz,
     musicaVolume: 0.8,
@@ -138,7 +138,7 @@ conferir(depois > durante + 3, "e VOLTA quando a voz acaba", `sobe ${(depois - d
 
 // Sem voz nenhuma, nada abaixa: é o controle do experimento.
 const semVoz = path.join(dir, "sem-voz.mp4");
-rodar(argsMontagem({ clipes: [clipe], duracoes: [14], saida: semVoz, W: 360, H: 640, transicao: "corte", musica: MUSICA, musicaVolume: 0.8 }), 180_000);
+rodar(argsMontagem({ clipes: [clipe], duracoes: [14], saida: semVoz, W: 360, H: 640, emendas: [], musica: MUSICA, musicaVolume: 0.8 }), 180_000);
 const c1 = medir(semVoz, 1.5, 2);
 const c2 = medir(semVoz, 5, 2.5);
 conferir(Math.abs(c1 - c2) < 3, "sem voz, a música fica estável o vídeo todo", `${c1.toFixed(1)} vs ${c2.toFixed(1)} dB`);

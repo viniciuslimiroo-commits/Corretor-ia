@@ -14,9 +14,11 @@ import {
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
+  TRANSICOES,
   VOZES,
   custoDoVideo,
   duracaoEstimada,
+  ehTransicao,
   vozDeIA,
   type AnimacaoId,
   type Cena,
@@ -27,6 +29,7 @@ import {
   type MusicaId,
   type Narracao,
   type OrigemVoz,
+  type TransicaoId,
   type VozId,
 } from "@/lib/video";
 import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
@@ -61,6 +64,10 @@ type CenaUI = {
   legenda: string;
   duracao: number;
   melhorar: boolean;
+  /** Clipe: de que segundo do arquivo esta cena começa. */
+  inicio?: number;
+  /** A emenda desta cena pra próxima. Ausente = a do vídeo. */
+  transicao?: TransicaoId;
   /** Cena animada cujo clipe já existe no servidor: gerar de novo com o mesmo movimento
    *  e a mesma duração não custa crédito. Vem do servidor ao editar um vídeo pronto. */
   animacaoGuardada?: { animacao: AnimacaoId; duracao: number } | null;
@@ -152,9 +159,16 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     legenda: c.legenda ?? "",
     duracao: c.duracao ?? LIMITES.duracaoPadrao,
     melhorar: c.melhorar ?? false,
+    inicio: c.inicio,
+    // O espec vem cru do banco: vídeo antigo guarda "suave", que não está mais no
+    // catálogo. Normalizar aqui é o que impede o chip de aparecer em branco.
+    transicao: c.transicao ? ehTransicao(c.transicao) : undefined,
     animacaoGuardada: info[i]?.animacaoGuardada ?? null,
   }));
 }
+
+/** A proporção de cada formato, pro palco mostrar o quadro certo. */
+const PROPORCAO: Record<FormatoId, string> = { "9:16": "9 / 16", "16:9": "16 / 9", "1:1": "1 / 1", "4:5": "4 / 5" };
 
 function dataCurta(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -167,9 +181,12 @@ export default function PaginaVideo() {
   const [imovelId, setImovelId] = useState<string | null>(null);
   const [geracoes, setGeracoes] = useState<Geracao[]>([]);
   const [cenas, setCenas] = useState<CenaUI[]>([]);
+  /** A cena aberta no painel. É o que faz isto ser um editor e não um formulário. */
+  const [selecionada, setSelecionada] = useState<string | null>(null);
+  const arrastando = useRef<string | null>(null);
   const [formato, setFormato] = useState<FormatoId>("9:16");
   const [musica, setMusica] = useState<MusicaId>("calma");
-  const [transicao, setTransicao] = useState<"suave" | "corte">("suave");
+  const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   const [titulo, setTitulo] = useState("");
   const [preco, setPreco] = useState("");
   const [local, setLocal] = useState("");
@@ -232,7 +249,7 @@ export default function PaginaVideo() {
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, duracao: s.duracao, melhorar: s.melhorar })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao })),
       musica,
       musicaVolume,
       // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
@@ -260,7 +277,7 @@ export default function PaginaVideo() {
   const resumoDosAjustes = [
     FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato,
     MUSICAS.find((m) => m.id === musica)?.rotulo ?? musica,
-    transicao === "suave" ? "transição suave" : "corte seco",
+    TRANSICOES.find((t) => t.id === transicao)?.rotulo ?? transicao,
     titulo ? `“${titulo}”` : null,
     espec.narracao ? (vozDeIA(espec.narracao) ? `narrado (${VOZES.find((v) => v.id === voz)?.rotulo ?? voz})` : "com a sua voz") : null,
   ]
@@ -502,12 +519,50 @@ export default function PaginaVideo() {
   }
   function remover(k: string) {
     setCenas((lista) => lista.filter((s) => s.chave !== k));
+    setSelecionada((atual) => (atual === k ? null : atual));
   }
   function duplicar(k: string) {
     setCenas((lista) => {
       const i = lista.findIndex((s) => s.chave === k);
       if (i < 0) return lista;
       return [...lista.slice(0, i + 1), { ...lista[i], chave: chave() }, ...lista.slice(i + 1)];
+    });
+  }
+
+  /**
+   * Divide a cena em duas, no meio.
+   *
+   * Pra foto é só repartir o tempo. Pra clipe é o que importa: a segunda metade começa
+   * no arquivo exatamente onde a primeira parou, senão as duas mostrariam o mesmo
+   * trecho -- que é o erro que faz "dividir" parecer "duplicar".
+   */
+  function dividir(k: string) {
+    setCenas((lista) => {
+      const i = lista.findIndex((s) => s.chave === k);
+      if (i < 0 || lista.length >= LIMITES.cenasMax) return lista;
+      const s = lista[i];
+      if (s.duracao < LIMITES.duracaoMin * 2) return lista;
+      const metade = Math.max(LIMITES.duracaoMin, Math.round(s.duracao / 2));
+      const resto = Math.max(LIMITES.duracaoMin, s.duracao - metade);
+      const primeira = { ...s, duracao: metade };
+      const segunda = { ...s, chave: chave(), duracao: resto, inicio: s.ehClipe ? (s.inicio ?? 0) + metade : s.inicio };
+      return [...lista.slice(0, i), primeira, segunda, ...lista.slice(i + 1)];
+    });
+  }
+
+  /** Arrastar na linha do tempo: solta a cena arrastada na posição da cena alvo. */
+  function soltarEm(alvo: string) {
+    const de = arrastando.current;
+    arrastando.current = null;
+    if (!de || de === alvo) return;
+    setCenas((lista) => {
+      const i = lista.findIndex((s) => s.chave === de);
+      const j = lista.findIndex((s) => s.chave === alvo);
+      if (i < 0 || j < 0) return lista;
+      const nova = [...lista];
+      const [movida] = nova.splice(i, 1);
+      nova.splice(j, 0, movida);
+      return nova;
     });
   }
 
@@ -618,7 +673,7 @@ export default function PaginaVideo() {
       setCenas(novas);
       setFormato(e.formato);
       setMusica(e.musica);
-      setTransicao(e.transicao);
+      setTransicao(ehTransicao(e.transicao));
       setTitulo(e.titulo ?? "");
       setPreco(e.preco ?? "");
       setLocal(e.local ?? "");
@@ -676,13 +731,32 @@ export default function PaginaVideo() {
   }
 
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
+  // A cena aberta no painel. Sem escolha, é a primeira: editor sem nada selecionado é
+  // uma tela que não responde ao que a pessoa clica.
+  const indiceAtual = Math.max(0, cenas.findIndex((s) => s.chave === selecionada));
+  const cenaAtual: CenaUI | null = cenas[indiceAtual] ?? null;
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
 
   return (
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
-      <h1 className="text-2xl font-semibold">Vídeo do imóvel</h1>
-      <p className="mt-1 text-sm text-neutral-500">Fotos viram um vídeo com movimento, música, seus textos e sua marca. Pronto pra Reels, Stories e WhatsApp.</p>
+      {/* ---------- barra do editor ----------
+           O nome do que está sendo editado, a conta do que vai sair e o botão que gera.
+           Fica em cima porque é o que a pessoa olha entre uma mexida e outra. */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 pb-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-semibold">{editandoDe?.titulo || titulo || "Vídeo do imóvel"}</h1>
+          <p className="text-xs text-neutral-500">
+            {cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s ·{" "}
+            {FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato}
+            {custo === 0 ? " · sem crédito" : ` · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
+          </p>
+        </div>
+        <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0}>
+          <Icone nome="play" className="h-4 w-4" />
+          {gerando ? progresso?.mensagem ?? "Gerando…" : "Gerar vídeo"}
+        </Botao>
+      </div>
 
       {erro && (
         <div className="mt-4">
@@ -740,9 +814,42 @@ export default function PaginaVideo() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-12">
         {/* ---------- coluna das cenas ---------- */}
-        <section className="flex flex-col gap-4 lg:col-span-7">
+        <section className="flex flex-col gap-4 lg:col-span-8">
+          {/* ---------- palco ----------
+               A cena escolhida no tamanho e na proporção em que ela vai sair, com o
+               título e a legenda por cima. Não é o vídeo tocando -- é o quadro. Ver o
+               enquadramento antes de gastar crédito é metade do trabalho do editor. */}
+          <Cartao className="p-3 sm:p-4">
+            <div className="mx-auto w-full" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
+              <div className="relative overflow-hidden rounded-xl bg-neutral-900" style={{ aspectRatio: PROPORCAO[formato] }}>
+                {cenaAtual?.miniatura ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cenaAtual.miniatura} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-neutral-500">
+                    <Icone nome={cenaAtual ? "video" : "foto"} className="h-9 w-9" />
+                    <span className="px-6 text-center text-xs">{cenaAtual ? "Clipe — aparece no vídeo montado" : "Escolha as fotos abaixo"}</span>
+                  </div>
+                )}
+                {titulo && (
+                  <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
+                    <span className="truncate rounded bg-marca-indigo/90 px-2 py-1 text-[11px] font-semibold text-white">{titulo}</span>
+                  </span>
+                )}
+                {cenaAtual?.legenda && (
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
+                    <span className="truncate rounded bg-black/70 px-2 py-1 text-[11px] text-white">{cenaAtual.legenda}</span>
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 truncate text-center text-xs text-neutral-500">
+                {cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}
+              </p>
+            </div>
+          </Cartao>
+
           <Cartao>
-            <Rotulo>1 · O que entra no vídeo</Rotulo>
+            <Rotulo>Mídia</Rotulo>
             <div className="flex flex-wrap items-center gap-3">
               <SeletorImovel token={token} valor={imovelId} onChange={setImovelId} disabled={gerando} />
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400">
@@ -774,141 +881,6 @@ export default function PaginaVideo() {
             )}
           </Cartao>
 
-          <Cartao>
-            <Rotulo>2 · Cenas, na ordem</Rotulo>
-            {cenas.length === 0 ? (
-              <p className="text-sm text-neutral-500">Nenhuma cena ainda. Escolha um imóvel acima ou envie fotos.</p>
-            ) : (
-              <ul className="flex flex-col gap-3">
-                {cenas.map((s, i) => (
-                  <li key={s.chave} className="rounded-xl border border-neutral-200 p-3">
-                    <div className="flex gap-3">
-                      <div className="flex h-20 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100">
-                        {s.miniatura ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={s.miniatura} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <Icone nome="video" className="h-6 w-6 text-neutral-400" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="truncate text-sm font-medium">
-                            {i + 1}. {s.rotulo}
-                          </p>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button onClick={() => mover(s.chave, -1)} disabled={gerando || i === 0} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Subir">
-                              <Icone nome="cima" className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => mover(s.chave, 1)} disabled={gerando || i === cenas.length - 1} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Descer">
-                              <Icone nome="baixo" className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => duplicar(s.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Duplicar">
-                              <Icone nome="copiar" className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => remover(s.chave)} disabled={gerando} className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600" title="Remover">
-                              <Icone nome="fechar" className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <Chip ativo={(capa ?? cenas[0]?.chave) === s.chave} onClick={() => setCapa(s.chave)} title="A miniatura do vídeo (o que aparece antes do play) sai desta cena.">
-                            ★ Capa
-                          </Chip>
-                          {s.tipo === "animada" && s.animacaoGuardada && s.animacaoGuardada.animacao === s.animacao && s.animacaoGuardada.duracao === s.duracao && (
-                            <span className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal" title="O clipe desta animação já foi gerado num vídeo anterior. Com o mesmo movimento e duração, não custa de novo.">
-                              animação já feita · grátis
-                            </span>
-                          )}
-                          {s.ehPanoramica && (
-                            <span
-                              className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal"
-                              title="Panorâmica não cabe parada no quadro do vídeo: mostrada assim, as pontas seriam cortadas. Já deixei no efeito que desliza."
-                            >
-                              panorâmica · deslizando
-                            </span>
-                          )}
-                          {!s.ehClipe && !s.eh360 && (
-                            <>
-                              <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto</Chip>
-                              {s.temAntes && <Chip ativo={s.tipo === "antes_depois"} onClick={() => mudarCena(s.chave, { tipo: "antes_depois" })}>Antes e depois</Chip>}
-                              <Chip
-                                ativo={s.tipo === "animada"}
-                                onClick={() => mudarCena(s.chave, { tipo: "animada" })}
-                                title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`}
-                              >
-                                ✨ Mover a câmera (+{CREDITOS.animada})
-                              </Chip>
-                            </>
-                          )}
-                          {s.eh360 && (
-                            <>
-                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Sua foto 360 (ou panorâmica) vira passeio: a câmera anda dentro dela de verdade, sem IA e sem crédito.">🧭 Passear na sua 360</Chip>
-                              <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto comum</Chip>
-                            </>
-                          )}
-                          {s.ehClipe && (
-                            <>
-                              <Chip ativo={s.tipo === "clipe"} onClick={() => mudarCena(s.chave, { tipo: "clipe" })}>Clipe</Chip>
-                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Passear na sua 360</Chip>
-                              {s.tipo === "clipe" && (
-                                <label className="flex items-center gap-1.5 text-sm text-neutral-700">
-                                  <input type="checkbox" checked={s.melhorar} onChange={(e) => mudarCena(s.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
-                                  Melhorar cor e nitidez
-                                </label>
-                              )}
-                            </>
-                          )}
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {s.tipo === "foto" && (
-                            <select value={s.efeito} onChange={(e) => mudarCena(s.chave, { efeito: e.target.value as EfeitoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Movimento">
-                              {EFEITOS.map((e) => (
-                                <option key={e.id} value={e.id}>{e.rotulo}</option>
-                              ))}
-                            </select>
-                          )}
-                          {s.tipo === "animada" && (
-                            <select value={s.animacao} onChange={(e) => mudarCena(s.chave, { animacao: e.target.value as AnimacaoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Animação" title={ANIMACOES.find((a) => a.id === s.animacao)?.descricao}>
-                              {ANIMACOES.map((a) => (
-                                <option key={a.id} value={a.id}>{a.rotulo}</option>
-                              ))}
-                            </select>
-                          )}
-                          {/* O que vai sair, escrito, antes de gastar crédito. O nome do
-                              movimento sozinho não diz o resultado -- foi o que fez
-                              "Animar" e "Caminhar" serem entendidos errado. */}
-                          {s.tipo === "animada" && (
-                            <span className="basis-full text-[11px] leading-relaxed text-neutral-500">
-                              {ANIMACOES.find((a) => a.id === s.animacao)?.descricao} <strong className="font-medium text-neutral-700">Só a câmera se move</strong> — o
-                              imóvel fica como está, e não entra pessoa, bicho nem móvel novo. Leva{" "}
-                              <strong className="font-medium text-neutral-700">alguns minutos</strong> pra ficar pronta: quanto maior a duração, mais demora.
-                            </span>
-                          )}
-                          {s.tipo === "tour360" && (
-                            <select value={s.movimento} onChange={(e) => mudarCena(s.chave, { movimento: e.target.value as Movimento360Id })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Movimento da câmera 360" title={MOVIMENTOS_360.find((m) => m.id === s.movimento)?.descricao}>
-                              {MOVIMENTOS_360.map((m) => (
-                                <option key={m.id} value={m.id}>{m.rotulo}</option>
-                              ))}
-                            </select>
-                          )}
-                          <select value={s.duracao} onChange={(e) => mudarCena(s.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Duração">
-                            {/* Cena animada para em 5s: 8s pedem 161 quadros ao modelo, o
-                                máximo que ele aceita, e a espera passou de 8 minutos num
-                                teste real. Tempo de espera é parte do preço. */}
-                            {(s.tipo === "tour360" ? [4, 6, 8, 10] : s.tipo === "animada" ? [3, 4, 5] : [3, 4, 5, 6, 8]).map((d) => (
-                              <option key={d} value={d}>{d} s</option>
-                            ))}
-                          </select>
-                          <input type="text" value={s.legenda} onChange={(e) => mudarCena(s.chave, { legenda: e.target.value })} maxLength={LIMITES.legendaMax} placeholder="Legenda (ex.: Sala de estar · 32 m²)" className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-2 py-1 text-sm focus:border-marca-indigo focus:outline-none" />
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Cartao>
         </section>
 
         {/* ---------- coluna dos ajustes ----------
@@ -918,20 +890,177 @@ export default function PaginaVideo() {
              que ninguém terminava. Todos têm padrão que funciona: quem só quer o vídeo
              sobe as fotos e clica em gerar; quem quer mexer, abre. O resumo em uma linha
              mostra o que está valendo, pra ninguém precisar abrir só pra conferir. */}
-        <aside className="flex flex-col gap-4 lg:col-span-5">
+        <aside className="flex flex-col gap-4 lg:col-span-4">
+          {/* ---------- painel da cena ----------
+               Tudo que dá pra mexer na cena escolhida, num lugar só. Antes cada cena
+               carregava os próprios controles na lista, e a lista virava uma parede de
+               chips: doze cenas, doze cópias de tudo. */}
+          {cenaAtual && (
+            <Cartao>
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <Rotulo>Cena {indiceAtual + 1}</Rotulo>
+                  <p className="-mt-1 truncate text-xs text-neutral-500">{cenaAtual.rotulo}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {/* Arrastar reordena na linha do tempo; estas setas fazem o mesmo pra
+                      quem está no teclado ou no celular, onde arrastar não vai bem. */}
+                  <button onClick={() => mover(cenaAtual.chave, -1)} disabled={gerando || indiceAtual === 0} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Mover pra trás">
+                    <Icone nome="cima" className="h-4 w-4 -rotate-90" />
+                  </button>
+                  <button onClick={() => mover(cenaAtual.chave, 1)} disabled={gerando || indiceAtual === cenas.length - 1} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Mover pra frente">
+                    <Icone nome="cima" className="h-4 w-4 rotate-90" />
+                  </button>
+                  <button onClick={() => dividir(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax || cenaAtual.duracao < LIMITES.duracaoMin * 2} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Dividir em duas">
+                    <Icone nome="corrigir_perspectiva" className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => duplicar(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Duplicar">
+                    <Icone nome="copiar" className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => remover(cenaAtual.chave)} disabled={gerando} className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600" title="Remover">
+                    <Icone nome="lixeira" className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip ativo={(capa ?? cenas[0]?.chave) === cenaAtual.chave} onClick={() => setCapa(cenaAtual.chave)} title="A miniatura do vídeo (o que aparece antes do play) sai desta cena.">
+                  ★ Capa
+                </Chip>
+                {cenaAtual.tipo === "animada" && cenaAtual.animacaoGuardada && cenaAtual.animacaoGuardada.animacao === cenaAtual.animacao && cenaAtual.animacaoGuardada.duracao === cenaAtual.duracao && (
+                  <span className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal" title="O clipe desta animação já foi gerado num vídeo anterior. Com o mesmo movimento e duração, não custa de novo.">
+                    animação já feita · grátis
+                  </span>
+                )}
+                {cenaAtual.ehPanoramica && (
+                  <span className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal" title="Panorâmica não cabe parada no quadro do vídeo: mostrada assim, as pontas seriam cortadas. Já deixei no efeito que desliza.">
+                    panorâmica · deslizando
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {!cenaAtual.ehClipe && !cenaAtual.eh360 && (
+                  <>
+                    <Chip ativo={cenaAtual.tipo === "foto"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "foto" })}>Foto</Chip>
+                    {cenaAtual.temAntes && <Chip ativo={cenaAtual.tipo === "antes_depois"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "antes_depois" })}>Antes e depois</Chip>}
+                    <Chip ativo={cenaAtual.tipo === "animada"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "animada" })} title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`}>
+                      ✨ Mover a câmera (+{CREDITOS.animada})
+                    </Chip>
+                  </>
+                )}
+                {cenaAtual.eh360 && (
+                  <>
+                    <Chip ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Sua foto 360 (ou panorâmica) vira passeio: a câmera anda dentro dela de verdade, sem IA e sem crédito.">🧭 Passear na sua 360</Chip>
+                    <Chip ativo={cenaAtual.tipo === "foto"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "foto" })}>Foto comum</Chip>
+                  </>
+                )}
+                {cenaAtual.ehClipe && (
+                  <>
+                    <Chip ativo={cenaAtual.tipo === "clipe"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "clipe" })}>Clipe</Chip>
+                    <Chip ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Passear na sua 360</Chip>
+                  </>
+                )}
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {cenaAtual.tipo === "foto" && (
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+                      Movimento
+                      <select value={cenaAtual.efeito} onChange={(e) => mudarCena(cenaAtual.chave, { efeito: e.target.value as EfeitoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm">
+                        {EFEITOS.map((e) => (
+                          <option key={e.id} value={e.id}>{e.rotulo}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {cenaAtual.tipo === "animada" && (
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+                      Câmera
+                      <select value={cenaAtual.animacao} onChange={(e) => mudarCena(cenaAtual.chave, { animacao: e.target.value as AnimacaoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" title={ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao}>
+                        {ANIMACOES.map((a) => (
+                          <option key={a.id} value={a.id}>{a.rotulo}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {cenaAtual.tipo === "tour360" && (
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+                      Passeio
+                      <select value={cenaAtual.movimento} onChange={(e) => mudarCena(cenaAtual.chave, { movimento: e.target.value as Movimento360Id })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" title={MOVIMENTOS_360.find((m) => m.id === cenaAtual.movimento)?.descricao}>
+                        {MOVIMENTOS_360.map((m) => (
+                          <option key={m.id} value={m.id}>{m.rotulo}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+                    Duração
+                    <select value={cenaAtual.duracao} onChange={(e) => mudarCena(cenaAtual.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm">
+                      {/* Cena animada para em 5s: 8s pedem 161 quadros ao modelo, o máximo
+                          que ele aceita, e a espera passou de 8 minutos num teste real. */}
+                      {(cenaAtual.tipo === "tour360" ? [4, 6, 8, 10] : cenaAtual.tipo === "animada" ? [3, 4, 5] : [3, 4, 5, 6, 8]).map((d) => (
+                        <option key={d} value={d}>{d} s</option>
+                      ))}
+                    </select>
+                  </label>
+                  {cenaAtual.ehClipe && cenaAtual.tipo === "clipe" && (
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-700">
+                      <input type="checkbox" checked={cenaAtual.melhorar} onChange={(e) => mudarCena(cenaAtual.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
+                      Melhorar cor
+                    </label>
+                  )}
+                </div>
+
+                {cenaAtual.tipo === "animada" && (
+                  <p className="text-[11px] leading-relaxed text-neutral-500">
+                    {ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao} <strong className="font-medium text-neutral-700">Só a câmera se move</strong> — o imóvel fica
+                    como está, e não entra pessoa, bicho nem móvel novo. Leva <strong className="font-medium text-neutral-700">alguns minutos</strong>.
+                  </p>
+                )}
+
+                {/* Aparar: o começo do clipe é onde a pessoa ainda estava acertando o celular. */}
+                {cenaAtual.ehClipe && (
+                  <label className="text-xs text-neutral-600">
+                    Começar o clipe em {(cenaAtual.inicio ?? 0).toFixed(1)}s
+                    <input type="range" min={0} max={30} step={0.5} value={cenaAtual.inicio ?? 0} onChange={(e) => mudarCena(cenaAtual.chave, { inicio: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
+                  </label>
+                )}
+
+                <input
+                  type="text"
+                  value={cenaAtual.legenda}
+                  onChange={(e) => mudarCena(cenaAtual.chave, { legenda: e.target.value })}
+                  maxLength={LIMITES.legendaMax}
+                  placeholder="Legenda (ex.: Sala de estar · 32 m²)"
+                  className={campo}
+                />
+
+                {indiceAtual < cenas.length - 1 && (
+                  <div>
+                    <p className="text-xs text-neutral-500">Emenda com a cena {indiceAtual + 2}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {TRANSICOES.map((t) => (
+                        <Chip key={t.id} ativo={(cenaAtual.transicao ?? transicao) === t.id} onClick={() => mudarCena(cenaAtual.chave, { transicao: t.id })}>
+                          {t.rotulo}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Cartao>
+          )}
+
+          {/* Status: só aparece quando tem o que dizer. Cartão vazio é caixa à toa. */}
+          {(cenas.length === 0 || gerando || semSaldo || custo === 0) && (
           <Cartao>
-            <div className="mb-3 flex items-baseline justify-between text-sm">
-              <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
-              <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
-            </div>
-            <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
-              {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
-            </Botao>
             {cenas.length === 0 && !gerando && (
-              <p className="mt-2 text-center text-xs text-neutral-500">Envie as fotos ao lado. O resto já vem pronto.</p>
+              <p className="text-center text-xs text-neutral-500">Escolha as fotos ao lado. O resto já vem pronto.</p>
             )}
             {custo === 0 && !gerando && cenas.length > 0 && (
-              <p className="mt-2 text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e narração ({CREDITOS.narracao}).</p>
+              <p className="text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e voz de IA ({CREDITOS.narracao}).</p>
             )}
             {gerando && progresso && (
               <div className="mt-3">
@@ -960,6 +1089,7 @@ export default function PaginaVideo() {
               </div>
             )}
           </Cartao>
+          )}
 
           <Cartao className="p-0">
             <button
@@ -1009,10 +1139,15 @@ export default function PaginaVideo() {
                 )}
               </label>
             )}
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <span className="text-neutral-500">Transição:</span>
-              <Chip ativo={transicao === "suave"} onClick={() => setTransicao("suave")}>Suave</Chip>
-              <Chip ativo={transicao === "corte"} onClick={() => setTransicao("corte")}>Corte</Chip>
+            <div className="mt-3">
+              <p className="text-xs text-neutral-500">Emenda entre as cenas — a cena pode ter a sua</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {TRANSICOES.map((t) => (
+                  <Chip key={t.id} ativo={transicao === t.id} onClick={() => { setTransicao(t.id); setCenas((lista) => lista.map((s) => ({ ...s, transicao: undefined }))); }}>
+                    {t.rotulo}
+                  </Chip>
+                ))}
+              </div>
             </div>
           </Cartao>
 
@@ -1221,6 +1356,72 @@ export default function PaginaVideo() {
           </Cartao>
         </aside>
       </div>
+
+      {/* ---------- linha do tempo ----------
+           As cenas em fila, na ordem em que saem. Clicar escolhe; arrastar reordena; a
+           emenda aparece ENTRE as cenas, que é onde ela acontece. Uma trilha só, de
+           propósito: régua de tempo com doze trilhas é o que faz o corretor fechar a aba. */}
+      {cenas.length > 0 && (
+        <div className="mt-4">
+          <Cartao className="p-3">
+            <div className="mb-2 flex items-baseline justify-between">
+              <Rotulo>Linha do tempo</Rotulo>
+              <span className="text-xs text-neutral-500">arraste pra trocar a ordem</span>
+            </div>
+            <ul className="flex items-stretch gap-1 overflow-x-auto pb-2">
+              {cenas.map((s, i) => (
+                <li key={s.chave} className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    draggable={!gerando}
+                    onDragStart={() => (arrastando.current = s.chave)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => soltarEm(s.chave)}
+                    onDragEnd={() => (arrastando.current = null)}
+                    onClick={() => setSelecionada(s.chave)}
+                    className={
+                      "relative w-28 overflow-hidden rounded-lg border-2 bg-white text-left transition " +
+                      (cenaAtual?.chave === s.chave ? "border-marca-coral shadow-sm" : "border-transparent hover:border-neutral-300")
+                    }
+                    title={s.rotulo}
+                  >
+                    <div className="relative aspect-[4/3] bg-neutral-100">
+                      {s.miniatura ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={s.miniatura} alt="" className="h-full w-full object-cover" draggable={false} />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-neutral-400">
+                          <Icone nome="video" className="h-5 w-5" />
+                        </div>
+                      )}
+                      <span className="absolute top-1 left-1 rounded bg-black/60 px-1 text-[10px] font-semibold text-white">{i + 1}</span>
+                      {(capa ?? cenas[0]?.chave) === s.chave && <span className="absolute top-1 right-1 rounded bg-amber-400 px-1 text-[10px] font-bold text-white">★</span>}
+                      {s.tipo === "animada" && <span className="absolute right-1 bottom-1 rounded bg-marca-indigo/90 px-1 text-[10px] text-white">✨</span>}
+                      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] tabular-nums text-white">{s.duracao}s</span>
+                    </div>
+                  </button>
+                  {i < cenas.length - 1 && (
+                    <span
+                      className="w-8 shrink-0 self-center rounded bg-neutral-100 px-1 py-2 text-center text-[9px] leading-tight text-neutral-500"
+                      title={`Emenda: ${TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo}. Muda no painel da cena.`}
+                    >
+                      {TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo.slice(0, 5)}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {telaFinal && (
+                <li className="flex shrink-0 items-center gap-1">
+                  <span className="grid w-28 place-items-center rounded-lg border-2 border-dashed border-neutral-200 px-2 py-4 text-center text-[10px] leading-tight text-neutral-500" title="Tela final com nome, CRECI, WhatsApp e logo da sua marca">
+                    <Icone nome="marca" className="mb-1 h-4 w-4" />
+                    Tela final
+                  </span>
+                </li>
+              )}
+            </ul>
+          </Cartao>
+        </div>
+      )}
     </AppShell>
   );
 }

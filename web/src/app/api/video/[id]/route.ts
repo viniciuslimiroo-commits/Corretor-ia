@@ -37,10 +37,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const pipeline = video.pipeline as PipelineVideo | null;
   const espec = video.espec as EspecVideo;
 
-  if (video.status === "concluido" && video.output_path) {
-    // Vídeo pronto volta com o espec e o que a tela precisa pra reabrir cada cena
-    // (miniatura assinada, rótulo, se tem "antes"): é o botão Editar. O vídeo já era
-    // não-destrutivo -- o espec sempre esteve no banco -- só faltava devolvê-lo.
+  /**
+   * A resposta de vídeo pronto: o arquivo, o espec e o que a tela precisa pra reabrir
+   * cada cena (miniatura assinada, rótulo, se tem "antes"). É o que faz o botão Editar
+   * funcionar -- o vídeo já era não-destrutivo, só faltava devolver o espec.
+   *
+   * É uma função porque existem DOIS caminhos que terminam em "concluído": abrir um
+   * vídeo que já estava pronto, e a chamada que justamente terminou de montá-lo. Eram
+   * duas respostas escritas à mão, e só uma delas mandava o espec -- quem acabou de
+   * gerar recebia menos do que quem voltava depois.
+   */
+  async function respostaPronta(saida: string, thumb: string | null, duracao: number | null, avisos: string[]) {
     const jobIds = [...new Set(espec.cenas.map((c) => c.jobId).filter((x): x is string => !!x))];
     const { data: jobs } = jobIds.length ? await db.from("jobs").select("id, tipo, input_path, output_path").in("id", jobIds).eq("user_id", userId) : { data: [] as { id: string; tipo: string; input_path: string | null; output_path: string | null }[] };
     const porId = new Map((jobs ?? []).map((j) => [j.id, j]));
@@ -63,21 +70,25 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({
       videoId: id,
       status: "concluido",
-      url: await assinar(db, video.output_path),
-      miniatura: video.thumb_path ? await assinar(db, video.thumb_path).catch(() => null) : null,
-      duracao: video.duracao_segundos,
-      titulo: video.titulo,
-      formato: video.formato,
-      avisos: pipeline?.avisos ?? [],
-      compartilhado: !!video.share_token,
+      url: await assinar(db, saida),
+      miniatura: thumb ? await assinar(db, thumb).catch(() => null) : null,
+      duracao,
+      titulo: video!.titulo,
+      formato: video!.formato,
+      avisos,
+      compartilhado: !!video!.share_token,
       espec,
       edicao: {
-        imovelId: (video.property_id as string | null) ?? null,
+        imovelId: (video!.property_id as string | null) ?? null,
         cenas,
         // Voz própria: assinada pra tela poder tocar sem baixar nada.
         vozUrl: espec.narracao?.arquivo ? await assinar(db, espec.narracao.arquivo).catch(() => null) : null,
       },
     });
+  }
+
+  if (video.status === "concluido" && video.output_path) {
+    return respostaPronta(video.output_path, video.thumb_path, video.duracao_segundos, pipeline?.avisos ?? []);
   }
   if (video.status === "falhou") {
     return NextResponse.json({ videoId: id, status: "falhou", error: video.erro ?? "Este vídeo não foi concluído." }, { status: 409 });
@@ -114,17 +125,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const prog = await avancarVideo(db, falKey, { id: video.id, user_id: video.user_id, org_id: video.org_id ?? null, espec, pipeline, formato: video.formato } as LinhaVideo);
     if (prog.etapa === "concluido") {
       const { data: pronto } = await db.from("videos").select("output_path, thumb_path, duracao_segundos, pipeline").eq("id", id).single();
-      return NextResponse.json({
-        videoId: id,
-        status: "concluido",
-        url: pronto?.output_path ? await assinar(db, pronto.output_path) : null,
-        miniatura: pronto?.thumb_path ? await assinar(db, pronto.thumb_path).catch(() => null) : null,
-        duracao: pronto?.duracao_segundos,
-        titulo: video.titulo,
-        formato: video.formato,
-        avisos: (pronto?.pipeline as PipelineVideo | null)?.avisos ?? [],
-        compartilhado: false,
-      });
+      if (!pronto?.output_path) return NextResponse.json({ error: "O vídeo terminou sem arquivo." }, { status: 500 });
+      return respostaPronta(pronto.output_path, pronto.thumb_path, pronto.duracao_segundos, (pronto.pipeline as PipelineVideo | null)?.avisos ?? []);
     }
     return NextResponse.json({ videoId: id, status: "gerando", ...prog });
   } catch (e) {

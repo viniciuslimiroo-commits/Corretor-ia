@@ -147,6 +147,33 @@ export const MOVIMENTOS_360: { id: Movimento360Id; rotulo: string; descricao: st
   { id: "revelar", rotulo: "Do piso ao ambiente", descricao: "Começa olhando pra baixo e levanta.", yaw: [-20, 20], pitch: [-35, 5], fov: [100, 92] },
 ];
 
+/**
+ * As emendas entre uma cena e a seguinte.
+ *
+ * Cinco, e nenhuma delas chama atenção pra si. Vídeo de imóvel com transição de
+ * apresentação de colégio queima o imóvel -- o que vende é o ambiente, não o efeito.
+ * Cada uma vira um `xfade` do ffmpeg, com a duração que faz sentido pra ela: o corte é
+ * um xfade tão curto (0,08s) que o olho lê como corte seco, e isso deixa a montagem com
+ * um caminho só em vez de dois.
+ */
+export type TransicaoId = "corte" | "dissolver" | "deslizar" | "aproximar" | "desfoque";
+
+export const TRANSICOES: { id: TransicaoId; rotulo: string; xfade: string; segundos: number }[] = [
+  { id: "corte", rotulo: "Corte", xfade: "fade", segundos: 0.08 },
+  { id: "dissolver", rotulo: "Dissolver", xfade: "dissolve", segundos: 0.6 },
+  { id: "deslizar", rotulo: "Deslizar", xfade: "slideleft", segundos: 0.6 },
+  { id: "aproximar", rotulo: "Aproximar", xfade: "zoomin", segundos: 0.7 },
+  { id: "desfoque", rotulo: "Desfoque", xfade: "hblur", segundos: 0.5 },
+];
+
+export const TRANSICAO_POR_ID = Object.fromEntries(TRANSICOES.map((t) => [t.id, t])) as Record<TransicaoId, (typeof TRANSICOES)[number]>;
+
+/** "suave" era o nome antigo do dissolver, e ainda está gravado em vídeos do banco. */
+export function ehTransicao(v: unknown): TransicaoId {
+  if (v === "suave") return "dissolver";
+  return TRANSICOES.some((t) => t.id === v) ? (v as TransicaoId) : "dissolver";
+}
+
 export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada" | "tour360";
 
 export type Cena = {
@@ -164,6 +191,10 @@ export type Cena = {
   duracao?: number;
   /** Só clipe: corrige cor e nitidez antes de entrar. */
   melhorar?: boolean;
+  /** Só clipe e vídeo 360: de que segundo do arquivo a cena começa (aparar o começo). */
+  inicio?: number;
+  /** A emenda DESTA cena pra próxima. Ausente = a do vídeo. */
+  transicao?: TransicaoId;
 };
 
 export type MusicaId = "nenhuma" | "calma" | "elegante" | "moderna" | "alegre" | "cinematografica";
@@ -236,10 +267,26 @@ export type EspecVideo = {
   telaFinal: boolean;
   /** Frase da tela final ("Agende sua visita"). Vazia = sem frase. Ausente em vídeos antigos. */
   chamada?: string;
-  transicao: "suave" | "corte";
+  transicao: TransicaoId;
   /** Índice da cena que vira a miniatura (capa). Ausente ou inválido = a primeira. */
   capa?: number;
 };
+
+/**
+ * A duração de cada EMENDA, na ordem. Uma por par de clipes -- e a tela final é o
+ * último clipe, então a emenda que leva até ela sai da última cena.
+ *
+ * Existe porque a transição deixou de ser uma só pro vídeo inteiro: cada cena escolhe a
+ * sua, e a conta do tempo total e das posições depende disso.
+ */
+export function emendasDoVideo(e: Pick<EspecVideo, "cenas" | "transicao" | "telaFinal">): { xfade: string; segundos: number }[] {
+  const clipes = e.cenas.length + (e.telaFinal ? 1 : 0);
+  const lista: { xfade: string; segundos: number }[] = [];
+  for (let i = 0; i < clipes - 1; i++) {
+    lista.push(TRANSICAO_POR_ID[ehTransicao(e.cenas[i]?.transicao ?? e.transicao)]);
+  }
+  return lista;
+}
 
 export const LIMITES = {
   cenasMax: 12,
@@ -258,6 +305,8 @@ export const LIMITES = {
   /** Voz gravada no navegador: acima disso o arquivo fica grande e a espera, longa. */
   vozSegundosMax: 180,
   musicaVolumePadrao: 0.8,
+  /** Teto de quanto dá pra aparar do começo de um clipe. */
+  aparaMax: 60,
   telaFinalSegundos: 4,
   transicaoSegundos: 0.6,
 };
@@ -285,8 +334,9 @@ export function duracaoDaCena(c: Cena): number {
 
 export function duracaoEstimada(e: Pick<EspecVideo, "cenas" | "telaFinal" | "transicao">): number {
   const cenas = e.cenas.reduce((s, c) => s + duracaoDaCena(c), 0) + (e.telaFinal ? LIMITES.telaFinalSegundos : 0);
-  const n = e.cenas.length + (e.telaFinal ? 1 : 0);
-  const transicoes = e.transicao === "suave" ? Math.max(0, n - 1) * LIMITES.transicaoSegundos : 0;
+  // Cada emenda come o tempo da sobreposição: duas cenas de 4s com 0,6s de dissolver
+  // dão 7,4s de vídeo, não 8.
+  const transicoes = emendasDoVideo(e).reduce((s, t) => s + t.segundos, 0);
   return Math.max(0, cenas - transicoes);
 }
 
@@ -322,10 +372,13 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
     const duracaoNum = Number(c.duracao);
     const teto = tipo === "tour360" ? LIMITES.duracaoMax360 : LIMITES.duracaoMax;
     const padrao = tipo === "tour360" ? 10 : LIMITES.duracaoPadrao;
+    const inicioNum = Number(c.inicio);
     cenas.push({
       tipo,
       jobId,
       arquivo,
+      inicio: Number.isFinite(inicioNum) && inicioNum > 0 ? Math.min(LIMITES.aparaMax, Math.round(inicioNum * 10) / 10) : undefined,
+      transicao: c.transicao === undefined || c.transicao === null ? undefined : ehTransicao(c.transicao),
       efeito: ehId(EFEITOS, c.efeito) ? c.efeito : "aproximar",
       animacao: tipo === "animada" ? (ehId(ANIMACOES, c.animacao) ? c.animacao : "caminhar") : undefined,
       movimento: tipo === "tour360" ? (ehId(MOVIMENTOS_360, c.movimento) ? c.movimento : "olhar_volta") : undefined,
@@ -377,7 +430,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       local: texto(b.local, 50),
       telaFinal: b.telaFinal !== false,
       chamada: texto(b.chamada, LIMITES.chamadaMax),
-      transicao: b.transicao === "corte" ? "corte" : "suave",
+      transicao: ehTransicao(b.transicao),
       capa,
     },
     erro: null,

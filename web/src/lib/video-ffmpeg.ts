@@ -170,7 +170,7 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; legenda?: string; melhorar?: boolean }): string[] {
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; legenda?: string; melhorar?: boolean; inicio?: number }): string[] {
   const filtros = [`fps=${FPS}`, enquadrar(o.W, o.H), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
@@ -179,7 +179,11 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   // duração: os últimos instantes ficam parados. Vale pro vídeo da pessoa e, sobretudo,
   // pro clipe da IA -- que termina onde o modelo parou, muitas vezes no meio do gesto.
   const corte = Math.max(0.5, o.duracao - Math.min(SEGUNDOS_DE_POUSO, o.duracao * 0.25));
-  return ["-ss", "0", "-t", corte.toFixed(2), "-i", o.clipe, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
+  // `-ss` ANTES do `-i`: o ffmpeg pula direto pro ponto em vez de decodificar tudo e
+  // descartar. É o "aparar o começo" -- o pedaço em que a pessoa ainda estava acertando
+  // o celular não entra no vídeo.
+  const inicio = Math.max(0, o.inicio ?? 0);
+  return ["-ss", inicio.toFixed(2), "-t", corte.toFixed(2), "-i", o.clipe, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
 /** Suavização em S: começa e termina devagar, como uma câmera de verdade. */
@@ -340,7 +344,8 @@ export function argsMontagem(o: {
   saida: string;
   W: number;
   H: number;
-  transicao: "suave" | "corte";
+  /** Uma por emenda (clipes − 1): qual xfade e quanto dura. */
+  emendas: { xfade: string; segundos: number }[];
   musica?: string;
   narracao?: string;
   titulo?: string;
@@ -355,8 +360,10 @@ export function argsMontagem(o: {
   vozInicio?: number;
 }): string[] {
   const n = o.clipes.length;
-  const trans = o.transicao === "suave" ? LIMITES.transicaoSegundos : 0;
-  const total = o.duracoes.reduce((s, d) => s + d, 0) - trans * (n - 1);
+  // Uma emenda por par, cada uma com a sua duração: a cena escolhe a transição.
+  const emenda = (i: number) => o.emendas[i] ?? { xfade: "dissolve", segundos: LIMITES.transicaoSegundos };
+  const somaEmendas = Array.from({ length: Math.max(0, n - 1) }, (_, i) => emenda(i).segundos).reduce((s, d) => s + d, 0);
+  const total = o.duracoes.reduce((s, d) => s + d, 0) - somaEmendas;
   const args: string[] = [];
   for (const c of o.clipes) args.push("-i", c);
   let idx = n;
@@ -375,18 +382,19 @@ export function argsMontagem(o: {
   let ultimo: string;
   if (n === 1) {
     ultimo = "0:v";
-  } else if (o.transicao === "suave") {
+  } else {
+    // Um caminho só pra todas as transições, inclusive o corte -- que é um xfade de
+    // 0,08s. Ter `concat` pro corte e `xfade` pro resto significaria dois caminhos, e
+    // nenhum dos dois serviria pra um vídeo que mistura as duas coisas.
     let ant = "0:v";
     let acumulado = 0;
     for (let i = 1; i < n; i++) {
-      acumulado += o.duracoes[i - 1] - trans;
+      const e = emenda(i - 1);
+      acumulado += o.duracoes[i - 1] - e.segundos;
       const saida = i === n - 1 ? "vx" : `x${i}`;
-      partes.push(`[${ant}][${i}:v]xfade=transition=fade:duration=${trans}:offset=${acumulado.toFixed(2)}[${saida}]`);
+      partes.push(`[${ant}][${i}:v]xfade=transition=${e.xfade}:duration=${e.segundos.toFixed(2)}:offset=${acumulado.toFixed(2)}[${saida}]`);
       ant = saida;
     }
-    ultimo = "vx";
-  } else {
-    partes.push(`${o.clipes.map((_, i) => `[${i}:v]`).join("")}concat=n=${n}:v=1:a=0[vx]`);
     ultimo = "vx";
   }
 

@@ -9,8 +9,8 @@
 //
 //   node --experimental-strip-types --import ./scripts/resolver-ts.mjs scripts/testar-video-edicao.mjs
 
-import { CHAMADAS, LIMITES, limparEspec } from "../src/lib/video.ts";
-import { argsMiniatura, argsTelaFinal } from "../src/lib/video-ffmpeg.ts";
+import { CHAMADAS, LIMITES, duracaoEstimada, emendasDoVideo, limparEspec } from "../src/lib/video.ts";
+import { argsCenaClipe, argsMiniatura, argsMontagem, argsTelaFinal } from "../src/lib/video-ffmpeg.ts";
 import { resumoDaFicha } from "../src/lib/ficha-imovel.ts";
 
 let falhas = 0;
@@ -105,6 +105,61 @@ conferir(resumoDaFicha({ dormitorios: 0, vagas: null, preco: "R$ 1" }) === "", "
 {
   const longa = resumoDaFicha({ dormitorios: 4, vagas: 3, area_util: 250, suites: 2, banheiros: 5 }, 40);
   conferir(longa.length <= 40 && !longa.endsWith("·"), "respeita o limite sem cortar palavra", `${longa} (${longa.length})`);
+}
+
+console.log("\n--- 5. linha do tempo: emendas por cena e aparar ---");
+{
+  const { espec } = limparEspec({ ...base, transicao: "corte" });
+  conferir(espec.transicao === "corte", "transição do vídeo é guardada");
+  const { espec: antigo } = limparEspec({ ...base, transicao: "suave" });
+  conferir(antigo.transicao === "dissolver", "o 'suave' dos vídeos antigos vira dissolver", antigo.transicao);
+  const { espec: bobo } = limparEspec({ ...base, transicao: "explodir" });
+  conferir(bobo.transicao === "dissolver", "transição inventada cai no padrão");
+}
+{
+  // 3 cenas + tela final = 3 emendas; a 2ª cena escolhe a sua.
+  const { espec } = limparEspec({ ...base, telaFinal: true, transicao: "corte", cenas: [{ tipo: "foto", jobId: JOB }, { tipo: "foto", jobId: JOB, transicao: "deslizar" }, { tipo: "foto", jobId: JOB }] });
+  const e = emendasDoVideo(espec);
+  conferir(e.length === 3, "uma emenda por par, contando a tela final", String(e.length));
+  conferir(e[0].xfade === "fade" && e[1].xfade === "slideleft", "a cena manda; o resto segue o vídeo", e.map((x) => x.xfade).join(" · "));
+  const semTela = emendasDoVideo({ ...espec, telaFinal: false });
+  conferir(semTela.length === 2, "sem tela final, uma emenda a menos");
+}
+{
+  // 3 cenas de 4s, emendas de 0,08 + 0,6 → 12 - 0,68 = 11,32
+  const { espec } = limparEspec({ ...base, telaFinal: false, transicao: "corte", cenas: [{ tipo: "foto", jobId: JOB, duracao: 4 }, { tipo: "foto", jobId: JOB, duracao: 4, transicao: "dissolver" }, { tipo: "foto", jobId: JOB, duracao: 4 }] });
+  const d = duracaoEstimada(espec);
+  conferir(Math.abs(d - 11.32) < 0.01, "a duração desconta cada emenda pelo tempo DELA", `${d.toFixed(2)}s`);
+}
+{
+  const { espec } = limparEspec({ ...base, cenas: [{ tipo: "clipe", arquivo: "uploads/u/c.mp4", inicio: 3.25 }] });
+  conferir(espec.cenas[0].inicio === 3.3, "aparar guarda décimos", String(espec.cenas[0].inicio));
+  const { espec: e2 } = limparEspec({ ...base, cenas: [{ tipo: "clipe", arquivo: "uploads/u/c.mp4", inicio: 9999 }] });
+  conferir(e2.cenas[0].inicio === LIMITES.aparaMax, `aparar é limitado a ${LIMITES.aparaMax}s`);
+  const { espec: e3 } = limparEspec({ ...base, cenas: [{ tipo: "clipe", arquivo: "uploads/u/c.mp4", inicio: -5 }] });
+  conferir(e3.cenas[0].inicio === undefined, "início negativo é ignorado");
+  const a = argsCenaClipe({ clipe: "c.mp4", saida: "s.mp4", W: 1080, H: 1920, duracao: 4, inicio: 7.5 });
+  conferir(a[0] === "-ss" && a[1] === "7.50" && a.indexOf("-i") > 1, "o -ss vem ANTES do -i (pula sem decodificar)", a.slice(0, 5).join(" "));
+}
+{
+  const a = argsMontagem({
+    clipes: ["a.mp4", "b.mp4", "c.mp4"],
+    duracoes: [4, 4, 4],
+    saida: "s.mp4",
+    W: 1080,
+    H: 1920,
+    emendas: [
+      { xfade: "fade", segundos: 0.08 },
+      { xfade: "slideleft", segundos: 0.6 },
+    ],
+  });
+  const f = a[a.indexOf("-filter_complex") + 1];
+  conferir(f.includes("transition=fade:duration=0.08"), "a 1ª emenda sai com a duração dela");
+  conferir(f.includes("transition=slideleft:duration=0.60"), "a 2ª sai com outra transição");
+  // offsets: 4-0,08 = 3,92 e 3,92 + 4-0,6 = 7,32
+  conferir(f.includes("offset=3.92") && f.includes("offset=7.32"), "as posições acumulam certo", (f.match(/offset=[\d.]+/g) ?? []).join(" "));
+  const t = a[a.indexOf("-t") + 1];
+  conferir(t === "11.32", "a duração total bate com a soma menos as emendas", t + "s");
 }
 
 console.log(falhas === 0 ? "\nTODOS OK" : `\n${falhas} FALHA(S)`);
