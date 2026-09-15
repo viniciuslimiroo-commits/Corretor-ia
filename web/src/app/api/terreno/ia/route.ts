@@ -5,7 +5,7 @@ import { caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazena
 import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
 import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, type Referencia } from "@/lib/terreno-ia";
-import { ETAPA_OBRA_POR_ID } from "@/lib/obra-etapas";
+import { ETAPAS_OBRA, ETAPA_OBRA_POR_ID } from "@/lib/obra-etapas";
 import { limparFaixaDoSelo } from "@/lib/selo";
 
 // Terreno com IA: limpar o mato, terraplanar, murar, construir a casa que a pessoa quer,
@@ -87,7 +87,11 @@ export async function POST(req: NextRequest) {
     // assim mesmo deixou uma faixa espelhada no rodapé que o modelo leu como texto e
     // devolveu em rabisco ilegível. Limpeza sem sujeira pra limpar é só estrago.
     const etapaObra = ETAPA_OBRA_POR_ID[idAcao];
-    if (etapaObra && etapaObra.ordem > 1) bytesFoto = await limparFaixaDoSelo(bytesFoto);
+    if (etapaObra && etapaObra.ordem > 1) {
+      // O selo que está na foto é o da etapa ANTERIOR: é a caixa dele que se cobre.
+      const anterior = ETAPAS_OBRA.find((e) => e.ordem === etapaObra.ordem - 1);
+      bytesFoto = await limparFaixaDoSelo(bytesFoto, anterior?.selo ?? null);
+    }
   } catch {
     return NextResponse.json({ error: "Não consegui ler essa imagem." }, { status: 400 });
   }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { apagarEntradas, caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
-import { limparFaixaDoSelo } from "@/lib/selo";
+import { limparFaixaDoSelo, textoDoSelo } from "@/lib/selo";
 import { UPSCALER, corpoRequisicao, despachar } from "@/lib/fal";
 import { ACOES_POR_ID, limparParametros } from "@/lib/acoes";
 import { saldoFal } from "@/lib/custo";
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
   if (baseJobId) {
     const { data: base } = await db
       .from("jobs")
-      .select("id, status, output_path, property_id")
+      .select("id, status, output_path, property_id, tipo, selo")
       .eq("id", baseJobId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -123,7 +123,11 @@ export async function POST(req: NextRequest) {
     // A imagem guardada tem o selo queimado. Se ele entrar no modelo, o modelo o
     // redesenha e o app carimba outro por cima -- aconteceu na obra do terreno. A saída
     // deste job é carimbada normalmente; o que some é só a cópia que entra na IA.
-    bytesBase = await limparFaixaDoSelo(Buffer.from(await arquivo.arrayBuffer()));
+    bytesBase = await limparFaixaDoSelo(
+      Buffer.from(await arquivo.arrayBuffer()),
+      // O texto vai junto pra cobrir a caixa exata, e não o rodapé inteiro.
+      textoDoSelo(base.tipo as string, base.selo as string | null)
+    );
     // O refino herda o imóvel da origem: a v2 da sala continua sendo daquele apartamento.
     if (!imovelIdBruto && base.property_id) imovelIdBruto = base.property_id as string;
   }
