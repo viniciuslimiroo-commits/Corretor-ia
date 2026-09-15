@@ -47,7 +47,11 @@ export type AcaoTerreno = {
 const MANTER =
   ` Keep the place itself unchanged: same terrain shape and slope,` +
   ` same sky, same weather, same time of day, same sunlight direction, same neighbouring buildings, streets, poles, fences and distant landscape.` +
-  ` Photorealistic, consistent shadows and lighting, natural colors, same photo grain and quality. No text, no labels, no watermark.`;
+  ` Photorealistic, consistent shadows and lighting, natural colors, same photo grain and quality.` +
+  // Era "No text, no labels, no watermark", que numa foto com a marca d'água de outra
+  // imobiliária vira ordem de APAGAR a marca dos outros. A instrução sempre quis dizer
+  // "não invente texto seu" -- agora diz.
+  ` Do not add any text, labels, captions or watermark of your own, and do not remove or alter anything already printed on the photograph.`;
 
 export const TIPOS_CASA = [
   { valor: "terrea", rotulo: "Térrea", en: "single-storey house" },

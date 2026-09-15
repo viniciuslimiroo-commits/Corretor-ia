@@ -7,6 +7,9 @@
 // A que mais importa: a etapa final NUNCA leva gente, nem quando a pessoa pediu equipe.
 // Pessoa em obra é operário; pessoa em casa pronta é morador, e morador inventado num
 // anúncio é personagem vendendo um imóvel onde ele não mora.
+//
+// A segunda que mais importa: o prompt não pode mandar apagar marca d'água. A primeira
+// foto real que entrou aqui tinha a marca da imobiliária que fotografou o lote.
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -55,7 +58,18 @@ for (const etapa of ETAPAS_OBRA) {
   const p = etapa.prompt(COM, "nenhuma");
   const mantem = /Keep the plot, the terrain shape and slope/.test(p) && /same camera position/.test(p) && /same sunlight direction/.test(p);
   conferir(mantem, `${etapa.id}: mantém terreno, câmera e luz`);
-  conferir(/No text, no labels, no watermark/.test(p), `${etapa.id}: sem texto nem marca d'água`);
+}
+
+console.log("\n--- marca d'água dos outros ---");
+for (const etapa of ETAPAS_OBRA) {
+  const p = etapa.prompt(COM, "nenhuma");
+  conferir(/Do not add any text/.test(p), `${etapa.id}: proíbe INVENTAR texto`);
+  conferir(/do not remove or alter the photographer's or the agency's watermark/.test(p), `${etapa.id}: e proíbe apagar a marca de quem fotografou`);
+  // Distinção que o primeiro teste real obrigou a fazer: o selo "Imagem ilustrativa" é
+  // nosso e volta sozinho a cada etapa; a marca d'água da imobiliária é de terceiro.
+  conferir(/Imagem ilustrativa" sits along the bottom edge/.test(p), `${etapa.id}: e manda não copiar o NOSSO selo da etapa anterior`);
+  // A frase antiga. Numa foto com marca d'água de terceiro, ela vira ordem de apagar.
+  conferir(!/no watermark\b/.test(p), `${etapa.id}: não manda "no watermark" (isso apagaria a marca alheia)`);
 }
 
 console.log("\n--- é a MESMA casa subindo ---");
@@ -80,7 +94,11 @@ conferir(
   ETAPAS_OBRA.every((e) => /Imagem ilustrativa/.test(e.selo)),
   "toda etapa sai carimbada como ilustração"
 );
-conferir(/não existe no terreno|não incluída no terreno/.test(ETAPA_OBRA_POR_ID.obra_pronta.selo), "e a casa pronta avisa que não vem com o lote", ETAPA_OBRA_POR_ID.obra_pronta.selo);
+conferir(
+  /não existe no terreno|não incluída no terreno/.test(ETAPA_OBRA_POR_ID.obra_pronta.selo),
+  "e a casa pronta avisa que não vem com o lote",
+  ETAPA_OBRA_POR_ID.obra_pronta.selo
+);
 
 console.log(falhas ? `\n${falhas} falha(s)` : "\nTUDO PASSOU");
 process.exitCode = falhas ? 1 : 0;

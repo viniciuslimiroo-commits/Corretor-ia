@@ -21,7 +21,18 @@ import { ESTILOS_CASA, TIPOS_CASA, type AcaoTerreno } from "./terreno-ia";
 const MESMO_LUGAR =
   ` Keep the plot, the terrain shape and slope, the horizon line, the neighbouring buildings, streets, poles, fences, trees and distant landscape exactly as they are in the image.` +
   ` Keep the same camera position, the same framing, the same focal length, the same sky, the same weather, the same time of day and the same sunlight direction.` +
-  ` Photorealistic, consistent shadows, natural colours, same photo grain and quality. No text, no labels, no watermark, no logo.`;
+  ` Photorealistic, consistent shadows, natural colours, same photo grain and quality.` +
+  // "Do not ADD", e não "no watermark". A diferença apareceu na primeira foto de verdade:
+  // ela vinha com a marca d'água da imobiliária que a fotografou, e "no watermark" manda
+  // o modelo APAGAR aquilo. Tirar marca d'água dos outros não é recurso, é o que a Lei
+  // 9.610/98 chama de supressão de sinal de identificação. O que a instrução quer dizer é
+  // que o modelo não invente texto próprio.
+  ` Do not add any text, labels, captions, watermark or logo of your own, and do not remove or alter the photographer's or the agency's watermark already printed on the photograph.` +
+  // O aviso "Imagem ilustrativa" é NOSSO, carimbado depois de cada etapa. Como a etapa
+  // seguinte recebe a imagem já carimbada, o modelo copiava o carimbo e o app carimbava de
+  // novo por cima -- saíram dois avisos sobrepostos na etapa 4. Pedir pra não copiar o
+  // nosso selo não é o mesmo que apagar marca dos outros: este volta sozinho, aquele não.
+  ` If a small dark caption bar reading "Imagem ilustrativa" sits along the bottom edge of the image, it is an overlay added after the photo was processed: leave that strip as plain photograph and do not reproduce those words.`;
 
 /** O que a casa É, repetido em toda etapa pra ela não mudar de projeto no meio da obra. */
 function aCasa(p: Record<string, string>): string {
@@ -67,11 +78,18 @@ export const ETAPAS_OBRA: EtapaObra[] = [
     espera: "Marcando o terreno e abrindo a fundação…",
     descricao: "O terreno limpo, com a fundação e o baldrame da casa marcados no chão.",
     selo: "Imagem ilustrativa · obra simulada, não existe no terreno",
+    // Este prompt é o mais difícil dos quatro, e o primeiro teste real mostrou por quê: ao
+    // ler "a fundação de uma casa térrea moderna", o modelo desenhou a CASA TÉRREA MODERNA.
+    // O nome do tipo de casa puxa a imagem da casa pronta. A correção é dizer o que se vê
+    // no chão -- vala, sapata, ferragem, bloco -- e proibir o vertical três vezes, de
+    // jeitos diferentes, porque uma proibição só ele atropela.
     prompt: (p) =>
-      `Show this same plot of land at the very beginning of a house construction: the ground cleared and levelled where the house will stand,` +
-      ` the foundation footings and concrete ground beams already poured, forming the outline of ${aCasa(p)} on the ground,` +
-      ` with a few stacks of building materials and a small pile of sand and gravel at the side of the plot.` +
-      ` No walls yet, nothing standing above knee height.` +
+      `Show this same plot of land on the FIRST WEEK of a building site, when only the foundation exists.` +
+      ` The ground is cleared and levelled, and on it there are: excavated footing trenches, poured concrete pad footings, concrete ground beams and short stub columns with exposed steel rebar sticking up,` +
+      ` laid out in the rectangular outline that ${aCasa(p)} will later occupy.` +
+      ` Stacks of concrete blocks, bags of cement, a pile of sand and a pile of gravel sit at the side of the plot.` +
+      ` CRITICAL: there is NO house in this image. No walls, no roof, no windows, no doors, no finished building of any kind on this plot.` +
+      ` Nothing on the plot stands taller than knee height except the thin steel rebar. Anyone looking at it must see an empty lot with foundations marked on the ground, not a building.` +
       equipe(p, true) +
       MESMO_LUGAR,
   },
