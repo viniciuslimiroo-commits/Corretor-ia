@@ -12,7 +12,24 @@ import type { Provedor } from "./fal";
 
 export type Grupo = "decorar" | "melhorar" | "outro";
 
-export type Opcao = { valor: string; rotulo: string; en: string };
+export type Opcao = {
+  valor: string;
+  rotulo: string;
+  en: string;
+  /**
+   * O que a opção significa em português, mostrado embaixo dos botões.
+   *
+   * Só onde o rótulo não se explica: "Quarto" dispensa, "Alto padrão" não -- o chip
+   * mostrava o nome, o prompt mandava uma descrição inglesa de material que ninguém vê, e
+   * entre os dois não havia como saber o que ia sair antes de gastar o crédito.
+   */
+  ajuda?: string;
+  /**
+   * A mesma faixa contada só pelo MÓVEL, pra quando a ação não pode tocar no acabamento.
+   * Ver `trechoDaFaixa`: mobiliar acrescenta mobília e não mexe em piso nem parede.
+   */
+  enMoveis?: string;
+};
 
 export type Parametro = {
   chave: string;
@@ -75,6 +92,14 @@ export const ESTILOS: Opcao[] = [
   { valor: "minimalista", rotulo: "Minimalista", en: "minimalist" },
   { valor: "escandinavo", rotulo: "Escandinavo", en: "Scandinavian, light woods and soft neutrals" },
   { valor: "contemporaneo", rotulo: "Contemporâneo", en: "contemporary" },
+  // Não é o "contemporâneo" genérico com sotaque: é o repertório que a arquitetura
+  // brasileira usa de verdade -- palhinha, madeira maciça quente, fibra natural, cerâmica
+  // de artesão, tons de areia e terracota. Corretor pede por esse nome.
+  {
+    valor: "brasileiro",
+    rotulo: "Brasileiro contemporâneo",
+    en: "contemporary Brazilian, solid warm woods such as cumaru and freijó, cane webbing (palhinha), natural fibre rugs and baskets, handmade ceramics, earthy tones of sand, terracotta and honey, and plenty of plants",
+  },
   { valor: "industrial", rotulo: "Industrial", en: "industrial, metal and raw textures" },
   { valor: "classico", rotulo: "Clássico", en: "classic elegant" },
   { valor: "boemio", rotulo: "Boêmio", en: "bohemian, layered textiles and plants" },
@@ -82,6 +107,150 @@ export const ESTILOS: Opcao[] = [
   { valor: "praiano", rotulo: "Praiano", en: "Brazilian beach house, light woods, linen, natural fibers, white and sand tones" },
   { valor: "tropical", rotulo: "Tropical", en: "Brazilian tropical contemporary, lush plants, warm woods, rattan" },
 ];
+
+/**
+ * A FAIXA DE MERCADO do imóvel -- o eixo que faltava ao lado do estilo.
+ *
+ * Estilo diz o gosto (moderno, rústico, praiano). Faixa diz o bolso: o mesmo "moderno"
+ * mobilia um apartamento de 45 m² e uma cobertura, e mobiliar os dois igual entrega uma
+ * foto que não convence ninguém -- nem o comprador do compacto, que vê uma sala que não
+ * cabe no orçamento dele, nem o do alto padrão, que vê varejo onde esperava marcenaria.
+ *
+ * A REGRA QUE MANDA AQUI, e que está escrita no prompt de propósito: faixa menor NÃO é
+ * ambiente feio. Econômico é simples e barato em MATERIAL, nunca em cuidado. A diferença
+ * entre as quatro está em material, acabamento, mobiliário, iluminação e quantidade de
+ * camadas -- não em limpeza, organização, proporção ou capricho, que são iguais nas
+ * quatro. Foi o pedido explícito de quem vende: "evitar estereótipos ou associar imóveis
+ * mais acessíveis a ambientes feios, pobres ou mal decorados".
+ *
+ * As descrições citam material e móvel de verdade (MDF branco, painel ripado, laca fosca,
+ * quartzito) porque adjetivo não gera imagem: "sofisticado" devolve qualquer coisa,
+ * "marcenaria em laca fosca com nicho iluminado" devolve alto padrão.
+ */
+export const FAIXAS: Opcao[] = [
+  {
+    valor: "economico",
+    rotulo: "Econômico",
+    ajuda: "Móveis de varejo, MDF claro, porcelanato claro, paleta que amplia. Simples, novo e bem arrumado — o apartamento compacto bem resolvido.",
+    en:
+      "the price bracket of a compact Brazilian apartment furnished from high-street retailers: white or light wood-grain MDF units," +
+      " a compact two or three seat fabric sofa, a slim TV panel, a small dining table, light large-format porcelain floor tiles," +
+      " a palette of white, sand and soft grey that widens the room, one ceiling fixture plus a floor lamp," +
+      " a few plants and one or two framed prints. Space-saving pieces where they make sense. Everything new, clean and neatly arranged",
+    enMoveis:
+      "furniture you would buy from a Brazilian high-street store: a compact fabric sofa in a neutral tone, a low TV bench in white or light wood-grain MDF," +
+      " a small round dining table with four simple chairs, a flat-weave or jute rug, a floor lamp, two or three plants in plain pots and one or two framed prints." +
+      " Free-standing pieces only -- no built-in joinery, no wall panelling, no lit niches. Restrained and uncluttered, with visible floor left around the furniture",
+  },
+  {
+    valor: "medio",
+    rotulo: "Médio",
+    ajuda: "Marcenaria planejada amadeirada, painel ripado, tapete e cortina, spots embutidos. Mais camadas e mais acabamento.",
+    en:
+      "the price bracket of a comfortable Brazilian middle-class apartment: fitted MDF joinery in a wood-grain finish," +
+      " a slatted wood panel behind the television, a larger upholstered sofa with cushions, a rug, ceiling-track curtains," +
+      " satin large-format porcelain floors, recessed spotlights in a plasterboard cove," +
+      " and layered decor -- plants, books, framed art and ceramic objects",
+    enMoveis:
+      "furniture of a comfortable Brazilian middle-class home: a generous upholstered sofa with cushions and a throw, a wood-grain TV bench with a matching sideboard," +
+      " a large patterned rug, a dining table for six, an armchair, a floor lamp and a table lamp," +
+      " layered decor with plants, stacked books, framed art and ceramic objects",
+  },
+  {
+    valor: "alto",
+    rotulo: "Alto padrão",
+    ajuda: "Marcenaria sob medida em laca e madeira natural, nicho iluminado, pedra brasileira, móvel de design nacional e luz de projeto.",
+    en:
+      "the price bracket of a Brazilian high-end apartment: bespoke cabinetry in matte lacquer and natural wood veneer with integrated lit niches," +
+      " Brazilian quartzite or marble surfaces, furniture in the language of Brazilian design authorship (solid wood, leather, cane)," +
+      " a designed lighting scheme with LED strips and track spots, wide-plank wood or large stone floors, and original artwork",
+    enMoveis:
+      "furniture of a Brazilian high-end home: a deep low-slung sofa in high-quality fabric or leather, a solid wood or stone coffee table," +
+      " an authored lounge chair in solid wood and leather or cane, a large hand-knotted rug, a sculptural floor lamp," +
+      " a sideboard in natural wood veneer, large original artwork and a few carefully chosen objects. Fewer pieces, each one clearly expensive and well made",
+  },
+  {
+    valor: "luxo",
+    rotulo: "Luxo",
+    ajuda: "Marcenaria importada, mármore nobre, design italiano, metais escovados e arte. Iluminação projetada ambiente a ambiente.",
+    en:
+      "the price bracket of a Brazilian luxury residence: imported bespoke joinery, book-matched noble marble," +
+      " Italian design furniture, bronze and brushed metal details, silk and linen textiles, a curated art collection," +
+      " and a full architectural lighting design. Keep the generosity in the materials and the detailing, not in inventing space the room does not have",
+    enMoveis:
+      "furniture of a Brazilian luxury residence: an Italian modular sofa in bouclé or full-grain leather, a marble or travertine coffee table," +
+      " a pair of signed design armchairs, a large silk or wool rug, a sculptural floor lamp in bronze or brushed metal," +
+      " a statement dining table in stone or solid wood, a large original artwork and a sculpture or two." +
+      " Very few pieces, each one unmistakably a design piece, with generous empty floor between them",
+  },
+];
+
+/**
+ * A trava. Vai junto da faixa em TODO prompt que a usa.
+ *
+ * Sem esta frase o modelo lê "econômico" e devolve o que a internet associa a barato:
+ * ambiente apertado, parede encardida, móvel velho, quarto vazio. Isso não é a casa de
+ * quem compra um compacto -- é a caricatura dela, e sai num anúncio que aquela pessoa vai
+ * abrir no celular.
+ */
+const FAIXA_SEM_CARICATURA =
+  " Clean, tidy and well arranged, never poor, worn, dirty or cluttered -- simpler, not worse.";
+
+/**
+ * O que a faixa de baixo NÃO pode ter.
+ *
+ * MEDIDO, e o resultado precisa estar escrito aqui: em `renovar`, isto NÃO SEGURA.
+ * Pedindo "econômico", o nano-banana devolveu parede ripada, sanca com fita de LED e sofá
+ * de design em três tentativas seguidas -- descrição positiva, descrição positiva com a
+ * faixa anunciada como restrição principal, e a proibição nominal abaixo. Ele tem um
+ * jeitão de "foto bonita de imóvel brasileiro" que é caro, e esse jeitão vence o prompt.
+ *
+ * Em `mobiliar` pega melhor, porque ali a faixa fala de móvel (que ele acrescenta) e não
+ * de acabamento (que ele não pode tocar) -- a mobília muda de verdade entre as faixas.
+ *
+ * O texto fica porque melhora a margem e não custa nada. Mas a alavanca que resolve de
+ * verdade é outra, e é a mesma que fez a obra seguir uma casa específica: IMAGEM DE
+ * REFERÊNCIA. `mobiliar` já aceita uma segunda foto (`referencia: true`); amarrar uma
+ * referência por faixa controlaria o acabamento de um jeito que descrição nenhuma
+ * controla. Está por fazer.
+ */
+const SEM_LUXO_ACIMA: Record<string, string> = {
+  economico:
+    " This bracket does NOT have: slatted wood wall panelling, a plasterboard cove with LED strip lighting, built-in lit niches," +
+    " marble or stone cladding, fitted joinery, designer or imported furniture, or a professional lighting scheme." +
+    " Keep the ceiling plain, the walls painted, the furniture free-standing and the lighting simple -- that is what this home really has, and it still looks good.",
+  // O médio TEM painel ripado e sanca com spot (está na descrição dele). O que ele não tem
+  // é a camada de cima: pedra nobre, peça assinada, luminotécnica.
+  medio:
+    " This bracket does NOT have: marble or natural stone cladding, imported or signed designer furniture, bespoke lacquer joinery," +
+    " or a professional architectural lighting scheme.",
+};
+
+/**
+ * O que a faixa pode mudar depende da AÇÃO, e ignorar isso foi o que fez o primeiro teste
+ * sair errado: "luxo" voltou quase igual a "econômico".
+ *
+ * `mobiliar` só ACRESCENTA móvel -- piso, parede, teto e luminária ficam como estão, e é
+ * essa a promessa da ação. Só que quase tudo que separa luxo de econômico é justamente
+ * acabamento: mármore, marcenaria embutida, luz de projeto. Pedindo isso numa ação que não
+ * pode tocar no acabamento, o modelo obedece o "não mexa" (certo) e a faixa vira enfeite.
+ *
+ * Então são dois textos: em `mobiliar`, a faixa fala só de MÓVEL e objeto, que é o que
+ * cabe ali; em `renovar` e na planta, que refazem o ambiente inteiro, vale a descrição
+ * completa de material.
+ */
+export function trechoDaFaixa(valor: string | undefined, escopo: "tudo" | "moveis" = "tudo"): string {
+  const f = FAIXAS.find((x) => x.valor === valor);
+  if (!f) return "";
+  const texto = escopo === "moveis" ? (f.enMoveis ?? f.en) : f.en;
+  // A faixa vem anunciada como restrição principal porque, sem isso, o modelo trata a
+  // descrição como sugestão e entrega o "imóvel bonito" genérico dele -- que é caro.
+  return (
+    ` PRICE BRACKET (the most important constraint): furnish and finish it to ${texto}.` +
+    (SEM_LUXO_ACIMA[f.valor] ?? "") +
+    FAIXA_SEM_CARICATURA
+  );
+}
 
 export const CRIATIVIDADE: Opcao[] = [
   { valor: "alta", rotulo: "Alta", en: "strong, magazine-quality transformation" },
@@ -152,6 +321,7 @@ export const ACOES: DefAcao[] = [
     parametros: [
       { chave: "tipo_espaco", rotulo: "Tipo de espaço", tipo: "opcoes", opcoes: TIPOS_ESPACO, padrao: "auto", permiteOutro: true },
       { chave: "estilo", rotulo: "Estilo", tipo: "opcoes", opcoes: ESTILOS, padrao: "moderno", permiteOutro: true },
+      { chave: "faixa", rotulo: "Padrão do imóvel", tipo: "opcoes", opcoes: FAIXAS, padrao: "medio" },
       { chave: "criatividade", rotulo: "Intensidade", tipo: "opcoes", opcoes: CRIATIVIDADE, padrao: "alta", ajuda: "Alta transforma mais; Média muda menos." },
     ],
     mascara: "opcional",
@@ -166,7 +336,9 @@ export const ACOES: DefAcao[] = [
       const estilo = en(ESTILOS, p.estilo, "modern");
       const forca = en(CRIATIVIDADE, p.criatividade, CRIATIVIDADE[0].en);
       const ref = p.referencia === "1" ? " Use the furniture pieces, colors and style of the second image as the reference." : "";
-      return `Furnish this empty ${espaco} in a ${estilo} style (${forca}). ${PRESERVAR} Add only photorealistic furniture and decor at correct scale for the space. Photorealistic result.${ref}`;
+      // "moveis": mobiliar não mexe em piso, parede nem luminária -- pedir mármore aqui é
+      // pedir o que a própria ação proíbe, e o modelo (com razão) ignora a faixa inteira.
+      return `Furnish this empty ${espaco} in a ${estilo} style (${forca}).${trechoDaFaixa(p.faixa, "moveis")} ${PRESERVAR} Add only photorealistic furniture and decor at correct scale for the space. Photorealistic result.${ref}`;
     },
     esperado: (p) =>
       `The room now contains photorealistic furniture and decor in a ${en(ESTILOS, p.estilo, "modern")} style${p.tipo_espaco && p.tipo_espaco !== "auto" ? `, appropriate for a ${en(TIPOS_ESPACO, p.tipo_espaco)}` : ""}, at correct scale, with walls, windows, doors and camera angle unchanged.`,
@@ -179,6 +351,7 @@ export const ACOES: DefAcao[] = [
     parametros: [
       { chave: "tipo_espaco", rotulo: "Tipo de espaço", tipo: "opcoes", opcoes: TIPOS_ESPACO, padrao: "auto", permiteOutro: true },
       { chave: "estilo", rotulo: "Estilo", tipo: "opcoes", opcoes: ESTILOS, padrao: "moderno", permiteOutro: true },
+      { chave: "faixa", rotulo: "Padrão do imóvel", tipo: "opcoes", opcoes: FAIXAS, padrao: "medio" },
       { chave: "criatividade", rotulo: "Intensidade", tipo: "opcoes", opcoes: CRIATIVIDADE, padrao: "alta" },
       { chave: "moveis", rotulo: "Móveis", tipo: "opcoes", opcoes: MOVEIS_RENOVAR, padrao: "auto" },
     ],
@@ -191,7 +364,7 @@ export const ACOES: DefAcao[] = [
       const estilo = en(ESTILOS, p.estilo, "modern");
       const forca = en(CRIATIVIDADE, p.criatividade, CRIATIVIDADE[0].en);
       const moveis = en(MOVEIS_RENOVAR, p.moveis);
-      return `Renovate this ${espaco} in a ${estilo} style (${forca}): update the flooring, wall finishes, lighting fixtures and decor with photorealistic materials. Keep the room's architecture -- wall positions, windows, doors, ceiling -- and the camera angle exactly the same. ${moveis} Photorealistic result.`.replace(/\s+/g, " ");
+      return `Renovate this ${espaco} in a ${estilo} style (${forca}): update the flooring, wall finishes, lighting fixtures and decor with photorealistic materials.${trechoDaFaixa(p.faixa)} Keep the room's architecture -- wall positions, windows, doors, ceiling -- and the camera angle exactly the same. ${moveis} Photorealistic result.`.replace(/\s+/g, " ");
     },
     esperado: (p) =>
       `The same room with visibly renovated finishes (floor, walls, lighting, decor) in a ${en(ESTILOS, p.estilo, "modern")} style; wall positions, windows, doors and camera angle unchanged.${p.moveis === "vazio" ? " No furniture." : p.moveis === "com" ? " Furnished with matching furniture." : ""}`,

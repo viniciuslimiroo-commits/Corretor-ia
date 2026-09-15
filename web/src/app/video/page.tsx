@@ -48,6 +48,8 @@ type CenaUI = {
   ehClipe: boolean;
   /** Foto (ou vídeo) equirretangular, detectada pela proporção 2:1: vira tour 360. */
   eh360: boolean;
+  /** Panorâmica de celular (mais larga que 2.2:1): não tem esfera, mas pede deslizar. */
+  ehPanoramica?: boolean;
   efeito: EfeitoId;
   animacao: AnimacaoId;
   movimento: Movimento360Id;
@@ -79,17 +81,34 @@ function relogio(seg: number): string {
   return m > 0 ? `${m}min ${String(r).padStart(2, "0")}s` : `${r}s`;
 }
 
-/** Proporção 2:1 (com folga) é a assinatura de uma foto 360 equirretangular. */
-async function pareceEquirect(f: File): Promise<boolean> {
-  if (!f.type.startsWith("image/")) return false;
+/**
+ * O que a foto é pela proporção: 2:1 é a assinatura da 360 equirretangular; mais larga
+ * que isso é panorâmica de celular.
+ *
+ * A distinção importa porque o produto trata as duas de jeitos diferentes, e por muito
+ * tempo só avisou sobre uma. A 360 vira passeio de verdade (v360, a câmera anda DENTRO da
+ * esfera). A panorâmica comum não tem esfera nenhuma -- o que ela pede é a câmera
+ * deslizando na horizontal, que já existia como efeito "Passear →" e ninguém ligava,
+ * porque o padrão era "Aproximar" e nada na tela dizia o contrário. O cartão do Início
+ * prometia "foto 360 ou panorâmica vira passeio" e, pra metade da promessa, a pessoa tinha
+ * que adivinhar.
+ */
+type Formato = "comum" | "esferica" | "panoramica";
+
+async function formatoDaFoto(f: File): Promise<Formato> {
+  if (!f.type.startsWith("image/")) return "comum";
   try {
     const bmp = await createImageBitmap(f);
     const { width, height } = bmp;
     bmp.close();
     const razao = width / height;
-    return razao > 1.9 && razao < 2.1 && width >= 2000;
+    if (razao > 1.9 && razao < 2.1 && width >= 2000) return "esferica";
+    // 2.2:1 pra cima é foto que não cabe no quadro do vídeo de jeito nenhum: mostrar
+    // parada significa cortar as pontas, que é justamente o que a pessoa não quer.
+    if (razao >= 2.2) return "panoramica";
+    return "comum";
   } catch {
-    return false;
+    return "comum";
   }
 }
 
@@ -247,7 +266,9 @@ export default function PaginaVideo() {
         const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, f, { contentType: f.type });
         if (error) throw new Error(error.message);
         const ehVideo = !!d.ehVideo;
-        const eh360 = !ehVideo && (await pareceEquirect(f));
+        const formato = ehVideo ? "comum" : await formatoDaFoto(f);
+        const eh360 = formato === "esferica";
+        const ehPanoramica = formato === "panoramica";
         setCenas((lista) => [
           ...lista,
           {
@@ -255,11 +276,14 @@ export default function PaginaVideo() {
             tipo: eh360 ? "tour360" : ehVideo ? "clipe" : "foto",
             arquivo: d.caminho,
             miniatura: ehVideo ? null : URL.createObjectURL(f),
-            rotulo: eh360 ? `Foto 360 · ${f.name}` : ehVideo ? `Clipe · ${f.name}` : f.name,
+            rotulo: eh360 ? `Foto 360 · ${f.name}` : ehPanoramica ? `Panorâmica · ${f.name}` : ehVideo ? `Clipe · ${f.name}` : f.name,
             temAntes: false,
             ehClipe: ehVideo,
             eh360,
-            efeito: "aproximar",
+            ehPanoramica,
+            // Numa panorâmica, "Aproximar" corta as pontas -- que é exatamente a parte da
+            // foto pela qual a pessoa tirou uma panorâmica. Deslizar mostra tudo.
+            efeito: ehPanoramica ? "direita" : "aproximar",
             animacao: "caminhar",
             movimento: "olhar_volta",
             legenda: "",
@@ -517,6 +541,14 @@ export default function PaginaVideo() {
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {s.ehPanoramica && (
+                            <span
+                              className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal"
+                              title="Panorâmica não cabe parada no quadro do vídeo: mostrada assim, as pontas seriam cortadas. Já deixei no efeito que desliza."
+                            >
+                              panorâmica · deslizando
+                            </span>
+                          )}
                           {!s.ehClipe && !s.eh360 && (
                             <>
                               <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto</Chip>

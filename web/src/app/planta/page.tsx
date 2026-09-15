@@ -40,7 +40,7 @@ import {
 } from "@/lib/moveis";
 import { plantaParaSvg } from "@/lib/planta-svg";
 import { useNavegacao } from "@/lib/use-navegacao";
-import { ESTILOS } from "@/lib/acoes";
+import { ESTILOS, FAIXAS } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -139,6 +139,9 @@ export default function PaginaPlanta() {
   const [pan, setPan] = useState<{ telaX: number; telaY: number; x0: number; y0: number } | null>(null);
   const [cantoRetangulo, setCantoRetangulo] = useState<Ponto | null>(null);
   const [estiloIa, setEstiloIa] = useState(ESTILOS[0].valor);
+  // A faixa de mercado: a mesma planta mobiliada como compacto e como alto padrão são
+  // dois imóveis diferentes, e quem vende sabe qual dos dois é.
+  const [faixaIa, setFaixaIa] = useState("medio");
   const [tipoMovel, setTipoMovel] = useState<TipoMovel>("cama_casal");
   const [grupoMovel, setGrupoMovel] = useState<DefMovel["grupo"]>("sala");
   const [selMovel, setSelMovel] = useState<string | null>(null);
@@ -434,7 +437,7 @@ export default function PaginaPlanta() {
       const r = await fetch("/api/planta/humanizar", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planta, vista, estilo: estiloIa, imovelId }),
+        body: JSON.stringify({ planta, vista, estilo: estiloIa, faixa: faixaIa, imovelId }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
@@ -943,13 +946,25 @@ export default function PaginaPlanta() {
             <p className="text-sm text-neutral-500">
               A mesma planta, com móveis, piso e sombra. A técnica com as medidas continua salva do lado.
             </p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {ESTILOS.slice(0, 6).map((e) => (
+            {/* Sete estilos e não seis: "Brasileiro contemporâneo" entrou na lista e
+                cortar justo ele seria esconder o que o corretor daqui mais pede. */}
+            <span className="mt-3 mb-1 block text-xs text-neutral-500">Estilo</span>
+            <div className="flex flex-wrap gap-1.5">
+              {ESTILOS.slice(0, 7).map((e) => (
                 <Chip key={e.valor} ativo={estiloIa === e.valor} onClick={() => setEstiloIa(e.valor)}>
                   {e.rotulo}
                 </Chip>
               ))}
             </div>
+            <span className="mt-3 mb-1 block text-xs text-neutral-500">Padrão do imóvel</span>
+            <div className="flex flex-wrap gap-1.5">
+              {FAIXAS.map((f) => (
+                <Chip key={f.valor} ativo={faixaIa === f.valor} onClick={() => setFaixaIa(f.valor)}>
+                  {f.rotulo}
+                </Chip>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs leading-snug text-neutral-500">{FAIXAS.find((f) => f.valor === faixaIa)?.ajuda}</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Botao onClick={() => decorar("humanizada")} disabled={!!decorando || planta.comodos.length === 0} className="py-2.5">
                 {decorando === "humanizada" ? "Decorando…" : "Vista de cima"}

@@ -6,7 +6,7 @@ import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
 import { limparPlanta } from "@/lib/planta";
 import { plantaParaSvg } from "@/lib/planta-svg";
-import { ESTILOS } from "@/lib/acoes";
+import { ESTILOS, trechoDaFaixa } from "@/lib/acoes";
 
 // Planta humanizada: a planta técnica que a pessoa desenhou vira uma vista de cima
 // realista, com móveis, piso e sombra -- o desenho que vende, ao lado do que mede.
@@ -42,18 +42,20 @@ const NAO_MEXER =
 const VISTAS = {
   humanizada: {
     rotulo: "Planta humanizada",
-    prompt: (estilo: string, comodos: string) =>
+    prompt: (estilo: string, comodos: string, faixa: string) =>
       `Transform this technical architectural floor plan into a photorealistic top-down furnished floor plan, seen strictly from directly above (orthographic top view, no perspective).` +
       ` Furnish each room in ${estilo} style, according to what each room is:${comodos}` +
+      faixa +
       ` Add realistic floor materials (wood, tile, stone), rugs, plants and soft natural shadows. Warm natural daylight.` +
       ` Photorealistic architectural visualization, high quality, clean white background outside the plan.` +
       NAO_MEXER,
   },
   maquete: {
     rotulo: "Maquete 3D",
-    prompt: (estilo: string, comodos: string) =>
+    prompt: (estilo: string, comodos: string, faixa: string) =>
       `Turn this technical architectural floor plan into a realistic 3D dollhouse model: an isometric cutaway view of the same apartment seen from above at an angle, with the roof removed so all rooms are visible.` +
       ` Raise the walls to realistic height and furnish each room in ${estilo} style, according to what each room is:${comodos}` +
+      faixa +
       ` Realistic floor and wall materials, soft natural shadows, architectural scale model look, photorealistic render, neutral background, warm daylight.` +
       NAO_MEXER,
   },
@@ -123,6 +125,11 @@ export async function POST(req: NextRequest) {
 
   const vista: Vista = corpo?.vista === "maquete" ? "maquete" : "humanizada";
   const estiloOpcao = ESTILOS.find((e) => e.valor === corpo?.estilo) ?? ESTILOS[0];
+  // A faixa de mercado vale aqui pelo mesmo motivo que na foto: a mesma planta mobiliada
+  // como compacto e como alto padrão são dois imóveis diferentes, e o corretor sabe qual
+  // dos dois está vendendo. Vazia quando não vier, pra planta antiga continuar igual.
+  const faixaValor = typeof corpo?.faixa === "string" ? corpo.faixa : "";
+  const faixa = trechoDaFaixa(faixaValor);
 
   let imovelId: string | null = null;
   if (typeof corpo?.imovelId === "string" && corpo.imovelId) {
@@ -151,7 +158,7 @@ export async function POST(req: NextRequest) {
       property_id: imovelId,
       tipo: TIPO,
       status: "gerando",
-      parametros: { vista, estilo: estiloOpcao.valor, planta },
+      parametros: { vista, estilo: estiloOpcao.valor, faixa: faixaValor, planta },
       selo: "Imagem ilustrativa · planta decorada por IA",
     })
     .select("id")
@@ -178,7 +185,7 @@ export async function POST(req: NextRequest) {
     await guardarEAssinar(db, caminhoOrig, await sharp(Buffer.from(svgCheio)).png().toBuffer(), "image/png");
 
     const modelo = "fal-ai/nano-banana/edit" as const;
-    const prompt = VISTAS[vista].prompt(estiloOpcao.en, descreverComodos(planta));
+    const prompt = VISTAS[vista].prompt(estiloOpcao.en, descreverComodos(planta), faixa);
     const despacho = await despachar(modelo, corpoRequisicao(modelo, { prompt, imagemUrl: urlPlanta }), falKey);
 
     await db

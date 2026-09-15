@@ -86,6 +86,14 @@ function ControleOpcoes({
           className="mt-2 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
         />
       )}
+      {/* Duas ajudas, e são coisas diferentes: `def.ajuda` explica o CAMPO ("Alta
+          transforma mais"), e a da opção explica a ESCOLHA ("Alto padrão é laca, pedra e
+          luz de projeto"). Sem a segunda, o chip mostra um nome e o prompt manda uma
+          descrição de material em inglês que ninguém vê -- e entre os dois não dá pra
+          saber o que vai sair antes de gastar o crédito. */}
+      {!mostrandoOutro && todas.find((o) => o.valor === valor)?.ajuda && (
+        <p className="mt-1.5 text-xs leading-snug text-neutral-500">{todas.find((o) => o.valor === valor)!.ajuda}</p>
+      )}
       {def.ajuda && <p className="mt-1.5 text-xs text-neutral-500">{def.ajuda}</p>}
     </div>
   );
