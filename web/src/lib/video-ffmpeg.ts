@@ -347,6 +347,12 @@ export function argsMontagem(o: {
   subtitulo?: string;
   /** Segundos de vídeo em que o carimbo de título fica visível (antes da tela final). */
   fimDoCarimbo?: number;
+  /** 0 a 1, antes da redução automática. Padrão 0,8. */
+  musicaVolume?: number;
+  /** 0,2 a 2. Padrão 1. */
+  vozVolume?: number;
+  /** Segundos até a voz começar. Padrão 0,7. */
+  vozInicio?: number;
 }): string[] {
   const n = o.clipes.length;
   const trans = o.transicao === "suave" ? LIMITES.transicaoSegundos : 0;
@@ -397,15 +403,35 @@ export function argsMontagem(o: {
   }
   partes.push(`[${ultimo}]${["format=yuv420p", ...carimbos].join(",")}[vout]`);
 
+  // ---- áudio ----
+  //
+  // A música abaixa SOZINHA quando há voz e volta quando a voz para: é o `sidechaincompress`,
+  // o mesmo recurso que o rádio chama de ducking. Antes a música ficava num volume fixo
+  // baixo (0,22) o vídeo inteiro -- o que resolve a voz sumindo, mas entrega um vídeo com
+  // trilha quase inaudível nos trechos sem narração, que é metade do vídeo.
+  //
+  // A voz é dividida em duas (`asplit`): uma cópia vai pro mix e a outra serve só de
+  // GATILHO do compressor. Sem isso não dá pra ouvir a voz e usá-la como controle ao mesmo
+  // tempo -- o sidechaincompress consome a entrada que recebe.
   const fadeOut = Math.max(0, total - 2).toFixed(2);
+  const volMusica = Math.min(1, Math.max(0, o.musicaVolume ?? 0.8));
+  const volVoz = Math.min(2, Math.max(0.2, o.vozVolume ?? 1));
+  const msInicio = Math.round(Math.min(10, Math.max(0, o.vozInicio ?? 0.7)) * 1000);
+  const musicaBase = `[${idxMusica}:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=${volMusica.toFixed(2)}`;
+
   if (idxMusica >= 0 && idxNarracao >= 0) {
-    partes.push(`[${idxMusica}:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=0.22[m]`);
-    partes.push(`[${idxNarracao}:a]adelay=700|700,volume=1.0[nar]`);
-    partes.push(`[m][nar]amix=inputs=2:duration=first:dropout_transition=3:normalize=0[aout]`);
+    partes.push(`${musicaBase}[m]`);
+    // `apad` antes do atrim: voz curta num vídeo longo terminava o amix cedo.
+    partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[nar]`);
+    partes.push(`[nar]asplit=2[nar1][gatilho]`);
+    // threshold em amplitude (0-1), não em dB. ratio 8 e release 350ms: a música volta
+    // entre as frases sem "bombear" a cada sílaba.
+    partes.push(`[m][gatilho]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=350:makeup=1[mduck]`);
+    partes.push(`[mduck][nar1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
   } else if (idxMusica >= 0) {
-    partes.push(`[${idxMusica}:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=0.8[aout]`);
+    partes.push(`${musicaBase}[aout]`);
   } else if (idxNarracao >= 0) {
-    partes.push(`[${idxNarracao}:a]adelay=700|700,apad,atrim=0:${total.toFixed(2)}[aout]`);
+    partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[aout]`);
   }
 
   const temAudio = idxMusica >= 0 || idxNarracao >= 0;

@@ -17,6 +17,7 @@ import {
   VOZES,
   custoDoVideo,
   duracaoEstimada,
+  vozDeIA,
   type AnimacaoId,
   type Cena,
   type EfeitoId,
@@ -24,6 +25,8 @@ import {
   type FormatoId,
   type Movimento360Id,
   type MusicaId,
+  type Narracao,
+  type OrigemVoz,
   type VozId,
 } from "@/lib/video";
 import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
@@ -179,8 +182,19 @@ export default function PaginaVideo() {
   /** "3 quartos · 2 vagas · 120 m²", da ficha do imóvel escolhido. */
   const [fichaResumo, setFichaResumo] = useState("");
   const [narrar, setNarrar] = useState(false);
+  /** De onde vem a voz: IA, gravada aqui, ou um arquivo que a pessoa já tinha. */
+  const [origemVoz, setOrigemVoz] = useState<OrigemVoz>("ia");
   const [roteiro, setRoteiro] = useState("");
   const [voz, setVoz] = useState<VozId>("laura");
+  /** Voz própria pronta: caminho no bucket + URL local pra ouvir antes de gerar. */
+  const [vozArquivo, setVozArquivo] = useState<{ caminho: string; url: string; nome: string } | null>(null);
+  const [vozVolume, setVozVolume] = useState(1);
+  const [vozInicio, setVozInicio] = useState(0.7);
+  const [musicaVolume, setMusicaVolume] = useState(LIMITES.musicaVolumePadrao);
+  const [gravando, setGravando] = useState(false);
+  const [segundosGravando, setSegundosGravando] = useState(0);
+  const [enviandoVoz, setEnviandoVoz] = useState(false);
+  const gravador = useRef<MediaRecorder | null>(null);
   const [escrevendo, setEscrevendo] = useState(false);
   const [enviando, setEnviando] = useState(0);
   const [ajustesAbertos, setAjustesAbertos] = useState(false);
@@ -198,6 +212,19 @@ export default function PaginaVideo() {
     const t = setInterval(() => setSegundosGerando((v) => v + 1), 1000);
     return () => clearInterval(t);
   }, [gerando]);
+
+  // Relógio da gravação. Para sozinho no teto: gravação esquecida virava arquivo grande
+  // e espera longa, e ninguém narra um Reel por três minutos.
+  useEffect(() => {
+    if (!gravando) return;
+    const t = setInterval(() => {
+      setSegundosGravando((v) => {
+        if (v + 1 >= LIMITES.vozSegundosMax) gravador.current?.stop();
+        return v + 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [gravando]);
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
@@ -207,7 +234,18 @@ export default function PaginaVideo() {
       formato,
       cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, duracao: s.duracao, melhorar: s.melhorar })),
       musica,
-      narracao: narrar && roteiro.trim().length >= 10 ? { roteiro: roteiro.trim(), voz } : null,
+      musicaVolume,
+      // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
+      // Meio caminho (gravou e não usou) não vira vídeo mudo por engano.
+      narracao: !narrar
+        ? null
+        : origemVoz === "ia"
+          ? roteiro.trim().length >= 10
+            ? ({ origem: "ia", roteiro: roteiro.trim(), voz, volume: vozVolume, inicio: vozInicio } as Narracao)
+            : null
+          : vozArquivo
+            ? ({ origem: origemVoz, arquivo: vozArquivo.caminho, volume: vozVolume, inicio: vozInicio } as Narracao)
+            : null,
       titulo,
       preco,
       local,
@@ -216,7 +254,7 @@ export default function PaginaVideo() {
       transicao,
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
     }),
-    [formato, cenas, musica, narrar, roteiro, voz, titulo, preco, local, telaFinal, chamada, transicao, capa]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   const resumoDosAjustes = [
@@ -224,7 +262,7 @@ export default function PaginaVideo() {
     MUSICAS.find((m) => m.id === musica)?.rotulo ?? musica,
     transicao === "suave" ? "transição suave" : "corte seco",
     titulo ? `“${titulo}”` : null,
-    narrar ? `narrado (${VOZES.find((v) => v.id === voz)?.rotulo ?? voz})` : null,
+    espec.narracao ? (vozDeIA(espec.narracao) ? `narrado (${VOZES.find((v) => v.id === voz)?.rotulo ?? voz})` : "com a sua voz") : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -382,6 +420,73 @@ export default function PaginaVideo() {
     }
   }
 
+  /**
+   * Manda o áudio pro bucket e deixa pronto pra entrar no vídeo.
+   *
+   * Mesmo caminho das fotos: o servidor só assina a URL e o navegador sobe direto. Um
+   * áudio de 2 minutos passa dos 4,5 MB que a Vercel aceita no corpo da requisição.
+   */
+  async function usarAudio(arquivo: File | Blob, nome: string) {
+    if (!supabase) return;
+    setEnviandoVoz(true);
+    setErro(null);
+    try {
+      const tipo = arquivo.type || "audio/webm";
+      const r = await fetch("/api/video/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ tipo, tamanho: arquivo.size }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, arquivo, { contentType: tipo });
+      if (error) throw new Error(error.message);
+      setVozArquivo({ caminho: d.caminho, url: URL.createObjectURL(arquivo), nome });
+      setNarrar(true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui enviar o áudio.");
+    } finally {
+      setEnviandoVoz(false);
+    }
+  }
+
+  /**
+   * Gravar a voz aqui mesmo.
+   *
+   * O microfone só é pedido DEPOIS do clique -- nunca ao abrir a tela. Navegador que pede
+   * permissão sem a pessoa ter pedido nada é navegador que leva "bloquear" e nunca mais
+   * consegue gravar. A trilha é desligada no fim, senão a luzinha da câmera/microfone fica
+   * acesa com a aba aberta.
+   */
+  async function gravarVoz() {
+    setErro(null);
+    try {
+      const fluxo = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const pedacos: BlobPart[] = [];
+      const rec = new MediaRecorder(fluxo);
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) pedacos.push(e.data);
+      };
+      rec.onstop = async () => {
+        for (const t of fluxo.getTracks()) t.stop();
+        setGravando(false);
+        const blob = new Blob(pedacos, { type: rec.mimeType || "audio/webm" });
+        if (blob.size > 0) await usarAudio(blob, "Sua voz");
+      };
+      gravador.current = rec;
+      rec.start();
+      setSegundosGravando(0);
+      setGravando(true);
+    } catch {
+      setErro("Não consegui usar o microfone. Verifique a permissão do navegador e tente de novo.");
+    }
+  }
+
+  function pararGravacao() {
+    gravador.current?.stop();
+    gravador.current = null;
+  }
+
   function mudarCena(k: string, mudanca: Partial<CenaUI>) {
     setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, ...mudanca } : s)));
   }
@@ -519,9 +624,15 @@ export default function PaginaVideo() {
       setLocal(e.local ?? "");
       setTelaFinal(e.telaFinal !== false);
       setChamada(e.chamada ?? "");
+      setMusicaVolume(e.musicaVolume ?? LIMITES.musicaVolumePadrao);
       setNarrar(!!e.narracao);
+      setOrigemVoz(e.narracao?.origem ?? "ia");
       setRoteiro(e.narracao?.roteiro ?? "");
       setVoz(e.narracao?.voz ?? "laura");
+      setVozVolume(e.narracao?.volume ?? 1);
+      setVozInicio(e.narracao?.inicio ?? 0.7);
+      // A voz própria volta tocável: o servidor assina a URL do arquivo junto do espec.
+      setVozArquivo(e.narracao?.arquivo && dd.edicao?.vozUrl ? { caminho: e.narracao.arquivo, url: dd.edicao.vozUrl, nome: "Áudio deste vídeo" } : null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
       setResultado(null);
@@ -540,6 +651,11 @@ export default function PaginaVideo() {
     setLocal("");
     setNarrar(false);
     setRoteiro("");
+    setOrigemVoz("ia");
+    setVozArquivo(null);
+    setVozVolume(1);
+    setVozInicio(0.7);
+    setMusicaVolume(LIMITES.musicaVolumePadrao);
     setChamada(CHAMADAS[0]);
     setTelaFinal(true);
   }
@@ -882,6 +998,17 @@ export default function PaginaVideo() {
                 <Chip key={m.id} ativo={musica === m.id} onClick={() => setMusica(m.id)} title={m.descricao}>{m.rotulo}</Chip>
               ))}
             </div>
+            {musica !== "nenhuma" && (
+              <label className="mt-3 block text-xs text-neutral-600">
+                Volume da música · {Math.round(musicaVolume * 100)}%
+                <input type="range" min={0} max={1} step={0.05} value={musicaVolume} onChange={(e) => setMusicaVolume(Number(e.target.value))} className="mt-1 w-full accent-marca-coral" />
+                {espec.narracao && (
+                  <span className="mt-1 block text-[11px] text-neutral-500">
+                    Com voz no vídeo, a música abaixa sozinha enquanto você fala e volta no silêncio.
+                  </span>
+                )}
+              </label>
+            )}
             <div className="mt-3 flex items-center gap-2 text-sm">
               <span className="text-neutral-500">Transição:</span>
               <Chip ativo={transicao === "suave"} onClick={() => setTransicao("suave")}>Suave</Chip>
@@ -940,27 +1067,106 @@ export default function PaginaVideo() {
           </Cartao>
 
           <Cartao>
-            <Rotulo>Narração (+{CREDITOS.narracao} crédito)</Rotulo>
+            <Rotulo>Voz</Rotulo>
             <label className="flex items-center gap-2 text-sm text-neutral-700">
               <input type="checkbox" checked={narrar} onChange={(e) => setNarrar(e.target.checked)} className="accent-marca-coral" />
-              Narrar o vídeo com voz de IA
+              Falar por cima do vídeo
             </label>
+
             {narrar && (
               <div className="mt-3">
-                <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={4} maxLength={LIMITES.roteiroMax} placeholder="Escreva o texto da narração ou peça pra IA escrever a partir do título, preço, local e legendas." className={campo + " resize-none"} />
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Botao variante="secundaria" onClick={escreverRoteiro} disabled={escrevendo || gerando} className="px-3 py-1.5 text-xs">
-                    <Icone nome="magica" className="h-4 w-4" />
-                    {escrevendo ? "Escrevendo…" : "Escrever com IA"}
-                  </Botao>
-                  <span className="text-xs text-neutral-500">{roteiro.length}/{LIMITES.roteiroMax}</span>
+                {/* Três origens, e só uma delas cobra. A voz da pessoa não passa por
+                    modelo nenhum -- é ffmpeg misturando o arquivo dela. */}
+                <div className="flex flex-wrap gap-2">
+                  <Chip ativo={origemVoz === "ia"} onClick={() => setOrigemVoz("ia")} title="A IA lê o texto que você escrever">
+                    Voz de IA (+{CREDITOS.narracao})
+                  </Chip>
+                  <Chip ativo={origemVoz === "gravada"} onClick={() => setOrigemVoz("gravada")} title="Grave aqui mesmo, pelo microfone. Não gasta crédito.">
+                    🎙 Gravar minha voz
+                  </Chip>
+                  <Chip ativo={origemVoz === "enviada"} onClick={() => setOrigemVoz("enviada")} title="MP3, M4A ou WAV que você já tem. Não gasta crédito.">
+                    Enviar áudio
+                  </Chip>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {VOZES.map((v) => (
-                    <Chip key={v.id} ativo={voz === v.id} onClick={() => setVoz(v.id)}>{v.rotulo} · {v.genero}</Chip>
-                  ))}
-                </div>
-                {narrar && roteiro.trim().length < 10 && <p className="mt-2 text-xs text-amber-700">Escreva pelo menos uma frase pra narração entrar.</p>}
+
+                {origemVoz === "ia" ? (
+                  <div className="mt-3">
+                    <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={4} maxLength={LIMITES.roteiroMax} placeholder="Escreva o texto da narração ou peça pra IA escrever a partir do título, preço, local e legendas." className={campo + " resize-none"} />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Botao variante="secundaria" onClick={escreverRoteiro} disabled={escrevendo || gerando} className="px-3 py-1.5 text-xs">
+                        <Icone nome="magica" className="h-4 w-4" />
+                        {escrevendo ? "Escrevendo…" : "Escrever com IA"}
+                      </Botao>
+                      <span className="text-xs text-neutral-500">{roteiro.length}/{LIMITES.roteiroMax}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {VOZES.map((v) => (
+                        <Chip key={v.id} ativo={voz === v.id} onClick={() => setVoz(v.id)}>{v.rotulo} · {v.genero}</Chip>
+                      ))}
+                    </div>
+                    {roteiro.trim().length < 10 && <p className="mt-2 text-xs text-amber-700">Escreva pelo menos uma frase pra narração entrar.</p>}
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    {origemVoz === "gravada" ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {gravando ? (
+                          <>
+                            <Botao variante="secundaria" onClick={pararGravacao} className="px-3 py-1.5 text-xs">
+                              ⏹ Parar
+                            </Botao>
+                            <span className="inline-flex items-center gap-1.5 text-sm tabular-nums text-red-600">
+                              <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
+                              {relogio(segundosGravando)}
+                            </span>
+                          </>
+                        ) : (
+                          <Botao variante="secundaria" onClick={gravarVoz} disabled={enviandoVoz || gerando} className="px-3 py-1.5 text-xs">
+                            🎙 {enviandoVoz ? "Guardando…" : vozArquivo ? "Gravar de novo" : "Gravar"}
+                          </Botao>
+                        )}
+                        {!gravando && !vozArquivo && <span className="text-xs text-neutral-500">O navegador vai pedir o microfone.</span>}
+                      </div>
+                    ) : (
+                      <label className={"inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400 " + (enviandoVoz ? "pointer-events-none opacity-50" : "")}>
+                        <Icone nome="mais" className="h-4 w-4" />
+                        {enviandoVoz ? "Enviando…" : vozArquivo ? "Trocar o áudio" : "Escolher áudio"}
+                        <input
+                          type="file"
+                          accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,.mp3,.m4a,.wav"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) usarAudio(f, f.name);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+
+                    {vozArquivo && (
+                      <div className="mt-2 rounded-lg bg-neutral-50 p-2">
+                        <p className="truncate text-xs text-neutral-600">{vozArquivo.nome}</p>
+                        <audio src={vozArquivo.url} controls className="mt-1 h-8 w-full" />
+                      </div>
+                    )}
+                    {!vozArquivo && <p className="mt-2 text-xs text-amber-700">Sem áudio, o vídeo sai sem voz.</p>}
+                  </div>
+                )}
+
+                {/* Ajuste fino da voz: só aparece quando existe voz pra ajustar. */}
+                {espec.narracao && (
+                  <div className="mt-3 grid gap-2 rounded-lg bg-neutral-50 p-2.5 sm:grid-cols-2">
+                    <label className="text-xs text-neutral-600">
+                      Volume da voz · {Math.round(vozVolume * 100)}%
+                      <input type="range" min={0.2} max={2} step={0.05} value={vozVolume} onChange={(e) => setVozVolume(Number(e.target.value))} className="mt-1 w-full accent-marca-coral" />
+                    </label>
+                    <label className="text-xs text-neutral-600">
+                      Começa em {vozInicio.toFixed(1)}s
+                      <input type="range" min={0} max={LIMITES.vozInicioMax} step={0.1} value={vozInicio} onChange={(e) => setVozInicio(Number(e.target.value))} className="mt-1 w-full accent-marca-coral" />
+                    </label>
+                  </div>
+                )}
               </div>
             )}
           </Cartao>

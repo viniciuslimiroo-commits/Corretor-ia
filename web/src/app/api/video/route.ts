@@ -76,6 +76,10 @@ export async function POST(req: NextRequest) {
   for (const c of espec.cenas) {
     if (c.arquivo && !c.arquivo.startsWith(`uploads/${userId}/`)) return NextResponse.json({ error: "Arquivo enviado não reconhecido." }, { status: 400 });
   }
+  // A voz própria é um arquivo do bucket como qualquer outro: tem que ser DELA.
+  if (espec.narracao?.arquivo && !espec.narracao.arquivo.startsWith(`uploads/${userId}/`)) {
+    return NextResponse.json({ error: "Áudio de narração não reconhecido." }, { status: 400 });
+  }
 
   // Cena animada cujo clipe já existe (o vídeo está sendo editado e essa cena não mudou)
   // não é cobrada de novo. Decidido aqui, junto com a cobrança, e gravado no pipeline

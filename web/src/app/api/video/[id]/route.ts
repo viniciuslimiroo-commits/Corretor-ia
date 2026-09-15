@@ -71,7 +71,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       avisos: pipeline?.avisos ?? [],
       compartilhado: !!video.share_token,
       espec,
-      edicao: { imovelId: (video.property_id as string | null) ?? null, cenas },
+      edicao: {
+        imovelId: (video.property_id as string | null) ?? null,
+        cenas,
+        // Voz própria: assinada pra tela poder tocar sem baixar nada.
+        vozUrl: espec.narracao?.arquivo ? await assinar(db, espec.narracao.arquivo).catch(() => null) : null,
+      },
     });
   }
   if (video.status === "falhou") {

@@ -10,7 +10,7 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -394,6 +394,15 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
     // ---------- narração ----------
     if (p.etapa === "narracao") {
+      // Voz da pessoa (gravada no navegador ou enviada): o arquivo já está no bucket, já
+      // foi conferido como dela em /api/video, e não passa por modelo nenhum. Nada de TTS,
+      // nada de crédito -- e NÃO entra em `temporarios`, senão a faxina do fim apagaria um
+      // arquivo que é dela e que outros vídeos podem reusar.
+      if (espec.narracao && !vozDeIA(espec.narracao) && espec.narracao.arquivo) {
+        p.narracaoPath = espec.narracao.arquivo;
+        await salvar({ etapa: "montar" });
+        return progressoDe(espec, p);
+      }
       if (espec.narracao) {
         try {
           const voz = VOZES.find((v) => v.id === espec.narracao!.voz) ?? VOZES[0];
@@ -404,6 +413,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
             120_000
           )) as { audio?: { url?: string } };
           if (!saida.audio?.url) throw new Error("TTS sem áudio na resposta.");
+          // (daqui pra baixo é só a voz de IA)
           const arquivo = local("narracao.mp3");
           await baixarUrl(saida.audio.url, arquivo);
           const destino = tmp("narracao.mp3");
@@ -438,7 +448,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       }
       let narracao: string | undefined;
       if (p.narracaoPath) {
-        narracao = local("narracao.mp3");
+        // A extensão importa: o ffmpeg abre webm/opus (gravação do navegador) e m4a pelo
+        // container, e um .mp3 que não é mp3 confunde o detector.
+        narracao = local(`narracao${extensaoDe(p.narracaoPath)}`);
         await baixar(db, p.narracaoPath, narracao);
       }
       const total = p.duracoes.reduce((s, d) => s + d, 0) - (espec.transicao === "suave" ? LIMITES.transicaoSegundos * (p.clipes.length - 1) : 0);
@@ -458,6 +470,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           titulo: espec.titulo || undefined,
           subtitulo: subtitulo || undefined,
           fimDoCarimbo,
+          musicaVolume: espec.musicaVolume,
+          vozVolume: espec.narracao?.volume,
+          vozInicio: espec.narracao?.inicio,
         }),
         280_000
       );

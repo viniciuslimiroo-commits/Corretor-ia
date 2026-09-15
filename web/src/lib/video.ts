@@ -194,11 +194,41 @@ export const VOZES: { id: VozId; rotulo: string; genero: "feminina" | "masculina
  */
 export const CHAMADAS = ["Agende sua visita", "Chame no WhatsApp", "Quero saber mais"];
 
+/**
+ * De onde vem a voz do vídeo.
+ *
+ * "ia" é a narração do ElevenLabs e custa crédito. "gravada" (microfone do navegador) e
+ * "enviada" (MP3/M4A/WAV que a pessoa já tem) não custam nada: é o arquivo dela, e o
+ * servidor só mistura. A voz própria é o motivo nº 1 de alguém gerar aqui e terminar no
+ * CapCut, e era o buraco mais caro do produto.
+ */
+export type OrigemVoz = "ia" | "gravada" | "enviada";
+
+export type Narracao = {
+  origem: OrigemVoz;
+  /** Só "ia". */
+  roteiro?: string;
+  voz?: VozId;
+  /** "gravada" e "enviada": caminho no bucket privado. */
+  arquivo?: string;
+  /** 0,2 a 2. 1 = como veio. */
+  volume?: number;
+  /** Segundos de silêncio antes de a voz começar. */
+  inicio?: number;
+};
+
+/** Narração que a IA grava -- a única que custa crédito. Espec antigo não tem `origem`. */
+export function vozDeIA(n: Narracao | null | undefined): boolean {
+  return !!n && (n.origem ?? "ia") === "ia";
+}
+
 export type EspecVideo = {
   formato: FormatoId;
   cenas: Cena[];
   musica: MusicaId;
-  narracao: { roteiro: string; voz: VozId } | null;
+  /** 0 a 1. Quando há voz, é o volume ANTES da redução automática. */
+  musicaVolume?: number;
+  narracao: Narracao | null;
   titulo: string;
   preco: string;
   local: string;
@@ -223,6 +253,11 @@ export const LIMITES = {
   tituloMax: 50,
   chamadaMax: 40,
   roteiroMax: 700,
+  /** Quanto a voz pode atrasar. Mais que isso e a pessoa quer cortar o áudio, não atrasar. */
+  vozInicioMax: 10,
+  /** Voz gravada no navegador: acima disso o arquivo fica grande e a espera, longa. */
+  vozSegundosMax: 180,
+  musicaVolumePadrao: 0.8,
   telaFinalSegundos: 4,
   transicaoSegundos: 0.6,
 };
@@ -238,7 +273,8 @@ export const CREDITOS = { base: 0, animada: 2, narracao: 1 };
 
 export function custoDoVideo(e: Pick<EspecVideo, "cenas" | "narracao">): number {
   const animadas = e.cenas.filter((c) => c.tipo === "animada").length;
-  return CREDITOS.base + animadas * CREDITOS.animada + (e.narracao ? CREDITOS.narracao : 0);
+  // A voz da pessoa (gravada ou enviada) não passa por modelo nenhum: não cobra.
+  return CREDITOS.base + animadas * CREDITOS.animada + (vozDeIA(e.narracao) ? CREDITOS.narracao : 0);
 }
 
 export function duracaoDaCena(c: Cena): number {
@@ -300,11 +336,28 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
   }
 
   const musica: MusicaId = ehId(MUSICAS, b.musica) ? b.musica : "nenhuma";
+  const volumeMusica = Number(b.musicaVolume);
+  const musicaVolume = Number.isFinite(volumeMusica) ? Math.min(1, Math.max(0, volumeMusica)) : LIMITES.musicaVolumePadrao;
+
   let narracao: EspecVideo["narracao"] = null;
   if (b.narracao && typeof b.narracao === "object") {
     const n = b.narracao as Record<string, unknown>;
-    const roteiro = texto(n.roteiro, LIMITES.roteiroMax);
-    if (roteiro.length >= 10) narracao = { roteiro, voz: ehId(VOZES, n.voz) ? n.voz : "laura" };
+    // Espec gravado antes da voz própria não tem `origem`, e era sempre IA.
+    const origem: OrigemVoz = n.origem === "gravada" || n.origem === "enviada" ? n.origem : "ia";
+    const vol = Number(n.volume);
+    const ini = Number(n.inicio);
+    const comum = {
+      volume: Number.isFinite(vol) ? Math.min(2, Math.max(0.2, vol)) : 1,
+      inicio: Number.isFinite(ini) ? Math.min(LIMITES.vozInicioMax, Math.max(0, Math.round(ini * 10) / 10)) : 0.7,
+    };
+    if (origem === "ia") {
+      const roteiro = texto(n.roteiro, LIMITES.roteiroMax);
+      if (roteiro.length >= 10) narracao = { origem, roteiro, voz: ehId(VOZES, n.voz) ? n.voz : "laura", ...comum };
+    } else {
+      // Mesma regra dos arquivos de cena: só caminho do bucket, sem subir de pasta.
+      const arquivo = typeof n.arquivo === "string" && /^[\w./-]{1,200}$/.test(n.arquivo) && !n.arquivo.includes("..") ? n.arquivo : undefined;
+      if (arquivo) narracao = { origem, arquivo, ...comum };
+    }
   }
 
   // Capa fora da lista (cena removida depois de escolhida) volta pra primeira, sem erro:
@@ -317,6 +370,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       formato: b.formato,
       cenas,
       musica,
+      musicaVolume,
       narracao,
       titulo: texto(b.titulo, LIMITES.tituloMax),
       preco: texto(b.preco, 30),
