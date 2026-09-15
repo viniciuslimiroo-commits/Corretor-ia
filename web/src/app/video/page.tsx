@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
@@ -205,6 +205,28 @@ export default function PaginaVideo() {
       .then(setVideos)
       .catch(() => setVideos([]));
   }, [user, carregarVideos]);
+
+  // Chegou com `?job=`: uma imagem da Encena querendo virar cena. É o caminho "Animar esta
+  // imagem" / "Usar em vídeo" do editor -- sem baixar e subir de novo. Roda uma vez por
+  // job, e antes de qualquer imóvel estar escolhido: a imagem pode não ter imóvel nenhum.
+  const jobDaUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    const id = new URLSearchParams(window.location.search).get("job");
+    if (!id || jobDaUrl.current === id) return;
+    jobDaUrl.current = id;
+    token()
+      .then((t) => fetch(`/api/job/${id}`, { headers: { Authorization: `Bearer ${t}` } }))
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status !== "concluido" || !d.url) return;
+        if (d.imovelId) setImovelId((atual) => atual ?? d.imovelId);
+        adicionarGeracao({ id, acao: "Imagem da Encena", detalhe: "", status: "concluido", antes: null, depois: d.url });
+        // Limpa a URL: um F5 não deve pendurar a mesma cena de novo.
+        window.history.replaceState(null, "", window.location.pathname);
+      })
+      .catch(() => {});
+  }, [user, token]);
 
   // Trocou de imóvel: carrega as gerações dele e sugere título/local.
   useEffect(() => {

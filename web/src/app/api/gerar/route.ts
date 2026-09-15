@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { apagarEntradas, caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
+import { limparFaixaDoSelo } from "@/lib/selo";
 import { UPSCALER, corpoRequisicao, despachar } from "@/lib/fal";
 import { ACOES_POR_ID, limparParametros } from "@/lib/acoes";
 import { saldoFal } from "@/lib/custo";
@@ -95,9 +96,37 @@ export async function POST(req: NextRequest) {
   const referencia = form.get("referencia") as File | null;
   const acaoId = (form.get("acao") as string) || "mobiliar";
   const semUpscale = form.get("semUpscale") === "1";
-  const imovelIdBruto = ((form.get("imovelId") as string | null) ?? "").trim() || null;
+  let imovelIdBruto = ((form.get("imovelId") as string | null) ?? "").trim() || null;
 
-  if (!foto) return NextResponse.json({ error: "Nenhuma foto enviada." }, { status: 400 });
+  // A entrada pode ser um RESULTADO em vez de um arquivo: é o refinar, e é também o
+  // caminho pra qualquer imagem da Encena virar entrada de outra coisa sem baixar e subir
+  // de novo. Conferido contra o dono, porque o service role ignora RLS.
+  const baseJobId = ((form.get("baseJobId") as string | null) ?? "").trim() || null;
+  // Uma por clique, gerada no navegador. Ver migração 15.
+  const chaveIdempotencia = ((form.get("chaveIdempotencia") as string | null) ?? "").trim().slice(0, 80) || null;
+
+  if (!foto && !baseJobId) return NextResponse.json({ error: "Nenhuma foto enviada." }, { status: 400 });
+
+  let bytesBase: Buffer | null = null;
+  if (baseJobId) {
+    const { data: base } = await db
+      .from("jobs")
+      .select("id, status, output_path, property_id")
+      .eq("id", baseJobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!base || base.status !== "concluido" || !base.output_path) {
+      return NextResponse.json({ error: "A imagem de origem não está disponível." }, { status: 400 });
+    }
+    const { data: arquivo, error: erroBaixar } = await db.storage.from(BUCKET_RESULTADOS).download(base.output_path);
+    if (erroBaixar || !arquivo) return NextResponse.json({ error: "Não consegui abrir a imagem de origem." }, { status: 500 });
+    // A imagem guardada tem o selo queimado. Se ele entrar no modelo, o modelo o
+    // redesenha e o app carimba outro por cima -- aconteceu na obra do terreno. A saída
+    // deste job é carimbada normalmente; o que some é só a cópia que entra na IA.
+    bytesBase = await limparFaixaDoSelo(Buffer.from(await arquivo.arrayBuffer()));
+    // O refino herda o imóvel da origem: a v2 da sala continua sendo daquele apartamento.
+    if (!imovelIdBruto && base.property_id) imovelIdBruto = base.property_id as string;
+  }
 
   const acao = ACOES_POR_ID[acaoId];
   if (!acao) return NextResponse.json({ error: `Ação desconhecida: ${acaoId}` }, { status: 400 });
@@ -121,7 +150,7 @@ export async function POST(req: NextRequest) {
   }
   const usaMascara = !!mascara && acao.mascara !== "nao";
 
-  const bytesOriginais = Buffer.from(await foto.arrayBuffer());
+  const bytesOriginais = bytesBase ?? Buffer.from(await foto!.arrayBuffer());
   if (acao.id === "converter_hd") {
     const dim = await sharp(bytesOriginais).rotate().metadata();
     if ((dim.width ?? 0) >= ALVO_HD) {
@@ -147,10 +176,32 @@ export async function POST(req: NextRequest) {
 
   const { data: job, error: jobCriarError } = await db
     .from("jobs")
-    .insert({ user_id: userId, tipo: acao.id, status: "gerando", parametros, property_id: imovelId, org_id: orgId })
+    .insert({
+      user_id: userId,
+      tipo: acao.id,
+      status: "gerando",
+      parametros,
+      property_id: imovelId,
+      org_id: orgId,
+      origem_job_id: baseJobId,
+      chave_idempotencia: chaveIdempotencia,
+    })
     .select()
     .single();
-  if (jobCriarError) return NextResponse.json({ error: `Erro criando job: ${jobCriarError.message}` }, { status: 500 });
+  if (jobCriarError) {
+    // Chave repetida = o mesmo clique chegando duas vezes (retry do navegador, dedo
+    // duplo). O job já existe e já foi cobrado uma vez; devolve ele em vez de criar outro.
+    if (chaveIdempotencia && /duplicate|unique|23505/i.test(jobCriarError.message)) {
+      const { data: existente } = await db
+        .from("jobs")
+        .select("id, status")
+        .eq("user_id", userId)
+        .eq("chave_idempotencia", chaveIdempotencia)
+        .maybeSingle();
+      if (existente) return NextResponse.json({ jobId: existente.id, status: existente.status, repetido: true });
+    }
+    return NextResponse.json({ error: `Erro criando job: ${jobCriarError.message}` }, { status: 500 });
+  }
   if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 
   // Débito ATÔMICO, antes de gastar um centavo com a IA.

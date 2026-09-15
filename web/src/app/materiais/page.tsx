@@ -277,24 +277,52 @@ export default function Books() {
           {/* Os dois caminhos. O automático primeiro, e marcado como tal. */}
           <div className="mb-5 grid gap-2 sm:grid-cols-2">
             {([
-              ["auto", "Criar automaticamente", "O sistema olha as fotos, escolhe as melhores, escreve os textos e monta tudo."],
-              ["manual", "Escolher eu mesmo", "Você marca as imagens, na ordem que quiser, e escolhe o tipo."],
-            ] as const).map(([id, titulo, texto]) => (
-              <button
-                key={id}
-                onClick={() => setModo(id)}
-                className={
-                  "rounded-xl border p-3 text-left transition " +
-                  (modo === id ? "border-marca-coral bg-marca-pessego/30 ring-2 ring-marca-coral/25" : "border-neutral-200 bg-white hover:border-neutral-400")
-                }
-              >
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm font-semibold">{titulo}</span>
-                  {id === "auto" && <span className="text-[10px] uppercase tracking-wider text-neutral-400">recomendado</span>}
-                </span>
-                <span className="mt-1 block text-xs text-neutral-500">{texto}</span>
-              </button>
-            ))}
+              // Dois caminhos com o MESMO peso. A versão anterior deixava o não escolhido
+              // com borda cinza-clara e texto cinza -- a cara de botão desabilitado -- e
+              // o usuário não percebeu que havia dois jeitos. Aqui os dois têm ícone,
+              // borda firme e a mesma altura; o escolhido ganha fundo, check e a palavra.
+              ["auto", "Criar automaticamente", "A Encena escolhe as fotos, escreve os textos e monta tudo. Você só revisa.", "✨"],
+              ["manual", "Escolher eu mesmo", "Você marca as imagens, a ordem e o tipo. Controle total do que entra.", "👆"],
+            ] as const).map(([id, titulo, texto, icone]) => {
+              const ativo = modo === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={ativo}
+                  onClick={() => setModo(id)}
+                  className={
+                    "relative flex min-h-[96px] items-start gap-3 rounded-2xl border-2 p-4 text-left transition " +
+                    (ativo
+                      ? "border-marca-coral bg-marca-pessego/35 shadow-sm"
+                      : "border-neutral-300 bg-white hover:-translate-y-0.5 hover:border-marca-indigo hover:shadow-md")
+                  }
+                >
+                  <span
+                    className={
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg " +
+                      (ativo ? "bg-marca-coral text-white" : "bg-neutral-100")
+                    }
+                    aria-hidden="true"
+                  >
+                    {icone}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-[15px] font-semibold text-neutral-900">{titulo}</span>
+                      {ativo ? (
+                        <span className="flex shrink-0 items-center gap-1 rounded-full bg-marca-coral px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+                          ✓ Selecionado
+                        </span>
+                      ) : id === "auto" ? (
+                        <span className="shrink-0 rounded-full border border-neutral-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Recomendado</span>
+                      ) : null}
+                    </span>
+                    <span className={"mt-1 block text-[13px] leading-snug " + (ativo ? "text-neutral-700" : "text-neutral-600")}>{texto}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Migalha de pão: sem isto a pessoa marca 5 fotos numa tela e cai noutra, com

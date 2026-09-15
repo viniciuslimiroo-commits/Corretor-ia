@@ -65,6 +65,12 @@ export type DefAcao = {
   esperado?: (p: Record<string, string>) => string;
   /** Textos do pincel quando a máscara é opcional (o padrão serve pro "mobiliar"). */
   rotulosMascara?: { opcao: string; ajuda: string; titulo: string };
+  /**
+   * Não aparece na fileira de ações. Existe pra ação que só faz sentido A PARTIR de um
+   * resultado (refinar): oferecida como chip ao lado de "Mobiliar", ela pareceria mais
+   * um jeito de editar a foto original, que é exatamente o que ela não é.
+   */
+  oculta?: boolean;
 };
 
 // ---------- listas de opções ----------
@@ -536,6 +542,56 @@ export const ACOES: DefAcao[] = [
       `Edit this real-estate photo as follows: ${p.instrucao}. Keep the architecture, camera angle and framing unchanged unless the instruction says otherwise. Photorealistic result. Do not add people, text, logos or watermarks.`,
     esperado: (p) => `The instruction "${p.instrucao ?? ""}" was applied visibly and photorealistically; everything not mentioned in it is unchanged.`,
   },
+  // ---- Refinar: mexer em UMA coisa num resultado que já agradou ----
+  //
+  // É "Editar com texto" com duas diferenças que mudam tudo. A entrada é a imagem GERADA,
+  // não a foto que a pessoa subiu -- então o que ela gostou fica. E a preservação é a
+  // regra principal do prompt, não a cláusula de rodapé: quem pede "troca só o sofá" e
+  // recebe outra sala inteira não pediu uma variação, perdeu o resultado.
+  //
+  // Oculta da fileira: só existe como botão em cima de um resultado.
+  {
+    id: "refinar",
+    rotulo: "Refinar",
+    grupo: "outro",
+    oculta: true,
+    descricao: "Mude uma coisa e mantenha o resto.",
+    parametros: [
+      {
+        chave: "instrucao",
+        rotulo: "O que mudar",
+        tipo: "texto",
+        placeholder: "Ex.: troque o sofá por um bege mais moderno e mantenha todo o resto",
+        max: 300,
+        ajuda: "Um pedido por vez sai mais certo.",
+      },
+    ],
+    mascara: "nao",
+    provedores: ["fal-ai/nano-banana/edit", "fal-ai/flux-pro/kontext"],
+    selo: "Imagem ilustrativa · editada digitalmente",
+    checarIgual: false,
+    prompt: (p) =>
+      `This image is a finished result the owner already approved. Make ONLY this change: ${p.instrucao}.` +
+      ` Everything the instruction does not name stays pixel-for-pixel as it is: the architecture, walls, doors, windows, floor, ceiling, lighting, camera angle, framing, perspective, every other piece of furniture, every object and the overall composition.` +
+      ` Do not reinterpret the scene, do not restyle it, do not move or replace anything else. Photorealistic result. Do not add people, text, logos or watermarks.`,
+    esperado: (p) => `Only "${p.instrucao ?? ""}" changed; the rest of the image is identical to the input, including architecture, other furniture and camera angle.`,
+  },
+];
+
+/**
+ * Atalhos pra escrever o pedido de refino. Só montam texto -- a pessoa pode apagar,
+ * juntar dois ou ignorar todos. O texto de cada um já carrega o "mantenha o resto",
+ * porque é o que separa refinar de gerar de novo.
+ */
+export const SUGESTOES_REFINO: { rotulo: string; texto: string }[] = [
+  { rotulo: "Mais moderno", texto: "Deixe a decoração mais moderna, mantendo a arquitetura e a posição dos móveis." },
+  { rotulo: "Mais sofisticado", texto: "Deixe o ambiente mais sofisticado nos materiais e acabamentos, sem mudar a arquitetura." },
+  { rotulo: "Mais minimalista", texto: "Tire o excesso de objetos e deixe mais minimalista, mantendo os móveis principais." },
+  { rotulo: "Mais aconchegante", texto: "Deixe mais aconchegante, com tecidos e luz mais quente, mantendo tudo no lugar." },
+  { rotulo: "Clarear", texto: "Deixe o ambiente mais claro, com aparência de luz natural, sem mudar nada além da luz." },
+  { rotulo: "Trocar o sofá", texto: "Troque somente o sofá por outro modelo e mantenha todo o resto exatamente igual." },
+  { rotulo: "Remover o tapete", texto: "Remova o tapete e mantenha todo o resto exatamente igual." },
+  { rotulo: "Mudar cor da parede", texto: "Mude somente a cor das paredes para um tom claro neutro e mantenha todo o resto." },
 ];
 
 export const ACOES_POR_ID: Record<string, DefAcao> = Object.fromEntries(ACOES.map((a) => [a.id, a]));

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
-import { ACOES, ACOES_POR_ID, GRUPOS, type DefAcao } from "@/lib/acoes";
+import { ACOES, ACOES_POR_ID, GRUPOS, SUGESTOES_REFINO, type DefAcao } from "@/lib/acoes";
 import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
 import { guardarArquivos } from "@/lib/entrega-arquivos";
@@ -62,6 +62,15 @@ export default function Editor() {
   const [info, setInfo] = useState<Info | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  // ---- refinar e versões ----
+  // O que foi usado na geração que está na tela, pra "ver as configurações" ser verdade
+  // e não uma reconstrução. Capturado no clique, não lido do estado atual, porque a
+  // pessoa pode mexer nos chips depois de gerar.
+  const [usado, setUsado] = useState<{ acaoId: string; parametros: Record<string, string> } | null>(null);
+  const [refino, setRefino] = useState("");
+  const [versoes, setVersoes] = useState<{ jobId: string | null; rotulo: string; url: string | null; instrucao: string | null; atual: boolean }[] | null>(null);
+  const [mostrarVersoes, setMostrarVersoes] = useState(false);
 
   const [exportando, setExportando] = useState<string | null>(null);
   const [legenda, setLegenda] = useState("");
@@ -164,36 +173,53 @@ export default function Editor() {
     throw new Error("Passou de 6 minutos. Recarregue a página daqui a pouco antes de tentar de novo, pra não gastar outro crédito.");
   }
 
-  async function gerar() {
-    if (!foto || !podeGerar) return;
+  /**
+   * Gera a partir da foto (o caminho de sempre) ou a partir de um RESULTADO (refinar).
+   *
+   * No refino a entrada é `baseJobId`, não `foto`: o servidor pega a imagem gerada do
+   * storage. Nada é baixado nem subido de novo, e o que a pessoa gostou fica. O resultado
+   * novo vira a base do próximo refino, então "mais uma coisa" encadeia sem começar do zero.
+   *
+   * `chaveIdempotencia` é uma por clique: dedo duplo ou retry do navegador não viram
+   * segundo débito (o servidor devolve o job que já existe).
+   */
+  async function gerar(base?: { jobId: string; acaoId: string; parametros: Record<string, string> }) {
+    if (base ? carregando || (c.conta?.creditos ?? 0) <= 0 : !foto || !podeGerar) return;
+    const acaoUsada = base ? ACOES_POR_ID[base.acaoId] : acao;
+    const parametrosUsados = base ? base.parametros : parametros;
     setCarregando(true);
     setErro(null);
     setResultado(null);
     setInfo(null);
     setJobId(null);
     setReportado(null);
+    setVersoes(null);
     try {
       const token = await c.token();
       const form = new FormData();
-      form.append("foto", foto);
-      form.append("acao", acao.id);
-      form.append("parametros", JSON.stringify(parametros));
+      if (base) form.append("baseJobId", base.jobId);
+      else form.append("foto", foto!);
+      form.append("acao", acaoUsada.id);
+      form.append("parametros", JSON.stringify(parametrosUsados));
+      form.append("chaveIdempotencia", typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
       if (imovelId) form.append("imovelId", imovelId);
-      if (usaMascara) {
+      if (!base && usaMascara) {
         const mascara = await editorRef.current?.obterMascara();
         if (!mascara) throw new Error("Pinte na foto a área antes de gerar.");
         form.append("mascara", mascara, "mascara.png");
       }
-      if (acao.referencia && referencia) form.append("referencia", referencia);
+      if (!base && acao.referencia && referencia) form.append("referencia", referencia);
 
       const resp = await fetch("/api/gerar", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Falha ao gerar.");
       setJobId(data.jobId);
+      setUsado({ acaoId: acaoUsada.id, parametros: parametrosUsados });
       setEtapa("Na fila…");
       const final = await acompanhar(data.jobId, token);
       setResultado(final.url);
       setInfo({ largura: final.width, altura: final.height, modelo: final.modelo, upscaled: final.upscaled, aviso: final.aviso, selo: final.selo ?? null });
+      if (base) setRefino("");
       c.recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro desconhecido.");
@@ -202,6 +228,53 @@ export default function Editor() {
       setCarregando(false);
       setEtapa(null);
     }
+  }
+
+  /** Refinar o resultado que está na tela: "editar com texto", mas sobre a imagem gerada. */
+  function refinar() {
+    if (!jobId || refino.trim().length < 3) return;
+    gerar({ jobId, acaoId: "refinar", parametros: { instrucao: refino.trim() } });
+  }
+
+  /** Original → v1 → v2… do job na tela. Não gasta crédito: é só ler o que já existe. */
+  async function verVersoes() {
+    if (!jobId) return;
+    if (mostrarVersoes) {
+      setMostrarVersoes(false);
+      return;
+    }
+    setMostrarVersoes(true);
+    try {
+      const r = await fetch(`/api/job/${jobId}/versoes`, { headers: { Authorization: `Bearer ${await c.token()}` } });
+      const d = await r.json();
+      setVersoes(d.versoes ?? []);
+    } catch {
+      setVersoes([]);
+    }
+  }
+
+  /** Voltar pra uma versão: ela vira o resultado na tela e a base do próximo refino. */
+  function irParaVersao(v: { jobId: string | null; url: string | null }) {
+    if (!v.jobId || !v.url) return;
+    setJobId(v.jobId);
+    setResultado(v.url);
+    setVersoes((lista) => (lista ?? []).map((x) => ({ ...x, atual: x.jobId === v.jobId })));
+  }
+
+  /** O que foi usado, em português, pra pessoa saber de onde saiu o resultado. */
+  function descreverUsado(): string | null {
+    if (!usado) return null;
+    const def = ACOES_POR_ID[usado.acaoId];
+    if (!def) return null;
+    const partes: string[] = [];
+    for (const p of def.parametros) {
+      const v = usado.parametros[p.chave];
+      if (!v) continue;
+      const opcao = p.opcoes?.find((o) => o.valor === v);
+      if (p.tipo === "texto") partes.push(`“${v}”`);
+      else if (opcao && opcao.valor !== "auto") partes.push(opcao.rotulo);
+    }
+    return [def.rotulo, ...partes].join(" · ");
   }
 
   async function exportarPara(portal: string) {
@@ -248,7 +321,8 @@ export default function Editor() {
     }
   }
 
-  const acoesPorGrupo = useMemo(() => GRUPOS.map((g) => ({ ...g, acoes: ACOES.filter((a) => a.grupo === g.id) })), []);
+  // `oculta` fica fora da fileira: "refinar" só existe em cima de um resultado.
+  const acoesPorGrupo = useMemo(() => GRUPOS.map((g) => ({ ...g, acoes: ACOES.filter((a) => a.grupo === g.id && !a.oculta) })), []);
 
   // ---------- estados sem sessão ----------
   if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
@@ -340,6 +414,108 @@ export default function Editor() {
                       {info.selo && <> · sai com o aviso &quot;{info.selo}&quot;</>}
                       {info.aviso && <span className="block text-amber-600">⚠ {info.aviso}</span>}
                     </p>
+                  )}
+
+                  {/* ---- o que fazer com esta imagem ----
+                      Uma imagem pronta não é fim de linha: refina, vira cena de vídeo,
+                      entra no vídeo que a pessoa já está montando. Tudo sem baixar e subir
+                      de novo -- a entrada é o próprio job. Nada aqui gasta crédito até a
+                      pessoa clicar em gerar. */}
+                  {jobId && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={verVersoes}
+                        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-marca-indigo"
+                      >
+                        {mostrarVersoes ? "Fechar versões" : "Ver versões"}
+                      </button>
+                      <Link
+                        href={`/video?job=${jobId}`}
+                        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-marca-indigo"
+                        title="Vira uma cena com movimento de câmera. Só a câmera se move: nada de gente, bicho ou móvel novo."
+                      >
+                        ▶ Animar esta imagem
+                      </Link>
+                      {imovelId && (
+                        <Link href={`/materiais?imovel=${imovelId}`} className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-marca-indigo">
+                          Usar em material
+                        </Link>
+                      )}
+                    </div>
+                  )}
+
+                  {mostrarVersoes && (
+                    <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-3">
+                      <Rotulo>Versões</Rotulo>
+                      {versoes === null ? (
+                        <p className="text-xs text-neutral-500">Carregando…</p>
+                      ) : versoes.length === 0 ? (
+                        <p className="text-xs text-neutral-500">Só esta por enquanto. Cada refino vira uma versão nova; nenhuma apaga a anterior.</p>
+                      ) : (
+                        <ul className="flex gap-2 overflow-x-auto pb-1">
+                          {versoes.map((v, i) => (
+                            <li key={v.jobId ?? `orig-${i}`} className="shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => irParaVersao(v)}
+                                disabled={!v.jobId}
+                                title={v.instrucao ?? undefined}
+                                className={
+                                  "block w-24 overflow-hidden rounded-lg border-2 text-left transition " +
+                                  (v.atual ? "border-marca-coral" : "border-neutral-200 hover:border-marca-indigo") +
+                                  (!v.jobId ? " cursor-default opacity-90" : "")
+                                }
+                              >
+                                {v.url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={v.url} alt={v.rotulo} className="aspect-[4/3] w-full object-cover" />
+                                ) : (
+                                  <span className="block aspect-[4/3] w-full bg-neutral-100" />
+                                )}
+                                <span className="block truncate px-1.5 py-1 text-[11px] text-neutral-600">{v.rotulo}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  {jobId && (
+                    <div className="mt-3 rounded-xl border border-marca-coral/40 bg-marca-pessego/20 p-3">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <Rotulo>Refinar este resultado</Rotulo>
+                        {descreverUsado() && <span className="text-[11px] text-neutral-500">Usado: {descreverUsado()}</span>}
+                      </div>
+                      <p className="mb-2 text-xs text-neutral-600">Mude uma coisa e o resto fica como está. Um pedido por vez sai mais certo.</p>
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {SUGESTOES_REFINO.map((s) => (
+                          <button
+                            key={s.rotulo}
+                            type="button"
+                            onClick={() => setRefino(s.texto)}
+                            className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700 hover:border-marca-indigo hover:text-marca-indigo"
+                          >
+                            {s.rotulo}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={refino}
+                        onChange={(e) => setRefino(e.target.value)}
+                        rows={2}
+                        maxLength={300}
+                        placeholder="Ex.: troque o sofá por um bege mais moderno e mantenha todo o resto"
+                        className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
+                      />
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <Botao onClick={refinar} disabled={carregando || refino.trim().length < 3 || (c.conta?.creditos ?? 0) <= 0}>
+                          {carregando ? "Refinando…" : "Aplicar · 1 crédito"}
+                        </Botao>
+                        <span className="text-xs text-neutral-500">Escrever não custa nada. Cobra só quando gera.</span>
+                      </div>
+                    </div>
                   )}
 
                   <div className="mt-4 rounded-xl bg-neutral-50 p-3">
@@ -517,7 +693,7 @@ export default function Editor() {
               <SeletorImovel token={c.token} valor={imovelId} onChange={setImovelId} disabled={carregando} />
               <p className="mt-1.5 text-xs text-neutral-500">Fotos do mesmo anúncio ficam juntas e viram um link só pro cliente.</p>
             </div>
-            <Botao onClick={gerar} disabled={!podeGerar} className="w-full py-3 text-base">
+            <Botao onClick={() => gerar()} disabled={!podeGerar} className="w-full py-3 text-base">
               {carregando ? (etapa ?? "Gerando…") : `Gerar · 1 crédito`}
             </Botao>
             {!foto && <p className="mt-2 text-center text-xs text-neutral-500">Envie uma foto para começar.</p>}
