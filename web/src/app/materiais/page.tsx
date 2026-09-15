@@ -233,7 +233,7 @@ export default function Books() {
           sessionStorage.setItem(`book:${d.book.id}:relatorio`, JSON.stringify(d.relatorio));
         } catch {}
       }
-      router.push(`/materiais/${d.book.id}`);
+      router.push(`/editor/material/${d.book.id}`);
     } catch (e) {
       const err = e as Error & { migracao?: boolean };
       setErro(err.message);
@@ -552,7 +552,7 @@ export default function Books() {
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {books.map((b) => (
               <li key={b.id}>
-                <Link href={`/materiais/${b.id}`} className="block overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:border-neutral-400">
+                <Link href={`/editor/material/${b.id}`} className="block overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:border-neutral-400">
                   <div className="aspect-[4/3] bg-neutral-100">
                     {b.capa ? (
                       // eslint-disable-next-line @next/next/no-img-element

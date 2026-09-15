@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
       // fotos assim. Mesmo motivo do redirect acima, e mesma solução.
       { source: "/acervo", destination: "/galeria", permanent: true },
       { source: "/biblioteca/material", destination: "/materiais/montar", permanent: true },
+      // A edição virou uma ÁREA (o Editor Encena), e as duas telas se mudaram pra dentro
+      // dela. Os endereços antigos continuam de pé pelo mesmo motivo dos de cima.
+      { source: "/video", destination: "/editor/video", permanent: true },
+      { source: "/materiais/:id((?!montar$)[0-9a-f-]{36})", destination: "/editor/material/:id", permanent: true },
     ];
   },
 };

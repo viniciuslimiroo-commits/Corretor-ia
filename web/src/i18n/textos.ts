@@ -31,8 +31,9 @@ const pt: Dicionario = {
 
   // ---- menu ----
   "menu.inicio": "Início",
-  "menu.editar": "Editar",
+  "menu.editar": "Editar foto",
   "menu.video": "Vídeo",
+  "menu.editor": "Editor",
   "menu.imoveis": "Imóveis",
   "menu.galeria": "Galeria",
   "menu.materiais": "Materiais",
@@ -249,8 +250,9 @@ const es: Dicionario = {
   "comum.mes": "/mes",
 
   "menu.inicio": "Inicio",
-  "menu.editar": "Editar",
+  "menu.editar": "Editar foto",
   "menu.video": "Video",
+  "menu.editor": "Editor",
   "menu.imoveis": "Propiedades",
   "menu.galeria": "Galería",
   "menu.materiais": "Materiales",
@@ -461,8 +463,9 @@ const en: Dicionario = {
   "comum.mes": "/month",
 
   "menu.inicio": "Home",
-  "menu.editar": "Edit",
+  "menu.editar": "Edit photo",
   "menu.video": "Video",
+  "menu.editor": "Editor",
   "menu.imoveis": "Properties",
   "menu.galeria": "Gallery",
   "menu.materiais": "Materials",

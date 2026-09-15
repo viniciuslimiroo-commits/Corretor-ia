@@ -22,7 +22,7 @@ const FERRAMENTAS = [
     // "Vídeo e tour 360°" prometia gerar 360, que o produto não faz -- e não deveria mesmo:
   // numa foto comum não existe o que está atrás do sofá. O 360 aqui é PASSEAR numa foto
   // 360 ou panorâmica que a pessoa já tem, e o cartão precisa dizer isso.
-  { href: "/video", icone: "video", titulo: "Vídeo do imóvel", texto: "As fotos viram vídeo com movimento de câmera, música e sua marca. Tem foto 360 ou panorâmica? Vira passeio. Sem crédito." },
+  { href: "/editor/video", icone: "video", titulo: "Vídeo do imóvel", texto: "As fotos viram vídeo com movimento de câmera, música e sua marca. Tem foto 360 ou panorâmica? Vira passeio. Sem crédito." },
   { href: "/planta", icone: "planta", titulo: "Planta baixa", texto: "Desenhe os cômodos, mobílie e veja a área calculada. Sem crédito." },
   { href: "/terreno", icone: "terreno", titulo: "Terreno e lote", texto: "Marque as medidas na foto, limpe o mato ou mostre a casa construída." },
   { href: "/materiais", icone: "materiais", titulo: "Materiais", texto: "Book, catálogo, portfólio e apresentação em PDF, com a sua marca. Sem crédito." },

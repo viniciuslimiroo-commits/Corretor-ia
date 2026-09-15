@@ -33,7 +33,7 @@ export type Conta = {
 const CRIAR = [
   // Os textos são CHAVES do dicionário (i18n/textos.ts); viram frase no render.
   { href: "/editar", rotulo: "menu.criar.foto", para: "menu.criar.foto.para", custo: "menu.criar.foto.custo", icone: "foto", gratis: false },
-  { href: "/video", rotulo: "menu.criar.video", para: "menu.criar.video.para", custo: "menu.criar.video.custo", icone: "video", gratis: false },
+  { href: "/editor/video", rotulo: "menu.criar.video", para: "menu.criar.video.para", custo: "menu.criar.video.custo", icone: "video", gratis: false },
   { href: "/materiais?novo=1", rotulo: "menu.criar.material", para: "menu.criar.material.para", custo: "menu.criar.material.custo", icone: "materiais", gratis: true },
 ];
 
@@ -85,7 +85,10 @@ export default function AppShell({
     // do celular ficava com OITO alvos de 47px numa tela de 375 -- medido, e abaixo do que
     // o dedo acerta. No celular quem cria usa o "+ Criar", que é grande e fica no topo.
     { href: "/editar", rotulo: "menu.editar", icone: "foto", soIcone: false, soDesktop: true },
-    { href: "/video", rotulo: "menu.video", icone: "video", soIcone: false, soDesktop: true },
+    // "Editor" e não "Vídeo": a área de edição é um LUGAR do produto, com dois
+    // contextos (vídeo e material). Quem só quer fazer um vídeo tem o "+ Criar", que vai
+    // direto e ainda mostra o custo antes do clique.
+    { href: "/editor", rotulo: "menu.editor", icone: "video", soIcone: false, soDesktop: true },
     { href: "/imoveis", rotulo: "menu.imoveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
