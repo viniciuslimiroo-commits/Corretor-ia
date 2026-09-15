@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       .from("jobs")
       // properties!jobs_property_id_fkey: há DUAS chaves entre jobs e properties
       // (jobs.property_id e properties.capa_job_id); sem nomear, o PostgREST recusa.
-      .select("id, tipo, parametros, output_path, criado_em, property_id, properties!jobs_property_id_fkey(titulo)")
+      .select("id, tipo, parametros, input_path, output_path, criado_em, property_id, properties!jobs_property_id_fkey(titulo)")
       .eq("user_id", userId)
       .eq("status", "concluido")
       .not("output_path", "is", null)
@@ -46,14 +46,22 @@ export async function GET(req: NextRequest) {
     (jobs ?? []).map(async (j) => {
       const def = ACOES_POR_ID[j.tipo];
       const imovel = j.properties as unknown as { titulo: string | null } | null;
+      // `miniatura` é a imagem inteira assinada (o visualizador abre a mesma URL em tela
+      // cheia); `antes` é a original guardada, quando há -- é o que liga o antes/depois.
+      const [miniatura, antes] = await Promise.all([
+        assinar(db, j.output_path!).catch(() => null),
+        j.input_path ? assinar(db, j.input_path).catch(() => null) : Promise.resolve(null),
+      ]);
       return {
         id: j.id,
         categoria: categoriaDoTipo(j.tipo),
+        tipo: j.tipo,
         rotulo: rotuloDoTipo(j.tipo),
         detalhe: def ? resumirParametros(def, (j.parametros ?? {}) as Record<string, string>) : "",
         criadoEm: j.criado_em,
         imovel: j.property_id ? { id: j.property_id, titulo: imovel?.titulo ?? "Imóvel" } : null,
-        miniatura: await assinar(db, j.output_path!).catch(() => null),
+        miniatura,
+        antes,
       };
     })
   );

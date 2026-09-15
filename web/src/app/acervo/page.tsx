@@ -8,6 +8,7 @@ import AppShell from "@/components/app-shell";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { CATEGORIAS, type Categoria } from "@/lib/materiais";
 import { guardarSelecao } from "@/lib/selecao-material";
+import VisualizadorAcervo, { type ItemAcervo } from "@/components/visualizador-acervo";
 
 // Materiais: tudo que a pessoa já produziu num lugar só, pra escolher e virar material.
 //
@@ -20,19 +21,16 @@ import { guardarSelecao } from "@/lib/selecao-material";
 // "serve pra montar alguma coisa", então o que manda é a seleção múltipla.
 //
 // Vídeo aparece (é material que a pessoa produziu e vai querer achar), mas não entra no
-// PDF: clicar abre a página do vídeo em vez de marcar.
+// PDF: no visualizador ele toca, e os botões são os dele (editar, compartilhar).
+//
+// Clicar no item ABRE (o visualizador, em tela cheia); marcar é a bolinha no canto. Era o
+// contrário -- clicar marcava, e olhar a foto de verdade não tinha jeito. Um acervo em
+// que não se olha a foto é um depósito.
 
-type Item = {
-  id: string;
-  categoria: Categoria;
-  rotulo: string;
-  detalhe: string;
-  criadoEm: string;
-  imovel: { id: string; titulo: string } | null;
-  miniatura: string | null;
-};
+type Item = ItemAcervo;
 
-const MAX_DE_UMA_VEZ = 30;
+type Periodo = "" | "hoje" | "7" | "30";
+type Ordem = "recentes" | "antigos";
 
 function quando(iso: string) {
   const d = new Date(iso);
@@ -53,7 +51,13 @@ export default function Materiais() {
   const [busca, setBusca] = useState("");
   const [marcados, setMarcados] = useState<string[]>([]);
   const [apagando, setApagando] = useState(false);
-  const [emUso, setEmUso] = useState<string | null>(null);
+  /** Imagens em algum book: o aviso diz quais, e guarda os ids pra "apagar assim mesmo". */
+  const [emUso, setEmUso] = useState<{ texto: string; ids: string[] } | null>(null);
+  /** O período vira um instante ("desde") no clique, não no render: relógio não é puro. */
+  const [periodo, setPeriodo] = useState<{ id: Periodo; desde: number }>({ id: "", desde: 0 });
+  const [ordem, setOrdem] = useState<Ordem>("recentes");
+  /** Índice (em `filtrados`) do item aberto no visualizador. */
+  const [aberto, setAberto] = useState<number | null>(null);
   const [enviando, setEnviando] = useState(0);
   const [recado, setRecado] = useState<string | null>(null);
   const { user, token } = c;
@@ -78,13 +82,17 @@ export default function Materiais() {
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return (itens ?? []).filter((i) => {
+    const desde = periodo.desde;
+    const lista = (itens ?? []).filter((i) => {
       if (categoria !== "tudo" && i.categoria !== categoria) return false;
       if (imovelFiltro && i.imovel?.id !== imovelFiltro) return false;
+      if (desde && new Date(i.criadoEm).getTime() < desde) return false;
       if (termo && !`${i.rotulo} ${i.detalhe} ${i.imovel?.titulo ?? ""}`.toLowerCase().includes(termo)) return false;
       return true;
     });
-  }, [itens, categoria, imovelFiltro, busca]);
+    // A lista já vem do servidor do mais novo pro mais velho; "antigos" só inverte.
+    return ordem === "antigos" ? [...lista].reverse() : lista;
+  }, [itens, categoria, imovelFiltro, busca, periodo, ordem]);
 
   /** Só imagem entra em PDF -- vídeo fica de fora da seleção. */
   const selecionaveis = useMemo(() => filtrados.filter((i) => i.categoria !== "video"), [filtrados]);
@@ -117,8 +125,8 @@ export default function Materiais() {
    * servidor responde que alguma imagem está num book -- e aí ela diz QUAIS books, porque
    * "tem certeza?" sem dizer o que quebra não é pergunta, é formalidade.
    */
-  async function apagarMarcados(forcarAgora = false) {
-    if (selecionados.length === 0 || apagando) return;
+  async function apagarIds(ids: string[], forcarAgora = false) {
+    if (ids.length === 0 || apagando) return;
     setApagando(true);
     setErro(null);
     try {
@@ -126,7 +134,7 @@ export default function Materiais() {
         const r = await fetch("/api/materiais/apagar", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-          body: JSON.stringify({ ids: selecionados, forcar }),
+          body: JSON.stringify({ ids, forcar }),
         });
         const bruto = await r.text();
         let d: { error?: string; emUso?: boolean; apagados?: number } = {};
@@ -142,14 +150,15 @@ export default function Materiais() {
       // Em uso num book: em vez de perguntar de novo num diálogo, o aviso fica NA TELA,
       // dizendo em quais books, com o botão de confirmar ao lado.
       if (saida.status === 409 && saida.d.emUso) {
-        setEmUso(saida.d.error ?? "Estas imagens estão em algum book.");
+        setEmUso({ texto: saida.d.error ?? "Estas imagens estão em algum book.", ids });
         setApagando(false);
         return;
       }
       if (!saida.ok) throw new Error(saida.d.error ?? "Não consegui apagar.");
 
       setEmUso(null);
-      setMarcados([]);
+      setMarcados((m) => m.filter((id) => !ids.includes(id)));
+      setAberto(null);
       const d = await buscar();
       setItens(d.itens);
       setImoveis(d.imoveis);
@@ -157,6 +166,40 @@ export default function Materiais() {
       setErro(e instanceof Error ? e.message : "Erro ao apagar.");
     } finally {
       setApagando(false);
+    }
+  }
+  const apagarMarcados = (forcar = false) => apagarIds(selecionados, forcar);
+
+  /** Vídeo sai pela rota dele (arquivo montado + miniatura). */
+  async function apagarVideo(id: string) {
+    setErro(null);
+    try {
+      const r = await fetch(`/api/video/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
+      if (!r.ok) throw new Error("Não consegui apagar o vídeo.");
+      setAberto(null);
+      const d = await buscar();
+      setItens(d.itens);
+      setImoveis(d.imoveis);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao apagar.");
+    }
+  }
+
+  /** Move a imagem pra um imóvel (ou tira dela). É o PATCH do job, que já existia. */
+  async function mudarImovel(id: string, imovelId: string | null) {
+    setErro(null);
+    try {
+      const r = await fetch(`/api/job/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ imovelId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Não consegui mover.");
+      const titulo = imoveis.find((i) => i.id === imovelId)?.titulo ?? "Imóvel";
+      setItens((lista) => (lista ?? []).map((i) => (i.id === id ? { ...i, imovel: imovelId ? { id: imovelId, titulo } : null } : i)));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao mover.");
     }
   }
 
@@ -278,9 +321,9 @@ export default function Materiais() {
       {emUso && (
         <div className="mt-4">
           <Aviso tipo="atencao">
-            {emUso}
+            {emUso.texto}
             <span className="mt-2 flex flex-wrap gap-2">
-              <button onClick={() => apagarMarcados(true)} disabled={apagando} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+              <button onClick={() => apagarIds(emUso.ids, true)} disabled={apagando} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
                 {apagando ? "Apagando…" : "Apagar assim mesmo"}
               </button>
               <button onClick={() => setEmUso(null)} className="rounded-lg px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">
@@ -316,6 +359,25 @@ export default function Materiais() {
             placeholder="Buscar"
             className="w-36 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm focus:border-marca-indigo focus:outline-none"
           />
+          <select
+            value={periodo.id}
+            onChange={(e) => {
+              const id = e.target.value as Periodo;
+              const desde = id === "hoje" ? new Date().setHours(0, 0, 0, 0) : id ? Date.now() - Number(id) * 86400000 : 0;
+              setPeriodo({ id, desde });
+            }}
+            className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm focus:border-marca-indigo focus:outline-none"
+            aria-label="Período"
+          >
+            <option value="">Qualquer data</option>
+            <option value="hoje">Hoje</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
+          </select>
+          <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm focus:border-marca-indigo focus:outline-none" aria-label="Ordem">
+            <option value="recentes">Mais recentes</option>
+            <option value="antigos">Mais antigos</option>
+          </select>
           <div className="ml-auto flex items-center gap-3 text-xs">
             <button onClick={() => setMarcados(selecionaveis.map((i) => i.id))} className="text-marca-indigo underline">
               Marcar as {selecionaveis.length} à vista
@@ -343,53 +405,53 @@ export default function Materiais() {
           <p className="text-sm text-neutral-500">Nada com esse filtro.</p>
         ) : (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {filtrados.map((i) => {
+            {filtrados.map((i, indice) => {
               const marcado = selecionados.includes(i.id);
-              const ordem = selecionados.indexOf(i.id) + 1;
+              const posicao = selecionados.indexOf(i.id) + 1;
               const video = i.categoria === "video";
-              const conteudo = (
-                <>
-                  <div className="relative aspect-[4/3] bg-neutral-100">
-                    {i.miniatura ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={i.miniatura} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-neutral-300">
-                        <Icone nome={video ? "video" : "foto"} className="h-8 w-8" />
-                      </div>
-                    )}
-                    {video ? (
-                      <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
-                        <Icone nome="play" className="h-3 w-3" /> vídeo
-                      </span>
-                    ) : (
-                      <span
-                        className={
-                          "absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[11px] font-bold transition " +
-                          (marcado ? "border-marca-coral bg-marca-coral text-white" : "border-white bg-black/25 text-transparent")
-                        }
-                      >
-                        {ordem}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-2">
-                    <p className="truncate text-xs font-medium">{i.rotulo}</p>
-                    <p className="truncate text-[11px] text-neutral-500">{i.imovel?.titulo ?? i.detalhe ?? ""}</p>
-                    <p className="text-[10px] text-neutral-400">{quando(i.criadoEm)}</p>
-                  </div>
-                </>
-              );
               const borda = marcado ? "border-marca-coral ring-2 ring-marca-coral/30" : "border-neutral-200 hover:border-neutral-400";
               return (
-                <li key={i.id}>
-                  {video ? (
-                    <Link href="/video" className={`block overflow-hidden rounded-xl border bg-white text-left shadow-sm transition ${borda}`} title="Vídeo não entra no PDF; abre na página de vídeo">
-                      {conteudo}
-                    </Link>
-                  ) : (
-                    <button onClick={() => alternar(i.id)} className={`block w-full overflow-hidden rounded-xl border bg-white text-left shadow-sm transition ${borda}`}>
-                      {conteudo}
+                <li key={i.id} className={`relative overflow-hidden rounded-xl border bg-white shadow-sm transition ${borda}`}>
+                  {/* O item inteiro abre o visualizador; a bolinha (irmã, não filha: botão
+                      dentro de botão não é HTML) marca. */}
+                  <button type="button" onClick={() => setAberto(indice)} className="block w-full text-left" title={video ? "Ver o vídeo" : "Ver em tela cheia"}>
+                    <div className="relative aspect-[4/3] bg-neutral-100">
+                      {i.miniatura ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={i.miniatura} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-neutral-300">
+                          <Icone nome={video ? "video" : "foto"} className="h-8 w-8" />
+                        </div>
+                      )}
+                      {video && (
+                        <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
+                          <Icone nome="play" className="h-3 w-3" /> vídeo
+                        </span>
+                      )}
+                      {i.antes && !video && (
+                        <span className="absolute right-2 bottom-2 rounded bg-black/60 px-1.5 text-[10px] text-white">antes/depois</span>
+                      )}
+                    </div>
+                    <div className="p-2">
+                      <p className="truncate text-xs font-medium">{i.rotulo}</p>
+                      <p className="truncate text-[11px] text-neutral-500">{i.imovel?.titulo ?? i.detalhe ?? ""}</p>
+                      <p className="text-[10px] text-neutral-400">{quando(i.criadoEm)}</p>
+                    </div>
+                  </button>
+                  {!video && (
+                    <button
+                      type="button"
+                      onClick={() => alternar(i.id)}
+                      aria-pressed={marcado}
+                      aria-label={marcado ? "Desmarcar" : "Marcar pra usar em material"}
+                      title={marcado ? "Desmarcar" : "Marcar pra usar em material"}
+                      className={
+                        "absolute top-2 left-2 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-bold transition " +
+                        (marcado ? "border-marca-coral bg-marca-coral text-white" : "border-white bg-black/25 text-transparent hover:bg-black/40 hover:text-white/80")
+                      }
+                    >
+                      {marcado ? posicao : "✓"}
                     </button>
                   )}
                 </li>
@@ -398,6 +460,21 @@ export default function Materiais() {
           </ul>
         )}
       </div>
+
+      {aberto !== null && filtrados[aberto] && (
+        <VisualizadorAcervo
+          itens={filtrados}
+          indice={aberto}
+          imoveis={imoveis}
+          token={token}
+          aoFechar={() => setAberto(null)}
+          aoIr={(n) => setAberto(Math.max(0, Math.min(filtrados.length - 1, n)))}
+          aoApagar={(id) => apagarIds([id], false)}
+          aoApagarVideo={apagarVideo}
+          aoUsarEmMaterial={(id) => criarMaterial([id])}
+          aoMudarImovel={mudarImovel}
+        />
+      )}
 
       {/* barra de baixo: aparece só com algo marcado, e diz a ordem das páginas */}
       {selecionados.length > 0 && (

@@ -256,7 +256,16 @@ export default function PaginaVideo() {
   const jobDaUrl = useRef<string | null>(null);
   useEffect(() => {
     if (!user) return;
-    const id = new URLSearchParams(window.location.search).get("job");
+    const params = new URLSearchParams(window.location.search);
+    // `?editar=`: um vídeo pronto (do Acervo) abrindo direto em edição.
+    const editar = params.get("editar");
+    if (editar && jobDaUrl.current !== `editar:${editar}`) {
+      jobDaUrl.current = `editar:${editar}`;
+      window.history.replaceState(null, "", window.location.pathname);
+      editarVideo(editar);
+      return;
+    }
+    const id = params.get("job");
     if (!id || jobDaUrl.current === id) return;
     jobDaUrl.current = id;
     token()
@@ -270,6 +279,7 @@ export default function PaginaVideo() {
         window.history.replaceState(null, "", window.location.pathname);
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- editarVideo muda a cada render; o ref garante uma vez por id
   }, [user, token]);
 
   // Trocou de imóvel: carrega as gerações dele e sugere título/local.

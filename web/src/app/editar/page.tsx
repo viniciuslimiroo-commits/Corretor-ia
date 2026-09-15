@@ -33,10 +33,11 @@ function padroesDe(acao: DefAcao): Record<string, string> {
 // rodava duas vezes no modo estrito do React, e a segunda rodada já não achava o
 // parâmetro -- o imóvel pré-selecionado se perdia em desenvolvimento.
 function lerQuery() {
-  if (typeof window === "undefined") return { imovel: null, compra: null, retorno: null };
+  if (typeof window === "undefined") return { imovel: null, compra: null, retorno: null, job: null };
   const p = new URLSearchParams(window.location.search);
   const compra = p.get("compra");
-  return { imovel: p.get("imovel"), compra, retorno: p.get("assinatura") ?? compra };
+  // `?job=`: uma imagem pronta (do Acervo) abrindo aqui pra ser refinada.
+  return { imovel: p.get("imovel"), compra, retorno: p.get("assinatura") ?? compra, job: p.get("job") };
 }
 
 export default function Editor() {
@@ -93,6 +94,42 @@ export default function Editor() {
   const usaMascara = acao.mascara === "obrigatoria" || (acao.mascara === "opcional" && pintarArea);
   const rotulosMascara = acao.rotulosMascara ?? { opcao: "Aplicar só onde eu pintar", ajuda: "Sem marcar, a IA decide sozinha.", titulo: "Pinte onde aplicar" };
   const podeGerar = !!foto && !carregando && (c.conta?.creditos ?? 0) > 0 && (!usaMascara || temMascara) && (acao.id !== "editar_prompt" || !!parametros.instrucao?.trim());
+
+  // Chegou com `?job=`: o resultado daquele job vira o resultado na tela, pronto pra
+  // refinar e ver versões -- é o caminho do Acervo. Não gasta crédito: é só ler.
+  const usuarioLogado = c.user;
+  const pegarToken = c.token;
+  useEffect(() => {
+    if (!usuarioLogado || !query.job) return;
+    let vivo = true;
+    const id = query.job;
+    pegarToken()
+      .then(async (t) => {
+        const cab = { headers: { Authorization: `Bearer ${t}` } };
+        const [job, versoes] = await Promise.all([
+          fetch(`/api/job/${id}`, cab).then((r) => r.json()),
+          fetch(`/api/job/${id}/versoes`, cab)
+            .then((r) => r.json())
+            .catch(() => ({})),
+        ]);
+        return { job, original: (versoes?.versoes?.[0]?.url as string | undefined) ?? null };
+      })
+      .then(({ job: d, original }) => {
+        if (!vivo || d.status !== "concluido" || !d.url) return;
+        setJobId(id);
+        setResultado(d.url);
+        // O "antes" do comparador é a foto original da cadeia (a primeira versão). Sem
+        // ela, o comparador mostra a mesma imagem dos dois lados -- inofensivo.
+        setPreview(original ?? d.url);
+        setInfo(null);
+        if (d.imovelId) setImovelId((atual) => atual ?? d.imovelId);
+        window.history.replaceState({}, "", window.location.pathname);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [usuarioLogado, pegarToken, query.job]);
 
   // Limpa a URL e, se voltou da Stripe com pagamento ok, relê o saldo algumas vezes:
   // o crédito entra pelo webhook em segundos.
@@ -387,7 +424,9 @@ export default function Editor() {
       <div className="grid gap-6 lg:grid-cols-12">
         {/* ---------- coluna da foto ---------- */}
         <section className="lg:col-span-7">
-          {!foto ? (
+          {/* Sem foto E sem resultado: a caixa de envio. Resultado sem foto existe -- é a
+              imagem do Acervo reaberta aqui pra refinar (?job=), que não passou pelo envio. */}
+          {!foto && !resultado ? (
             <Cartao>
               <Dropzone
                 onArquivo={receberFoto}
