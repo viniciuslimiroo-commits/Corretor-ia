@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { rotuloDoPlano } from "@/lib/planos";
 import { Botao, Icone } from "./ui";
+import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
 
 // Moldura comum das telas logadas: marca, navegação, créditos e conta. O conteúdo da
 // página entra no meio. Manter isto num lugar só é o que faz Editor, Vídeo, Imóveis,
@@ -30,9 +31,10 @@ export type Conta = {
  * tem 23 créditos, e responder depois do clique é responder tarde.
  */
 const CRIAR = [
-  { href: "/editar", rotulo: "Editar uma foto", para: "Mobiliar, renovar, tirar objeto, trocar céu", custo: "1 crédito por foto", icone: "foto", gratis: false },
-  { href: "/video", rotulo: "Fazer um vídeo", para: "Do imóvel, com música e narração", custo: "Créditos conforme o tamanho", icone: "video", gratis: false },
-  { href: "/materiais?novo=1", rotulo: "Montar um material", para: "Book, PDF de WhatsApp, catálogo, portfólio", custo: "Não gasta crédito", icone: "materiais", gratis: true },
+  // Os textos são CHAVES do dicionário (i18n/textos.ts); viram frase no render.
+  { href: "/editar", rotulo: "menu.criar.foto", para: "menu.criar.foto.para", custo: "menu.criar.foto.custo", icone: "foto", gratis: false },
+  { href: "/video", rotulo: "menu.criar.video", para: "menu.criar.video.para", custo: "menu.criar.video.custo", icone: "video", gratis: false },
+  { href: "/materiais?novo=1", rotulo: "menu.criar.material", para: "menu.criar.material.para", custo: "menu.criar.material.custo", icone: "materiais", gratis: true },
 ];
 
 export default function AppShell({
@@ -57,10 +59,11 @@ export default function AppShell({
 
   // `soIcone` = no menu de cima entra só o ícone (com o nome no title). A barra tem
   // 1152px e o nome inteiro não cabe junto do resto; embaixo, no celular, vai completo.
+  const { t } = useIdioma();
   const links: { href: string; rotulo: string; icone: string; soIcone: boolean; secundario?: boolean; soMobile?: boolean; soDesktop?: boolean }[] = [
     // No computador a marca no canto já leva pro início -- dois caminhos pro mesmo lugar
     // gastam a largura que Books precisava. No celular não há marca clicável, então fica.
-    { href: "/", rotulo: "Início", icone: "casa", soIcone: false, soMobile: true },
+    { href: "/", rotulo: "menu.inicio", icone: "casa", soIcone: false, soMobile: true },
     // Editar e Vídeo saíram daqui e foram pro botão "+ Criar".
     //
     // A barra misturava dois VERBOS (Editar, Vídeo) com três LUGARES (Imóveis, Acervo,
@@ -81,25 +84,29 @@ export default function AppShell({
     // `soDesktop`: no menu de cima sim, na barra de baixo não. Com eles lá embaixo a barra
     // do celular ficava com OITO alvos de 47px numa tela de 375 -- medido, e abaixo do que
     // o dedo acerta. No celular quem cria usa o "+ Criar", que é grande e fica no topo.
-    { href: "/editar", rotulo: "Editar", icone: "foto", soIcone: false, soDesktop: true },
-    { href: "/video", rotulo: "Vídeo", icone: "video", soIcone: false, soDesktop: true },
-    { href: "/imoveis", rotulo: "Imóveis", icone: "imoveis", soIcone: false },
+    { href: "/editar", rotulo: "menu.editar", icone: "foto", soIcone: false, soDesktop: true },
+    { href: "/video", rotulo: "menu.video", icone: "video", soIcone: false, soDesktop: true },
+    { href: "/imoveis", rotulo: "menu.imoveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
     // ("me manda o material do imóvel"), e serve pros dois lados: o que ele tem e o que monta.
     // Acervo e o INSUMO (foto, planta, terreno, video); Materiais e o ENTREGAVEL (book,
     // catalogo, apresentacao). Chamar os dois de "Materiais" era a colisao que fazia a
     // pessoa procurar o book na tela das fotos.
-    { href: "/acervo", rotulo: "Acervo", icone: "materiais", soIcone: false },
-    { href: "/materiais", rotulo: "Materiais", icone: "planta", soIcone: false },
+    { href: "/acervo", rotulo: "menu.acervo", icone: "materiais", soIcone: false },
+    { href: "/materiais", rotulo: "menu.materiais", icone: "planta", soIcone: false },
     // Equipe virou só ícone quando Materiais entrou: o nome inteiro dos dois não cabe
     // junto do resto na barra de 1152px.
     // `secundario` = no celular sai da barra de baixo e vai pro "Mais": nove ícones numa
     // tela de 375px viram 41px cada, onde ninguém acerta o dedo.
-    { href: "/equipe", rotulo: "Equipe", icone: "equipe", soIcone: true, secundario: true },
-    { href: "/historico", rotulo: "Histórico", icone: "historico", soIcone: true, secundario: true },
-    { href: "/marca", rotulo: "Minha marca", icone: "marca", soIcone: true, secundario: true },
-  ];
+    { href: "/equipe", rotulo: "menu.equipe", icone: "equipe", soIcone: true, secundario: true },
+    { href: "/historico", rotulo: "menu.historico", icone: "historico", soIcone: true, secundario: true },
+    { href: "/marca", rotulo: "menu.marca", icone: "marca", soIcone: true, secundario: true },
+  ].map((l) => ({ ...l, rotulo: t(l.rotulo) }));
+  // Traduzido AQUI, uma vez, e não em cada `{l.rotulo}` lá embaixo: são seis pontos de
+  // render (barra, título, aria, celular, "Mais"), e traduzir em cada um é como um deles
+  // fica em português quando alguém mexer.
+  const criar = CRIAR.map((c) => ({ ...c, rotulo: t(c.rotulo), para: t(c.para), custo: t(c.custo) }));
   const ativo = (href: string) => (href === "/" ? rota === "/" : rota.startsWith(href));
 
   return (
@@ -147,7 +154,7 @@ export default function AppShell({
                 <>
                   <span className="fixed inset-0 z-30" onClick={() => setCriarAberto(false)} />
                   <span className="absolute top-full right-0 z-40 mt-1.5 w-72 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
-                    {CRIAR.map((c) => (
+                    {criar.map((c) => (
                       <Link
                         key={c.href}
                         href={c.href}
@@ -175,7 +182,7 @@ export default function AppShell({
               title={conta.org ? `${conta.org.nome} · ver planos e pacotes` : "Ver planos e pacotes"}
             >
               <span className="font-semibold text-marca-indigo">{conta.creditos ?? "…"}</span>
-              <span className="text-neutral-500">{conta.creditos === 1 ? "crédito" : "créditos"}</span>
+              <span className="text-neutral-500">{conta.creditos === 1 ? t("comum.credito") : t("comum.creditos")}</span>
               <span className="text-neutral-300">·</span>
               <span className="text-neutral-600">{assinante ? rotuloDoPlano(conta.plano) : "Grátis"}</span>
               {conta.status === "past_due" && <span className="text-amber-600">· pendente</span>}
@@ -187,13 +194,14 @@ export default function AppShell({
                 </Botao>
               ) : (
                 <Link href="/planos" className="hidden items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro md:inline-flex">
-                  {conta.org ? "Assinar" : "Assinar Pro"}
+                  {conta.org ? t("comum.assinar") : `${t("comum.assinar")} Pro`}
                 </Link>
               ))}
             {/* "Comprar créditos" saiu do cabeçalho: não cabia junto do menu, e o próprio
                 seletor de créditos ao lado já leva pra /planos. Continua em /planos#pacotes. */}
+            <SeletorIdioma className="hidden md:inline-flex" />
             <Botao variante="discreta" onClick={aoSair} title={conta.email}>
-              Sair
+              {t("comum.sair")}
             </Botao>
           </div>
         </div>

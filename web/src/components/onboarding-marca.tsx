@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Conta } from "./app-shell";
 import { coresDaLogo } from "@/lib/cores-da-logo";
 import { LOGO_MAX_BYTES } from "@/lib/logo-upload-limites";
+import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
 
 // A primeira tela depois do primeiro login. Não é cadastro: é a pessoa ver a própria logo
 // dentro da Encena em poucos segundos e entender, sem ler nada, que os materiais vão sair
@@ -32,6 +33,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
   // Dono ou gestor de imobiliária edita a marca DA CASA; corretor edita a dele. O papel
   // vem do servidor (org_members.papel) -- a rota confere de novo, isto aqui é só pra
   // tela não prometer o que a API vai recusar com 403.
+  const { t } = useIdioma();
   const papel = conta.org?.papel;
   const podeEditarCasa = !!conta.org && (papel === "dono" || papel === "gestor");
   const soPessoal = !!conta.org && !podeEditarCasa;
@@ -81,11 +83,11 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
     setCores([]);
     if (!f) return;
     if (f.size > LOGO_MAX_BYTES) {
-      setErro(`Essa logo tem ${(f.size / 1024 / 1024).toFixed(1)} MB. O limite é 5 MB.`);
+      setErro(t("bv.erro.tamanho", { mb: (f.size / 1024 / 1024).toFixed(1) }));
       return;
     }
     if (!/^image\/(png|jpeg|webp)$/.test(f.type)) {
-      setErro("Use PNG, JPG ou WebP.");
+      setErro(t("bv.erro.formato"));
       return;
     }
     setArquivo(f);
@@ -129,16 +131,16 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
-        throw new Error(d.error || "Não consegui salvar agora.");
+        throw new Error(d.error || t("bv.erro.salvar"));
       }
       aoSair();
     } catch (e) {
       setSalvando(false);
-      setErro(e instanceof Error ? e.message : "Não consegui salvar agora.");
+      setErro(e instanceof Error ? e.message : t("bv.erro.salvar"));
     }
   }
 
-  const nomeMostrado = nome.trim() || (soPessoal ? conta.org!.nome : "Sua marca");
+  const nomeMostrado = nome.trim() || (soPessoal ? conta.org!.nome : t("bv.sua.marca"));
   const corPrincipal = (usarCores && cores[0]) || "#0F2D5B";
   const temAlgo = !!nome.trim() || !!arquivo;
 
@@ -150,16 +152,15 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
         <span className="text-xl font-bold tracking-tight text-marca-indigo">Encena</span>
       </div>
 
-      <h1 className="mt-7 text-[28px] leading-[1.15] font-semibold tracking-tight text-balance sm:text-4xl">
-        Faça a Encena ter a cara da sua marca
-      </h1>
-      <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-neutral-600">
-        Adicione seu nome e sua logo para personalizar automaticamente vídeos, PDFs, apresentações e outros materiais.
-      </p>
+      <div className="mt-7 flex items-start justify-between gap-3">
+        <h1 className="text-[28px] leading-[1.15] font-semibold tracking-tight text-balance sm:text-4xl">{t("bv.titulo")}</h1>
+        <SeletorIdioma className="mt-1 shrink-0" />
+      </div>
+      <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-neutral-600">{t("bv.sub")}</p>
 
       {podeEditarCasa && (
         <div className="mt-7">
-          <span className="mb-1.5 block text-sm font-medium text-neutral-700">Esta marca é de quem?</span>
+          <span className="mb-1.5 block text-sm font-medium text-neutral-700">{t("bv.dequem")}</span>
           <div className="flex flex-wrap gap-1.5">
             {/* Genérico, e não "Da Limiro Imóveis".
                 No primeiro login esse nome costuma ter vindo de um convite ou de um
@@ -168,8 +169,8 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
                 começando a definir. O nome real vai na linha de baixo, onde é informação
                 e não escolha. */}
             {([
-              { v: "casa" as const, r: "Da imobiliária" },
-              { v: "pessoal" as const, r: "Minha, de corretor" },
+              { v: "casa" as const, r: t("bv.da.casa") },
+              { v: "pessoal" as const, r: t("bv.minha") },
             ]).map((o) => (
               <button
                 key={o.v}
@@ -191,16 +192,14 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
             ))}
           </div>
           <p className="mt-1.5 text-xs text-neutral-500">
-            {alvo === "casa"
-              ? `Vale como padrão pra todo mundo de ${conta.org!.nome}. Dá pra ter a sua depois, em Minha marca.`
-              : `Fica só nos seus materiais e passa na frente da marca de ${conta.org!.nome}.`}
+            {alvo === "casa" ? t("bv.da.casa.explica", { org: conta.org!.nome }) : t("bv.minha.explica", { org: conta.org!.nome })}
           </p>
         </div>
       )}
 
       {soPessoal && (
         <p className="mt-4 rounded-xl border border-marca-teal/40 bg-marca-teal/10 px-3.5 py-2.5 text-sm text-marca-indigo">
-          A marca de <strong>{conta.org!.nome}</strong> já vale nos seus materiais. O que você puser aqui é o seu nome, que entra junto.
+          {t("bv.so.pessoal", { org: conta.org!.nome })}
         </p>
       )}
 
@@ -209,7 +208,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
         <div className="grid gap-5">
           <label className="block">
             <span className="text-sm font-medium text-neutral-700">
-              {daCasa ? "Nome da imobiliária" : podeEditarCasa ? "Seu nome profissional" : "Nome profissional ou imobiliária"}
+              {daCasa ? t("bv.nome.casa") : podeEditarCasa ? t("bv.nome.prof") : t("bv.nome.ou")}
             </span>
             <input
               type="text"
@@ -217,13 +216,13 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
               onChange={(e) => setNome(e.target.value)}
               maxLength={80}
               autoComplete="organization"
-              placeholder="Ex.: Imobiliária Horizonte ou João Silva"
+              placeholder={t("bv.nome.placeholder")}
               className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-3 text-[15px] outline-none transition focus:border-marca-indigo"
             />
           </label>
 
           <div>
-            <span className="text-sm font-medium text-neutral-700">Logo</span>
+            <span className="text-sm font-medium text-neutral-700">{t("bv.logo")}</span>
             <input
               ref={entrada}
               type="file"
@@ -237,7 +236,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
                 onClick={() => entrada.current?.click()}
                 className="rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium transition hover:border-marca-indigo hover:text-marca-indigo"
               >
-                {arquivo ? "Trocar logo" : "Enviar logo"}
+                {arquivo ? t("bv.trocar.logo") : t("bv.enviar.logo")}
               </button>
               {arquivo && (
                 <button
@@ -249,17 +248,17 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
                   }}
                   className="text-sm text-neutral-500 underline"
                 >
-                  remover
+                  {t("bv.remover")}
                 </button>
               )}
             </div>
-            <p className="mt-1.5 text-xs text-neutral-400">PNG, JPG ou WebP, até 5 MB.</p>
+            <p className="mt-1.5 text-xs text-neutral-400">{t("bv.formatos")}</p>
           </div>
         </div>
 
         {/* ------------------------------------------------------------ prévia */}
         <div className="sm:w-[230px]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">Como vai aparecer</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{t("bv.previa")}</p>
           <div className="mt-2 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               {previa ? (
@@ -277,7 +276,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
             </div>
             <div className="mt-3 h-1.5 w-full rounded-full transition-colors" style={{ background: corPrincipal }} />
             <p className="mt-3 text-xs leading-snug text-neutral-500">
-              {temAlgo ? "Sua marca já pode aparecer nos materiais criados pela Encena." : "Preencha ao lado pra ver aqui."}
+              {temAlgo ? t("bv.previa.pronta") : t("bv.previa.vazia")}
             </p>
           </div>
         </div>
@@ -286,7 +285,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
       {/* ------------------------------------------------------------- cores */}
       {cores.length > 0 && (
         <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4">
-          <p className="text-sm font-medium text-neutral-700">Encontramos estas cores na sua marca:</p>
+          <p className="text-sm font-medium text-neutral-700">{t("bv.cores")}</p>
           <div className="mt-2.5 flex items-center gap-2">
             {cores.map((c) => (
               <span key={c} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 py-1 pr-2.5 pl-1">
@@ -297,7 +296,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
           </div>
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-neutral-700">
             <input type="checkbox" checked={usarCores} onChange={(e) => setUsarCores(e.target.checked)} className="h-4 w-4 accent-marca-coral" />
-            Usar estas cores nos meus materiais
+            {t("bv.usar.cores")}
           </label>
         </div>
       )}
@@ -312,7 +311,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
           disabled={salvando}
           className="rounded-xl border border-neutral-300 px-5 py-3 text-[15px] font-medium text-neutral-700 transition hover:border-neutral-500 disabled:opacity-40 sm:px-6"
         >
-          Pular por enquanto
+          {t("bv.pular")}
         </button>
         <button
           type="button"
@@ -320,11 +319,11 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
           disabled={salvando || !temAlgo}
           className="rounded-xl bg-marca-coral px-5 py-3 text-[15px] font-semibold text-white transition hover:bg-marca-coral-escuro disabled:opacity-40 sm:px-7"
         >
-          {salvando ? "Salvando…" : "Continuar"}
+          {salvando ? t("bv.salvando") : t("comum.continuar")}
         </button>
       </div>
 
-      <p className="mt-4 text-xs text-neutral-400">Dá pra mudar tudo isso depois, em Minha marca.</p>
+      <p className="mt-4 text-xs text-neutral-400">{t("bv.depois")}</p>
     </main>
   );
 }

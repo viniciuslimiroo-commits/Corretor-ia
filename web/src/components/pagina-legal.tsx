@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import AvisoIdiomaLegal from "./aviso-idioma-legal";
 
 // Moldura das páginas de texto legal (termos, privacidade). Fora do AppShell de
 // propósito: quem lê isso pode não estar logado, e a página precisa abrir e imprimir
@@ -31,6 +32,7 @@ export default function PaginaLegal({ titulo, atualizado, children }: { titulo: 
       </header>
 
       <article className="mx-auto max-w-3xl px-5 py-10">
+        <AvisoIdiomaLegal />
         <h1 className="text-3xl font-semibold">{titulo}</h1>
         <p className="mt-1 text-sm text-neutral-500">Atualizado em {atualizado}.</p>
         <div className="[&_li]:ml-1 [&_p]:leading-relaxed [&_ul]:flex [&_ul]:list-disc [&_ul]:flex-col [&_ul]:gap-1.5 [&_ul]:pl-5">{children}</div>

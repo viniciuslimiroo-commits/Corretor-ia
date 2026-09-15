@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
 
 // Entrar. Três jeitos, porque público de imobiliária é misto: quem vive no WhatsApp
 // prefere o link por e-mail (sem senha pra esquecer); quem tem conta Google entra com
@@ -24,6 +25,7 @@ type Modo = "link" | "senha";
 
 export default function Login() {
   const router = useRouter();
+  const { t } = useIdioma();
   const [modo, setModo] = useState<Modo>("link");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -39,12 +41,12 @@ export default function Login() {
 
   function traduzir(msg: string): string {
     const m = msg.toLowerCase();
-    if (m.includes("invalid login credentials")) return "E-mail ou senha errados.";
-    if (m.includes("email not confirmed")) return "Confirme o e-mail que mandamos antes de entrar.";
-    if (m.includes("user already registered")) return "Esse e-mail já tem conta. Entre com a senha ou peça o link.";
-    if (m.includes("password should be at least")) return "A senha precisa ter pelo menos 6 caracteres.";
-    if (m.includes("expired") || m.includes("invalid") || m.includes("otp")) return "Código errado ou vencido. Peça outro e-mail.";
-    if (m.includes("rate limit") || m.includes("too many")) return "Muitos e-mails em pouco tempo. Espere alguns minutos — ou entre com senha.";
+    if (m.includes("invalid login credentials")) return t("login.erro.credenciais");
+    if (m.includes("email not confirmed")) return t("login.erro.confirmar");
+    if (m.includes("user already registered")) return t("login.erro.jatem");
+    if (m.includes("password should be at least")) return t("login.erro.senha.curta");
+    if (m.includes("expired") || m.includes("invalid") || m.includes("otp")) return t("login.erro.codigo");
+    if (m.includes("rate limit") || m.includes("too many")) return t("login.erro.limite");
     return msg;
   }
 
@@ -58,7 +60,7 @@ export default function Login() {
     if (error) return setErro(traduzir(error.message));
     setCodigo("");
     setPedeCodigo(true);
-    setEnviado("Enviamos pra " + email + ". Clique no botão do e-mail — ou digite aqui o código de 8 dígitos.");
+    setEnviado(t("login.enviado", { email }));
   }
 
   async function entrarComCodigo(e: React.FormEvent) {
@@ -83,7 +85,7 @@ export default function Login() {
       const { error } = await supabase.auth.signUp({ email, password: senha, options: { emailRedirectTo: origem() } });
       setCarregando(false);
       if (error) return setErro(traduzir(error.message));
-      setEnviado("Conta criada. Mandamos um e-mail de confirmação: clique no link e depois entre com a senha.");
+      setEnviado(t("login.conta.criada"));
       return;
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
@@ -100,10 +102,10 @@ export default function Login() {
   }
 
   async function esqueci() {
-    if (!supabase || !email) return setErro("Digite o e-mail primeiro.");
+    if (!supabase || !email) return setErro(t("login.digite.email"));
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${origem()}/senha` });
     if (error) return setErro(traduzir(error.message));
-    setEnviado("Mandamos um link pra você definir uma senha nova.");
+    setEnviado(t("login.senha.enviada"));
   }
 
   const campo = "w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm focus:border-marca-indigo focus:outline-none";
@@ -119,8 +121,13 @@ export default function Login() {
           parada quando o produto passou a entregar vídeo, book, planta e terreno --
           e o rótulo "inteligência artificial para imóveis" é a categoria, não a promessa:
           Pedra e mais vinte usam igual. A linha de baixo nomeia o percurso e o diferencial. */}
-      <h1 className="mt-4 text-2xl font-semibold">O imóvel inteiro, pronto para anunciar.</h1>
-      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Da foto ao anúncio, com a sua marca</p>
+      <div className="mt-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{t("marca.h1")}</h1>
+          <p className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-500">{t("marca.linha")}</p>
+        </div>
+        <SeletorIdioma className="shrink-0" />
+      </div>
 
       {enviado ? (
         <div className="mt-6 rounded-lg border border-marca-teal/40 bg-marca-teal/10 p-3 text-sm text-marca-indigo">
@@ -142,7 +149,7 @@ export default function Login() {
                 disabled={carregando || codigo.replace(/\D/g, "").length < 6}
                 className="rounded-lg bg-marca-indigo px-4 py-2.5 font-medium text-white hover:opacity-90 disabled:opacity-40"
               >
-                {carregando ? "Conferindo…" : "Entrar com o código"}
+                {carregando ? t("login.codigo.conferindo") : t("login.codigo.entrar")}
               </button>
             </form>
           )}
@@ -155,7 +162,7 @@ export default function Login() {
             }}
             className="mt-2 block text-xs underline"
           >
-            voltar
+            {t("comum.voltar")}
           </button>
         </div>
       ) : (
@@ -172,40 +179,40 @@ export default function Login() {
                 <path fill="#FBBC05" d="M5.3 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l4-3.1z" />
                 <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C18 1.2 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z" />
               </svg>
-              Entrar com Google
+              {t("login.google")}
             </button>
           )}
 
           <div className={"flex rounded-xl border border-neutral-200 bg-neutral-50 p-1 text-sm " + (google ? "mt-4" : "mt-6")}>
             <button type="button" onClick={() => setModo("link")} className={"flex-1 rounded-lg px-3 py-1.5 " + (modo === "link" ? "bg-white font-medium text-marca-indigo shadow-sm" : "text-neutral-600")}>
-              Link por e-mail
+              {t("login.link")}
             </button>
             <button type="button" onClick={() => setModo("senha")} className={"flex-1 rounded-lg px-3 py-1.5 " + (modo === "senha" ? "bg-white font-medium text-marca-indigo shadow-sm" : "text-neutral-600")}>
-              Com senha
+              {t("login.senha")}
             </button>
           </div>
 
           {modo === "link" ? (
             <form onSubmit={enviarLink} className="mt-4 flex flex-col gap-3">
-              <p className="text-sm text-neutral-600">Sem senha: a gente manda um link de acesso. Primeira vez cria a conta.</p>
-              <input type="email" required placeholder="seu@email.com" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={campo} />
+              <p className="text-sm text-neutral-600">{t("login.link.explica")}</p>
+              <input type="email" required placeholder={t("login.email")} autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={campo} />
               <button type="submit" disabled={carregando} className="rounded-lg bg-marca-coral px-4 py-2.5 font-medium text-white hover:bg-marca-coral-escuro disabled:opacity-40">
-                {carregando ? "Enviando…" : "Enviar link de acesso"}
+                {carregando ? t("login.enviando") : t("login.enviar")}
               </button>
             </form>
           ) : (
             <form onSubmit={entrarComSenha} className="mt-4 flex flex-col gap-3">
-              <input type="email" required placeholder="seu@email.com" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={campo} />
-              <input type="password" required minLength={6} placeholder={criando ? "Crie uma senha (6+ caracteres)" : "Sua senha"} autoComplete={criando ? "new-password" : "current-password"} value={senha} onChange={(e) => setSenha(e.target.value)} className={campo} />
+              <input type="email" required placeholder={t("login.email")} autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={campo} />
+              <input type="password" required minLength={6} placeholder={criando ? t("login.senha.criar") : t("login.senha.sua")} autoComplete={criando ? "new-password" : "current-password"} value={senha} onChange={(e) => setSenha(e.target.value)} className={campo} />
               <button type="submit" disabled={carregando} className="rounded-lg bg-marca-coral px-4 py-2.5 font-medium text-white hover:bg-marca-coral-escuro disabled:opacity-40">
-                {carregando ? "Aguarde…" : criando ? "Criar conta" : "Entrar"}
+                {carregando ? t("login.aguarde") : criando ? t("login.criar.conta") : t("login.entrar")}
               </button>
               <div className="flex justify-between text-xs text-neutral-500">
                 <button type="button" onClick={() => setCriando((v) => !v)} className="underline">
-                  {criando ? "Já tenho conta" : "Criar conta com senha"}
+                  {criando ? t("login.ja.tenho") : t("login.criar.com.senha")}
                 </button>
                 {!criando && (
-                  <button type="button" onClick={esqueci} className="underline">Esqueci a senha</button>
+                  <button type="button" onClick={esqueci} className="underline">{t("login.esqueci")}</button>
                 )}
               </div>
             </form>
@@ -215,8 +222,8 @@ export default function Login() {
       )}
 
       <p className="mt-8 text-xs text-neutral-400">
-        Ao entrar você concorda com os <Link href="/termos" className="underline">Termos de uso</Link> e a{" "}
-        <Link href="/privacidade" className="underline">Política de Privacidade</Link>. Cinco gerações grátis pra testar.
+        {t("login.termos")} <Link href="/termos" className="underline">{t("login.termos.link")}</Link> {t("login.e.a")}{" "}
+        <Link href="/privacidade" className="underline">{t("login.privacidade.link")}</Link>. {t("login.gratis")}
       </p>
     </main>
   );
