@@ -161,9 +161,15 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
         <div className="mt-7">
           <span className="mb-1.5 block text-sm font-medium text-neutral-700">Esta marca é de quem?</span>
           <div className="flex flex-wrap gap-1.5">
+            {/* Genérico, e não "Da Limiro Imóveis".
+                No primeiro login esse nome costuma ter vindo de um convite ou de um
+                cadastro automático -- oferecer ele como rótulo faz parecer que o sistema
+                já sabe da empresa da pessoa, quando é justamente isso que ela está
+                começando a definir. O nome real vai na linha de baixo, onde é informação
+                e não escolha. */}
             {([
-              { v: "casa" as const, r: `Da ${conta.org!.nome}`, d: "Vale pra todo mundo da imobiliária." },
-              { v: "pessoal" as const, r: "Minha, de corretor", d: "Só nos seus materiais, por cima da marca da casa." },
+              { v: "casa" as const, r: "Da imobiliária" },
+              { v: "pessoal" as const, r: "Minha, de corretor" },
             ]).map((o) => (
               <button
                 key={o.v}
@@ -186,8 +192,8 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
           </div>
           <p className="mt-1.5 text-xs text-neutral-500">
             {alvo === "casa"
-              ? "Vale como padrão pra todo mundo da imobiliária. Dá pra ter a sua depois, em Minha marca."
-              : "Fica só nos seus materiais e passa na frente da marca da imobiliária."}
+              ? `Vale como padrão pra todo mundo de ${conta.org!.nome}. Dá pra ter a sua depois, em Minha marca.`
+              : `Fica só nos seus materiais e passa na frente da marca de ${conta.org!.nome}.`}
           </p>
         </div>
       )}

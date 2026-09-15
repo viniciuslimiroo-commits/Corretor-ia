@@ -1,4 +1,5 @@
 import { TIPOS_ESPACO, rotuloDoTipo } from "./acoes";
+import { rotuloDoValor, valorComPeriodo } from "./ficha-imovel";
 import { TIPO_POR_ID, type TipoBook } from "./book-tipos";
 import { novoId, type DocumentoBook, type Pagina } from "./book-documento";
 
@@ -39,6 +40,8 @@ export type ImovelMontagem = {
   ano_construcao?: number | null;
   condominio?: string | null;
   iptu?: string | null;
+  /** venda | locacao | ambos. Decide o rótulo do valor e o "/mês". Null = não informado. */
+  negocio?: string | null;
   capa_job_id?: string | null;
 };
 
@@ -199,7 +202,7 @@ export function montar(d: DadosMontagem): DocumentoBook {
     textos: {
       titulo: d.imovel.titulo,
       subtitulo: d.imovel.endereco ?? "",
-      ...(def.usaPreco && d.imovel.preco ? { preco: d.imovel.preco } : {}),
+      ...(def.usaPreco && d.imovel.preco ? { preco: valorComPeriodo(d.imovel.preco, d.imovel.negocio) } : {}),
       ...(descricaoNaCapa && d.imovel.descricao ? { descricao: d.imovel.descricao } : {}),
     },
   });
@@ -345,7 +348,7 @@ export function montarCatalogo(d: { imoveis: ImovelDoCatalogo[]; cor?: string; t
       textos: {
         titulo: imovel.titulo,
         endereco: imovel.endereco ?? "",
-        preco: imovel.preco ?? "",
+        preco: valorComPeriodo(imovel.preco, imovel.negocio),
         ficha: fichaCurta(imovel),
       },
     });
@@ -359,7 +362,7 @@ export function montarCatalogo(d: { imoveis: ImovelDoCatalogo[]; cor?: string; t
 /** Os números que um investidor compara, saídos da ficha -- não de texto interpretado. */
 export function numerosDoImovel(i: ImovelMontagem): string[] {
   const linhas: string[] = [];
-  if (i.preco) linhas.push(`Valor: ${i.preco}`);
+  if (i.preco) linhas.push(`${rotuloDoValor(i.negocio)}: ${valorComPeriodo(i.preco, i.negocio)}`);
   if (i.area_util) linhas.push(`Área útil: ${String(i.area_util).replace(".", ",")} m²`);
   if (i.area_total) linhas.push(`Área total: ${String(i.area_total).replace(".", ",")} m²`);
   if (i.dormitorios) linhas.push(`Dormitórios: ${i.dormitorios}`);

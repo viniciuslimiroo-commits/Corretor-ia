@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Botao, Cartao, Icone, Rotulo } from "@/components/ui";
-import { CAMPOS_FICHA } from "@/lib/ficha-imovel";
+import { CAMPOS_FICHA, rotuloDoValor } from "@/lib/ficha-imovel";
 
 // A ficha técnica do imóvel, editada na página dele.
 //
@@ -79,8 +79,34 @@ export default function FichaTecnica({
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {CAMPOS_FICHA.map((campo) => (
           <label key={campo.chave} className={"block text-sm " + (campo.largo ? "sm:col-span-3 lg:col-span-5" : "")}>
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{campo.rotulo}</span>
-            {campo.tipo === "longo" ? (
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              {/* O rótulo do valor segue o negócio: na locação, "Preço" vira "Aluguel".
+                  Trocar só no PDF e deixar o formulário dizendo outra coisa é como o
+                  corretor descobre que o material não bate com o que ele preencheu. */}
+              {campo.chave === "preco" ? rotuloDoValor(String(valores.negocio ?? "")) : campo.rotulo}
+            </span>
+            {campo.tipo === "escolha" ? (
+              <div className="flex flex-wrap gap-1.5">
+                {(campo.opcoes ?? []).map((o) => {
+                  const ativo = String(valores[campo.chave] ?? "") === o.valor;
+                  return (
+                    <button
+                      key={o.valor}
+                      type="button"
+                      // Clicar de novo desmarca: "não informado" é um estado legítimo, e
+                      // sem isso quem escolheu por engano não tem como voltar atrás.
+                      onClick={() => setValores((v) => ({ ...v, [campo.chave]: ativo ? "" : o.valor }))}
+                      className={
+                        "rounded-lg border px-3 py-1.5 text-sm transition " +
+                        (ativo ? "border-marca-indigo bg-marca-indigo/5 font-medium text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                      }
+                    >
+                      {o.rotulo}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : campo.tipo === "longo" ? (
               <textarea
                 value={String(valores[campo.chave] ?? "")}
                 onChange={(e) => setValores((v) => ({ ...v, [campo.chave]: e.target.value }))}

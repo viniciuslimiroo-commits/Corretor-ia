@@ -50,6 +50,7 @@ export async function imovelDeMontagem(db: Db, userId: string, imovelId: string)
       ano_construcao: numero(p.ano_construcao),
       condominio: texto(p.condominio),
       iptu: texto(p.iptu),
+      negocio: texto(p.negocio),
       capa_job_id: texto(p.capa_job_id),
     },
     shareToken: texto(p.share_token),
