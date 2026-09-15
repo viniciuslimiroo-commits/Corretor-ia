@@ -23,14 +23,23 @@ export const FORMATOS: { id: FormatoId; rotulo: string; largura: number; altura:
 
 export const FORMATOS_POR_ID = Object.fromEntries(FORMATOS.map((f) => [f.id, f])) as Record<FormatoId, (typeof FORMATOS)[number]>;
 
-export type EfeitoId = "aproximar" | "afastar" | "esquerda" | "direita" | "parado";
+export type EfeitoId = "aproximar" | "afastar" | "esquerda" | "direita" | "cima" | "baixo" | "parado";
 
-export const EFEITOS: { id: EfeitoId; rotulo: string }[] = [
-  { id: "aproximar", rotulo: "Aproximar" },
-  { id: "afastar", rotulo: "Afastar" },
-  { id: "esquerda", rotulo: "Passear ←" },
-  { id: "direita", rotulo: "Passear →" },
-  { id: "parado", rotulo: "Parado" },
+/**
+ * O movimento de câmera na foto parada.
+ *
+ * Cima e baixo existem porque imóvel tem altura: pé-direito duplo, escada, fachada,
+ * prédio inteiro. Numa foto vertical desses, passear na horizontal não mostra nada -- e
+ * era só o que havia. "Subir" vai do chão pro teto, que é como se olha um ambiente alto.
+ */
+export const EFEITOS: { id: EfeitoId; rotulo: string; dica: string }[] = [
+  { id: "aproximar", rotulo: "Aproximar", dica: "A câmera avança devagar no centro da foto." },
+  { id: "afastar", rotulo: "Afastar", dica: "Começa perto e abre, revelando o ambiente." },
+  { id: "esquerda", rotulo: "Passear ←", dica: "Desliza pro lado. Bom em ambiente largo." },
+  { id: "direita", rotulo: "Passear →", dica: "Desliza pro outro lado." },
+  { id: "cima", rotulo: "Subir ↑", dica: "Do chão pro teto. Pé-direito alto, escada, fachada." },
+  { id: "baixo", rotulo: "Descer ↓", dica: "Do teto pro chão. Bom pra abrir um ambiente." },
+  { id: "parado", rotulo: "Parado", dica: "Sem movimento nenhum." },
 ];
 
 // Cena animada: a foto vira um clipe de câmera em movimento por um modelo de

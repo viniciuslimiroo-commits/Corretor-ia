@@ -471,10 +471,16 @@ export default function PaginaVideo() {
     };
   }, [user, imovelId, token]);
 
-  function adicionarGeracao(g: Geracao) {
-    setCenas((lista) => [
-      ...lista,
-      {
+  /**
+   * Põe uma foto da biblioteca na linha do tempo.
+   *
+   * `antes` é a chave da cena onde ela deve entrar; sem isso, vai pro fim. É o que faz
+   * arrastar a foto pra um ponto da linha do tempo colocá-la ALI -- clicar continua
+   * mandando pro fim, que é o gesto rápido de quem está montando na ordem.
+   */
+  function adicionarGeracao(g: Geracao, antes?: string) {
+    setCenas((lista) => {
+      const nova: CenaUI = {
         chave: chave(),
         tipo: "foto",
         jobId: g.id,
@@ -489,8 +495,13 @@ export default function PaginaVideo() {
         legenda: "",
         duracao: LIMITES.duracaoPadrao,
         melhorar: false,
-      },
-    ]);
+      };
+      const i = antes ? lista.findIndex((s) => s.chave === antes) : -1;
+      if (i < 0) return [...lista, nova];
+      const copia = [...lista];
+      copia.splice(i, 0, nova);
+      return copia;
+    });
   }
 
   async function enviarArquivos(arquivos: FileList | null) {
@@ -781,8 +792,24 @@ export default function PaginaVideo() {
     setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, textos: (s.textos ?? []).filter((_, j) => j !== i) } : s)));
   }
 
-  /** Arrastar na linha do tempo: solta a cena arrastada na posição da cena alvo. */
-  function soltarEm(alvo: string) {
+  /**
+   * Soltar na linha do tempo. Duas origens, um alvo:
+   *
+   * - uma CENA que já está na linha: troca de lugar;
+   * - uma FOTO da biblioteca: entra ali, empurrando o resto pra frente.
+   *
+   * A foto vem pelo `dataTransfer` do próprio navegador, e não por um ref, porque é o
+   * único jeito de o arraste sobreviver a sair de uma coluna e entrar na outra.
+   */
+  function soltarEm(alvo: string, ev?: React.DragEvent) {
+    const jobId = ev?.dataTransfer?.getData("text/encena-foto");
+    if (jobId) {
+      ev?.preventDefault();
+      const g = geracoes.find((x) => x.id === jobId);
+      if (g) adicionarGeracao(g, alvo);
+      arrastando.current = null;
+      return;
+    }
     const de = arrastando.current;
     arrastando.current = null;
     if (!de || de === alvo) return;
@@ -1152,7 +1179,21 @@ export default function PaginaVideo() {
                     const usada = cenas.some((s) => s.jobId === g.id);
                     return (
                       <li key={g.id}>
-                        <button type="button" onClick={() => adicionarGeracao(g)} disabled={gerando} className={"relative block w-full overflow-hidden rounded-lg border-2 " + (usada ? "border-marca-coral" : "border-transparent hover:border-neutral-400")} title={g.acao}>
+                        {/* Arrastável: solta num ponto da linha do tempo e a foto entra
+                            ALI. Clicar continua mandando pro fim -- é o gesto de quem
+                            está montando na ordem, e não se perde por causa do arraste. */}
+                        <button
+                          type="button"
+                          draggable={!gerando}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/encena-foto", g.id);
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
+                          onClick={() => adicionarGeracao(g)}
+                          disabled={gerando}
+                          className={"relative block w-full overflow-hidden rounded-lg border-2 " + (usada ? "border-marca-coral" : "border-transparent hover:border-neutral-400")}
+                          title={`${g.acao} · clique pra pôr no fim, arraste pra escolher o lugar`}
+                        >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={g.depois ?? ""} alt="" className="aspect-[4/3] w-full object-cover" loading="lazy" />
                           {usada && <span className="absolute top-1 right-1 rounded-full bg-marca-coral px-1.5 text-[10px] font-semibold text-white">{cenas.filter((s) => s.jobId === g.id).length}×</span>}
@@ -1253,9 +1294,14 @@ export default function PaginaVideo() {
                   {cenaAtual.tipo === "foto" && (
                     <label className="flex items-center gap-1.5 text-xs text-neutral-600">
                       Movimento
-                      <select value={cenaAtual.efeito} onChange={(e) => mudarCena(cenaAtual.chave, { efeito: e.target.value as EfeitoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm">
+                      <select
+                        value={cenaAtual.efeito}
+                        onChange={(e) => mudarCena(cenaAtual.chave, { efeito: e.target.value as EfeitoId })}
+                        title={EFEITOS.find((e) => e.id === cenaAtual.efeito)?.dica}
+                        className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm"
+                      >
                         {EFEITOS.map((e) => (
-                          <option key={e.id} value={e.id}>{e.rotulo}</option>
+                          <option key={e.id} value={e.id} title={e.dica}>{e.rotulo}</option>
                         ))}
                       </select>
                     </label>
@@ -1998,7 +2044,7 @@ export default function PaginaVideo() {
           <Cartao className="p-3">
             <div className="mb-2 flex items-baseline justify-between">
               <Rotulo>Linha do tempo</Rotulo>
-              <span className="text-xs text-neutral-500">arraste pra trocar a ordem</span>
+              <span className="text-xs text-neutral-500">arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio</span>
             </div>
             <ul className="flex items-stretch gap-1 overflow-x-auto pb-2">
               {cenas.map((s, i) => (
@@ -2008,7 +2054,7 @@ export default function PaginaVideo() {
                     draggable={!gerando}
                     onDragStart={() => (arrastando.current = s.chave)}
                     onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => soltarEm(s.chave)}
+                    onDrop={(e) => soltarEm(s.chave, e)}
                     onDragEnd={() => (arrastando.current = null)}
                     onClick={() => setSelecionada(s.chave)}
                     className={

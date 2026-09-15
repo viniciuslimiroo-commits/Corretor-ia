@@ -257,6 +257,11 @@ function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string
     afastar: { z: `1.10-0.10*${p}`, x: centroX, y: centroY },
     esquerda: { z: "1.08", x: `(iw-iw/zoom)*(1-${p})`, y: centroY },
     direita: { z: "1.08", x: `(iw-iw/zoom)*${p}`, y: centroY },
+    // Subir é do CHÃO pro teto: a janela começa embaixo (y máximo) e sobe até 0. O
+    // ambiente alto se olha assim, e é o movimento que a foto vertical de pé-direito
+    // duplo pede -- passear na horizontal ali não mostra nada.
+    cima: { z: "1.08", x: centroX, y: `(ih-ih/zoom)*(1-${p})` },
+    baixo: { z: "1.08", x: centroX, y: `(ih-ih/zoom)*${p}` },
     parado: { z: "1", x: "0", y: "0" },
   };
   const r = receitas[efeito];
