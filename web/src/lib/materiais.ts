@@ -1,4 +1,4 @@
-// O vocabulário do ACERVO: como cada job vira item de tela.
+// O vocabulário da GALERIA: como cada job vira item de tela.
 //
 // Os MODELOS de material moravam aqui e foram embora: eram um segundo motor de PDF, com
 // os mesmos nomes dos tipos de Book ("Book do imóvel", "Catálogo", "Apresentação de

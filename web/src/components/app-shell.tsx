@@ -66,7 +66,7 @@ export default function AppShell({
     { href: "/", rotulo: "menu.inicio", icone: "casa", soIcone: false, soMobile: true },
     // Editar e Vídeo saíram daqui e foram pro botão "+ Criar".
     //
-    // A barra misturava dois VERBOS (Editar, Vídeo) com três LUGARES (Imóveis, Acervo,
+    // A barra misturava dois VERBOS (Editar, Vídeo) com três LUGARES (Imóveis, Galeria,
     // Materiais), e por isso "onde eu crio?" não tinha resposta óbvia: dependia do que ia
     // ser criado. Agora a navegação só diz ONDE as coisas estão, e a criação inteira --
     // foto, vídeo e material -- é um botão só, visível em toda tela.
@@ -90,10 +90,10 @@ export default function AppShell({
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa
     // ("me manda o material do imóvel"), e serve pros dois lados: o que ele tem e o que monta.
-    // Acervo e o INSUMO (foto, planta, terreno, video); Materiais e o ENTREGAVEL (book,
+    // Galeria e o INSUMO (foto, planta, terreno, video); Materiais e o ENTREGAVEL (book,
     // catalogo, apresentacao). Chamar os dois de "Materiais" era a colisao que fazia a
     // pessoa procurar o book na tela das fotos.
-    { href: "/acervo", rotulo: "menu.acervo", icone: "materiais", soIcone: false },
+    { href: "/galeria", rotulo: "menu.galeria", icone: "materiais", soIcone: false },
     { href: "/materiais", rotulo: "menu.materiais", icone: "planta", soIcone: false },
     // Equipe virou só ícone quando Materiais entrou: o nome inteiro dos dois não cabe
     // junto do resto na barra de 1152px.

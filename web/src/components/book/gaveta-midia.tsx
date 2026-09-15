@@ -5,9 +5,9 @@ import { Icone, Rotulo } from "@/components/ui";
 
 // A gaveta de mídia: as imagens que a pessoa já tem, dentro do editor.
 //
-// Não é acervo novo -- lê /api/materiais, a mesma Biblioteca. A ordem é pensada: primeiro
+// Não é galeria nova -- lê /api/materiais, a mesma Biblioteca. A ordem é pensada: primeiro
 // as imagens DESTE imóvel que ainda não estão no book, depois as que já estão (marcadas),
-// depois o resto do acervo. É a ordem em que a pessoa procura.
+// depois o resto da galeria. É a ordem em que a pessoa procura.
 //
 // Arrastar daqui pra cima de uma foto da página troca a foto. Clicar faz o mesmo, pro
 // caso de celular e de quem não descobre o arrasto.

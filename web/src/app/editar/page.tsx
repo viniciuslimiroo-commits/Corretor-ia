@@ -36,7 +36,7 @@ function lerQuery() {
   if (typeof window === "undefined") return { imovel: null, compra: null, retorno: null, job: null };
   const p = new URLSearchParams(window.location.search);
   const compra = p.get("compra");
-  // `?job=`: uma imagem pronta (do Acervo) abrindo aqui pra ser refinada.
+  // `?job=`: uma imagem pronta (da Galeria) abrindo aqui pra ser refinada.
   return { imovel: p.get("imovel"), compra, retorno: p.get("assinatura") ?? compra, job: p.get("job") };
 }
 
@@ -96,7 +96,7 @@ export default function Editor() {
   const podeGerar = !!foto && !carregando && (c.conta?.creditos ?? 0) > 0 && (!usaMascara || temMascara) && (acao.id !== "editar_prompt" || !!parametros.instrucao?.trim());
 
   // Chegou com `?job=`: o resultado daquele job vira o resultado na tela, pronto pra
-  // refinar e ver versões -- é o caminho do Acervo. Não gasta crédito: é só ler.
+  // refinar e ver versões -- é o caminho da Galeria. Não gasta crédito: é só ler.
   const usuarioLogado = c.user;
   const pegarToken = c.token;
   useEffect(() => {
@@ -425,7 +425,7 @@ export default function Editor() {
         {/* ---------- coluna da foto ---------- */}
         <section className="lg:col-span-7">
           {/* Sem foto E sem resultado: a caixa de envio. Resultado sem foto existe -- é a
-              imagem do Acervo reaberta aqui pra refinar (?job=), que não passou pelo envio. */}
+              imagem da Galeria reaberta aqui pra refinar (?job=), que não passou pelo envio. */}
           {!foto && !resultado ? (
             <Cartao>
               <Dropzone

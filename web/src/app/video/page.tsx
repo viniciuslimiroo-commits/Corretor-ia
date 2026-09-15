@@ -257,7 +257,7 @@ export default function PaginaVideo() {
   useEffect(() => {
     if (!user) return;
     const params = new URLSearchParams(window.location.search);
-    // `?editar=`: um vídeo pronto (do Acervo) abrindo direto em edição.
+    // `?editar=`: um vídeo pronto (da Galeria) abrindo direto em edição.
     const editar = params.get("editar");
     if (editar && jobDaUrl.current !== `editar:${editar}`) {
       jobDaUrl.current = `editar:${editar}`;

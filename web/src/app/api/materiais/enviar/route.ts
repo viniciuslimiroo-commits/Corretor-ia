@@ -7,12 +7,12 @@ import { rotuloDoTipo } from "@/lib/acoes";
 
 // Enviar foto que JÁ ESTÁ PRONTA, sem passar por IA e sem gastar crédito.
 //
-// Faltava, e o buraco era grande: o único jeito de uma imagem entrar no acervo era por
+// Faltava, e o buraco era grande: o único jeito de uma imagem entrar na galeria era por
 // /editar, que sempre roda uma ação e sempre debita. Quem já tem a foto boa da fachada, a
 // planta que a incorporadora mandou ou o print do mapa pagava crédito pra editar uma foto
 // que não precisava de edição -- só pra ela existir.
 //
-// Vira um JOB de tipo 'original', igual ao que o mapa faz. Não é rodeio: o acervo, o book,
+// Vira um JOB de tipo 'original', igual ao que o mapa faz. Não é rodeio: a galeria, o book,
 // o catálogo, o PDF e a página pública já falam a língua de "job", e inventar um segundo
 // jeito de guardar imagem duplicaria tudo isso por nada.
 //

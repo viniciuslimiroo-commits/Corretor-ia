@@ -119,7 +119,7 @@ export default function Inicio({ conta, token }: { conta: Conta; token: () => Pr
         <section className="mt-6">
           <div className="mb-2 flex items-baseline justify-between">
             <Rotulo>Seu material</Rotulo>
-            <Link href="/acervo" className="text-xs text-marca-indigo underline">ver tudo no Acervo</Link>
+            <Link href="/galeria" className="text-xs text-marca-indigo underline">ver tudo na Galeria</Link>
           </div>
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6">
             {geracoes.map((g) => (

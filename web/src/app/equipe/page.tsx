@@ -236,7 +236,7 @@ export default function Equipe() {
                           )}
                           <BotaoConfirma
                             pergunta={`Remover ${m.nome || m.email}?`}
-                            detalhe="A pessoa perde o acesso aos créditos da equipe. O que ela já produziu continua no acervo dela."
+                            detalhe="A pessoa perde o acesso aos créditos da equipe. O que ela já produziu continua na galeria dela."
                             confirmar="Remover"
                             aoConfirmar={() => chamar("/api/equipe/membros", json({ userId: m.userId }, "DELETE"))}
                             disabled={ocupado}

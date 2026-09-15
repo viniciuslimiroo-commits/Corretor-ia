@@ -90,8 +90,8 @@ export default function Books() {
   const [imoveisDoCatalogo, setImoveisDoCatalogo] = useState<string[]>([]);
   const [recado, setRecado] = useState(0);
   const [outrosAbertos, setOutrosAbertos] = useState(false);
-  /** Quantas imagens vieram marcadas do Acervo. Zero = a pessoa começou aqui. */
-  const [veioDoAcervo, setVeioDoAcervo] = useState(0);
+  /** Quantas imagens vieram marcadas da Galeria. Zero = a pessoa começou aqui. */
+  const [veioDaGaleria, setVeioDaGaleria] = useState(0);
   // Indireção pra chamar abrirCriacao de um efeito sem o React Compiler reclamar de
   // função declarada depois do uso.
   const abrirCriacaoRef = useRef<(() => void) | null>(null);
@@ -175,9 +175,9 @@ export default function Books() {
   }
 
   /**
-   * Quem chega do Acervo com fotos marcadas cai no modo manual, com a seleção já feita.
+   * Quem chega da Galeria com fotos marcadas cai no modo manual, com a seleção já feita.
    *
-   * É a porta única: o Acervo escolhe O QUE entra, esta tela escolhe O QUE VIRA. Antes
+   * É a porta única: a Galeria escolhe O QUE entra, esta tela escolhe O QUE VIRA. Antes
    * havia um segundo montador só pra isso, com outro motor e outro resultado.
    */
   useEffect(() => {
@@ -187,7 +187,7 @@ export default function Books() {
     limparSelecao();
     setModo("manual");
     setMarcadas(vindas);
-    setVeioDoAcervo(vindas.length);
+    setVeioDaGaleria(vindas.length);
   }, [user, criando]);
 
   // Quem manda é a definição do tipo, não o id: catálogo E portfólio falam de vários
@@ -206,7 +206,7 @@ export default function Books() {
 
   async function montar(auto = false) {
     // Sem imóvel mas COM imagens marcadas o caminho continua válido: a rota deduz o imóvel
-    // pelas fotos. É o que acontece quando a pessoa chega do Acervo com uma seleção.
+    // pelas fotos. É o que acontece quando a pessoa chega da Galeria com uma seleção.
     const temAlvo = ehVarios ? imoveisDoCatalogo.length > 0 : !!imovelEscolhido || (!auto && marcadas.length > 0);
     if (!temAlvo) return;
     setMontando(true);
@@ -327,9 +327,9 @@ export default function Books() {
 
           {/* Migalha de pão: sem isto a pessoa marca 5 fotos numa tela e cai noutra, com
               outro cabeçalho, sem nada dizendo que a escolha dela veio junto. */}
-          {veioDoAcervo > 0 && (
+          {veioDaGaleria > 0 && (
             <p className="mb-4 rounded-lg border border-marca-teal/40 bg-marca-teal/10 px-3 py-2 text-sm text-marca-indigo">
-              Você trouxe <strong className="font-semibold">{veioDoAcervo} {veioDoAcervo === 1 ? "imagem" : "imagens"}</strong> do Acervo. Elas já estão marcadas
+              Você trouxe <strong className="font-semibold">{veioDaGaleria} {veioDaGaleria === 1 ? "imagem" : "imagens"}</strong> da Galeria. Elas já estão marcadas
               no passo 2.
             </p>
           )}
@@ -337,7 +337,7 @@ export default function Books() {
           <Rotulo>{ehVarios ? `1 · Quais imóveis (${imoveisDoCatalogo.length} ${imoveisDoCatalogo.length === 1 ? "escolhido" : "escolhidos"})` : "1 · De qual imóvel"}</Rotulo>
           {comFotos.length === 0 && (
             <p className="mb-1 text-sm text-neutral-500">
-              Nenhum imóvel com foto ainda. <Link href="/materiais" className="text-marca-indigo underline">Envie fotos no Acervo</Link> ou{" "}
+              Nenhum imóvel com foto ainda. <Link href="/materiais" className="text-marca-indigo underline">Envie fotos na Galeria</Link> ou{" "}
               <Link href="/editar" className="text-marca-indigo underline">edite a primeira</Link>.
             </p>
           )}

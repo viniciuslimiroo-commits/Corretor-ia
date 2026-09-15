@@ -202,7 +202,7 @@ export default function Terreno() {
    * quatro a partir do lote vazio daria quatro casas diferentes.
    *
    * Cada etapa é um job normal: se o navegador fechar no meio, o que já ficou pronto está
-   * salvo no acervo e no imóvel, e o que falhou estorna sozinho.
+   * salvo na galeria e no imóvel, e o que falhou estorna sozinho.
    */
   async function gerarObra() {
     if (!foto || gerandoIa) return;
@@ -666,7 +666,7 @@ export default function Terreno() {
                   </div>
                   {etapasFeitas.length === ETAPAS_OBRA.length && (
                     <p className="mt-2 text-xs text-neutral-500">
-                      As quatro estão no imóvel e no acervo. Pra virar vídeo, monte em{" "}
+                      As quatro estão no imóvel e na galeria. Pra virar vídeo, monte em{" "}
                       <Link href="/video" className="text-marca-indigo underline">Vídeo do imóvel</Link> — elas entram na ordem e o próprio vídeo faz a transição.
                     </p>
                   )}

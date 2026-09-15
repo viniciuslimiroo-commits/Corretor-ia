@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/biblioteca", destination: "/materiais", permanent: true },
+      // /acervo virou /galeria: "acervo" é palavra de museu, e ninguém chama as próprias
+      // fotos assim. Mesmo motivo do redirect acima, e mesma solução.
+      { source: "/acervo", destination: "/galeria", permanent: true },
       { source: "/biblioteca/material", destination: "/materiais/montar", permanent: true },
     ];
   },

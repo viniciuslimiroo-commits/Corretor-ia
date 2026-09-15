@@ -8,7 +8,7 @@ import AppShell from "@/components/app-shell";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { CATEGORIAS, type Categoria } from "@/lib/materiais";
 import { guardarSelecao } from "@/lib/selecao-material";
-import VisualizadorAcervo, { type ItemAcervo } from "@/components/visualizador-acervo";
+import VisualizadorGaleria, { type ItemGaleria } from "@/components/visualizador-galeria";
 
 // Materiais: tudo que a pessoa já produziu num lugar só, pra escolher e virar material.
 //
@@ -24,10 +24,10 @@ import VisualizadorAcervo, { type ItemAcervo } from "@/components/visualizador-a
 // PDF: no visualizador ele toca, e os botões são os dele (editar, compartilhar).
 //
 // Clicar no item ABRE (o visualizador, em tela cheia); marcar é a bolinha no canto. Era o
-// contrário -- clicar marcava, e olhar a foto de verdade não tinha jeito. Um acervo em
+// contrário -- clicar marcava, e olhar a foto de verdade não tinha jeito. Uma galeria em
 // que não se olha a foto é um depósito.
 
-type Item = ItemAcervo;
+type Item = ItemGaleria;
 
 type Periodo = "" | "hoje" | "7" | "30";
 type Ordem = "recentes" | "antigos";
@@ -256,7 +256,7 @@ export default function Materiais() {
       if (!r.ok) throw new Error(d.error ?? "Não consegui enviar.");
       const n = d.entraram?.length ?? 0;
       setRecado(
-        `${n} ${n === 1 ? "foto entrou" : "fotos entraram"} no acervo, sem gastar crédito.` +
+        `${n} ${n === 1 ? "foto entrou" : "fotos entraram"} na galeria, sem gastar crédito.` +
           (d.recusadas?.length ? ` Ficaram de fora: ${d.recusadas.join(" · ")}` : "")
       );
       const novo = await buscar();
@@ -275,7 +275,7 @@ export default function Materiais() {
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Acervo</h1>
+          <h1 className="text-2xl font-semibold">Galeria</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Suas fotos, plantas, terrenos e vídeos. Marque o que quer usar e monte o material.
           </p>
@@ -285,7 +285,7 @@ export default function Materiais() {
           {selecionados.length > 0 && (
             <BotaoConfirma
               pergunta={`Apagar ${selecionados.length} ${selecionados.length === 1 ? "imagem" : "imagens"}?`}
-              detalhe="Sai do seu acervo e do armazenamento. Não tem volta e não devolve crédito."
+              detalhe="Sai da sua galeria e do armazenamento. Não tem volta e não devolve crédito."
               confirmar="Apagar"
               aoConfirmar={() => apagarMarcados(false)}
               disabled={apagando}
@@ -503,7 +503,7 @@ export default function Materiais() {
       </div>
 
       {aberto !== null && filtrados[aberto] && (
-        <VisualizadorAcervo
+        <VisualizadorGaleria
           itens={filtrados}
           indice={aberto}
           imoveis={imoveis}

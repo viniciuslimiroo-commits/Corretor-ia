@@ -6,9 +6,9 @@ import Comparador from "@/components/comparador";
 import Compartilhar from "@/components/compartilhar";
 import { BotaoConfirma, Icone } from "@/components/ui";
 
-// O visualizador do Acervo: a imagem (ou o vídeo) grande, e o que dá pra fazer com ela,
+// O visualizador da Galeria: a imagem (ou o vídeo) grande, e o que dá pra fazer com ela,
 // sem sair da lista. Antes, clicar num item só marcava; ver a foto de verdade exigia
-// abrir o histórico ou o imóvel -- e um acervo em que não se olha a foto é um depósito.
+// abrir o histórico ou o imóvel -- e uma galeria em que não se olha a foto é um depósito.
 //
 // O que fica aqui é o que já existe em outros cantos, chamado pelo mesmo id do job:
 // refinar e versões (o editor), animar (o vídeo), material (o montador), imóvel (o PATCH
@@ -16,7 +16,7 @@ import { BotaoConfirma, Icone } from "@/components/ui";
 //
 // Teclado: Esc fecha, ← → andam. Celular: arrastar pro lado anda, a tela é inteira.
 
-export type ItemAcervo = {
+export type ItemGaleria = {
   id: string;
   categoria: "foto" | "planta" | "terreno" | "video";
   tipo?: string;
@@ -36,7 +36,7 @@ function quando(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-export default function VisualizadorAcervo({
+export default function VisualizadorGaleria({
   itens,
   indice,
   imoveis,
@@ -49,7 +49,7 @@ export default function VisualizadorAcervo({
   aoMudarImovel,
   aoFavoritar,
 }: {
-  itens: ItemAcervo[];
+  itens: ItemGaleria[];
   indice: number;
   imoveis: { id: string; titulo: string }[];
   token: () => Promise<string>;
@@ -226,7 +226,7 @@ export default function VisualizadorAcervo({
             </span>
             <BotaoConfirma
               pergunta="Apagar este vídeo?"
-              detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam no acervo."
+              detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam na galeria."
               confirmar="Apagar"
               aoConfirmar={() => rodar(() => aoApagarVideo(item.id))}
               disabled={ocupado}
@@ -290,7 +290,7 @@ export default function VisualizadorAcervo({
             </label>
             <BotaoConfirma
               pergunta="Apagar esta imagem?"
-              detalhe="Sai do seu acervo e do armazenamento. Não tem volta e não devolve crédito."
+              detalhe="Sai da sua galeria e do armazenamento. Não tem volta e não devolve crédito."
               confirmar="Apagar"
               aoConfirmar={() => rodar(() => aoApagar(item.id))}
               disabled={ocupado}
