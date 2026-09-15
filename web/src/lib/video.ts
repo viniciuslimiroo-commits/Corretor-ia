@@ -188,6 +188,12 @@ export const VOZES: { id: VozId; rotulo: string; genero: "feminina" | "masculina
   { id: "george", rotulo: "George", genero: "masculina", elevenlabs: "George" },
 ];
 
+/**
+ * Frases prontas pra tela final. Três, porque a pessoa escolhe entre poucas e escreve a
+ * sua se nenhuma serve -- um campo em branco sem sugestão fica em branco.
+ */
+export const CHAMADAS = ["Agende sua visita", "Chame no WhatsApp", "Quero saber mais"];
+
 export type EspecVideo = {
   formato: FormatoId;
   cenas: Cena[];
@@ -198,7 +204,11 @@ export type EspecVideo = {
   local: string;
   /** Tela final com nome, CRECI, WhatsApp e logo do corretor. */
   telaFinal: boolean;
+  /** Frase da tela final ("Agende sua visita"). Vazia = sem frase. Ausente em vídeos antigos. */
+  chamada?: string;
   transicao: "suave" | "corte";
+  /** Índice da cena que vira a miniatura (capa). Ausente ou inválido = a primeira. */
+  capa?: number;
 };
 
 export const LIMITES = {
@@ -211,6 +221,7 @@ export const LIMITES = {
   duracaoPadrao: 4,
   legendaMax: 40,
   tituloMax: 50,
+  chamadaMax: 40,
   roteiroMax: 700,
   telaFinalSegundos: 4,
   transicaoSegundos: 0.6,
@@ -296,6 +307,11 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
     if (roteiro.length >= 10) narracao = { roteiro, voz: ehId(VOZES, n.voz) ? n.voz : "laura" };
   }
 
+  // Capa fora da lista (cena removida depois de escolhida) volta pra primeira, sem erro:
+  // é o que a pessoa esperaria, e não vale travar o vídeo por isso.
+  const capaNum = Number(b.capa);
+  const capa = Number.isInteger(capaNum) && capaNum >= 0 && capaNum < cenas.length ? capaNum : 0;
+
   return {
     espec: {
       formato: b.formato,
@@ -306,7 +322,9 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       preco: texto(b.preco, 30),
       local: texto(b.local, 50),
       telaFinal: b.telaFinal !== false,
+      chamada: texto(b.chamada, LIMITES.chamadaMax),
       transicao: b.transicao === "corte" ? "corte" : "suave",
+      capa,
     },
     erro: null,
   };

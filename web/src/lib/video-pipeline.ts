@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUCKET_RESULTADOS } from "./supabase-server";
 import { assinar, apagarEntradas } from "./armazenamento";
@@ -49,6 +50,9 @@ export type PipelineVideo = {
   saldoAntes?: number | null;
   saldoDepois?: number | null;
   segundosDeRender?: number;
+  /** Índices das cenas animadas que NÃO foram cobradas porque o clipe já existia (ver
+   *  `animacoesGuardadas`). Decidido na criação do vídeo, junto com a cobrança. */
+  animadasGratis?: number[];
 };
 
 export type LinhaVideo = {
@@ -62,8 +66,54 @@ export type LinhaVideo = {
 
 export type Progresso = { etapa: Etapa; feitas: number; total: number; mensagem: string };
 
-export function pipelineInicial(saldoAntes: number | null): PipelineVideo {
-  return { etapa: "cena", cenaAtual: 0, clipes: [], duracoes: [], temporarios: [], avisos: [], animada: null, narracaoPath: null, saldoAntes, segundosDeRender: 0 };
+export function pipelineInicial(saldoAntes: number | null, animadasGratis: number[] = []): PipelineVideo {
+  return { etapa: "cena", cenaAtual: 0, clipes: [], duracoes: [], temporarios: [], avisos: [], animada: null, narracaoPath: null, saldoAntes, segundosDeRender: 0, animadasGratis };
+}
+
+// ---- clipes animados guardados ----
+//
+// A cena animada é a única parte cara do vídeo (IA, 2 créditos, minutos de fila). Editar
+// um vídeo e gerar de novo não pode cobrar essa cena outra vez se nada nela mudou -- o
+// corretor que corrige um preço na legenda não deve pagar a animação de novo.
+//
+// O clipe cru que volta do modelo fica guardado em animadas/{user}/{chave}.mp4, onde a
+// chave é tudo que muda o resultado: a imagem de origem, o movimento, a duração (em
+// quadros) e a proporção. Legenda e formato de saída NÃO entram: são ffmpeg em cima do
+// clipe, de graça. Quem cria o vídeo consulta o que já existe e só cobra o resto; o
+// pipeline reaproveita exatamente as cenas que não foram cobradas.
+
+export function quadrosDaAnimacao(duracao: number): number {
+  // Teto de 121 quadros (5s), não os 161 que o modelo aceita.
+  //
+  // Medido em produção: 161 quadros a 720p passaram de 8 minutos na fila, e a pessoa
+  // fica olhando uma barra achando que travou. Os 40 quadros a mais não valem dobrar a
+  // espera -- e a tela nem oferece mais de 5s por cena.
+  return Math.min(121, Math.max(17, Math.round(duracao * 24) + 1));
+}
+
+export function aspectoDaAnimacao(formato: string): "16:9" | "9:16" | "1:1" {
+  return formato === "16:9" ? "16:9" : formato === "9:16" ? "9:16" : "1:1";
+}
+
+export function chaveDaAnimacao(cena: Cena, formato: string): string {
+  const partes = [cena.jobId ?? cena.arquivo ?? "", cena.animacao ?? "caminhar", quadrosDaAnimacao(duracaoDaCena(cena)), aspectoDaAnimacao(formato)];
+  return createHash("sha1").update(partes.join("|")).digest("hex").slice(0, 24);
+}
+
+export function caminhoAnimacao(userId: string, chave: string): string {
+  return `animadas/${userId}/${chave}.mp4`;
+}
+
+/** Por cena do espec: true se é animada E o clipe dela já está guardado. */
+export async function animacoesGuardadas(db: Db, userId: string, espec: EspecVideo): Promise<boolean[]> {
+  return Promise.all(
+    espec.cenas.map(async (cena) => {
+      if (cena.tipo !== "animada") return false;
+      const nome = `${chaveDaAnimacao(cena, espec.formato)}.mp4`;
+      const { data } = await db.storage.from(BUCKET_RESULTADOS).list(`animadas/${userId}`, { limit: 1, search: nome });
+      return !!data?.some((f) => f.name === nome);
+    })
+  );
 }
 
 export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
@@ -177,56 +227,70 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
       if (cena.tipo === "animada") {
         const fontes = await fontesDaCena(db, userId, cena);
-        if (!p.animada || p.animada.cena !== i) {
-          // despacha pro fal e volta; a próxima consulta pergunta se acabou
-          const urlImagem = await assinar(db, fontes[0]);
-          const preset = ANIMACOES.find((a) => a.id === cena.animacao) ?? ANIMACOES[1];
-          const aspect = espec.formato === "16:9" ? "16:9" : espec.formato === "9:16" ? "9:16" : "1:1";
-          // Teto de 121 quadros (5s), não os 161 que o modelo aceita.
-          //
-          // Medido em produção: 161 quadros a 720p passaram de 8 minutos na fila, e a
-          // pessoa fica olhando uma barra achando que travou. Os 40 quadros a mais não
-          // valem dobrar a espera -- e a tela agora nem oferece mais de 5s por cena.
-          const frames = Math.min(121, Math.max(17, Math.round(dur * 24) + 1));
-          const d = await despachar(
-            MODELO_ANIMACAO,
-            {
-              prompt: preset.prompt,
-              // O que segura gente, bicho e parede nova. Faltava, e era a causa do
-              // "Caminhar" gerar uma pessoa andando: a proibição estava só no positivo.
-              negative_prompt: NEGATIVO_VIDEO,
-              image_url: urlImagem,
-              aspect_ratio: aspect,
-              resolution: "720p",
-              num_frames: frames,
-              frames_per_second: 24,
-              video_write_mode: "balanced",
-              enable_safety_checker: false,
-              // Expansão desligada: o modelo reescrevendo o prompt é o modelo desfazendo
-              // as proibições que acabamos de escrever.
-              enable_prompt_expansion: false,
-            },
-            falKey
-          );
-          await salvar({ animada: { cena: i, statusUrl: d.status_url, responseUrl: d.response_url } });
-          return progressoDe(espec, p);
-        }
-        const estado = await consultar(p.animada.statusUrl, falKey);
-        if (estado.estado === "esperando") return progressoDe(espec, p);
-
+        const guardado = caminhoAnimacao(userId, chaveDaAnimacao(cena, espec.formato));
+        // Cena que não foi cobrada porque o clipe já existia: usa o clipe, sem IA.
+        const gratis = p.animadasGratis?.includes(i) ?? false;
         let clipeLocal: string | null = null;
-        if (estado.estado === "pronto") {
+        let reaproveitado = false;
+        if (gratis && !p.animada) {
+          clipeLocal = local(`animada${i}.mp4`);
           try {
-            const saida = (await resultado(p.animada.responseUrl, falKey)) as { video?: { url?: string } };
-            const url = saida?.video?.url ?? extrairImagem(saida).url;
-            clipeLocal = local(`animada${i}.mp4`);
-            await baixarUrl(url, clipeLocal);
-          } catch (e) {
-            p.avisos.push(`Cena ${i + 1}: a animação não voltou (${e instanceof Error ? e.message.slice(0, 80) : "erro"}); ficou como foto.`);
+            await baixar(db, guardado, clipeLocal);
+            reaproveitado = true;
+          } catch {
+            // Sumiu entre a criação e agora (raro): gera de novo por nossa conta -- a
+            // pessoa não pagou por esta cena e não vai pagar.
             clipeLocal = null;
           }
-        } else {
-          p.avisos.push(`Cena ${i + 1}: a animação falhou (${estado.mensagem.slice(0, 80)}); ficou como foto.`);
+        }
+
+        if (!reaproveitado) {
+          if (!p.animada || p.animada.cena !== i) {
+            // despacha pro fal e volta; a próxima consulta pergunta se acabou
+            const urlImagem = await assinar(db, fontes[0]);
+            const preset = ANIMACOES.find((a) => a.id === cena.animacao) ?? ANIMACOES[1];
+            const d = await despachar(
+              MODELO_ANIMACAO,
+              {
+                prompt: preset.prompt,
+                // O que segura gente, bicho e parede nova. Faltava, e era a causa do
+                // "Caminhar" gerar uma pessoa andando: a proibição estava só no positivo.
+                negative_prompt: NEGATIVO_VIDEO,
+                image_url: urlImagem,
+                aspect_ratio: aspectoDaAnimacao(espec.formato),
+                resolution: "720p",
+                num_frames: quadrosDaAnimacao(dur),
+                frames_per_second: 24,
+                video_write_mode: "balanced",
+                enable_safety_checker: false,
+                // Expansão desligada: o modelo reescrevendo o prompt é o modelo desfazendo
+                // as proibições que acabamos de escrever.
+                enable_prompt_expansion: false,
+              },
+              falKey
+            );
+            await salvar({ animada: { cena: i, statusUrl: d.status_url, responseUrl: d.response_url } });
+            return progressoDe(espec, p);
+          }
+          const estado = await consultar(p.animada.statusUrl, falKey);
+          if (estado.estado === "esperando") return progressoDe(espec, p);
+
+          if (estado.estado === "pronto") {
+            try {
+              const saida = (await resultado(p.animada.responseUrl, falKey)) as { video?: { url?: string } };
+              const url = saida?.video?.url ?? extrairImagem(saida).url;
+              clipeLocal = local(`animada${i}.mp4`);
+              await baixarUrl(url, clipeLocal);
+              // Guarda o clipe cru pra próxima edição deste vídeo não pagar de novo.
+              // Se não conseguir guardar, o vídeo sai igual; só a próxima vez cobra.
+              await subir(db, clipeLocal, guardado, "video/mp4").catch(() => null);
+            } catch (e) {
+              p.avisos.push(`Cena ${i + 1}: a animação não voltou (${e instanceof Error ? e.message.slice(0, 80) : "erro"}); ficou como foto.`);
+              clipeLocal = null;
+            }
+          } else {
+            p.avisos.push(`Cena ${i + 1}: a animação falhou (${estado.mensagem.slice(0, 80)}); ficou como foto.`);
+          }
         }
 
         if (clipeLocal) {
@@ -234,8 +298,8 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const r = await rodarFfmpeg(argsCenaClipe({ clipe: clipeLocal, saida, W, H, duracao: dur, legenda: cena.legenda }));
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         } else {
-          // devolve os créditos da animação e renderiza como foto
-          await creditar(db, contaDoVideo, userId, CREDITOS.animada, "estorno_animacao", video.id).catch(() => null);
+          // devolve os créditos da animação (se foi cobrada) e renderiza como foto
+          if (!gratis) await creditar(db, contaDoVideo, userId, CREDITOS.animada, "estorno_animacao", video.id).catch(() => null);
           const foto = local(`foto${i}${extensaoDe(fontes[0])}`);
           await baixar(db, fontes[0], foto);
           const saida = local(nomeClipe);
@@ -317,7 +381,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }
         const saida = local("final.mp4");
         const r = await rodarFfmpeg(
-          argsTelaFinal({ saida, W, H, duracao: LIMITES.telaFinalSegundos, cor: u.cor_marca ?? "#0F2D5B", logo, nome: u.nome ?? "", creci: u.creci ?? undefined, whatsapp: u.whatsapp ?? undefined })
+          argsTelaFinal({ saida, W, H, duracao: LIMITES.telaFinalSegundos, cor: u.cor_marca ?? "#0F2D5B", logo, chamada: espec.chamada || undefined, nome: u.nome ?? "", creci: u.creci ?? undefined, whatsapp: u.whatsapp ?? undefined })
         );
         await guardarClipe(saida, "telafinal.mp4", LIMITES.telaFinalSegundos, r.segundos);
         p.telaFinalRenderizada = true;
@@ -397,8 +461,15 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }),
         280_000
       );
+      // A miniatura sai da cena escolhida como capa: o começo dela na linha do tempo (as
+      // transições suaves sobrepõem 0,6s a cada emenda) mais um pouco, pra não pegar o
+      // quadro em que a transição ainda está terminando.
+      const k = Math.min(Math.max(0, espec.capa ?? 0), espec.cenas.length - 1);
+      const sobreposicao = espec.transicao === "suave" ? LIMITES.transicaoSegundos : 0;
+      const inicioDaCapa = p.duracoes.slice(0, k).reduce((s, d) => s + d, 0) - k * sobreposicao;
+      const segundoDaCapa = Math.max(0, inicioDaCapa + Math.min(1.5, (p.duracoes[k] ?? 4) / 2));
       const thumb = local("thumb.jpg");
-      await rodarFfmpeg(argsMiniatura(saida, thumb), 30_000).catch(() => null);
+      await rodarFfmpeg(argsMiniatura(saida, thumb, segundoDaCapa), 30_000).catch(() => null);
       const sonda = await sondarMidia(saida);
 
       const caminhoFinal = caminhoVideoFinal(userId, video.id);

@@ -7,6 +7,7 @@ import { useConta } from "@/lib/use-conta";
 import {
   ANIMACOES,
   BUCKET_UPLOADS,
+  CHAMADAS,
   CREDITOS,
   EFEITOS,
   FORMATOS,
@@ -25,6 +26,7 @@ import {
   type MusicaId,
   type VozId,
 } from "@/lib/video";
+import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -56,7 +58,13 @@ type CenaUI = {
   legenda: string;
   duracao: number;
   melhorar: boolean;
+  /** Cena animada cujo clipe já existe no servidor: gerar de novo com o mesmo movimento
+   *  e a mesma duração não custa crédito. Vem do servidor ao editar um vídeo pronto. */
+  animacaoGuardada?: { animacao: AnimacaoId; duracao: number } | null;
 };
+
+/** O que o servidor devolve por cena, ao lado do espec, pra reabrir um vídeo pronto. */
+type EdicaoCena = { miniatura: string | null; rotulo: string; temAntes: boolean; ehClipe: boolean; animacaoGuardada: { animacao: AnimacaoId; duracao: number } | null };
 
 /**
  * Quanto tempo a geração costuma levar.
@@ -119,6 +127,32 @@ type Resultado = { videoId: string; url: string; miniatura: string | null; durac
 let contador = 0;
 const chave = () => `c${Date.now()}-${contador++}`;
 
+/**
+ * Do espec guardado no banco de volta pras cenas da tela. É o caminho inverso do `useMemo`
+ * que monta o espec: o que a tela precisa e o espec não tem (miniatura, rótulo, se há
+ * "antes") vem em `info`, cena a cena, do servidor.
+ */
+function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
+  return e.cenas.map((c, i) => ({
+    chave: chave(),
+    tipo: c.tipo,
+    jobId: c.jobId,
+    arquivo: c.arquivo,
+    miniatura: info[i]?.miniatura ?? null,
+    rotulo: info[i]?.rotulo ?? (c.jobId ? "Imagem da Encena" : "Foto enviada"),
+    temAntes: info[i]?.temAntes ?? false,
+    ehClipe: info[i]?.ehClipe ?? c.tipo === "clipe",
+    eh360: c.tipo === "tour360",
+    efeito: c.efeito ?? "aproximar",
+    animacao: c.animacao ?? "caminhar",
+    movimento: c.movimento ?? "olhar_volta",
+    legenda: c.legenda ?? "",
+    duracao: c.duracao ?? LIMITES.duracaoPadrao,
+    melhorar: c.melhorar ?? false,
+    animacaoGuardada: info[i]?.animacaoGuardada ?? null,
+  }));
+}
+
 function dataCurta(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
@@ -137,6 +171,13 @@ export default function PaginaVideo() {
   const [preco, setPreco] = useState("");
   const [local, setLocal] = useState("");
   const [telaFinal, setTelaFinal] = useState(true);
+  const [chamada, setChamada] = useState(CHAMADAS[0]);
+  /** Chave da cena que vira a miniatura. null = a primeira. */
+  const [capa, setCapa] = useState<string | null>(null);
+  /** Vídeo pronto que foi reaberto pra edição. Gerar cria outro; este continua na lista. */
+  const [editandoDe, setEditandoDe] = useState<{ id: string; titulo: string } | null>(null);
+  /** "3 quartos · 2 vagas · 120 m²", da ficha do imóvel escolhido. */
+  const [fichaResumo, setFichaResumo] = useState("");
   const [narrar, setNarrar] = useState(false);
   const [roteiro, setRoteiro] = useState("");
   const [voz, setVoz] = useState<VozId>("laura");
@@ -151,11 +192,9 @@ export default function PaginaVideo() {
    *  conclui que quebrou. O relógio e a estimativa fazem essa distinção. */
   const [segundosGerando, setSegundosGerando] = useState(0);
 
+  // O relógio zera em `gerar()`, na hora do clique; aqui só se conta enquanto gera.
   useEffect(() => {
-    if (!gerando) {
-      setSegundosGerando(0);
-      return;
-    }
+    if (!gerando) return;
     const t = setInterval(() => setSegundosGerando((v) => v + 1), 1000);
     return () => clearInterval(t);
   }, [gerando]);
@@ -173,9 +212,11 @@ export default function PaginaVideo() {
       preco,
       local,
       telaFinal,
+      chamada: telaFinal ? chamada : "",
       transicao,
+      capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
     }),
-    [formato, cenas, musica, narrar, roteiro, voz, titulo, preco, local, telaFinal, transicao]
+    [formato, cenas, musica, narrar, roteiro, voz, titulo, preco, local, telaFinal, chamada, transicao, capa]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   const resumoDosAjustes = [
@@ -188,7 +229,10 @@ export default function PaginaVideo() {
     .filter(Boolean)
     .join(" · ");
 
-  const custo = custoDoVideo(espec);
+  // Cena animada reaberta de um vídeo pronto, com o mesmo movimento e duração: o clipe já
+  // existe e o servidor não cobra (ele confere por conta própria; isto só mostra a conta).
+  const animadasGratis = cenas.filter((s) => s.tipo === "animada" && s.animacaoGuardada && s.animacaoGuardada.animacao === s.animacao && s.animacaoGuardada.duracao === s.duracao).length;
+  const custo = Math.max(0, custoDoVideo(espec) - animadasGratis * CREDITOS.animada);
   const esperaTotal = esperaEmSegundos(espec.cenas.map((c) => ({ tipo: c.tipo, duracao: c.duracao ?? 4 })));
   const duracao = duracaoEstimada(espec);
 
@@ -231,7 +275,10 @@ export default function PaginaVideo() {
   // Trocou de imóvel: carrega as gerações dele e sugere título/local.
   useEffect(() => {
     if (!user || !imovelId) {
-      Promise.resolve().then(() => setGeracoes([]));
+      Promise.resolve().then(() => {
+        setGeracoes([]);
+        setFichaResumo("");
+      });
       return;
     }
     let vivo = true;
@@ -243,6 +290,10 @@ export default function PaginaVideo() {
         setGeracoes((d.geracoes ?? []).filter((g: Geracao) => g.status === "concluido" && g.depois));
         setTitulo((atual) => atual || d.imovel.titulo || "");
         setLocal((atual) => atual || d.imovel.endereco || "");
+        // Preço e dados vêm da ficha: o que está lá não se digita de novo, e o que não
+        // está lá não se inventa.
+        setPreco((atual) => atual || valorComPeriodo(d.imovel.ficha?.preco, d.imovel.ficha?.negocio));
+        setFichaResumo(resumoDaFicha(d.imovel.ficha, LIMITES.legendaMax));
       })
       .catch(() => {});
     return () => {
@@ -337,6 +388,13 @@ export default function PaginaVideo() {
   function remover(k: string) {
     setCenas((lista) => lista.filter((s) => s.chave !== k));
   }
+  function duplicar(k: string) {
+    setCenas((lista) => {
+      const i = lista.findIndex((s) => s.chave === k);
+      if (i < 0) return lista;
+      return [...lista.slice(0, i + 1), { ...lista[i], chave: chave() }, ...lista.slice(i + 1)];
+    });
+  }
 
   async function escreverRoteiro() {
     setEscrevendo(true);
@@ -360,6 +418,7 @@ export default function PaginaVideo() {
 
   async function gerar() {
     if (cenas.length === 0 || gerando) return;
+    setSegundosGerando(0);
     setGerando(true);
     setErro(null);
     setResultado(null);
@@ -427,6 +486,54 @@ export default function PaginaVideo() {
     }
   }
 
+  /**
+   * Reabre um vídeo pronto pra edição: o espec dele volta pras cenas e pros ajustes.
+   * Gerar depois cria um vídeo NOVO -- o pronto fica como está na lista. Cena animada
+   * que não mudou não custa de novo (o clipe fica guardado no servidor).
+   */
+  async function editarVideo(id: string) {
+    setErro(null);
+    try {
+      const rr = await fetch(`/api/video/${id}`, { headers: { Authorization: `Bearer ${await token()}` } });
+      const dd = await rr.json();
+      if (!rr.ok || dd.status !== "concluido" || !dd.espec) throw new Error(dd.error ?? "Esse vídeo ainda não pode ser editado.");
+      const e = dd.espec as EspecVideo;
+      const novas = cenasDoEspec(e, (dd.edicao?.cenas ?? []) as EdicaoCena[]);
+      setImovelId(dd.edicao?.imovelId ?? null);
+      setCenas(novas);
+      setFormato(e.formato);
+      setMusica(e.musica);
+      setTransicao(e.transicao);
+      setTitulo(e.titulo ?? "");
+      setPreco(e.preco ?? "");
+      setLocal(e.local ?? "");
+      setTelaFinal(e.telaFinal !== false);
+      setChamada(e.chamada ?? "");
+      setNarrar(!!e.narracao);
+      setRoteiro(e.narracao?.roteiro ?? "");
+      setVoz(e.narracao?.voz ?? "laura");
+      setCapa(novas[e.capa ?? 0]?.chave ?? null);
+      setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
+      setResultado(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não consegui abrir o vídeo pra editar.");
+    }
+  }
+
+  function comecarDoZero() {
+    setEditandoDe(null);
+    setCenas([]);
+    setCapa(null);
+    setTitulo("");
+    setPreco("");
+    setLocal("");
+    setNarrar(false);
+    setRoteiro("");
+    setChamada(CHAMADAS[0]);
+    setTelaFinal(true);
+  }
+
   async function apagarVideo(id: string) {
     await fetch(`/api/video/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
     setVideos((lista) => (lista ?? []).filter((v) => v.id !== id));
@@ -457,6 +564,15 @@ export default function PaginaVideo() {
         </div>
       )}
 
+      {editandoDe && (
+        <div className="mt-4">
+          <Aviso tipo="info">
+            Editando <strong>{editandoDe.titulo}</strong>. Gerar cria um vídeo novo — o atual continua em Seus vídeos. Cena animada que não mudou não custa de novo.{" "}
+            <button type="button" onClick={comecarDoZero} className="underline">Começar do zero</button>
+          </Aviso>
+        </div>
+      )}
+
       {resultado && (
         <Cartao className="mt-5">
           <div className="grid gap-5 lg:grid-cols-12">
@@ -474,6 +590,10 @@ export default function PaginaVideo() {
                   <Icone nome="download" className="h-4 w-4" />
                   Baixar MP4
                 </a>
+                <Botao variante="secundaria" onClick={() => editarVideo(resultado.videoId)} title="Reabre as cenas e os ajustes deste vídeo. Gerar de novo cria outro vídeo.">
+                  <Icone nome="editar_prompt" className="h-4 w-4" />
+                  Editar
+                </Botao>
                 <Botao variante="discreta" onClick={() => setResultado(null)}>Fechar</Botao>
               </div>
               <div className="mt-3">
@@ -557,12 +677,23 @@ export default function PaginaVideo() {
                             <button onClick={() => mover(s.chave, 1)} disabled={gerando || i === cenas.length - 1} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Descer">
                               <Icone nome="baixo" className="h-4 w-4" />
                             </button>
+                            <button onClick={() => duplicar(s.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Duplicar">
+                              <Icone nome="copiar" className="h-4 w-4" />
+                            </button>
                             <button onClick={() => remover(s.chave)} disabled={gerando} className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600" title="Remover">
                               <Icone nome="fechar" className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Chip ativo={(capa ?? cenas[0]?.chave) === s.chave} onClick={() => setCapa(s.chave)} title="A miniatura do vídeo (o que aparece antes do play) sai desta cena.">
+                            ★ Capa
+                          </Chip>
+                          {s.tipo === "animada" && s.animacaoGuardada && s.animacaoGuardada.animacao === s.animacao && s.animacaoGuardada.duracao === s.duracao && (
+                            <span className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal" title="O clipe desta animação já foi gerado num vídeo anterior. Com o mesmo movimento e duração, não custa de novo.">
+                              animação já feita · grátis
+                            </span>
+                          )}
                           {s.ehPanoramica && (
                             <span
                               className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal"
@@ -765,6 +896,36 @@ export default function PaginaVideo() {
                   </span>
                 </span>
               </label>
+              {telaFinal && (
+                <div className="rounded-lg bg-neutral-50 p-2.5">
+                  <p className="text-xs text-neutral-500">Frase da tela final</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {CHAMADAS.map((f) => (
+                      <Chip key={f} ativo={chamada === f} onClick={() => setChamada(f)}>{f}</Chip>
+                    ))}
+                    <Chip ativo={chamada === ""} onClick={() => setChamada("")}>Sem frase</Chip>
+                  </div>
+                  <input value={chamada} onChange={(e) => setChamada(e.target.value)} maxLength={LIMITES.chamadaMax} placeholder="Ou escreva a sua" className={campo + " mt-2"} aria-label="Frase da tela final" />
+                </div>
+              )}
+              {fichaResumo && (
+                <label className="flex items-start gap-2 text-sm text-neutral-700">
+                  <input
+                    type="checkbox"
+                    checked={cenas.length > 0 && cenas[0].legenda === fichaResumo}
+                    disabled={cenas.length === 0 || gerando}
+                    onChange={(e) => {
+                      const primeira = cenas[0];
+                      if (primeira) mudarCena(primeira.chave, { legenda: e.target.checked ? fichaResumo : "" });
+                    }}
+                    className="mt-0.5 accent-marca-coral"
+                  />
+                  <span>
+                    Dados do imóvel na primeira cena
+                    <span className="block text-xs text-neutral-500">“{fichaResumo}” — vem da ficha do imóvel, sem digitar de novo.</span>
+                  </span>
+                </label>
+              )}
             </div>
           </Cartao>
 
@@ -823,6 +984,11 @@ export default function PaginaVideo() {
                         {v.status === "falhou" && " · falhou"}
                       </p>
                     </div>
+                    {v.status === "concluido" && (
+                      <button onClick={() => editarVideo(v.id)} disabled={gerando} className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-marca-indigo disabled:opacity-30" title="Editar: reabre as cenas e os ajustes">
+                        <Icone nome="editar_prompt" className="h-4 w-4" />
+                      </button>
+                    )}
                     <BotaoConfirma
                       pergunta="Apagar este vídeo?"
                       detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."

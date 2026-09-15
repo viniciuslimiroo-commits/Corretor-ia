@@ -88,6 +88,40 @@ export function valorComPeriodo(valor: string | null | undefined, negocio?: stri
   return `${v}/mês`;
 }
 
+/**
+ * A ficha em uma linha curta: "3 quartos · 2 vagas · 120 m²". Pra legenda de cena de
+ * vídeo (40 caracteres) e onde mais couber um resumo.
+ *
+ * Só o que está preenchido entra; nada é inventado nem arredondado pra cima. A ordem é a
+ * que o comprador pergunta primeiro -- quartos, vagas, área -- e o que não couber no
+ * limite fica de fora em vez de cortar palavra no meio.
+ */
+export function resumoDaFicha(ficha: Record<string, unknown> | null | undefined, max = 40): string {
+  if (!ficha) return "";
+  const n = (k: string) => {
+    const v = Number(ficha[k]);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const partes: string[] = [];
+  const dorm = n("dormitorios");
+  if (dorm) partes.push(`${dorm} ${dorm === 1 ? "quarto" : "quartos"}`);
+  const vagas = n("vagas");
+  if (vagas) partes.push(`${vagas} ${vagas === 1 ? "vaga" : "vagas"}`);
+  const area = n("area_util") ?? n("area_total");
+  if (area) partes.push(`${String(area).replace(".", ",")} m²`);
+  const suites = n("suites");
+  if (suites) partes.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
+  const banh = n("banheiros");
+  if (banh) partes.push(`${banh} ${banh === 1 ? "banheiro" : "banheiros"}`);
+  let linha = "";
+  for (const p of partes) {
+    const tentativa = linha ? `${linha} · ${p}` : p;
+    if (tentativa.length > max) break;
+    linha = tentativa;
+  }
+  return linha;
+}
+
 /** Limpa o que veio do navegador, campo a campo, pelo tipo declarado acima. */
 export function limparFicha(corpo: Record<string, unknown>): Record<string, string | number | null> {
   const saida: Record<string, string | number | null> = {};

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
 import { saldoFal } from "@/lib/custo";
-import { custoDoVideo, duracaoEstimada, limparEspec } from "@/lib/video";
-import { pipelineInicial } from "@/lib/video-pipeline";
+import { CREDITOS, custoDoVideo, duracaoEstimada, limparEspec } from "@/lib/video";
+import { animacoesGuardadas, pipelineInicial } from "@/lib/video-pipeline";
 import { contaDe, debitar } from "@/lib/cobranca";
 
 // Vídeo (Fase C). POST cria o pedido: valida o espec, confere que cada foto é da pessoa,
@@ -77,7 +77,12 @@ export async function POST(req: NextRequest) {
     if (c.arquivo && !c.arquivo.startsWith(`uploads/${userId}/`)) return NextResponse.json({ error: "Arquivo enviado não reconhecido." }, { status: 400 });
   }
 
-  const custo = custoDoVideo(espec);
+  // Cena animada cujo clipe já existe (o vídeo está sendo editado e essa cena não mudou)
+  // não é cobrada de novo. Decidido aqui, junto com a cobrança, e gravado no pipeline
+  // pra ele reaproveitar exatamente essas -- e não outras.
+  const guardadas = await animacoesGuardadas(db, userId, espec);
+  const animadasGratis = guardadas.flatMap((g, i) => (g ? [i] : []));
+  const custo = Math.max(0, custoDoVideo(espec) - animadasGratis.length * CREDITOS.animada);
   const saldoAntes = await saldoFal(falKey);
   const conta = await contaDe(db, userId);
 
@@ -91,7 +96,7 @@ export async function POST(req: NextRequest) {
       formato: espec.formato,
       status: "gerando",
       espec,
-      pipeline: pipelineInicial(saldoAntes),
+      pipeline: pipelineInicial(saldoAntes, animadasGratis),
       creditos_cobrados: custo,
     })
     .select("id")

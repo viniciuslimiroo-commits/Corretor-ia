@@ -284,8 +284,8 @@ export function argsCena360(o: {
   return [...entrada, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
-/** Tela final: cor da marca, logo (se houver), nome, CRECI e WhatsApp. */
-export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao: number; cor: string; logo?: string; nome: string; creci?: string; whatsapp?: string }): string[] {
+/** Tela final: cor da marca, logo (se houver), frase de chamada, nome, CRECI e WhatsApp. */
+export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao: number; cor: string; logo?: string; chamada?: string; nome: string; creci?: string; whatsapp?: string }): string[] {
   const corHex = /^#[0-9a-fA-F]{6}$/.test(o.cor) ? "0x" + o.cor.slice(1) : "0x0f2d5b";
   const fonte = caminhoParaFiltro(caminhoFonte());
   const args = ["-f", "lavfi", "-i", `color=c=${corHex}:s=${o.W}x${o.H}:d=${o.duracao}:r=${FPS}`];
@@ -295,6 +295,8 @@ export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao:
   let y = o.logo ? 0.5 : 0.42;
   const draw = (t: string, tam: number, yy: number, alpha = "1") =>
     `drawtext=fontfile='${fonte}':text=${textoParaFiltro(t)}:fontsize=${tam}:fontcolor=white@${alpha}:x=(w-text_w)/2:y=${Math.round(o.H * yy)}`;
+  // A chamada fica logo acima do nome: é o pedido; o nome e o WhatsApp são o como.
+  if (o.chamada) linhas.push(draw(o.chamada, Math.round(o.H * 0.034), y - 0.08));
   if (o.nome) {
     linhas.push(draw(o.nome, grande, y));
     y += 0.07;
@@ -420,8 +422,10 @@ export function argsMontagem(o: {
 }
 
 /** Miniatura do vídeo: um quadro do primeiro segundo, 720px de largura. */
-export function argsMiniatura(video: string, saida: string): string[] {
-  return ["-ss", "1", "-i", video, "-frames:v", "1", "-vf", "scale=720:-2", "-q:v", "4", saida];
+/** Um quadro do vídeo, no segundo pedido (a capa escolhida), reduzido pra miniatura. */
+export function argsMiniatura(video: string, saida: string, segundo = 1): string[] {
+  const s = Number.isFinite(segundo) && segundo >= 0 ? segundo : 1;
+  return ["-ss", s.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=720:-2", "-q:v", "4", saida];
 }
 
 /** Onde os clipes intermediários de um vídeo ficam no bucket. */

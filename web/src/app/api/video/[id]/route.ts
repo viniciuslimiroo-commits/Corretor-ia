@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar, apagarEntradas } from "@/lib/armazenamento";
-import { avancarVideo, limparTemporarios, progressoDe, type LinhaVideo, type PipelineVideo } from "@/lib/video-pipeline";
-import type { EspecVideo } from "@/lib/video";
+import { animacoesGuardadas, avancarVideo, limparTemporarios, progressoDe, type LinhaVideo, type PipelineVideo } from "@/lib/video-pipeline";
+import { duracaoDaCena, type EspecVideo } from "@/lib/video";
 import { creditar } from "@/lib/cobranca";
+import { rotuloDoTipo } from "@/lib/acoes";
 
 // Acompanha (e faz andar) um vídeo. Cada GET avança no máximo uma etapa. A etapa pode
 // levar dezenas de segundos (a montagem, mais), então a função tem 300s e existe uma
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: video, error: erroLeitura } = await db
     .from("videos")
-    .select("id, user_id, org_id, status, espec, pipeline, formato, titulo, output_path, thumb_path, duracao_segundos, share_token, erro, criado_em, creditos_cobrados")
+    .select("id, user_id, org_id, status, espec, pipeline, formato, titulo, output_path, thumb_path, duracao_segundos, share_token, erro, criado_em, creditos_cobrados, property_id")
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -37,6 +38,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const espec = video.espec as EspecVideo;
 
   if (video.status === "concluido" && video.output_path) {
+    // Vídeo pronto volta com o espec e o que a tela precisa pra reabrir cada cena
+    // (miniatura assinada, rótulo, se tem "antes"): é o botão Editar. O vídeo já era
+    // não-destrutivo -- o espec sempre esteve no banco -- só faltava devolvê-lo.
+    const jobIds = [...new Set(espec.cenas.map((c) => c.jobId).filter((x): x is string => !!x))];
+    const { data: jobs } = jobIds.length ? await db.from("jobs").select("id, tipo, input_path, output_path").in("id", jobIds).eq("user_id", userId) : { data: [] as { id: string; tipo: string; input_path: string | null; output_path: string | null }[] };
+    const porId = new Map((jobs ?? []).map((j) => [j.id, j]));
+    const guardadas = await animacoesGuardadas(db, userId, espec).catch(() => espec.cenas.map(() => false));
+    const cenas = await Promise.all(
+      espec.cenas.map(async (c, i) => {
+        const j = c.jobId ? porId.get(c.jobId) : undefined;
+        const ehClipe = c.tipo === "clipe" || /\.(mp4|mov)$/i.test(c.arquivo ?? "");
+        const fonte = j?.output_path ?? c.arquivo ?? null;
+        return {
+          miniatura: fonte && !ehClipe ? await assinar(db, fonte).catch(() => null) : null,
+          rotulo: j ? rotuloDoTipo(j.tipo) : ehClipe ? "Clipe enviado" : c.tipo === "tour360" ? "Foto 360 enviada" : "Foto enviada",
+          temAntes: !!j?.input_path,
+          ehClipe,
+          // Se o clipe animado existe, gerar de novo com o mesmo movimento e duração é grátis.
+          animacaoGuardada: guardadas[i] ? { animacao: c.animacao ?? "caminhar", duracao: duracaoDaCena(c) } : null,
+        };
+      })
+    );
     return NextResponse.json({
       videoId: id,
       status: "concluido",
@@ -47,6 +70,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       formato: video.formato,
       avisos: pipeline?.avisos ?? [],
       compartilhado: !!video.share_token,
+      espec,
+      edicao: { imovelId: (video.property_id as string | null) ?? null, cenas },
     });
   }
   if (video.status === "falhou") {
