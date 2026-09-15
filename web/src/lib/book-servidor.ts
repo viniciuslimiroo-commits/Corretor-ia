@@ -4,7 +4,6 @@ import { assinar } from "./armazenamento";
 import { marcaEfetiva } from "./cobranca";
 import { fichaDoImovel, type ImagemDisponivel, type ImovelMontagem } from "./book-montagem";
 import { montarLayout, type ContextoLayout, type PaginaLayout } from "./book-layout";
-import { medirTexto } from "./book-metricas";
 import { imagensDoDocumento, type DocumentoBook } from "./book-documento";
 
 // A cola entre o núcleo puro do book e o mundo: banco, storage e QR. Só servidor.
@@ -181,7 +180,7 @@ export async function prepararLeitura(
     link: shareToken ? `${origem.replace(/\/$/, "")}/c/${shareToken}` : null,
     temEditada,
   };
-  const layout = await resolverQr(montarLayout(doc, ctx, medirTexto));
+  const layout = await resolverQr(montarLayout(doc, ctx));
   const logo = marca.logo_path ? await assinar(db, marca.logo_path).catch(() => null) : null;
   const qrs: Record<string, string> = {};
   for (const p of layout) for (const c of p.caixas) if (c.tipo === "qr" && c.png) qrs[c.conteudo] = c.png;

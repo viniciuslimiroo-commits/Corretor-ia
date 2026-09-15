@@ -1,5 +1,6 @@
 import { DIMENSOES, TIPO_POR_ID } from "./book-tipos";
-import type { DocumentoBook, Pagina } from "./book-documento";
+import type { DocumentoBook, FonteBook, Pagina } from "./book-documento";
+import { medidorDaFonte } from "./book-metricas";
 
 // O MOTOR DE LAYOUT: a página vira uma lista de caixas em coordenadas de página.
 //
@@ -25,7 +26,8 @@ export type Caixa =
   | { tipo: "logo"; x: number; y: number; l: number; a: number; placa: boolean }
   | { tipo: "qr"; x: number; y: number; l: number; a: number; conteudo: string; png?: string };
 
-export type PaginaLayout = { id: string; largura: number; altura: number; caixas: Caixa[] };
+/** `fonte` é carimbada por `montarLayout`: a tela e o PDF desenham com a família certa. */
+export type PaginaLayout = { id: string; largura: number; altura: number; caixas: Caixa[]; fonte?: FonteBook };
 
 export type Medidor = (texto: string, tamanho: number, negrito: boolean) => number;
 
@@ -167,20 +169,25 @@ export function montarPagina(
     } else {
       caixas.push({ tipo: "retangulo", x: 0, y: 0, l: L, a: alturaFoto, cor: escuro });
     }
+    // Capa escura (padrão): faixa preta translúcida com o texto branco por cima da foto.
+    // Capa clara: faixa branca e o texto na cor escura da marca. `capaEscura` existia na
+    // identidade desde o começo e nunca tinha sido lida -- era gravada como true e ponto.
+    const capaEscura = doc.identidade.capaEscura !== false;
+    const corDoTitulo = capaEscura ? "#ffffff" : escuro;
     const alturaFaixa = deitado ? 190 : 120;
-    caixas.push({ tipo: "retangulo", x: 0, y: alturaFoto - alturaFaixa, l: L, a: alturaFaixa, cor: "#000000", opacidade: 0.5 });
+    caixas.push({ tipo: "retangulo", x: 0, y: alturaFoto - alturaFaixa, l: L, a: alturaFaixa, cor: capaEscura ? "#000000" : "#ffffff", opacidade: capaEscura ? 0.5 : 0.88 });
 
     let y = alturaFoto - alturaFaixa + 30;
     const tituloT = deitado ? 34 : 26;
-    const t = texto(pagina.textos.titulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: tituloT, negrito: true, cor: "#ffffff", maxLinhas: 2 });
+    const t = texto(pagina.textos.titulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: tituloT, negrito: true, cor: corDoTitulo, maxLinhas: 2 });
     if (t) {
       caixas.push(t.caixa);
       y += t.alturaUsada + 6;
     }
-    por(texto(pagina.textos.subtitulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: 11, cor: "#ffffff", maxLinhas: 1 }));
+    por(texto(pagina.textos.subtitulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: 11, cor: capaEscura ? "#ffffff" : "#414a57", maxLinhas: 1 }));
 
     if (deitado) {
-      por(texto(pagina.textos.preco ?? "", medir, { x: MARGEM, y: A - 58, l: util, tamanho: 20, negrito: true, cor: "#ffffff", maxLinhas: 1 }));
+      por(texto(pagina.textos.preco ?? "", medir, { x: MARGEM, y: A - 58, l: util, tamanho: 20, negrito: true, cor: corDoTitulo, maxLinhas: 1 }));
       if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: L - MARGEM - 130, y: 36, l: 130, a: 54, placa: true });
       return { id: pagina.id, largura: L, altura: A, caixas };
     }
@@ -572,8 +579,16 @@ export function montarPagina(
 }
 
 /** O book inteiro. A capa não entra na contagem de rodapé porque não tem rodapé. */
-export function montarLayout(doc: DocumentoBook, ctx: ContextoLayout, medir: Medidor): PaginaLayout[] {
-  return doc.paginas.map((p, i) => montarPagina(p, doc, ctx, medir, i + 1));
+/**
+ * Todas as páginas. O medidor vem da FONTE do documento -- quebrar linha com as
+ * métricas da Helvetica num book em Times deixaria a última linha sumir só no PDF, que
+ * é exatamente a divergência que este motor existe pra impedir. `medir` explícito só pra
+ * teste.
+ */
+export function montarLayout(doc: DocumentoBook, ctx: ContextoLayout, medir?: Medidor): PaginaLayout[] {
+  const fonte: FonteBook = doc.identidade.fonte === "classica" ? "classica" : "moderna";
+  const medidor = medir ?? medidorDaFonte(fonte);
+  return doc.paginas.map((p, i) => ({ ...montarPagina(p, doc, ctx, medidor, i + 1), fonte }));
 }
 
 /** Teto de páginas do tipo, pra avisar antes de montar um arquivo grande demais. */

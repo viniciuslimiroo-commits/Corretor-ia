@@ -25,10 +25,27 @@ export type Pagina = {
   foco?: Record<string, { x: number; y: number }>;
 };
 
+/**
+ * As famílias de fonte do book. Duas, não um seletor de fonte: são as que o PDF traz
+ * embutidas sem arquivo de fonte (Helvetica e Times), com métricas que o navegador
+ * reproduz exatamente (book-metricas). Uma terceira exigiria embutir um TTF e medir com
+ * ele dos dois lados -- fica pra quando alguém pedir uma fonte específica.
+ */
+export type FonteBook = "moderna" | "classica";
+
+export const FONTES_BOOK: { id: FonteBook; rotulo: string; descricao: string; css: string }[] = [
+  { id: "moderna", rotulo: "Moderna", descricao: "Limpa e direta. É a de sempre.", css: "Helvetica, Arial, sans-serif" },
+  { id: "classica", rotulo: "Clássica", descricao: "Serifada, de imobiliária tradicional.", css: "'Times New Roman', Times, serif" },
+];
+
+export const FONTE_POR_ID = Object.fromEntries(FONTES_BOOK.map((f) => [f.id, f])) as Record<FonteBook, (typeof FONTES_BOOK)[number]>;
+
 export type Identidade = {
   /** Hex da marca. Ausente = a cor de Minha marca na hora de renderizar. */
   cor?: string;
   capaEscura: boolean;
+  /** Ausente = moderna (documentos anteriores à escolha). */
+  fonte?: FonteBook;
 };
 
 export type DocumentoBook = {
@@ -280,5 +297,11 @@ export function limparDocumento(bruto: unknown): DocumentoBook | null {
   }
   if (paginas.length === 0) return null;
 
-  return { versao: 1, tipo: def.id, formato, identidade: { cor, capaEscura: ident.capaEscura !== false }, paginas };
+  return {
+    versao: 1,
+    tipo: def.id,
+    formato,
+    identidade: { cor, capaEscura: ident.capaEscura !== false, fonte: ident.fonte === "classica" ? "classica" : "moderna" },
+    paginas,
+  };
 }

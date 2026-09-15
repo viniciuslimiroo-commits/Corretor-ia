@@ -4,7 +4,6 @@ import { BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { marcaEfetiva } from "@/lib/cobranca";
 import { limparDocumento, imagensDoDocumento } from "@/lib/book-documento";
 import { montarLayout, type ContextoLayout } from "@/lib/book-layout";
-import { medirTexto } from "@/lib/book-metricas";
 import { fichaDoImovel } from "@/lib/book-montagem";
 import { montarPdfDoBook, type Qualidade } from "@/lib/book-pdf";
 import { faltaMigracao, imovelDeMontagem, resolverQr, RECADO_MIGRACAO } from "@/lib/book-servidor";
@@ -20,7 +19,7 @@ import { faltaMigracao, imovelDeMontagem, resolverQr, RECADO_MIGRACAO } from "@/
 //   leve  -> o que vai no WhatsApp: 144 dpi, JPEG 78, alvo de poucos MB
 //   alta  -> 300 dpi, JPEG 92, pro estande e pra gráfica
 //
-// O layout é montado aqui pelo MESMO caminho do editor (montarLayout + medirTexto), então
+// O layout é montado aqui pelo MESMO caminho do editor (montarLayout com a fonte do documento), então
 // o arquivo sai com as linhas quebradas exatamente onde a tela mostrou.
 
 export const maxDuration = 300;
@@ -70,7 +69,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     ficha: dados ? fichaDoImovel(dados.imovel) : [],
     link: dados?.shareToken ? `${origemDoApp(req).replace(/\/$/, "")}/c/${dados.shareToken}` : null,
   };
-  const paginas = await resolverQr(montarLayout(documento, contexto, medirTexto));
+  const paginas = await resolverQr(montarLayout(documento, contexto));
 
   // As imagens vão em tamanho CHEIO: a miniatura de 400px serve ao editor, não ao PDF.
   const ids = imagensDoDocumento(documento);

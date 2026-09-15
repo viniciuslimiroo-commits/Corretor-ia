@@ -2,6 +2,7 @@
 
 import { useMemo, useRef } from "react";
 import type { Caixa, PaginaLayout } from "@/lib/book-layout";
+import { FONTE_POR_ID, type FonteBook } from "@/lib/book-documento";
 import { ALTURA_ACIMA_DA_BASE } from "@/lib/book-constantes";
 
 // O DESENHISTA DE TELA. O gêmeo do pdf-lib: recebe as mesmas caixas e só posiciona.
@@ -13,8 +14,9 @@ import { ALTURA_ACIMA_DA_BASE } from "@/lib/book-constantes";
 //    fonte do PDF. Deixar o texto fluir num parágrafo traria de volta a divergência que o
 //    motor de layout existe pra eliminar.
 //
-// 2. A fonte é Helvetica/Arial, a mesma do PDF. No Windows resolve pra Arial, que tem as
-//    mesmas larguras da Helvetica no alfabeto latino.
+// 2. A fonte é a da identidade do documento, sempre uma família metricamente igual à do
+//    PDF: Helvetica/Arial (Arial tem as mesmas larguras no alfabeto latino) ou Times/Times
+//    New Roman. Vem carimbada no layout, então tela e arquivo não têm como discordar.
 //
 // 3. `y` de uma caixa de texto é o TOPO da primeira linha, não a linha de base. Quem
 //    converte pro sistema do pdf-lib (origem embaixo, y na base) é o renderizador de PDF,
@@ -40,7 +42,7 @@ export type Interacao = {
   aoClicarImagem?: (jobId: string, indiceNaPagina: number) => void;
 };
 
-function Texto({ c, escala }: { c: Extract<Caixa, { tipo: "texto" }>; escala: number }) {
+function Texto({ c, escala, fonte }: { c: Extract<Caixa, { tipo: "texto" }>; escala: number; fonte: FonteBook }) {
   return (
     <div
       style={{
@@ -53,7 +55,10 @@ function Texto({ c, escala }: { c: Extract<Caixa, { tipo: "texto" }>; escala: nu
         lineHeight: `${c.entrelinha * escala}px`,
         fontWeight: c.negrito ? 700 : 400,
         textAlign: c.alinhamento === "direita" ? "right" : "left",
-        fontFamily: "Helvetica, Arial, sans-serif",
+        // A família da identidade do documento, metricamente igual à do PDF (Arial =
+        // Helvetica, Times New Roman = Times). É o que deixa a quebra de linha do
+        // servidor cair no mesmo lugar aqui.
+        fontFamily: FONTE_POR_ID[fonte].css,
         pointerEvents: "none",
       }}
     >
@@ -153,7 +158,7 @@ function Imagem({
 function Uma({ c, dados, escala, indice, interacao }: { c: Caixa; dados: DadosPagina; escala: number; indice: number; interacao?: Interacao }) {
   const base = { position: "absolute" as const, left: c.x * escala, top: c.y * escala };
 
-  if (c.tipo === "texto") return <Texto c={c} escala={escala} />;
+  if (c.tipo === "texto") return <Texto c={c} escala={escala} fonte={dados.layout.fonte ?? "moderna"} />;
 
   if (c.tipo === "retangulo") {
     return <div style={{ ...base, width: c.l * escala, height: c.a * escala, background: c.cor, opacity: c.opacidade ?? 1, pointerEvents: "none" }} />;

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { montarLayout, type ContextoLayout, type PaginaLayout } from "./book-layout";
-import { medirTexto } from "./book-metricas";
 import type { DocumentoBook } from "./book-documento";
 
 // O estado do editor de book: documento, desfazer e salvamento automático.
@@ -50,7 +49,7 @@ export function useBook(o: {
 
   /** Recalcula o layout com as métricas do PDF e devolve os QR que já vieram prontos. */
   const layout: PaginaLayout[] = useMemo(() => {
-    const bruto = montarLayout(documento, o.ctx, medirTexto);
+    const bruto = montarLayout(documento, o.ctx);
     return bruto.map((p) => ({
       ...p,
       caixas: p.caixas.map((c) => (c.tipo === "qr" ? { ...c, png: o.qrs[c.conteudo] } : c)),

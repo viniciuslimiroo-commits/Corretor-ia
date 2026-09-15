@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import sharp from "sharp";
 import type { Caixa, PaginaLayout } from "./book-layout";
+import type { FonteBook } from "./book-documento";
 import { ALTURA_ACIMA_DA_BASE } from "./book-constantes";
 
 // O DESENHISTA DE PDF. O gêmeo do renderizador de tela: recebe as MESMAS caixas e só
@@ -91,10 +92,21 @@ export async function montarPdfDoBook(e: EntradaPdf): Promise<Buffer> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(e.titulo || "Book");
   pdf.setCreator("Encena");
-  const fontes: FontesPdf = {
-    normal: await pdf.embedFont(StandardFonts.Helvetica),
-    negrito: await pdf.embedFont(StandardFonts.HelveticaBold),
+  // Uma família por documento na prática, mas cada página diz a sua (vem do layout), e a
+  // fonte só é embutida quando alguma página a usa: PDF em Helvetica não carrega a Times.
+  const NOMES: Record<FonteBook, [StandardFonts, StandardFonts]> = {
+    moderna: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+    classica: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
   };
+  const embutidas = new Map<FonteBook, FontesPdf>();
+  async function fontesDa(f: FonteBook): Promise<FontesPdf> {
+    const pronta = embutidas.get(f);
+    if (pronta) return pronta;
+    const [normal, negrito] = NOMES[f] ?? NOMES.moderna;
+    const par = { normal: await pdf.embedFont(normal), negrito: await pdf.embedFont(negrito) };
+    embutidas.set(f, par);
+    return par;
+  }
 
   // A mesma foto pode aparecer em dois quadros de tamanhos diferentes; guarda por formato.
   const cache = new Map<string, PDFImage>();
@@ -130,6 +142,7 @@ export async function montarPdfDoBook(e: EntradaPdf): Promise<Buffer> {
     const pg = pdf.addPage([p.largura, p.altura]);
     /** Converte o y do layout (topo) pro y do pdf-lib (base). */
     const paraPdf = (y: number, altura = 0) => p.altura - y - altura;
+    const fontes = await fontesDa(p.fonte ?? "moderna");
 
     for (const c of p.caixas) {
       await desenhar(pg, c, { paraPdf, fontes, imagem, logo, altura: p.altura });

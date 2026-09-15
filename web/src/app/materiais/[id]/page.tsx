@@ -12,7 +12,9 @@ import GavetaMidia from "@/components/book/gaveta-midia";
 import Previa from "@/components/book/previa";
 import type { ContextoLayout } from "@/lib/book-layout";
 import {
+  FONTES_BOOK,
   definirFoco,
+  definirIdentidade,
   imagensDoDocumento,
   inserir,
   mover,
@@ -128,6 +130,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   const [ligandoLink, setLigandoLink] = useState(false);
   const [painelCelular, setPainelCelular] = useState(false);
   const [menuMais, setMenuMais] = useState(false);
+  /** Estilo do book inteiro: fonte e capa. Duas escolhas nomeadas, não um seletor. */
+  const [menuEstilo, setMenuEstilo] = useState(false);
   const [refazendo, setRefazendo] = useState(false);
   // Recado de uma vez só, deixado pela tela de criação quando o book saiu no automático.
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
@@ -488,6 +492,60 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
               <Icone nome="magica" className="h-4 w-4" />
               {refazendo ? "Refazendo…" : "Refazer"}
             </BotaoConfirma>
+          </span>
+
+          {/* Estilo do book: a fonte (duas famílias com métrica igual à do PDF) e a capa.
+              Não é seletor de fonte nem roda de cores -- a cor continua vindo de Minha
+              marca. São as duas decisões de identidade que o template deixa em aberto. */}
+          <span className="relative">
+            <Botao variante="secundaria" onClick={() => setMenuEstilo((v) => !v)} className="px-2.5 py-1.5 text-xs lg:px-3" title="Estilo: fonte e capa">
+              <Icone nome="marca" className="h-4 w-4" />
+              <span className="hidden lg:inline">Estilo</span>
+            </Botao>
+            {menuEstilo && (
+              <>
+                <span className="fixed inset-0 z-30" onClick={() => setMenuEstilo(false)} />
+                <span className="absolute top-full right-0 z-40 mt-1 w-64 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
+                  <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Fonte</p>
+                  {FONTES_BOOK.map((f) => {
+                    const ativa = (book.documento.identidade.fonte ?? "moderna") === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => book.aplicar((d) => definirIdentidade(d, { fonte: f.id }))}
+                        className={"block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50 " + (ativa ? "bg-marca-indigo/5" : "")}
+                      >
+                        <strong className={"block text-sm " + (ativa ? "text-marca-indigo" : "")} style={{ fontFamily: f.css }}>
+                          {f.rotulo}
+                          {ativa && " ✓"}
+                        </strong>
+                        <span className="text-neutral-500">{f.descricao}</span>
+                      </button>
+                    );
+                  })}
+                  <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Capa</p>
+                  {[
+                    { escura: true, rotulo: "Escura", descricao: "A foto com faixa escura e o texto por cima." },
+                    { escura: false, rotulo: "Clara", descricao: "Fundo branco, texto na cor da marca." },
+                  ].map((o) => {
+                    const ativa = book.documento.identidade.capaEscura === o.escura;
+                    return (
+                      <button
+                        key={o.rotulo}
+                        onClick={() => book.aplicar((d) => definirIdentidade(d, { capaEscura: o.escura }))}
+                        className={"block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50 " + (ativa ? "bg-marca-indigo/5" : "")}
+                      >
+                        <strong className={"block text-sm font-medium " + (ativa ? "text-marca-indigo" : "")}>
+                          {o.rotulo}
+                          {ativa && " ✓"}
+                        </strong>
+                        <span className="text-neutral-500">{o.descricao}</span>
+                      </button>
+                    );
+                  })}
+                </span>
+              </>
+            )}
           </span>
 
           <Botao variante="secundaria" onClick={() => setPrevia("celular")} className="px-2.5 py-1.5 text-xs lg:px-3" title="Pré-visualizar">
