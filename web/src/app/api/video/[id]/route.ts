@@ -47,7 +47,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
    * duas respostas escritas à mão, e só uma delas mandava o espec -- quem acabou de
    * gerar recebia menos do que quem voltava depois.
    */
-  async function respostaPronta(saida: string, thumb: string | null, duracao: number | null, avisos: string[]) {
+  async function respostaPronta(saida: string, thumb: string | null, duracao: number | null, pronto: PipelineVideo | null) {
+    const avisos = pronto?.avisos ?? [];
     const jobIds = [...new Set(espec.cenas.map((c) => c.jobId).filter((x): x is string => !!x))];
     const { data: jobs } = jobIds.length ? await db.from("jobs").select("id, tipo, input_path, output_path").in("id", jobIds).eq("user_id", userId) : { data: [] as { id: string; tipo: string; input_path: string | null; output_path: string | null }[] };
     const porId = new Map((jobs ?? []).map((j) => [j.id, j]));
@@ -81,14 +82,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       edicao: {
         imovelId: (video!.property_id as string | null) ?? null,
         cenas,
-        // Voz própria: assinada pra tela poder tocar sem baixar nada.
-        vozUrl: espec.narracao?.arquivo ? await assinar(db, espec.narracao.arquivo).catch(() => null) : null,
+        // O arquivo da voz: o que a pessoa enviou/gravou, ou o que a IA gerou nesta
+        // montagem. Serve pra tocar na tela e pra transcrever em legendas depois -- é o
+        // que faz "gerar legendas" funcionar também para quem usou a voz de IA.
+        vozArquivo: espec.narracao?.arquivo ?? pronto?.narracaoPath ?? null,
+        vozUrl: await (async () => {
+          const caminho = espec.narracao?.arquivo ?? pronto?.narracaoPath;
+          return caminho ? assinar(db, caminho).catch(() => null) : null;
+        })(),
       },
     });
   }
 
   if (video.status === "concluido" && video.output_path) {
-    return respostaPronta(video.output_path, video.thumb_path, video.duracao_segundos, pipeline?.avisos ?? []);
+    return respostaPronta(video.output_path, video.thumb_path, video.duracao_segundos, pipeline);
   }
   if (video.status === "falhou") {
     return NextResponse.json({ videoId: id, status: "falhou", error: video.erro ?? "Este vídeo não foi concluído." }, { status: 409 });
@@ -126,7 +133,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (prog.etapa === "concluido") {
       const { data: pronto } = await db.from("videos").select("output_path, thumb_path, duracao_segundos, pipeline").eq("id", id).single();
       if (!pronto?.output_path) return NextResponse.json({ error: "O vídeo terminou sem arquivo." }, { status: 500 });
-      return respostaPronta(pronto.output_path, pronto.thumb_path, pronto.duracao_segundos, (pronto.pipeline as PipelineVideo | null)?.avisos ?? []);
+      return respostaPronta(pronto.output_path, pronto.thumb_path, pronto.duracao_segundos, pronto.pipeline as PipelineVideo | null);
     }
     return NextResponse.json({ videoId: id, status: "gerando", ...prog });
   } catch (e) {

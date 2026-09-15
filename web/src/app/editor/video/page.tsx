@@ -11,6 +11,7 @@ import {
   CHAMADAS,
   CREDITOS,
   EFEITOS,
+  ESTILOS_LEGENDA,
   ESTILOS_TEXTO,
   ESTILO_TEXTO_POR_ID,
   FORMATOS,
@@ -32,6 +33,7 @@ import {
   type EfeitoId,
   type EspecVideo,
   type EstiloTexto,
+  type Legendas,
   type FormatoId,
   type Movimento360Id,
   type MusicaId,
@@ -224,6 +226,9 @@ export default function PaginaVideo() {
   const [vozVolume, setVozVolume] = useState(1);
   const [vozInicio, setVozInicio] = useState(0.7);
   const [musicaVolume, setMusicaVolume] = useState(LIMITES.musicaVolumePadrao);
+  /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
+  const [legendas, setLegendas] = useState<Legendas | null>(null);
+  const [transcrevendo, setTranscrevendo] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [segundosGravando, setSegundosGravando] = useState(0);
   const [enviandoVoz, setEnviandoVoz] = useState(false);
@@ -286,8 +291,9 @@ export default function PaginaVideo() {
       chamada: telaFinal ? chamada : "",
       transicao,
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
+      legendas,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   const resumoDosAjustes = [
@@ -531,6 +537,44 @@ export default function PaginaVideo() {
     gravador.current = null;
   }
 
+  /**
+   * Transcreve o áudio da voz em trechos com tempo.
+   *
+   * Não gasta crédito, e o que volta é SUGESTÃO: os trechos ficam editáveis, porque
+   * transcrição erra justamente o que o vídeo está anunciando -- nome de bairro, de rua
+   * e de condomínio.
+   */
+  async function gerarLegendas() {
+    if (!vozArquivo || transcrevendo) return;
+    setTranscrevendo(true);
+    setErro(null);
+    try {
+      const r = await fetch("/api/video/legendas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ arquivo: vozArquivo.caminho }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Não consegui transcrever.");
+      setLegendas(d.legendas ?? null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao gerar as legendas.");
+    } finally {
+      setTranscrevendo(false);
+    }
+  }
+
+  function mudarTrecho(i: number, texto: string) {
+    setLegendas((l) => (l ? { ...l, trechos: l.trechos.map((t, j) => (j === i ? { ...t, texto } : t)) } : l));
+  }
+  function removerTrecho(i: number) {
+    setLegendas((l) => {
+      if (!l) return l;
+      const trechos = l.trechos.filter((_, j) => j !== i);
+      return trechos.length ? { ...l, trechos } : null;
+    });
+  }
+
   function mudarCena(k: string, mudanca: Partial<CenaUI>) {
     setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, ...mudanca } : s)));
   }
@@ -731,8 +775,10 @@ export default function PaginaVideo() {
       setVoz(e.narracao?.voz ?? "laura");
       setVozVolume(e.narracao?.volume ?? 1);
       setVozInicio(e.narracao?.inicio ?? 0.7);
-      // A voz própria volta tocável: o servidor assina a URL do arquivo junto do espec.
-      setVozArquivo(e.narracao?.arquivo && dd.edicao?.vozUrl ? { caminho: e.narracao.arquivo, url: dd.edicao.vozUrl, nome: "Áudio deste vídeo" } : null);
+      // A voz volta tocável -- e, com ela, o arquivo que as legendas transcrevem. Vale
+      // também pra voz de IA: a narração fica guardada depois que o vídeo é montado.
+      setVozArquivo(dd.edicao?.vozArquivo && dd.edicao?.vozUrl ? { caminho: dd.edicao.vozArquivo, url: dd.edicao.vozUrl, nome: e.narracao?.arquivo ? "Áudio deste vídeo" : "Narração de IA deste vídeo" } : null);
+      setLegendas(e.legendas ?? null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
       setResultado(null);
@@ -756,6 +802,7 @@ export default function PaginaVideo() {
     setVozVolume(1);
     setVozInicio(0.7);
     setMusicaVolume(LIMITES.musicaVolumePadrao);
+    setLegendas(null);
     setChamada(CHAMADAS[0]);
     setTelaFinal(true);
   }
@@ -1436,6 +1483,64 @@ export default function PaginaVideo() {
                     {!vozArquivo && <p className="mt-2 text-xs text-amber-700">Sem áudio, o vídeo sai sem voz.</p>}
                   </div>
                 )}
+
+                {/* ---------- legendas ----------
+                     Reel de imóvel circula com o som desligado. As legendas saem do
+                     áudio da VOZ (nunca da música) e ficam editáveis: transcrição erra
+                     nome de bairro e de rua, que é o que o vídeo está anunciando. */}
+                <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-neutral-600">Legendas</span>
+                    {legendas ? (
+                      <button onClick={() => setLegendas(null)} className="text-xs text-neutral-500 underline">Tirar</button>
+                    ) : (
+                      <Botao variante="secundaria" onClick={gerarLegendas} disabled={!vozArquivo || transcrevendo} className="px-2.5 py-1 text-xs">
+                        <Icone nome="magica" className="h-3.5 w-3.5" />
+                        {transcrevendo ? "Ouvindo…" : "Gerar legendas"}
+                      </Botao>
+                    )}
+                  </div>
+
+                  {!vozArquivo && !legendas && (
+                    <p className="mt-1 text-[11px] text-neutral-500">
+                      {origemVoz === "ia"
+                        ? "Com voz de IA, gere o vídeo uma vez — depois, ao editar, as legendas saem da narração que ficou gravada."
+                        : "Grave ou envie o áudio primeiro: a legenda sai da fala."}
+                    </p>
+                  )}
+
+                  {legendas && (
+                    <>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {ESTILOS_LEGENDA.map((e) => (
+                          <Chip key={e.id} ativo={(legendas.estilo ?? "faixa") === e.id} onClick={() => setLegendas({ ...legendas, estilo: e.id })} title={e.dica}>
+                            {e.rotulo}
+                          </Chip>
+                        ))}
+                        <Chip ativo={(legendas.posicao ?? "base") === "base"} onClick={() => setLegendas({ ...legendas, posicao: "base" })}>Embaixo</Chip>
+                        <Chip ativo={legendas.posicao === "centro"} onClick={() => setLegendas({ ...legendas, posicao: "centro" })}>No meio</Chip>
+                      </div>
+                      <p className="mt-2 text-[11px] text-neutral-500">{legendas.trechos.length} trechos · corrija o que a transcrição errou</p>
+                      <ul className="mt-1 max-h-52 space-y-1 overflow-y-auto">
+                        {legendas.trechos.map((t, i) => (
+                          <li key={i} className="flex items-center gap-1.5">
+                            <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-neutral-400">{t.inicio.toFixed(1)}s</span>
+                            <input
+                              type="text"
+                              value={t.texto}
+                              onChange={(e) => mudarTrecho(i, e.target.value)}
+                              maxLength={LIMITES.trechoMax}
+                              className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs focus:border-marca-indigo focus:outline-none"
+                            />
+                            <button onClick={() => removerTrecho(i)} className="shrink-0 rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600" title="Tirar este trecho">
+                              <Icone nome="fechar" className="h-3.5 w-3.5" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
 
                 {/* Ajuste fino da voz: só aparece quando existe voz pra ajustar. */}
                 {espec.narracao && (

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena } from "./video";
+import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -36,15 +36,52 @@ export function caminhoParaFiltro(p: string): string {
   return usado.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/ /g, "\\ ");
 }
 
-/** Texto seguro pro drawtext, já entre aspas simples. Apóstrofo vira ’ pra não brigar com a citação. */
-export function textoParaFiltro(t: string): string {
+/**
+ * Texto seguro pro drawtext, já entre aspas simples. Apóstrofo vira ’ pra não brigar com
+ * a citação.
+ *
+ * `multilinha` mantém as quebras de linha. E elas vão como QUEBRA DE VERDADE dentro do
+ * argumento, não como `\n`: medido (scripts/testar-video-edicao.mjs e um render de
+ * controle) -- com `\n` o parser come a barra e sobra um "n" grudado no meio da palavra
+ * ("no" + "nsetor" = "nonsetor"), e com `\\n` acontece o mesmo. Só o caractere de nova
+ * linha faz o drawtext pular a linha.
+ *
+ * Serve pra legenda: frase de transcrição não cabe na largura do vídeo e, sem quebrar,
+ * sai cortada nas duas pontas -- foi o que apareceu no primeiro render legendado.
+ */
+export function textoParaFiltro(t: string, multilinha = false): string {
   const limpo = t
     .replace(/\\/g, "")
     .replace(/'/g, "’")
     .replace(/:/g, "\\:")
     .replace(/%/g, "%%")
-    .replace(/[\r\n]+/g, " ");
+    .replace(/[\r\n]+/g, multilinha ? "\n" : " ");
   return `'${limpo}'`;
+}
+
+/**
+ * Quebra a frase em linhas que cabem na largura, sem partir palavra.
+ *
+ * O `drawtext` não quebra sozinho: escreve tudo numa linha e o que passa da borda some.
+ * A largura de um caractere fica em torno de 0,52 do tamanho da fonte nesta família --
+ * o mesmo número que o selo usa pra calcular a caixa dele.
+ */
+export function quebrarLinhas(texto: string, larguraUtil: number, tamanhoFonte: number, maxLinhas = 4): string {
+  const porLinha = Math.max(12, Math.floor(larguraUtil / (tamanhoFonte * 0.52)));
+  const linhas: string[] = [];
+  let atual = "";
+  for (const palavra of texto.split(/\s+/)) {
+    const tentativa = atual ? `${atual} ${palavra}` : palavra;
+    if (tentativa.length > porLinha && atual) {
+      linhas.push(atual);
+      atual = palavra;
+      if (linhas.length === maxLinhas) break;
+    } else {
+      atual = tentativa;
+    }
+  }
+  if (atual && linhas.length < maxLinhas) linhas.push(atual);
+  return linhas.join("\n");
 }
 
 /** Escala pra cobrir WxH e corta o excesso, mantendo o centro. */
@@ -113,6 +150,43 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
     ];
     // "surgir": a cena começa sem ele e ele entra depois de meio segundo.
     if (t.animacao === "surgir") partes.push(`enable='gte(t\\,0.5)'`);
+    return `drawtext=${partes.join(":")}`;
+  });
+}
+
+/**
+ * As legendas queimadas no vídeo montado, uma por trecho.
+ *
+ * `drawtext` com `enable=between(...)` em vez do filtro `subtitles`: o `subtitles` quer
+ * um ARQUIVO, e caminho de arquivo dentro de filtro já deu problema nesta base (o
+ * fontfile do Windows caindo em fallback silencioso). Aqui não há arquivo intermediário,
+ * o estilo é o nosso, e cada trecho é uma linha independente -- se um vier torto, some
+ * só ele.
+ *
+ * O contorno ("sem fundo") usa borda preta grossa: é o que deixa letra branca legível
+ * sobre parede clara sem tapar a foto com uma caixa.
+ */
+export function filtrosDeLegenda(legendas: Legendas | null | undefined, W: number, H: number): string[] {
+  if (!legendas?.trechos?.length) return [];
+  const tamanho = Math.max(20, Math.round(H * 0.034));
+  const y = legendas.posicao === "centro" ? `(h-text_h)/2` : `h-text_h-${Math.round(H * 0.14)}`;
+  const comFundo = (legendas.estilo ?? "faixa") === "faixa";
+  // 86% da largura: sobra margem dos dois lados, e é dentro dela que a frase quebra.
+  const util = W * 0.86;
+  return legendas.trechos.map((t) => {
+    const partes = [
+      `fontfile='${caminhoParaFiltro(caminhoFonte())}'`,
+      `text=${textoParaFiltro(quebrarLinhas(t.texto, util, tamanho, 4), true)}`,
+      `line_spacing=${Math.round(tamanho * 0.25)}`,
+      `fontsize=${tamanho}`,
+      `fontcolor=white`,
+      `x=(w-text_w)/2`,
+      `y=${y}`,
+      // A vírgula do `between` é escapada: dentro de um filtro, vírgula separa filtros.
+      `enable='between(t\\,${t.inicio.toFixed(2)}\\,${t.fim.toFixed(2)})'`,
+    ];
+    if (comFundo) partes.push(`box=1`, `boxcolor=0x000000@0.6`, `boxborderw=${Math.round(tamanho * 0.4)}`);
+    else partes.push(`borderw=${Math.max(2, Math.round(tamanho * 0.09))}`, `bordercolor=0x000000@0.9`);
     return `drawtext=${partes.join(":")}`;
   });
 }
@@ -411,6 +485,7 @@ export function argsMontagem(o: {
   vozVolume?: number;
   /** Segundos até a voz começar. Padrão 0,7. */
   vozInicio?: number;
+  legendas?: Legendas | null;
 }): string[] {
   const n = o.clipes.length;
   // Uma emenda por par, cada uma com a sua duração: a cena escolhe a transição.
@@ -462,7 +537,10 @@ export function argsMontagem(o: {
       );
     }
   }
-  partes.push(`[${ultimo}]${["format=yuv420p", ...carimbos].join(",")}[vout]`);
+  // As legendas vão por ÚLTIMO: elas acompanham a voz, que corre sobre o vídeo inteiro,
+  // e por isso o tempo delas é o da linha do tempo final -- não o de uma cena.
+  const legendas = filtrosDeLegenda(o.legendas, o.W, o.H);
+  partes.push(`[${ultimo}]${["format=yuv420p", ...carimbos, ...legendas].join(",")}[vout]`);
 
   // ---- áudio ----
   //

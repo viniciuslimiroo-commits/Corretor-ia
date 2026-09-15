@@ -313,6 +313,27 @@ export function vozDeIA(n: Narracao | null | undefined): boolean {
   return !!n && (n.origem ?? "ia") === "ia";
 }
 
+// ---- legendas ----
+//
+// Reel de imóvel circula no Instagram com o som desligado: sem legenda, a narração que
+// custou crédito não é ouvida por metade de quem vê. Os trechos saem da transcrição do
+// ÁUDIO DE VOZ (não da música) e ficam guardados no espec, editáveis -- transcrição
+// erra nome de bairro e de rua, e corrigir tem que ser possível.
+
+export type TrechoLegenda = { inicio: number; fim: number; texto: string };
+export type EstiloLegenda = "faixa" | "contorno";
+
+export type Legendas = {
+  trechos: TrechoLegenda[];
+  estilo?: EstiloLegenda;
+  posicao?: "base" | "centro";
+};
+
+export const ESTILOS_LEGENDA: { id: EstiloLegenda; rotulo: string; dica: string }[] = [
+  { id: "faixa", rotulo: "Com fundo", dica: "Caixa escura atrás da frase. Lê em qualquer imagem." },
+  { id: "contorno", rotulo: "Sem fundo", dica: "Letra branca com contorno preto, estilo Reels." },
+];
+
 export type EspecVideo = {
   formato: FormatoId;
   cenas: Cena[];
@@ -330,6 +351,8 @@ export type EspecVideo = {
   transicao: TransicaoId;
   /** Índice da cena que vira a miniatura (capa). Ausente ou inválido = a primeira. */
   capa?: number;
+  /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
+  legendas?: Legendas | null;
 };
 
 /**
@@ -370,6 +393,9 @@ export const LIMITES = {
   /** Três já é muito numa tela de celular; a quarta linha vira poluição. */
   textosPorCena: 3,
   textoMax: 44,
+  /** Um vídeo de 60s narrado dá ~25 trechos; 120 é teto de segurança, não de uso. */
+  trechosMax: 120,
+  trechoMax: 90,
   telaFinalSegundos: 4,
   transicaoSegundos: 0.6,
 };
@@ -425,6 +451,35 @@ function limparTextos(bruto: unknown): TextoCena[] | undefined {
     });
   }
   return lista.length ? lista : undefined;
+}
+
+/**
+ * Os trechos de legenda, limpos e em ordem.
+ *
+ * Trecho sem texto, com tempo invertido ou de duração zero é descartado: um deles
+ * sozinho já derruba o filtro do ffmpeg, e a transcrição às vezes devolve exatamente
+ * isso no fim do áudio.
+ */
+export function limparLegendas(bruto: unknown): Legendas | null {
+  const b = (bruto && typeof bruto === "object" ? bruto : null) as Record<string, unknown> | null;
+  if (!b) return null;
+  const crus = Array.isArray(b.trechos) ? b.trechos : [];
+  const trechos: TrechoLegenda[] = [];
+  for (const c of crus.slice(0, LIMITES.trechosMax)) {
+    const t = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
+    const inicio = Number(t.inicio);
+    const fim = Number(t.fim);
+    const conteudo = texto(t.texto, LIMITES.trechoMax);
+    if (!conteudo || !Number.isFinite(inicio) || !Number.isFinite(fim) || fim <= inicio || inicio < 0) continue;
+    trechos.push({ inicio: Math.round(inicio * 100) / 100, fim: Math.round(fim * 100) / 100, texto: conteudo });
+  }
+  if (!trechos.length) return null;
+  trechos.sort((x, y) => x.inicio - y.inicio);
+  return {
+    trechos,
+    estilo: ESTILOS_LEGENDA.some((e) => e.id === b.estilo) ? (b.estilo as EstiloLegenda) : "faixa",
+    posicao: b.posicao === "centro" ? "centro" : "base",
+  };
 }
 
 /**
@@ -526,6 +581,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       chamada: texto(b.chamada, LIMITES.chamadaMax),
       transicao: ehTransicao(b.transicao),
       capa,
+      legendas: limparLegendas(b.legendas),
     },
     erro: null,
   };

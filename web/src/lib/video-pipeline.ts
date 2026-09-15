@@ -416,9 +416,12 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           // (daqui pra baixo é só a voz de IA)
           const arquivo = local("narracao.mp3");
           await baixarUrl(saida.audio.url, arquivo);
-          const destino = tmp("narracao.mp3");
+          // A voz de IA fica GUARDADA, não temporária: é dela que saem as legendas quando
+          // a pessoa volta pra editar o vídeo. Guardada em uploads/ pela mesma razão que
+          // a voz gravada -- é o mesmo tipo de arquivo, e a rota de legendas só aceita o
+          // que está na pasta da pessoa. Um mp3 de narração tem poucos KB.
+          const destino = `uploads/${userId}/voz-${video.id}.mp3`;
           await subir(db, arquivo, destino, "audio/mpeg");
-          p.temporarios.push(destino);
           p.narracaoPath = destino;
         } catch (e) {
           p.avisos.push(`A narração não pôde ser gravada (${e instanceof Error ? e.message.slice(0, 80) : "erro"}); o crédito dela voltou.`);
@@ -479,6 +482,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           musicaVolume: espec.musicaVolume,
           vozVolume: espec.narracao?.volume,
           vozInicio: espec.narracao?.inicio,
+          legendas: espec.legendas,
         }),
         280_000
       );
