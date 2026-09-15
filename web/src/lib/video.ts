@@ -472,6 +472,24 @@ export function custoDoVideo(e: Pick<EspecVideo, "cenas" | "narracao">): number 
   return CREDITOS.base + animadas * CREDITOS.animada + (vozDeIA(e.narracao) ? CREDITOS.narracao : 0);
 }
 
+/**
+ * As durações que o editor oferece, por tipo de cena.
+ *
+ * Existe como lista exportada, e não solta dentro do JSX, porque um MODELO também
+ * escolhe duração -- e modelo que põe o vídeo num estado que a tela não sabe mostrar
+ * deixa o seletor da cena em branco e a pessoa sem caminho de volta. O servidor
+ * arredonda pro inteiro mais próximo, então 5,5s virava 6s e o controle não tinha essa
+ * opção: o vídeo saía certo e a tela mentia. Com a lista aqui, o teste dos modelos
+ * confere contra o mesmo lugar de onde o seletor se desenha.
+ */
+export const DURACOES_CENA: Record<"foto" | "animada" | "tour360", number[]> = {
+  foto: [3, 4, 5, 6, 8],
+  // Cena animada para em 5s: 8s pedem 161 quadros ao modelo, o máximo que ele aceita,
+  // e a espera passou de 8 minutos num teste real.
+  animada: [3, 4, 5],
+  tour360: [4, 6, 8, 10],
+};
+
 export function duracaoDaCena(c: Cena): number {
   const teto = c.tipo === "tour360" ? LIMITES.duracaoMax360 : LIMITES.duracaoMax;
   const d = c.duracao ?? (c.tipo === "tour360" ? 10 : LIMITES.duracaoPadrao);

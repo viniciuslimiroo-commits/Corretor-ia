@@ -18,6 +18,7 @@ import {
   FORMATOS,
   FORMATOS_APRESENTADOR,
   TAMANHOS_APRESENTADOR,
+  DURACOES_CENA,
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
@@ -48,6 +49,7 @@ import {
   type TransicaoId,
   type VozId,
 } from "@/lib/video";
+import { aplicarTemplateVideo, mudancasDoTemplate, TEMPLATES_VIDEO, templateVaiApagarTexto, type TemplateVideo } from "@/lib/video-templates";
 import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
@@ -327,6 +329,33 @@ export default function PaginaVideo() {
     [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
+  // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
+  const pecas = pecasDoImovel(ficha, marca);
+
+  /**
+   * O modelo aberto pra conferência. Clicar num modelo NÃO aplica: mostra o que vai
+   * mudar e espera o segundo clique. Aplicar troca os textos das cenas, e aqui não
+   * existe desfazer -- então a lista do que muda vem antes, não depois.
+   */
+  const [templateAberto, setTemplateAberto] = useState<TemplateVideo | null>(null);
+
+  function aplicarTemplate(t: TemplateVideo) {
+    const novo = aplicarTemplateVideo(t, espec, pecas, { temWhatsapp: !!marca?.whatsapp });
+    setFormato(novo.formato);
+    setMusica(novo.musica);
+    setTransicao(novo.transicao);
+    setTelaFinal(novo.telaFinal);
+    setChamada(novo.chamada || CHAMADAS[0]);
+    setCenas((atuais) =>
+      atuais.map((s, i) => {
+        const c = novo.cenas[i];
+        if (!c) return s;
+        return { ...s, efeito: c.efeito ?? s.efeito, duracao: c.duracao ?? s.duracao, textos: c.textos, legenda: "", transicao: undefined };
+      })
+    );
+    setTemplateAberto(null);
+  }
+
   const resumoDosAjustes = [
     FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato,
     MUSICAS.find((m) => m.id === musica)?.rotulo ?? musica,
@@ -932,8 +961,6 @@ export default function PaginaVideo() {
   // uma tela que não responde ao que a pessoa clica.
   const indiceAtual = Math.max(0, cenas.findIndex((s) => s.chave === selecionada));
   const cenaAtual: CenaUI | null = cenas[indiceAtual] ?? null;
-  // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
-  const pecas = pecasDoImovel(ficha, marca);
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
 
@@ -1219,9 +1246,7 @@ export default function PaginaVideo() {
                   <label className="flex items-center gap-1.5 text-xs text-neutral-600">
                     Duração
                     <select value={cenaAtual.duracao} onChange={(e) => mudarCena(cenaAtual.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm">
-                      {/* Cena animada para em 5s: 8s pedem 161 quadros ao modelo, o máximo
-                          que ele aceita, e a espera passou de 8 minutos num teste real. */}
-                      {(cenaAtual.tipo === "tour360" ? [4, 6, 8, 10] : cenaAtual.tipo === "animada" ? [3, 4, 5] : [3, 4, 5, 6, 8]).map((d) => (
+                      {DURACOES_CENA[cenaAtual.tipo === "tour360" ? "tour360" : cenaAtual.tipo === "animada" ? "animada" : "foto"].map((d) => (
                         <option key={d} value={d}>{d} s</option>
                       ))}
                     </select>
@@ -1409,6 +1434,55 @@ export default function PaginaVideo() {
               item separado ele caía na linha de baixo e abria um buraco que crescia junto
               com a coluna da esquerda. */}
           <div className={"flex-col gap-4 " + (ajustesAbertos ? "flex" : "hidden")}>
+          <Cartao>
+            <Rotulo>Modelos</Rotulo>
+            <p className="-mt-1 mb-3 text-xs text-neutral-500">
+              Um ponto de partida por tipo de imóvel: ritmo, música, transição e os dados do imóvel já nas cenas. Depois é só ajustar.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {TEMPLATES_VIDEO.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={gerando || cenas.length === 0}
+                  onClick={() => setTemplateAberto((a) => (a?.id === t.id ? null : t))}
+                  className={
+                    "rounded-xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-40 " +
+                    (templateAberto?.id === t.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
+                  }
+                >
+                  <span className="font-medium">{t.nome}</span>
+                  <span className="block text-xs text-neutral-500">{t.para}</span>
+                </button>
+              ))}
+            </div>
+            {cenas.length === 0 && <p className="mt-2 text-xs text-neutral-500">Escolha as fotos primeiro — o modelo se aplica às cenas.</p>}
+            {templateAberto && (
+              <div className="mt-3 rounded-xl border border-marca-indigo/30 bg-marca-indigo/5 p-3">
+                <p className="text-xs text-neutral-600">{templateAberto.descricao}</p>
+                <ul className="mt-2 space-y-1">
+                  {mudancasDoTemplate(templateAberto, pecas).map((m) => (
+                    <li key={m} className="flex gap-1.5 text-xs text-neutral-700">
+                      <span className="text-marca-coral">•</span>
+                      <span>{m}</span>
+                    </li>
+                  ))}
+                </ul>
+                {templateVaiApagarTexto(espec) && (
+                  <p className="mt-2 text-xs text-marca-coral">Os textos que você escreveu nas cenas vão ser trocados pelos do modelo.</p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Botao onClick={() => aplicarTemplate(templateAberto)} className="px-3 py-1.5">
+                    Aplicar modelo
+                  </Botao>
+                  <Botao variante="discreta" onClick={() => setTemplateAberto(null)} className="px-3 py-1.5">
+                    Agora não
+                  </Botao>
+                </div>
+              </div>
+            )}
+          </Cartao>
+
           <Cartao>
             <Rotulo>Formato</Rotulo>
             <div className="grid grid-cols-2 gap-2">
