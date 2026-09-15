@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { membroDe } from "@/lib/cobranca";
+import { prepararLogo } from "@/lib/logo-upload";
 
 // Marca da IMOBILIÁRIA: nome, logo, cor, WhatsApp e CRECI da casa. Vale como padrão pra
 // todo membro que não preencher o próprio (ver marcaEfetiva em lib/cobranca.ts). Só
@@ -31,13 +31,14 @@ export async function POST(req: NextRequest) {
     atualizacao.whatsapp = digitos.length >= 10 ? digitos : null;
   }
   const logo = form.get("logo") as File | null;
+  let cores: string[] | undefined;
   if (logo && typeof logo === "object") {
-    let png: Buffer;
-    try {
-      png = await sharp(Buffer.from(await logo.arrayBuffer())).resize(800, 800, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
-    } catch {
-      return NextResponse.json({ error: "Não consegui ler esse arquivo como imagem." }, { status: 400 });
-    }
+    const pronta = await prepararLogo(logo);
+    if ("erro" in pronta) return NextResponse.json({ error: pronta.erro }, { status: 400 });
+    const png = pronta.png;
+    cores = pronta.cores;
+    // orgId vem de membroDe(), que já conferiu que esta pessoa é dono ou gestor DESTA
+    // imobiliária. Nada no formulário escolhe em qual pasta escrever.
     const caminho = `marca/org/${membro.orgId}/logo.png`;
     const { error } = await db.storage.from(BUCKET_RESULTADOS).upload(caminho, png, { contentType: "image/png", upsert: true });
     if (error) return NextResponse.json({ error: `Erro guardando o logo: ${error.message}` }, { status: 500 });
@@ -52,6 +53,14 @@ export async function POST(req: NextRequest) {
     const { error } = await db.from("organizations").update(atualizacao).eq("id", membro.orgId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // A marca salva é da imobiliária, mas quem viu a tela de boas-vindas foi esta pessoa --
+  // por isso a marcação fica no usuário, e o próximo corretor da casa vê a dele.
+  const onboarding = form.get("onboarding");
+  if (onboarding === "feito" || onboarding === "pulado") {
+    await db.from("users").update({ onboarding_marca: onboarding, onboarding_marca_em: new Date().toISOString() }).eq("id", userId);
+  }
+
   const { data: org } = await db.from("organizations").select("nome, logo_path, cor_marca, whatsapp, creci").eq("id", membro.orgId).single();
   return NextResponse.json({
     nome: org?.nome ?? "",
@@ -59,5 +68,6 @@ export async function POST(req: NextRequest) {
     cor: org?.cor_marca ?? null,
     whatsapp: org?.whatsapp ?? "",
     creci: org?.creci ?? "",
+    ...(cores ? { cores } : {}),
   });
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
+import { prepararLogo } from "@/lib/logo-upload";
 
 // Marca do corretor (a Pedra chama de Branding): o logo que ele pode carimbar nas fotos
 // exportadas, no canto oposto ao selo de "imagem ilustrativa". O arquivo vai pro bucket
@@ -21,13 +21,15 @@ const CAMPOS = "logo_path, cor_marca, nome, creci, whatsapp";
 
 type Perfil = { logo_path: string | null; cor_marca: string | null; nome: string | null; creci: string | null; whatsapp: string | null };
 
-async function resposta(db: NonNullable<ReturnType<typeof supabaseServer>>, data: Perfil | null) {
+async function resposta(db: NonNullable<ReturnType<typeof supabaseServer>>, data: Perfil | null, cores?: string[]) {
   return NextResponse.json({
     logoUrl: data?.logo_path ? await assinar(db, data.logo_path).catch(() => null) : null,
     cor: data?.cor_marca ?? null,
     nome: data?.nome ?? "",
     creci: data?.creci ?? "",
     whatsapp: data?.whatsapp ?? "",
+    // Só sai quando uma logo acabou de subir: é sugestão daquele upload, não estado salvo.
+    ...(cores ? { cores } : {}),
   });
 }
 
@@ -62,20 +64,25 @@ export async function POST(req: NextRequest) {
     atualizacao.whatsapp = digitos.length >= 10 ? digitos : null;
   }
 
-  if (logo) {
-    let png: Buffer;
-    try {
-      png = await sharp(Buffer.from(await logo.arrayBuffer()))
-        .resize(800, 800, { fit: "inside", withoutEnlargement: true })
-        .png()
-        .toBuffer();
-    } catch {
-      return NextResponse.json({ error: "Não consegui ler esse arquivo como imagem." }, { status: 400 });
-    }
+  let cores: string[] | undefined;
+  if (logo && typeof logo === "object") {
+    const pronta = await prepararLogo(logo);
+    if ("erro" in pronta) return NextResponse.json({ error: pronta.erro }, { status: 400 });
+    cores = pronta.cores;
+    // O caminho leva o id de quem está autenticado, nunca um id vindo do formulário: é o
+    // que impede uma pessoa de escrever por cima do logo da outra.
     const caminho = `marca/${userId}/logo.png`;
-    const { error: erroUpload } = await db.storage.from(BUCKET_RESULTADOS).upload(caminho, png, { contentType: "image/png", upsert: true });
+    const { error: erroUpload } = await db.storage.from(BUCKET_RESULTADOS).upload(caminho, pronta.png, { contentType: "image/png", upsert: true });
     if (erroUpload) return NextResponse.json({ error: `Erro guardando o logo: ${erroUpload.message}` }, { status: 500 });
     atualizacao.logo_path = caminho;
+  }
+
+  // A tela de boas-vindas avisa por aqui que já foi vista: 'feito' quando salvou alguma
+  // coisa, 'pulado' quando dispensou. Só controla exibição -- ver migração 13.
+  const onboarding = form.get("onboarding");
+  if (onboarding === "feito" || onboarding === "pulado") {
+    atualizacao.onboarding_marca = onboarding;
+    atualizacao.onboarding_marca_em = new Date().toISOString();
   }
 
   if (Object.keys(atualizacao).length) {
@@ -84,7 +91,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data } = await db.from("users").select(CAMPOS).eq("id", userId).single();
-  return resposta(db, data as Perfil | null);
+  return resposta(db, data as Perfil | null, cores);
 }
 
 export async function DELETE(req: NextRequest) {

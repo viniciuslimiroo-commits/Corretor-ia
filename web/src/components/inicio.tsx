@@ -84,6 +84,34 @@ export default function Inicio({ conta, token }: { conta: Conta; token: () => Pr
         </Link>
       </div>
 
+      {/* ---- a marca, quando falta ----
+          Uma linha, sem ícone de alerta e sem "x% completa" quando o número é zero: dizer
+          "sua marca está 0% completa" é cobrança, e cobrança repetida todo login é o que
+          ele pediu pra não existir. Some sozinho ao chegar em 100. */}
+      {conta.marca && conta.marca.progresso < 100 && (
+        <Link
+          href="/marca"
+          className="mt-5 flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3.5 py-3 transition hover:border-marca-indigo"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marca-pessego text-marca-indigo">
+            <Icone nome="marca" className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1 text-sm">
+            <span className="block font-medium">Complete sua marca</span>
+            <span className="block text-neutral-500">
+              {conta.marca.progresso === 0
+                ? "Seus materiais estão saindo sem logo e sem o seu nome."
+                : `Sua marca está ${conta.marca.progresso}% completa.`}
+            </span>
+          </span>
+          {conta.marca.progresso > 0 && (
+            <span className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-neutral-200 sm:block">
+              <span className="block h-full rounded-full bg-marca-teal" style={{ width: `${conta.marca.progresso}%` }} />
+            </span>
+          )}
+        </Link>
+      )}
+
       {/* ---- continuar de onde parou ---- */}
       {geracoes === null ? (
         <div className="mt-6 h-24 animate-pulse rounded-2xl bg-neutral-100" />

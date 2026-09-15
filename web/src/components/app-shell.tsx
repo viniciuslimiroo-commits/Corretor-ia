@@ -19,6 +19,8 @@ export type Conta = {
   /** "org" quando a pessoa é membro de uma imobiliária: saldo e plano são os dela. */
   tipo: "user" | "org";
   org: { id: string; nome: string; papel: "dono" | "gestor" | "corretor"; pessoas: number; limite: number } | null;
+  /** O estado da marca, pra decidir a tela de boas-vindas e o aviso de "complete". */
+  marca: { onboarding: string | null; progresso: number; nome: string | null; temLogo: boolean; daImobiliaria: boolean } | null;
 };
 
 /**
