@@ -334,6 +334,61 @@ export const ESTILOS_LEGENDA: { id: EstiloLegenda; rotulo: string; dica: string 
   { id: "contorno", rotulo: "Sem fundo", dica: "Letra branca com contorno preto, estilo Reels." },
 ];
 
+// ---- apresentador ----
+//
+// O corretor aparecendo no próprio vídeo. É a peça que mais muda o resultado num Reel de
+// imóvel -- anúncio com rosto é anúncio com gente por trás --, e a que menos existe nas
+// ferramentas genéricas, porque exige gravar, cortar e sobrepor sem sair da tela.
+//
+// Três formatos e nada mais: canto (retângulo), círculo e rodapé (faixa embaixo, largura
+// toda). Arrastar livremente pela tela foi deixado de fora de propósito: no vertical, o
+// apresentador solto acaba por cima da janela do imóvel ou sob o texto do Instagram.
+
+export type FormatoApresentador = "canto" | "circulo" | "rodape";
+export type CantoApresentador = "superior_esquerdo" | "superior_direito" | "inferior_esquerdo" | "inferior_direito";
+export type TamanhoApresentador = "pequeno" | "medio" | "grande";
+
+export type Apresentador = {
+  /** Caminho do vídeo no bucket privado. */
+  arquivo: string;
+  formato: FormatoApresentador;
+  canto?: CantoApresentador;
+  tamanho?: TamanhoApresentador;
+  /** Segundo do VÍDEO em que ele entra. */
+  entra?: number;
+  /** Quanto tempo fica na tela. Ausente = até o fim do clipe dele. */
+  duracao?: number;
+  /** Segundo do ARQUIVO dele em que a fala começa (aparar o começo). */
+  inicio?: number;
+  /** 0 a 2. 0 = sem o áudio dele. */
+  volume?: number;
+  /**
+   * Remoção de fundo: preparada, desligada. Hoje custa caro por quadro (um vídeo de 20s
+   * são 480 quadros num modelo de segmentação), e um recurso que gasta crédito por
+   * segundo não cabe num Reel de imóvel. O campo existe pra ligar quando ficar barato.
+   */
+  fundo?: "manter" | "remover";
+};
+
+export const FORMATOS_APRESENTADOR: { id: FormatoApresentador; rotulo: string; dica: string }[] = [
+  { id: "canto", rotulo: "No canto", dica: "Retângulo pequeno sobre o vídeo." },
+  { id: "circulo", rotulo: "Círculo", dica: "Recorte redondo, estilo Reels." },
+  { id: "rodape", rotulo: "Faixa embaixo", dica: "Largura toda, no pé do vídeo." },
+];
+
+export const CANTOS_APRESENTADOR: { id: CantoApresentador; rotulo: string }[] = [
+  { id: "superior_esquerdo", rotulo: "Cima · esquerda" },
+  { id: "superior_direito", rotulo: "Cima · direita" },
+  { id: "inferior_esquerdo", rotulo: "Baixo · esquerda" },
+  { id: "inferior_direito", rotulo: "Baixo · direita" },
+];
+
+export const TAMANHOS_APRESENTADOR: { id: TamanhoApresentador; rotulo: string; fracao: number }[] = [
+  { id: "pequeno", rotulo: "Pequeno", fracao: 0.26 },
+  { id: "medio", rotulo: "Médio", fracao: 0.34 },
+  { id: "grande", rotulo: "Grande", fracao: 0.44 },
+];
+
 export type EspecVideo = {
   formato: FormatoId;
   cenas: Cena[];
@@ -353,6 +408,8 @@ export type EspecVideo = {
   capa?: number;
   /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
   legendas?: Legendas | null;
+  /** Você aparecendo por cima do vídeo. */
+  apresentador?: Apresentador | null;
 };
 
 /**
@@ -451,6 +508,29 @@ function limparTextos(bruto: unknown): TextoCena[] | undefined {
     });
   }
   return lista.length ? lista : undefined;
+}
+
+/** O apresentador, limpo. Sem arquivo não existe -- o resto tem padrão. */
+export function limparApresentador(bruto: unknown): Apresentador | null {
+  const b = (bruto && typeof bruto === "object" ? bruto : null) as Record<string, unknown> | null;
+  if (!b) return null;
+  const arquivo = typeof b.arquivo === "string" && /^[\w./-]{1,200}$/.test(b.arquivo) && !b.arquivo.includes("..") ? b.arquivo : null;
+  if (!arquivo) return null;
+  const num = (v: unknown, padrao: number, min: number, max: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n * 10) / 10)) : padrao;
+  };
+  return {
+    arquivo,
+    formato: FORMATOS_APRESENTADOR.some((f) => f.id === b.formato) ? (b.formato as FormatoApresentador) : "canto",
+    canto: CANTOS_APRESENTADOR.some((c) => c.id === b.canto) ? (b.canto as CantoApresentador) : "inferior_direito",
+    tamanho: TAMANHOS_APRESENTADOR.some((t) => t.id === b.tamanho) ? (b.tamanho as TamanhoApresentador) : "medio",
+    entra: num(b.entra, 0, 0, 120),
+    duracao: b.duracao === undefined || b.duracao === null ? undefined : num(b.duracao, 8, 1, 60),
+    inicio: num(b.inicio, 0, 0, LIMITES.aparaMax),
+    volume: num(b.volume, 1, 0, 2),
+    fundo: "manter",
+  };
 }
 
 /**
@@ -582,6 +662,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       transicao: ehTransicao(b.transicao),
       capa,
       legendas: limparLegendas(b.legendas),
+      apresentador: limparApresentador(b.apresentador),
     },
     erro: null,
   };

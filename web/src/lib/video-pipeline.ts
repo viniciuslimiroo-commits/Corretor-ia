@@ -462,6 +462,22 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       const emendas = emendasDoVideo(espec).slice(0, Math.max(0, p.clipes.length - 1));
       const somaEmendas = emendas.reduce((s, e) => s + e.segundos, 0);
       const total = p.duracoes.reduce((s, d) => s + d, 0) - somaEmendas;
+
+      // O apresentador: o clipe da pessoa baixado e sondado. A sondagem importa -- um
+      // vídeo sem faixa de áudio derruba a montagem inteira se o filtro pedir `[n:a]`.
+      let apresentador: (typeof espec.apresentador & { arquivoLocal: string; temAudio: boolean; duracaoClipe: number }) | null = null;
+      if (espec.apresentador?.arquivo) {
+        try {
+          const local2 = local(`apresentador${extensaoDe(espec.apresentador.arquivo)}`);
+          await baixar(db, espec.apresentador.arquivo, local2);
+          const sonda2 = await sondarMidia(local2);
+          const disponivel = Math.max(0, (sonda2.duracao ?? 0) - (espec.apresentador.inicio ?? 0));
+          apresentador = { ...espec.apresentador, arquivoLocal: local2, temAudio: sonda2.temAudio, duracaoClipe: Math.min(disponivel || 8, Math.max(1, total - (espec.apresentador.entra ?? 0))) };
+        } catch (e) {
+          p.avisos.push(`O vídeo do apresentador não pôde ser usado (${e instanceof Error ? e.message.slice(0, 60) : "erro"}); o vídeo saiu sem ele.`);
+          apresentador = null;
+        }
+      }
       const ultimaEmenda = emendas[emendas.length - 1]?.segundos ?? 0;
       const fimDoCarimbo = p.telaFinalRenderizada ? total - LIMITES.telaFinalSegundos + ultimaEmenda : undefined;
       const subtitulo = [espec.preco, espec.local].filter(Boolean).join(" · ");
@@ -483,6 +499,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           vozVolume: espec.narracao?.volume,
           vozInicio: espec.narracao?.inicio,
           legendas: espec.legendas,
+          apresentador,
         }),
         280_000
       );

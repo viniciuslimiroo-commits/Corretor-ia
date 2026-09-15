@@ -8,6 +8,7 @@ import {
   ANIMACOES,
   ANIMACOES_TEXTO,
   BUCKET_UPLOADS,
+  CANTOS_APRESENTADOR,
   CHAMADAS,
   CREDITOS,
   EFEITOS,
@@ -15,6 +16,8 @@ import {
   ESTILOS_TEXTO,
   ESTILO_TEXTO_POR_ID,
   FORMATOS,
+  FORMATOS_APRESENTADOR,
+  TAMANHOS_APRESENTADOR,
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
@@ -29,6 +32,7 @@ import {
   vozDeIA,
   type AnimacaoId,
   type AnimacaoTexto,
+  type Apresentador,
   type Cena,
   type EfeitoId,
   type EspecVideo,
@@ -229,6 +233,15 @@ export default function PaginaVideo() {
   /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
   const [legendas, setLegendas] = useState<Legendas | null>(null);
   const [transcrevendo, setTranscrevendo] = useState(false);
+  /** Você aparecendo no vídeo: o arquivo, os ajustes e a câmera enquanto grava. */
+  const [apresentador, setApresentador] = useState<Apresentador | null>(null);
+  const [apreUrl, setApreUrl] = useState<string | null>(null);
+  const [camera, setCamera] = useState<MediaStream | null>(null);
+  const [gravandoVideo, setGravandoVideo] = useState(false);
+  const [segundosVideo, setSegundosVideo] = useState(0);
+  const [enviandoApre, setEnviandoApre] = useState(false);
+  const gravadorVideo = useRef<MediaRecorder | null>(null);
+  const previaCamera = useRef<HTMLVideoElement | null>(null);
   const [gravando, setGravando] = useState(false);
   const [segundosGravando, setSegundosGravando] = useState(0);
   const [enviandoVoz, setEnviandoVoz] = useState(false);
@@ -250,6 +263,23 @@ export default function PaginaVideo() {
     const t = setInterval(() => setSegundosGerando((v) => v + 1), 1000);
     return () => clearInterval(t);
   }, [gerando]);
+
+  // A prévia da câmera: o fluxo entra no <video> num efeito, não durante o render.
+  useEffect(() => {
+    if (previaCamera.current && camera) previaCamera.current.srcObject = camera;
+  }, [camera]);
+
+  // Relógio da gravação de vídeo, com o mesmo teto da voz.
+  useEffect(() => {
+    if (!gravandoVideo) return;
+    const t = setInterval(() => {
+      setSegundosVideo((v) => {
+        if (v + 1 >= LIMITES.vozSegundosMax) gravadorVideo.current?.stop();
+        return v + 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [gravandoVideo]);
 
   // Relógio da gravação. Para sozinho no teto: gravação esquecida virava arquivo grande
   // e espera longa, e ninguém narra um Reel por três minutos.
@@ -292,8 +322,9 @@ export default function PaginaVideo() {
       transicao,
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
       legendas,
+      apresentador,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   const resumoDosAjustes = [
@@ -564,6 +595,76 @@ export default function PaginaVideo() {
     }
   }
 
+  // ---- apresentador ----
+  //
+  // A câmera só é pedida DEPOIS do clique, e é desligada assim que a gravação termina ou
+  // a pessoa fecha: navegador com a luzinha acesa numa aba esquecida é o jeito mais rápido
+  // de perder a confiança de quem usa.
+  async function abrirCamera() {
+    setErro(null);
+    try {
+      const fluxo = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      setCamera(fluxo);
+    } catch {
+      setErro("Não consegui abrir a câmera. Verifique a permissão do navegador e tente de novo.");
+    }
+  }
+
+  function fecharCamera() {
+    camera?.getTracks().forEach((t) => t.stop());
+    setCamera(null);
+    setGravandoVideo(false);
+    gravadorVideo.current = null;
+  }
+
+  function gravarVideo() {
+    if (!camera) return;
+    const pedacos: BlobPart[] = [];
+    const rec = new MediaRecorder(camera);
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) pedacos.push(e.data);
+    };
+    rec.onstop = async () => {
+      setGravandoVideo(false);
+      const blob = new Blob(pedacos, { type: rec.mimeType || "video/webm" });
+      camera.getTracks().forEach((t) => t.stop());
+      setCamera(null);
+      if (blob.size > 0) await usarVideoApresentador(blob, "Sua gravação");
+    };
+    gravadorVideo.current = rec;
+    rec.start();
+    setSegundosVideo(0);
+    setGravandoVideo(true);
+  }
+
+  async function usarVideoApresentador(arquivo: File | Blob, nome: string) {
+    if (!supabase) return;
+    setEnviandoApre(true);
+    setErro(null);
+    try {
+      const tipo = (arquivo.type || "video/webm").split(";")[0];
+      const r = await fetch("/api/video/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ tipo, tamanho: arquivo.size }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, arquivo, { contentType: tipo });
+      if (error) throw new Error(error.message);
+      setApreUrl(URL.createObjectURL(arquivo));
+      setApresentador({ arquivo: d.caminho, formato: "canto", canto: "inferior_direito", tamanho: "medio", entra: 0, inicio: 0, volume: 1, fundo: "manter" });
+      void nome;
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui enviar o vídeo.");
+    } finally {
+      setEnviandoApre(false);
+    }
+  }
+
   function mudarTrecho(i: number, texto: string) {
     setLegendas((l) => (l ? { ...l, trechos: l.trechos.map((t, j) => (j === i ? { ...t, texto } : t)) } : l));
   }
@@ -779,6 +880,8 @@ export default function PaginaVideo() {
       // também pra voz de IA: a narração fica guardada depois que o vídeo é montado.
       setVozArquivo(dd.edicao?.vozArquivo && dd.edicao?.vozUrl ? { caminho: dd.edicao.vozArquivo, url: dd.edicao.vozUrl, nome: e.narracao?.arquivo ? "Áudio deste vídeo" : "Narração de IA deste vídeo" } : null);
       setLegendas(e.legendas ?? null);
+      setApresentador(e.apresentador ?? null);
+      setApreUrl(dd.edicao?.apresentadorUrl ?? null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
       setResultado(null);
@@ -803,6 +906,8 @@ export default function PaginaVideo() {
     setVozInicio(0.7);
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setLegendas(null);
+    setApresentador(null);
+    setApreUrl(null);
     setChamada(CHAMADAS[0]);
     setTelaFinal(true);
   }
@@ -1394,6 +1499,109 @@ export default function PaginaVideo() {
                 </label>
               )}
             </div>
+          </Cartao>
+
+          {/* ---------- apresentador ----------
+               Você aparecendo no próprio vídeo. Anúncio com rosto é anúncio com gente por
+               trás, e é a peça que mais falta nas ferramentas genéricas -- porque exige
+               gravar, cortar e sobrepor sem sair da tela. */}
+          <Cartao>
+            <Rotulo>Você no vídeo</Rotulo>
+
+            {camera ? (
+              <div>
+                <video ref={previaCamera} autoPlay muted playsInline className="w-full rounded-xl bg-black" />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {gravandoVideo ? (
+                    <>
+                      <Botao variante="secundaria" onClick={() => gravadorVideo.current?.stop()} className="px-3 py-1.5 text-xs">⏹ Parar</Botao>
+                      <span className="inline-flex items-center gap-1.5 text-sm tabular-nums text-red-600">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
+                        {relogio(segundosVideo)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Botao onClick={gravarVideo} className="px-3 py-1.5 text-xs">● Gravar</Botao>
+                      <Botao variante="discreta" onClick={fecharCamera} className="px-3 py-1.5 text-xs">Fechar a câmera</Botao>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : apresentador ? (
+              <div>
+                {apreUrl && <video src={apreUrl} controls playsInline className="w-full rounded-xl bg-black" />}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {FORMATOS_APRESENTADOR.map((f) => (
+                    <Chip key={f.id} ativo={apresentador.formato === f.id} onClick={() => setApresentador({ ...apresentador, formato: f.id })} title={f.dica}>
+                      {f.rotulo}
+                    </Chip>
+                  ))}
+                </div>
+                {apresentador.formato !== "rodape" && (
+                  <>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {CANTOS_APRESENTADOR.map((c) => (
+                        <Chip key={c.id} ativo={(apresentador.canto ?? "inferior_direito") === c.id} onClick={() => setApresentador({ ...apresentador, canto: c.id })}>
+                          {c.rotulo}
+                        </Chip>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {TAMANHOS_APRESENTADOR.map((t) => (
+                        <Chip key={t.id} ativo={(apresentador.tamanho ?? "medio") === t.id} onClick={() => setApresentador({ ...apresentador, tamanho: t.id })}>
+                          {t.rotulo}
+                        </Chip>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="mt-2 grid gap-2 rounded-lg bg-neutral-50 p-2.5 sm:grid-cols-2">
+                  <label className="text-xs text-neutral-600">
+                    Entra em {(apresentador.entra ?? 0).toFixed(1)}s
+                    <input type="range" min={0} max={Math.max(1, Math.round(duracao))} step={0.5} value={apresentador.entra ?? 0} onChange={(e) => setApresentador({ ...apresentador, entra: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
+                  </label>
+                  <label className="text-xs text-neutral-600">
+                    Volume da sua voz · {Math.round((apresentador.volume ?? 1) * 100)}%
+                    <input type="range" min={0} max={2} step={0.05} value={apresentador.volume ?? 1} onChange={(e) => setApresentador({ ...apresentador, volume: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
+                  </label>
+                  <label className="text-xs text-neutral-600 sm:col-span-2">
+                    Começar o clipe em {(apresentador.inicio ?? 0).toFixed(1)}s
+                    <input type="range" min={0} max={30} step={0.5} value={apresentador.inicio ?? 0} onChange={(e) => setApresentador({ ...apresentador, inicio: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
+                  </label>
+                </div>
+                <button
+                  onClick={() => {
+                    setApresentador(null);
+                    setApreUrl(null);
+                  }}
+                  className="mt-2 text-xs text-neutral-500 underline"
+                >
+                  Tirar do vídeo
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Botao variante="secundaria" onClick={abrirCamera} disabled={enviandoApre || gerando} className="px-3 py-1.5 text-xs">
+                  📹 {enviandoApre ? "Guardando…" : "Gravar com a câmera"}
+                </Botao>
+                <label className={"inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400 " + (enviandoApre ? "pointer-events-none opacity-50" : "")}>
+                  <Icone nome="mais" className="h-4 w-4" />
+                  Enviar vídeo
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) usarVideoApresentador(f, f.name);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <span className="basis-full text-xs text-neutral-500">Não gasta crédito. A câmera só é pedida depois do clique.</span>
+              </div>
+            )}
           </Cartao>
 
           <Cartao>

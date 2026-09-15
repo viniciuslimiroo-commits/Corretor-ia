@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
   if (espec.narracao?.arquivo && !espec.narracao.arquivo.startsWith(`uploads/${userId}/`)) {
     return NextResponse.json({ error: "Áudio de narração não reconhecido." }, { status: 400 });
   }
+  if (espec.apresentador?.arquivo && !espec.apresentador.arquivo.startsWith(`uploads/${userId}/`)) {
+    return NextResponse.json({ error: "Vídeo do apresentador não reconhecido." }, { status: 400 });
+  }
 
   // Cena animada cujo clipe já existe (o vídeo está sendo editado e essa cena não mudou)
   // não é cobrada de novo. Decidido aqui, junto com a cobrança, e gravado no pipeline

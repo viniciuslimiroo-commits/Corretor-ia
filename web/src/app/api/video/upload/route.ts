@@ -17,6 +17,8 @@ const TIPOS: Record<string, { ext: string; max: number }> = {
   "image/webp": { ext: "webp", max: 25 * 1024 * 1024 },
   "video/mp4": { ext: "mp4", max: 120 * 1024 * 1024 },
   "video/quicktime": { ext: "mov", max: 120 * 1024 * 1024 },
+  // O que a câmera do navegador grava: Chrome e Edge entregam webm, Safari entrega mp4.
+  "video/webm": { ext: "webm", max: 120 * 1024 * 1024 },
   // Voz: enviada pela pessoa (mp3/m4a/wav) ou gravada aqui no navegador. O
   // MediaRecorder do Chrome e do Edge entrega webm/opus; o do Safari, mp4 -- e os dois
   // chegam com `;codecs=...` no tipo, que é cortado antes de procurar nesta tabela.

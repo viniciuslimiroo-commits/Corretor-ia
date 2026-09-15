@@ -90,6 +90,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
           const caminho = espec.narracao?.arquivo ?? pronto?.narracaoPath;
           return caminho ? assinar(db, caminho).catch(() => null) : null;
         })(),
+        apresentadorUrl: espec.apresentador?.arquivo ? await assinar(db, espec.apresentador.arquivo).catch(() => null) : null,
       },
     });
   }

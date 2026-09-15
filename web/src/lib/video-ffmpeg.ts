@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas } from "./video";
+import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -166,10 +166,12 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
  * O contorno ("sem fundo") usa borda preta grossa: é o que deixa letra branca legível
  * sobre parede clara sem tapar a foto com uma caixa.
  */
-export function filtrosDeLegenda(legendas: Legendas | null | undefined, W: number, H: number): string[] {
+export function filtrosDeLegenda(legendas: Legendas | null | undefined, W: number, H: number, subir = false): string[] {
   if (!legendas?.trechos?.length) return [];
   const tamanho = Math.max(20, Math.round(H * 0.034));
-  const y = legendas.posicao === "centro" ? `(h-text_h)/2` : `h-text_h-${Math.round(H * 0.14)}`;
+  // `subir`: o apresentador em faixa ocupa o pé do vídeo, e legenda atrás de um rosto não
+  // é legenda. Ela passa a morar acima da faixa.
+  const y = legendas.posicao === "centro" ? `(h-text_h)/2` : `h-text_h-${Math.round(H * (subir ? 0.36 : 0.14))}`;
   const comFundo = (legendas.estilo ?? "faixa") === "faixa";
   // 86% da largura: sobra margem dos dois lados, e é dentro dela que a frase quebra.
   const util = W * 0.86;
@@ -486,6 +488,8 @@ export function argsMontagem(o: {
   /** Segundos até a voz começar. Padrão 0,7. */
   vozInicio?: number;
   legendas?: Legendas | null;
+  /** O corretor por cima do vídeo. `arquivo` é o caminho local já baixado. */
+  apresentador?: (Apresentador & { arquivoLocal: string; temAudio: boolean; duracaoClipe: number }) | null;
 }): string[] {
   const n = o.clipes.length;
   // Uma emenda por par, cada uma com a sua duração: a cena escolhe a transição.
@@ -504,6 +508,16 @@ export function argsMontagem(o: {
   if (o.narracao) {
     args.push("-i", o.narracao);
     idxNarracao = idx++;
+  }
+  // O apresentador entra APARADO no próprio arquivo (`-ss` antes do `-i`) e com a duração
+  // que vai ficar na tela: o resto do clipe dele não precisa ser decodificado.
+  let idxApre = -1;
+  const apre = o.apresentador ?? null;
+  const apreDuracao = apre ? Math.min(apre.duracao ?? apre.duracaoClipe, apre.duracaoClipe) : 0;
+  const apreEntra = apre ? Math.max(0, apre.entra ?? 0) : 0;
+  if (apre && apreDuracao > 0.2) {
+    args.push("-ss", (apre.inicio ?? 0).toFixed(2), "-t", apreDuracao.toFixed(2), "-i", apre.arquivoLocal);
+    idxApre = idx++;
   }
 
   const partes: string[] = [];
@@ -539,8 +553,45 @@ export function argsMontagem(o: {
   }
   // As legendas vão por ÚLTIMO: elas acompanham a voz, que corre sobre o vídeo inteiro,
   // e por isso o tempo delas é o da linha do tempo final -- não o de uma cena.
-  const legendas = filtrosDeLegenda(o.legendas, o.W, o.H);
+  //
+  // Com o apresentador em faixa no pé, elas sobem: as duas coisas moram embaixo, e a
+  // legenda por trás de um rosto não é legenda.
+  const apreNoPe = idxApre >= 0 && apre?.formato === "rodape";
+  const legendas = filtrosDeLegenda(o.legendas, o.W, o.H, apreNoPe);
   partes.push(`[${ultimo}]${["format=yuv420p", ...carimbos, ...legendas].join(",")}[vout]`);
+
+  // ---- apresentador ----
+  let saidaVideo = "vout";
+  if (idxApre >= 0 && apre) {
+    const margem = Math.round(o.W * 0.04);
+    const fim = apreEntra + apreDuracao;
+    const janela = `enable='between(t\\,${apreEntra.toFixed(2)}\\,${fim.toFixed(2)})'`;
+    if (apre.formato === "rodape") {
+      const altura = Math.round(o.H * 0.3);
+      partes.push(`[${idxApre}:v]scale=${o.W}:${altura}:force_original_aspect_ratio=increase,crop=${o.W}:${altura},setpts=PTS-STARTPTS[pv]`);
+      partes.push(`[vout][pv]overlay=0:main_h-overlay_h:${janela}[vfinal]`);
+    } else {
+      const lado = Math.round(o.W * (TAMANHOS_APRESENTADOR.find((t) => t.id === (apre.tamanho ?? "medio"))?.fracao ?? 0.34));
+      const canto = apre.canto ?? "inferior_direito";
+      const x = canto.endsWith("direito") ? `main_w-overlay_w-${margem}` : `${margem}`;
+      // No pé, o apresentador sobe um pouco mais: embaixo dele moram a legenda e a barra
+      // do Instagram.
+      const y = canto.startsWith("superior") ? `${margem}` : `main_h-overlay_h-${Math.round(o.H * 0.12)}`;
+      if (apre.formato === "circulo") {
+        // Recorta quadrado e apaga o que está fora do círculo pelo canal alfa. As vírgulas
+        // do `if` e do `hypot` vão escapadas: dentro de um filtro, vírgula separa filtros.
+        const r = Math.round(lado / 2);
+        partes.push(
+          `[${idxApre}:v]scale=${lado}:${lado}:force_original_aspect_ratio=increase,crop=${lado}:${lado},setpts=PTS-STARTPTS,format=rgba,` +
+            `geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='if(lte(hypot(X-${r}\\,Y-${r})\\,${r - 2})\\,255\\,0)'[pv]`
+        );
+      } else {
+        partes.push(`[${idxApre}:v]scale=${lado}:-2,setpts=PTS-STARTPTS[pv]`);
+      }
+      partes.push(`[vout][pv]overlay=${x}:${y}:${janela}[vfinal]`);
+    }
+    saidaVideo = "vfinal";
+  }
 
   // ---- áudio ----
   //
@@ -558,10 +609,31 @@ export function argsMontagem(o: {
   const msInicio = Math.round(Math.min(10, Math.max(0, o.vozInicio ?? 0.7)) * 1000);
   const musicaBase = `[${idxMusica}:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=${volMusica.toFixed(2)}`;
 
-  if (idxMusica >= 0 && idxNarracao >= 0) {
-    partes.push(`${musicaBase}[m]`);
+  // A VOZ do vídeo pode vir de dois lugares: a narração e o apresentador falando. Os dois
+  // juntos viram uma faixa só -- e é essa faixa que faz a música abaixar. Tratar o
+  // apresentador como "outro som" deixaria a música por cima da fala dele.
+  const volApre = Math.min(2, Math.max(0, apre?.volume ?? 1));
+  const temVozApre = idxApre >= 0 && !!apre?.temAudio && volApre > 0;
+  const fontesDeVoz: string[] = [];
+  if (idxNarracao >= 0) {
     // `apad` antes do atrim: voz curta num vídeo longo terminava o amix cedo.
-    partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[nar]`);
+    partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[voz0]`);
+    fontesDeVoz.push("voz0");
+  }
+  if (temVozApre) {
+    const msApre = Math.round(apreEntra * 1000);
+    partes.push(`[${idxApre}:a]adelay=${msApre}|${msApre},volume=${volApre.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[voz1]`);
+    fontesDeVoz.push("voz1");
+  }
+  if (fontesDeVoz.length === 2) {
+    partes.push(`[voz0][voz1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[nar]`);
+  } else if (fontesDeVoz.length === 1) {
+    partes.push(`[${fontesDeVoz[0]}]anull[nar]`);
+  }
+  const temVoz = fontesDeVoz.length > 0;
+
+  if (idxMusica >= 0 && temVoz) {
+    partes.push(`${musicaBase}[m]`);
     partes.push(`[nar]asplit=2[nar1][gatilho]`);
     // threshold em amplitude (0-1), não em dB. ratio 8 e release 350ms: a música volta
     // entre as frases sem "bombear" a cada sílaba.
@@ -569,15 +641,15 @@ export function argsMontagem(o: {
     partes.push(`[mduck][nar1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
   } else if (idxMusica >= 0) {
     partes.push(`${musicaBase}[aout]`);
-  } else if (idxNarracao >= 0) {
-    partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[aout]`);
+  } else if (temVoz) {
+    partes.push(`[nar]anull[aout]`);
   }
 
-  const temAudio = idxMusica >= 0 || idxNarracao >= 0;
+  const temAudio = idxMusica >= 0 || temVoz;
   return [
     ...args,
     "-filter_complex", partes.join(";"),
-    "-map", "[vout]", ...(temAudio ? ["-map", "[aout]"] : []),
+    "-map", `[${saidaVideo}]`, ...(temAudio ? ["-map", "[aout]"] : []),
     "-t", total.toFixed(2),
     ...CODEC_VIDEO,
     ...(temAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]),
