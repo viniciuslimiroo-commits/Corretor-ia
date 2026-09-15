@@ -1,4 +1,5 @@
 import {
+  FILTRO_POR_ID,
   ehTransicao,
   LIMITES,
   SELOS_IMOVEL,
@@ -8,6 +9,7 @@ import {
   type EfeitoId,
   type EspecVideo,
   type EstiloTexto,
+  type FiltroId,
   type FormatoId,
   type MusicaId,
   type PosicaoTexto,
@@ -37,6 +39,8 @@ export type TemplateVideo = {
   formato: FormatoId;
   musica: MusicaId;
   transicao: TransicaoId;
+  /** Acabamento de cor do vídeo inteiro. */
+  filtro: FiltroId;
   duracaoCena: number;
   /** Movimento de câmera em rodízio pelas cenas: cena 1 pega o primeiro, cena 2 o segundo. */
   efeitos: EfeitoId[];
@@ -60,6 +64,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "moderna",
     transicao: "dissolver",
+    filtro: "claro",
     duracaoCena: 4,
     efeitos: ["aproximar", "esquerda", "afastar", "direita"],
     selo: "venda",
@@ -78,6 +83,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "alegre",
     transicao: "deslizar",
+    filtro: "quente",
     duracaoCena: 5,
     efeitos: ["afastar", "direita", "aproximar", "esquerda"],
     selo: "venda",
@@ -96,6 +102,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "elegante",
     transicao: "dissolver",
+    filtro: "cinema",
     duracaoCena: 6,
     efeitos: ["aproximar", "parado", "afastar", "parado"],
     selo: "alto_padrao",
@@ -114,6 +121,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "cinematografica",
     transicao: "aproximar",
+    filtro: "cinema",
     duracaoCena: 4,
     efeitos: ["aproximar", "aproximar", "afastar", "esquerda"],
     selo: "lancamento",
@@ -132,6 +140,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "calma",
     transicao: "deslizar",
+    filtro: "natural",
     duracaoCena: 5,
     efeitos: ["direita", "esquerda", "afastar", "direita"],
     selo: "oportunidade",
@@ -150,6 +159,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "calma",
     transicao: "dissolver",
+    filtro: "quente",
     duracaoCena: 5,
     efeitos: ["afastar", "direita", "aproximar", "esquerda"],
     selo: "novo",
@@ -168,6 +178,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "1:1",
     musica: "moderna",
     transicao: "corte",
+    filtro: "sobrio",
     duracaoCena: 4,
     efeitos: ["parado", "esquerda", "parado", "direita"],
     selo: null,
@@ -186,6 +197,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "alegre",
     transicao: "corte",
+    filtro: "claro",
     duracaoCena: 3,
     efeitos: ["aproximar", "direita", "afastar", "esquerda"],
     selo: "aluguel",
@@ -204,6 +216,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     formato: "9:16",
     musica: "alegre",
     transicao: "aproximar",
+    filtro: "claro",
     duracaoCena: 3,
     efeitos: ["aproximar", "afastar", "aproximar", "afastar"],
     selo: "vendido",
@@ -224,8 +237,10 @@ export type PecaImovel = { id: string; rotulo: string; texto: string };
 export function mudancasDoTemplate(t: TemplateVideo, pecas: PecaImovel[]): string[] {
   const usadas = t.pecas.map((id) => pecas.find((p) => p.id === id)).filter((p): p is PecaImovel => !!p);
   const selo = t.selo ? SELOS_IMOVEL.find((s) => s.id === t.selo) : null;
+  const acabamento = FILTRO_POR_ID[t.filtro]?.rotulo ?? t.filtro;
   const lista = [
     `Formato ${t.formato} e música ${t.musica === "nenhuma" ? "nenhuma" : t.musica}`,
+    `Acabamento de cor: ${acabamento}`,
     `${t.duracaoCena.toFixed(1).replace(".0", "").replace(".", ",")}s por cena, transição ${t.transicao}`,
   ];
   if (selo) lista.push(`Etiqueta “${selo.texto}” na primeira cena`);
@@ -275,7 +290,9 @@ export function aplicarTemplateVideo(
       ...c,
       efeito: c.tipo === "foto" || c.tipo === "antes_depois" ? t.efeitos[i % t.efeitos.length] : c.efeito,
       duracao: fixa ? c.duracao : t.duracaoCena,
-      // A transição por cena volta pra "a do vídeo": o template define uma só.
+      filtro: undefined,
+      luz: undefined,
+      // A transição e o acabamento por cena voltam pro do vídeo: o template define um só.
       transicao: undefined,
       textos: textos.length ? textos : undefined,
       legenda: undefined,
@@ -285,6 +302,7 @@ export function aplicarTemplateVideo(
   return {
     ...base,
     formato: t.formato,
+    filtro: t.filtro,
     musica: t.musica,
     transicao: ehTransicao(t.transicao),
     cenas,

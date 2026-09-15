@@ -14,6 +14,7 @@ import {
   EFEITOS,
   ESTILOS_LEGENDA,
   ESTILOS_TEXTO,
+  FILTROS,
   ESTILO_TEXTO_POR_ID,
   FORMATOS,
   FORMATOS_APRESENTADOR,
@@ -38,6 +39,7 @@ import {
   type EfeitoId,
   type EspecVideo,
   type EstiloTexto,
+  type FiltroId,
   type Legendas,
   type FormatoId,
   type Movimento360Id,
@@ -84,6 +86,10 @@ type CenaUI = {
   melhorar: boolean;
   /** Textos por cima da cena, além da legenda. */
   textos?: TextoCena[];
+  /** Acabamento de cor desta cena. Ausente = o do vídeo. */
+  filtro?: FiltroId;
+  /** Correção de luz, de -0.25 a 0.25. */
+  luz?: number;
   /** Clipe: de que segundo do arquivo esta cena começa. */
   inicio?: number;
   /** A emenda desta cena pra próxima. Ausente = a do vídeo. */
@@ -180,6 +186,8 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     textos: c.textos,
     duracao: c.duracao ?? LIMITES.duracaoPadrao,
     melhorar: c.melhorar ?? false,
+    filtro: c.filtro,
+    luz: c.luz,
     inicio: c.inicio,
     // O espec vem cru do banco: vídeo antigo guarda "suave", que não está mais no
     // catálogo. Normalizar aqui é o que impede o chip de aparecer em branco.
@@ -208,6 +216,8 @@ export default function PaginaVideo() {
   const [formato, setFormato] = useState<FormatoId>("9:16");
   const [musica, setMusica] = useState<MusicaId>("calma");
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
+  /** Acabamento de cor do vídeo inteiro. Cada cena pode sair da linha no painel dela. */
+  const [filtro, setFiltro] = useState<FiltroId>("natural");
   const [titulo, setTitulo] = useState("");
   const [preco, setPreco] = useState("");
   const [local, setLocal] = useState("");
@@ -302,7 +312,7 @@ export default function PaginaVideo() {
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, luz: s.luz })),
       musica,
       musicaVolume,
       // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
@@ -325,8 +335,9 @@ export default function PaginaVideo() {
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
       legendas,
       apresentador,
+      filtro,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
@@ -346,11 +357,12 @@ export default function PaginaVideo() {
     setTransicao(novo.transicao);
     setTelaFinal(novo.telaFinal);
     setChamada(novo.chamada || CHAMADAS[0]);
+    setFiltro(novo.filtro ?? "natural");
     setCenas((atuais) =>
       atuais.map((s, i) => {
         const c = novo.cenas[i];
         if (!c) return s;
-        return { ...s, efeito: c.efeito ?? s.efeito, duracao: c.duracao ?? s.duracao, textos: c.textos, legenda: "", transicao: undefined };
+        return { ...s, efeito: c.efeito ?? s.efeito, duracao: c.duracao ?? s.duracao, textos: c.textos, legenda: "", transicao: undefined, filtro: undefined, luz: undefined };
       })
     );
     setTemplateAberto(null);
@@ -910,6 +922,7 @@ export default function PaginaVideo() {
       setVozArquivo(dd.edicao?.vozArquivo && dd.edicao?.vozUrl ? { caminho: dd.edicao.vozArquivo, url: dd.edicao.vozUrl, nome: e.narracao?.arquivo ? "Áudio deste vídeo" : "Narração de IA deste vídeo" } : null);
       setLegendas(e.legendas ?? null);
       setApresentador(e.apresentador ?? null);
+      setFiltro(e.filtro ?? "natural");
       setApreUrl(dd.edicao?.apresentadorUrl ?? null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
@@ -936,6 +949,7 @@ export default function PaginaVideo() {
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setLegendas(null);
     setApresentador(null);
+    setFiltro("natural");
     setApreUrl(null);
     setChamada(CHAMADAS[0]);
     setTelaFinal(true);
@@ -1251,6 +1265,23 @@ export default function PaginaVideo() {
                       ))}
                     </select>
                   </label>
+                  {/* Acabamento DESTA cena. "Igual ao vídeo" é o estado normal: o
+                      acabamento é do vídeo inteiro, e a cena só sai da linha quando a
+                      pessoa quer -- a foto da fachada em preto e branco no meio de um
+                      vídeo claro, por exemplo. */}
+                  <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+                    Cor
+                    <select
+                      value={cenaAtual.filtro ?? ""}
+                      onChange={(e) => mudarCena(cenaAtual.chave, { filtro: (e.target.value || undefined) as FiltroId | undefined })}
+                      className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm"
+                    >
+                      <option value="">Igual ao vídeo</option>
+                      {FILTROS.map((f) => (
+                        <option key={f.id} value={f.id}>{f.rotulo}</option>
+                      ))}
+                    </select>
+                  </label>
                   {cenaAtual.ehClipe && cenaAtual.tipo === "clipe" && (
                     <label className="flex items-center gap-1.5 text-xs text-neutral-700">
                       <input type="checkbox" checked={cenaAtual.melhorar} onChange={(e) => mudarCena(cenaAtual.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
@@ -1273,6 +1304,22 @@ export default function PaginaVideo() {
                     <input type="range" min={0} max={30} step={0.5} value={cenaAtual.inicio ?? 0} onChange={(e) => mudarCena(cenaAtual.chave, { inicio: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
                   </label>
                 )}
+
+                {/* Luz: o único número solto do editor, e ele está aqui porque é o
+                    único defeito que toda foto de imóvel tem de vez em quando -- o
+                    cômodo saiu escuro. O resto de cor vem com nome. */}
+                <label className="block text-xs text-neutral-600">
+                  Luz {cenaAtual.luz ? (cenaAtual.luz > 0 ? `+${Math.round(cenaAtual.luz * 100)}%` : `${Math.round(cenaAtual.luz * 100)}%`) : "normal"}
+                  <input
+                    type="range"
+                    min={-LIMITES.luzMax}
+                    max={LIMITES.luzMax}
+                    step={0.01}
+                    value={cenaAtual.luz ?? 0}
+                    onChange={(e) => mudarCena(cenaAtual.chave, { luz: Number(e.target.value) || undefined })}
+                    className="mt-1 w-full accent-marca-coral"
+                  />
+                </label>
 
                 <input
                   type="text"
@@ -1496,6 +1543,30 @@ export default function PaginaVideo() {
           </Cartao>
 
           <Cartao>
+            <Rotulo>Cor do vídeo</Rotulo>
+            <p className="-mt-1 mb-3 text-xs text-neutral-500">
+              O acabamento vale pro vídeo inteiro. Uma cena pode sair da linha no painel dela.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {FILTROS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFiltro(f.id)}
+                  disabled={gerando}
+                  className={
+                    "rounded-xl border px-3 py-2 text-left text-sm transition " +
+                    (filtro === f.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
+                  }
+                >
+                  <span className="font-medium">{f.rotulo}</span>
+                  <span className="block text-xs text-neutral-500">{f.dica}</span>
+                </button>
+              ))}
+            </div>
+          </Cartao>
+
+          <Cartao>
             <Rotulo>Música e transição</Rotulo>
             <div className="flex flex-wrap gap-2">
               {MUSICAS.map((m) => (
@@ -1546,7 +1617,10 @@ export default function PaginaVideo() {
                 <div className="rounded-lg bg-neutral-50 p-2.5">
                   <p className="text-xs text-neutral-500">Frase da tela final</p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {CHAMADAS.map((f) => (
+                    {/* "Chame no WhatsApp" some quando a marca não tem número: a tela
+                        final monta o contato a partir de Minha marca, e sem número a
+                        frase manda o cliente pra lugar nenhum. */}
+                    {CHAMADAS.filter((f) => marca?.whatsapp || !/whatsapp/i.test(f)).map((f) => (
                       <Chip key={f} ativo={chamada === f} onClick={() => setChamada(f)}>{f}</Chip>
                     ))}
                     <Chip ativo={chamada === ""} onClick={() => setChamada("")}>Sem frase</Chip>

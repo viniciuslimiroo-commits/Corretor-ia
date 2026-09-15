@@ -10,7 +10,7 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, filtroDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -295,7 +295,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
         if (clipeLocal) {
           const saida = local(nomeClipe);
-          const r = await rodarFfmpeg(argsCenaClipe({ clipe: clipeLocal, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo }));
+          const r = await rodarFfmpeg(argsCenaClipe({ clipe: clipeLocal, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz }));
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         } else {
           // devolve os créditos da animação (se foi cobrada) e renderiza como foto
@@ -303,7 +303,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const foto = local(`foto${i}${extensaoDe(fontes[0])}`);
           await baixar(db, fontes[0], foto);
           const saida = local(nomeClipe);
-          const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo }));
+          const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz }));
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         }
         p.animada = null;
@@ -313,7 +313,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const depois = local("depois.jpg");
         await Promise.all([baixar(db, antesPath, antes), baixar(db, depoisPath, depois)]);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaAntesDepois({ antes, depois, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo }));
+        const r = await rodarFfmpeg(argsCenaAntesDepois({ antes, depois, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else if (cena.tipo === "tour360") {
         // Pode ser foto 360 (equirretangular 2:1), panorâmica de celular (cilíndrica,
@@ -341,7 +341,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }
         const saida = local(nomeClipe);
         const r = await rodarFfmpeg(
-          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, projecao, entradaLargura: larguraEntrada, entradaAltura: alturaEntrada }),
+          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, projecao, entradaLargura: larguraEntrada, entradaAltura: alturaEntrada }),
           280_000
         );
         if (projecao === "panoramica") p.avisos.push(`Cena ${i + 1}: tratei como panorâmica de celular (a imagem não tem a proporção 2:1 de câmera 360).`);
@@ -351,14 +351,14 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const clipe = local(`clipe${i}${extensaoDe(fonte) === ".mov" ? ".mov" : ".mp4"}`);
         await baixar(db, fonte, clipe);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaClipe({ clipe, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, melhorar: cena.melhorar, inicio: cena.inicio }));
+        const r = await rodarFfmpeg(argsCenaClipe({ clipe, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, melhorar: cena.melhorar, inicio: cena.inicio }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else {
         const [fonte] = await fontesDaCena(db, userId, cena);
         const foto = local(`foto${i}${extensaoDe(fonte)}`);
         await baixar(db, fonte, foto);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: cena.efeito ?? "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo }));
+        const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: cena.efeito ?? "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       }
 

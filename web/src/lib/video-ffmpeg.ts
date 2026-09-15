@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
+import { ESTILO_TEXTO_POR_ID, FILTRO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type FiltroId, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -263,10 +263,26 @@ function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string
   return `zoompan=z='${r.z}':d=${d}:x='${r.x}':y='${r.y}':s=${W}x${H}:fps=${FPS}`;
 }
 
+/**
+ * O acabamento de cor da cena: o filtro com nome, mais a correção de luz.
+ *
+ * Vem ANTES dos textos na cadeia, sempre. Texto é peça gráfica: escurecer a cena não pode
+ * escurecer o preço junto, senão "Claro e limpo" deixa a faixa branca cinza.
+ *
+ * Devolve lista, nunca string com vírgula -- quem emenda isso numa string de filtro com
+ * `join(",")` no lugar certo não erra; quem cola à mão erra.
+ */
+export function filtrosDeImagem(filtro: FiltroId | undefined, luz: number | undefined): string[] {
+  const lista = [...(FILTRO_POR_ID[filtro ?? "natural"]?.ffmpeg ?? [])];
+  const l = Number(luz ?? 0);
+  if (Number.isFinite(l) && Math.abs(l) > 0.005) lista.push(`eq=brightness=${Math.max(-0.4, Math.min(0.4, l)).toFixed(2)}`);
+  return lista;
+}
+
 /** Cena de foto parada com movimento de câmera (Ken Burns). Um quadro de entrada. */
-export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: number; duracao: number; efeito: EfeitoId; textos?: TextoCena[]; topoOcupado?: boolean }): string[] {
+export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: number; duracao: number; efeito: EfeitoId; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number }): string[] {
   const frames = Math.round(o.duracao * FPS);
-  const filtros = [enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), "format=yuv420p"];
+  const filtros = [enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
   return ["-i", o.foto, "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
@@ -275,11 +291,13 @@ export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: num
  * Antes e depois: mostra a original, uma cortina passa da esquerda pra direita e fica
  * o resultado. As duas ficam paradas de propósito -- o movimento é a cortina.
  */
-export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean }): string[] {
+export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number }): string[] {
   const trans = 1.4;
   const cada = (o.duracao + trans) / 2;
   const offset = cada - trans;
-  const base = `${enquadrar(o.W, o.H)},format=yuv420p`;
+  // O acabamento vale pras DUAS: comparar antes e depois com cores diferentes seria
+  // vender a correção de cor como se fosse a reforma.
+  const base = [enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"].join(",");
   const rotA = pill({ texto: "Antes", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0x111111" });
   const rotB = pill({ texto: "Depois", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0xf06b4f" });
   // Os textos entram DEPOIS da limpeza entre as duas fotos, senão o "Antes"/"Depois"
@@ -298,8 +316,8 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean }): string[] {
-  const filtros = [`fps=${FPS}`, enquadrar(o.W, o.H), "format=yuv420p"];
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number }): string[] {
+  const filtros = [`fps=${FPS}`, enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
   filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
@@ -340,6 +358,8 @@ export function argsCena360(o: {
   movimento: Movimento360Id;
   textos?: TextoCena[];
   topoOcupado?: boolean;
+  filtro?: FiltroId;
+  luz?: number;
   /** "equirect" (câmera 360) ou "panoramica" (modo panorâmico do celular). */
   projecao?: Projecao360;
   /** Tamanho da imagem de entrada: só usado pra calcular o campo de visão da panorâmica. */
@@ -406,6 +426,7 @@ export function argsCena360(o: {
     `sendcmd=f='${caminhoParaFiltro(arquivoCmd)}'`,
     `v360=${entradaFiltro}:output=flat:h_fov=${preset.fov[0].toFixed(2)}:v_fov=${vFov.toFixed(2)}:w=${wi}:h=${hi}:interp=line`,
     `scale=${o.W}:${o.H}:flags=lanczos`,
+    ...filtrosDeImagem(o.filtro, o.luz),
     "format=yuv420p",
   ];
   filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));

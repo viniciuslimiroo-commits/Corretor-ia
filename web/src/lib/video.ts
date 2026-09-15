@@ -232,6 +232,35 @@ export const SELOS_IMOVEL: { id: string; texto: string; estilo: EstiloTexto; pos
   { id: "whats", texto: "Chame no WhatsApp", estilo: "faixa", posicao: "base" },
 ];
 
+export type FiltroId = "natural" | "claro" | "quente" | "sobrio" | "cinema" | "pb";
+
+/**
+ * Os filtros de imagem, como ACABAMENTOS e não como controles.
+ *
+ * Ninguém abre um editor de imóvel pra girar matiz e saturação: abre pra deixar a sala
+ * clara. Então o que a tela oferece é o resultado com nome -- "Claro e limpo", que é
+ * literalmente o que toda foto de anúncio recebe -- e um controle de luz pra corrigir a
+ * foto que nasceu escura. Os números ficam aqui.
+ *
+ * `ffmpeg` é uma LISTA de filtros já separados, não uma string com vírgula: dentro de um
+ * `-filter_complex` a vírgula separa filtros, e emendar essas strings à mão é como se
+ * criam os erros de escape mais caros deste arquivo.
+ */
+export const FILTROS: { id: FiltroId; rotulo: string; dica: string; ffmpeg: string[] }[] = [
+  { id: "natural", rotulo: "Natural", dica: "A imagem como ela é.", ffmpeg: [] },
+  { id: "claro", rotulo: "Claro e limpo", dica: "Mais luz e contraste. É o acabamento de anúncio de imóvel.", ffmpeg: ["eq=brightness=0.05:contrast=1.12:saturation=1.06"] },
+  { id: "quente", rotulo: "Aconchegante", dica: "Puxa pro dourado: sala de estar, fim de tarde.", ffmpeg: ["colorbalance=rs=0.08:bs=-0.05:rm=0.10:bm=-0.09:rh=0.05:bh=-0.05", "eq=saturation=1.12"] },
+  { id: "sobrio", rotulo: "Sóbrio", dica: "Puxa pro azul: comercial, moderno, alto padrão.", ffmpeg: ["colorbalance=rs=-0.04:bs=0.08:rm=-0.09:bm=0.12:rh=-0.04:bh=0.05", "eq=contrast=1.08:saturation=0.98"] },
+  { id: "cinema", rotulo: "Cinema", dica: "Sombra azulada, luz quente, contraste alto.", ffmpeg: ["colorbalance=bs=0.09:rh=0.06:bh=-0.03", "eq=contrast=1.18:saturation=0.95"] },
+  { id: "pb", rotulo: "Preto e branco", dica: "Sem cor. Vai bem em fachada e detalhe de arquitetura.", ffmpeg: ["hue=s=0", "eq=contrast=1.12"] },
+];
+
+export const FILTRO_POR_ID = Object.fromEntries(FILTROS.map((f) => [f.id, f])) as Record<FiltroId, (typeof FILTROS)[number]>;
+
+export function ehFiltro(v: unknown): FiltroId {
+  return typeof v === "string" && v in FILTRO_POR_ID ? (v as FiltroId) : "natural";
+}
+
 export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada" | "tour360";
 
 export type Cena = {
@@ -255,7 +284,16 @@ export type Cena = {
   inicio?: number;
   /** A emenda DESTA cena pra próxima. Ausente = a do vídeo. */
   transicao?: TransicaoId;
+  /** Acabamento de cor DESTA cena. Ausente = o do vídeo. */
+  filtro?: FiltroId;
+  /** Correção de luz, de -0.25 (escurece) a 0.25 (clareia). Ausente = 0. */
+  luz?: number;
 };
+
+/** O acabamento que vale pra cena: o dela, ou o do vídeo. Mesma regra da transição. */
+export function filtroDaCena(c: Pick<Cena, "filtro">, doVideo: FiltroId | undefined): FiltroId {
+  return c.filtro ? ehFiltro(c.filtro) : ehFiltro(doVideo);
+}
 
 export type MusicaId = "nenhuma" | "calma" | "elegante" | "moderna" | "alegre" | "cinematografica";
 
@@ -410,6 +448,8 @@ export type EspecVideo = {
   legendas?: Legendas | null;
   /** Você aparecendo por cima do vídeo. */
   apresentador?: Apresentador | null;
+  /** Acabamento de cor do vídeo inteiro. A cena pode ter o dela. */
+  filtro?: FiltroId;
 };
 
 /**
@@ -455,6 +495,8 @@ export const LIMITES = {
   trechoMax: 90,
   telaFinalSegundos: 4,
   transicaoSegundos: 0.6,
+  /** Correção de luz por cena. Acima disso a foto lava; abaixo, some. */
+  luzMax: 0.25,
 };
 
 // Créditos: SÓ onde há IA de verdade.
@@ -619,6 +661,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
     const teto = tipo === "tour360" ? LIMITES.duracaoMax360 : LIMITES.duracaoMax;
     const padrao = tipo === "tour360" ? 10 : LIMITES.duracaoPadrao;
     const inicioNum = Number(c.inicio);
+    const luzNum = Number(c.luz);
     cenas.push({
       tipo,
       jobId,
@@ -632,6 +675,10 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       textos: limparTextos(c.textos),
       duracao: Number.isFinite(duracaoNum) ? Math.min(Math.max(Math.round(duracaoNum), LIMITES.duracaoMin), teto) : padrao,
       melhorar: tipo === "clipe" ? c.melhorar === true : undefined,
+      // Ausente = herda o do vídeo. `natural` explícito na cena é uma escolha: "esta
+      // cena NÃO leva o acabamento das outras".
+      filtro: c.filtro === undefined || c.filtro === null ? undefined : ehFiltro(c.filtro),
+      luz: Number.isFinite(luzNum) && Math.abs(luzNum) > 0.005 ? Math.min(LIMITES.luzMax, Math.max(-LIMITES.luzMax, Math.round(luzNum * 100) / 100)) : undefined,
     });
   }
 
@@ -681,6 +728,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       capa,
       legendas: limparLegendas(b.legendas),
       apresentador: limparApresentador(b.apresentador),
+      filtro: ehFiltro(b.filtro),
     },
     erro: null,
   };
