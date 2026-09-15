@@ -26,7 +26,15 @@ export const TIPOS_REFERENCIA = [
 export type CampoTerreno = {
   chave: string;
   rotulo: string;
-  opcoes: { valor: string; rotulo: string; en: string }[];
+  /**
+   * `ajuda` é o que a escolha significa EM PORTUGUÊS, mostrado embaixo dos chips.
+   *
+   * Nasceu de "alto padrão não explica nada": o chip mostra o rótulo, o prompt manda uma
+   * descrição inglesa de material que ninguém vê, e entre os dois não havia como a pessoa
+   * saber o que ia sair antes de gastar o crédito. Só vale a pena onde a palavra não se
+   * explica sozinha -- "Térrea" dispensa, "Popular" não.
+   */
+  opcoes: { valor: string; rotulo: string; en: string; ajuda?: string }[];
   padrao: string;
 };
 
@@ -74,6 +82,7 @@ export const PADROES_CASA = [
   {
     valor: "popular",
     rotulo: "Popular",
+    ajuda: "Reboco pintado, telha cerâmica, janela de alumínio pequena, portão de correr e laje de concreto na entrada. É a casa de financiamento.",
     en:
       "a compact, simple Brazilian working-class house of the kind financed by Minha Casa Minha Vida:" +
       " plain rendered and painted masonry walls in a light colour, a simple low-pitched roof with fibre-cement or plain ceramic tiles," +
@@ -83,6 +92,7 @@ export const PADROES_CASA = [
   {
     valor: "medio",
     rotulo: "Médio",
+    ajuda: "Garagem coberta pra um ou dois carros, varanda na frente, janelas maiores, muro rebocado com portão e jardim.",
     en:
       "a comfortable Brazilian middle-class house: rendered and painted masonry with a ceramic tile roof," +
       " a covered carport for one or two cars, a small front veranda, larger aluminium window frames," +
@@ -91,6 +101,7 @@ export const PADROES_CASA = [
   {
     valor: "alto",
     rotulo: "Alto padrão",
+    ajuda: "Pé-direito alto, vidro do chão ao teto, concreto aparente, pedra e madeira, garagem ampla e paisagismo.",
     en:
       "a high-end Brazilian house: generous proportions and ceiling heights, large floor-to-ceiling glass panes with slim dark frames," +
       " a mix of exposed concrete, natural stone cladding and wood, a wide covered garage," +

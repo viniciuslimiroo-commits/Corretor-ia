@@ -507,18 +507,26 @@ export default function Terreno() {
               </div>
               <p className="mt-2 text-xs text-neutral-500">{acaoTerreno.descricao}</p>
 
-              {acaoTerreno.campos?.map((campo) => (
-                <div key={campo.chave} className="mt-3">
-                  <span className="mb-1 block text-xs text-neutral-500">{campo.rotulo}</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {campo.opcoes.map((o) => (
-                      <Chip key={o.valor} ativo={(camposIa[campo.chave] ?? campo.padrao) === o.valor} onClick={() => setCamposIa((c2) => ({ ...c2, [campo.chave]: o.valor }))}>
-                        {o.rotulo}
-                      </Chip>
-                    ))}
+              {acaoTerreno.campos?.map((campo) => {
+                const escolhido = camposIa[campo.chave] ?? campo.padrao;
+                // A explicação da opção ESCOLHIDA, e só dela: mostrar as três de uma vez
+                // seria trocar "não sei o que é alto padrão" por três parágrafos a mais
+                // numa tela que já tem seis fileiras de botão.
+                const ajuda = campo.opcoes.find((o) => o.valor === escolhido)?.ajuda;
+                return (
+                  <div key={campo.chave} className="mt-3">
+                    <span className="mb-1 block text-xs text-neutral-500">{campo.rotulo}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {campo.opcoes.map((o) => (
+                        <Chip key={o.valor} ativo={escolhido === o.valor} onClick={() => setCamposIa((c2) => ({ ...c2, [campo.chave]: o.valor }))}>
+                          {o.rotulo}
+                        </Chip>
+                      ))}
+                    </div>
+                    {ajuda && <p className="mt-1.5 text-xs leading-snug text-neutral-500">{ajuda}</p>}
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {acaoIa === "construir" && (
                 <div className="mt-3">

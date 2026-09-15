@@ -33,8 +33,18 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
   // vem do servidor (org_members.papel) -- a rota confere de novo, isto aqui é só pra
   // tela não prometer o que a API vai recusar com 403.
   const papel = conta.org?.papel;
-  const daCasa = !!conta.org && (papel === "dono" || papel === "gestor");
-  const soPessoal = !!conta.org && !daCasa;
+  const podeEditarCasa = !!conta.org && (papel === "dono" || papel === "gestor");
+  const soPessoal = !!conta.org && !podeEditarCasa;
+
+  // De quem é a marca que está sendo preenchida.
+  //
+  // Antes a tela decidia sozinha: quem era dono de imobiliária preenchia a marca DA CASA,
+  // ponto. Mas corretor autônomo abre a própria imobiliária no papel e continua sendo uma
+  // pessoa com a própria logo -- e mesmo numa imobiliária de verdade, o dono pode querer
+  // primeiro a marca dele. Os dois existem no banco (users e organizations) e marcaEfetiva
+  // já mescla: o que a pessoa preencher vence, o resto herda da casa. Faltava só perguntar.
+  const [alvo, setAlvo] = useState<"casa" | "pessoal">(podeEditarCasa ? "casa" : "pessoal");
+  const daCasa = podeEditarCasa && alvo === "casa";
 
   const [nome, setNome] = useState(conta.marca?.nome?.split(" · ")[0] ?? "");
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -147,6 +157,41 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
         Adicione seu nome e sua logo para personalizar automaticamente vídeos, PDFs, apresentações e outros materiais.
       </p>
 
+      {podeEditarCasa && (
+        <div className="mt-7">
+          <span className="mb-1.5 block text-sm font-medium text-neutral-700">Esta marca é de quem?</span>
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              { v: "casa" as const, r: `Da ${conta.org!.nome}`, d: "Vale pra todo mundo da imobiliária." },
+              { v: "pessoal" as const, r: "Minha, de corretor", d: "Só nos seus materiais, por cima da marca da casa." },
+            ]).map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => {
+                  setAlvo(o.v);
+                  // O nome preenchido pertence ao alvo anterior: trocar de dono sem trocar
+                  // o nome sairia "Cardoso" no campo de marca pessoal.
+                  if (o.v === "pessoal" && nome.trim() === conta.org!.nome) setNome("");
+                  if (o.v === "casa" && !nome.trim()) setNome(conta.org!.nome);
+                }}
+                className={
+                  "rounded-xl border px-3.5 py-2 text-sm transition " +
+                  (alvo === o.v ? "border-marca-indigo bg-marca-indigo/5 font-medium text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                }
+              >
+                {o.r}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-neutral-500">
+            {alvo === "casa"
+              ? "Vale como padrão pra todo mundo da imobiliária. Dá pra ter a sua depois, em Minha marca."
+              : "Fica só nos seus materiais e passa na frente da marca da imobiliária."}
+          </p>
+        </div>
+      )}
+
       {soPessoal && (
         <p className="mt-4 rounded-xl border border-marca-teal/40 bg-marca-teal/10 px-3.5 py-2.5 text-sm text-marca-indigo">
           A marca de <strong>{conta.org!.nome}</strong> já vale nos seus materiais. O que você puser aqui é o seu nome, que entra junto.
@@ -158,7 +203,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
         <div className="grid gap-5">
           <label className="block">
             <span className="text-sm font-medium text-neutral-700">
-              {daCasa ? "Nome da imobiliária" : "Nome profissional ou imobiliária"}
+              {daCasa ? "Nome da imobiliária" : podeEditarCasa ? "Seu nome profissional" : "Nome profissional ou imobiliária"}
             </span>
             <input
               type="text"
