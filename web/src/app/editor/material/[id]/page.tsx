@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import { useBook } from "@/lib/use-book";
+import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { Aviso, Botao, BotaoConfirma, Icone } from "@/components/ui";
 import Pagina, { type DadosPagina } from "@/components/book/pagina";
 import PainelPagina from "@/components/book/painel-pagina";
@@ -133,6 +134,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   /** Estilo do book inteiro: fonte e capa. Duas escolhas nomeadas, não um seletor. */
   const [menuEstilo, setMenuEstilo] = useState(false);
   const [refazendo, setRefazendo] = useState(false);
+  /** Post, Story e carrossel saem em JPG: o que é publicado, não mandado. */
+  const ehImagem = TIPO_POR_ID[carga.book.tipo]?.saida === "imagem";
   // Recado de uma vez só, deixado pela tela de criação quando o book saiu no automático.
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
   const centro = useRef<HTMLDivElement | null>(null);
@@ -230,12 +233,39 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
    * anexa arquivo por conta própria -- por isso o aviso diz pra anexar, em vez de fingir
    * que já foi.
    */
+  /**
+   * Baixa o material.
+   *
+   * Post, Story e carrossel saem em JPG, UMA IMAGEM POR PÁGINA -- é o que se publica, e é
+   * por isso que aqui existe um laço em vez de um pedido só. Zip seria pior: celular não
+   * abre zip pra postar.
+   */
   async function baixar(qualidade: "leve" | "alta", paraWhatsApp = false) {
     setMenuBaixar(false);
     setExportando(qualidade);
     setErro(null);
     book.salvarAgora();
     try {
+      if (ehImagem) {
+        for (let i = 0; i < book.layout.length; i++) {
+          const r = await fetch(`/api/books/${carga.book.id}/exportar`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+            body: JSON.stringify({ qualidade, pagina: i }),
+          });
+          if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Não consegui gerar a imagem.");
+          const blob = await r.blob();
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = r.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? `material-${i + 1}.jpg`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          // O navegador engasga com vários downloads no mesmo instante.
+          if (i < book.layout.length - 1) await new Promise((r) => setTimeout(r, 400));
+        }
+        avisar(book.layout.length === 1 ? "Imagem baixada." : `${book.layout.length} imagens baixadas, na ordem do carrossel.`);
+        return;
+      }
       const r = await fetch(`/api/books/${carga.book.id}/exportar`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
@@ -564,12 +594,12 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
               {menuBaixar && (
                 <span className="absolute top-full right-0 z-40 mt-1 w-56 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg">
                   <button onClick={() => baixar("leve")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
-                    <strong className="block text-sm font-medium">Para WhatsApp</strong>
-                    <span className="text-neutral-500">Leve, abre rápido no celular</span>
+                    <strong className="block text-sm font-medium">{ehImagem ? "Para publicar" : "Para WhatsApp"}</strong>
+                    <span className="text-neutral-500">{ehImagem ? `JPG 1080px${book.layout.length > 1 ? ` · ${book.layout.length} imagens` : ""}` : "Leve, abre rápido no celular"}</span>
                   </button>
                   <button onClick={() => baixar("alta")} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-neutral-50">
-                    <strong className="block text-sm font-medium">Para imprimir</strong>
-                    <span className="text-neutral-500">300 dpi · arquivo maior e mais lento</span>
+                    <strong className="block text-sm font-medium">{ehImagem ? "Em alta resolução" : "Para imprimir"}</strong>
+                    <span className="text-neutral-500">{ehImagem ? "JPG 1440px · arquivo maior" : "300 dpi · arquivo maior e mais lento"}</span>
                   </button>
                 </span>
               )}

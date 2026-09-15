@@ -160,9 +160,19 @@ export function montarPagina(
     // - capa SEM nenhum dos dois: 78%. Reservar 44% da página pra texto que não existe
     //   deixa um vazio branco enorme embaixo da foto, e é o que acontece hoje em todo
     //   imóvel -- os campos de ficha só passam a existir com a migração 11.
+    //
+    // O STORY é o quarto caso e não segue nenhum dos três: a foto ocupa a tela inteira,
+    // como todo Story, e o texto vive por cima dela. Com a régua do A4 ele saía com
+    // metade da tela em branco -- que num Story é metade do alcance jogada fora.
+    const ehStory = doc.formato === "story";
     const umaPaginaSo = pagina.imagens.length > 1;
     const temTextoAbaixo = !!(pagina.textos.preco?.trim() || pagina.textos.descricao?.trim());
-    const alturaFoto = deitado ? A : umaPaginaSo ? 330 : Math.round(A * (temTextoAbaixo ? 0.56 : 0.78));
+    const cheia = deitado || ehStory;
+    // Material de UMA página sem grade (o post): a foto sobe pra 68%. Com 56% sobrava uma
+    // faixa branca no meio, entre a descrição e o contato -- e post com buraco no meio
+    // parece inacabado, não minimalista.
+    const fracao = temTextoAbaixo ? (doc.paginas.length === 1 && !umaPaginaSo ? 0.68 : 0.56) : 0.78;
+    const alturaFoto = cheia ? A : umaPaginaSo ? Math.round(A * 0.42) : Math.round(A * fracao);
     const primeira = pagina.imagens[0];
     if (primeira) {
       caixas.push({ tipo: "imagem", x: 0, y: 0, l: L, a: alturaFoto, jobId: primeira, modo: "cobrir", foco: foco(primeira) });
@@ -174,11 +184,13 @@ export function montarPagina(
     // identidade desde o começo e nunca tinha sido lida -- era gravada como true e ponto.
     const capaEscura = doc.identidade.capaEscura !== false;
     const corDoTitulo = capaEscura ? "#ffffff" : escuro;
-    const alturaFaixa = deitado ? 190 : 120;
+    // No Story a faixa é mais alta e desce até o pé: ali cabem título, local e preço, e é
+    // onde o dedo não cobre a imagem enquanto a pessoa assiste.
+    const alturaFaixa = deitado ? 190 : ehStory ? 230 : 120;
     caixas.push({ tipo: "retangulo", x: 0, y: alturaFoto - alturaFaixa, l: L, a: alturaFaixa, cor: capaEscura ? "#000000" : "#ffffff", opacidade: capaEscura ? 0.5 : 0.88 });
 
     let y = alturaFoto - alturaFaixa + 30;
-    const tituloT = deitado ? 34 : 26;
+    const tituloT = deitado ? 34 : ehStory ? 22 : 26;
     const t = texto(pagina.textos.titulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: tituloT, negrito: true, cor: corDoTitulo, maxLinhas: 2 });
     if (t) {
       caixas.push(t.caixa);
@@ -186,9 +198,10 @@ export function montarPagina(
     }
     por(texto(pagina.textos.subtitulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: 11, cor: capaEscura ? "#ffffff" : "#414a57", maxLinhas: 1 }));
 
-    if (deitado) {
-      por(texto(pagina.textos.preco ?? "", medir, { x: MARGEM, y: A - 58, l: util, tamanho: 20, negrito: true, cor: corDoTitulo, maxLinhas: 1 }));
-      if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: L - MARGEM - 130, y: 36, l: 130, a: 54, placa: true });
+    if (cheia) {
+      por(texto(pagina.textos.preco ?? "", medir, { x: MARGEM, y: A - (ehStory ? 74 : 58), l: util, tamanho: ehStory ? 26 : 20, negrito: true, cor: corDoTitulo, maxLinhas: 1 }));
+      // No Story o logo fica em cima, longe do texto e da barra de progresso do app.
+      if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: ehStory ? MARGEM : L - MARGEM - 130, y: ehStory ? 46 : 36, l: 130, a: 54, placa: true });
       return { id: pagina.id, largura: L, altura: A, caixas };
     }
 
@@ -227,6 +240,15 @@ export function montarPagina(
           foco: foco(jobId),
         });
       });
+      const assinatura = assinaturaDe(ctx);
+      if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 78, l: util - 100, tamanho: 11, negrito: true, cor: GRAFITE }));
+      if (ctx.link) caixas.push({ tipo: "qr", x: L - MARGEM - 78, y: A - 118, l: 78, a: 78, conteudo: ctx.link });
+      if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: MARGEM, y: A - 118, l: 100, a: 34, placa: false });
+      if (ctx.temEditada !== false) por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
+    } else if (doc.paginas.length === 1) {
+      // Material de uma página só e sem grade (o post): o pé leva o contato, senão sobra
+      // meia tela em branco embaixo do preço -- e um post com espaço vazio parece
+      // inacabado, não minimalista.
       const assinatura = assinaturaDe(ctx);
       if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 78, l: util - 100, tamanho: 11, negrito: true, cor: GRAFITE }));
       if (ctx.link) caixas.push({ tipo: "qr", x: L - MARGEM - 78, y: A - 118, l: 78, a: 78, conteudo: ctx.link });

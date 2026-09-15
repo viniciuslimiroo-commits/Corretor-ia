@@ -6,10 +6,10 @@
 // (537 páginas): a ordem canônica é capa → promessa → localização → implantação → lazer →
 // plantas → ficha → contato, e quem foge dela foge sempre no mesmo lugar.
 
-export type TipoBook = "book" | "whatsapp" | "alto_padrao" | "lancamento" | "catalogo" | "portfolio" | "investidores";
+export type TipoBook = "book" | "whatsapp" | "alto_padrao" | "lancamento" | "catalogo" | "portfolio" | "investidores" | "post" | "story" | "carrossel";
 
 /** Formato da página. Deixou de ser A4 em tudo: o material de hoje é aberto no celular. */
-export type Formato = "a4_retrato" | "a4_paisagem" | "quadrado" | "widescreen";
+export type Formato = "a4_retrato" | "a4_paisagem" | "quadrado" | "widescreen" | "story" | "feed";
 
 /** Em pontos PDF (72 por polegada). O navegador usa a mesma escala e divide por si. */
 export const DIMENSOES: Record<Formato, { largura: number; altura: number }> = {
@@ -17,7 +17,19 @@ export const DIMENSOES: Record<Formato, { largura: number; altura: number }> = {
   a4_paisagem: { largura: 841.89, altura: 595.28 },
   quadrado: { largura: 720, altura: 720 },
   widescreen: { largura: 960, altura: 540 },
+  // 9:16 e 4:5, as duas proporções do Instagram. Em pontos, na mesma escala das outras:
+  // quem exporta imagem multiplica por 1,5 e chega nos 1080 de largura que a rede pede.
+  story: { largura: 405, altura: 720 },
+  feed: { largura: 576, altura: 720 },
 };
+
+/**
+ * Como o material sai: arquivo pra mandar (PDF) ou imagem pra POSTAR.
+ *
+ * Um Story em PDF não serve pra nada -- ninguém publica PDF no Instagram. Os tipos de
+ * rede social saem em JPG, um por página, e por isso o formato deles é o da rede.
+ */
+export type SaidaBook = "pdf" | "imagem";
 
 /**
  * A lista é o valor, e o tipo sai DELA -- não o contrário.
@@ -49,6 +61,13 @@ export type DefBook = {
   paginasFixas: TipoPagina[];
   /** Uma foto por página, sem legenda grande: o alto padrão respira. */
   fotoPorPagina: boolean;
+  /** PDF pra mandar, ou JPG pra postar. Ausente = pdf. */
+  saida?: SaidaBook;
+  /**
+   * Tudo numa página só: as outras fotos entram na própria capa, em vez de virar página
+   * nova. É o que faz o PDF de WhatsApp, o post e o Story.
+   */
+  paginaUnica?: boolean;
 };
 
 export const TIPOS: DefBook[] = [
@@ -117,6 +136,44 @@ export const TIPOS: DefBook[] = [
     variosImoveis: false,
     paginasFixas: ["capa", "numeros", "localizacao", "ficha", "contato"],
     fotoPorPagina: true,
+  },
+  {
+    id: "post",
+    rotulo: "Post do Instagram",
+    para: "Quadrado, uma imagem só: foto, preço e seu contato. Sai em JPG, pronto pra publicar.",
+    formato: "quadrado",
+    maxFotos: 1,
+    usaPreco: true,
+    variosImoveis: false,
+    paginasFixas: ["capa"],
+    fotoPorPagina: false,
+    saida: "imagem",
+    paginaUnica: true,
+  },
+  {
+    id: "story",
+    rotulo: "Story",
+    para: "Em pé, do jeito que o Story abre. Foto grande, preço e chamada. Sai em JPG.",
+    formato: "story",
+    maxFotos: 1,
+    usaPreco: true,
+    variosImoveis: false,
+    paginasFixas: ["capa"],
+    fotoPorPagina: false,
+    saida: "imagem",
+    paginaUnica: true,
+  },
+  {
+    id: "carrossel",
+    rotulo: "Carrossel",
+    para: "Várias imagens quadradas na ordem: a primeira prende, as outras mostram. Sai em JPG, uma por página.",
+    formato: "quadrado",
+    maxFotos: 6,
+    usaPreco: true,
+    variosImoveis: false,
+    paginasFixas: ["capa", "ficha", "contato"],
+    fotoPorPagina: true,
+    saida: "imagem",
   },
   {
     id: "catalogo",

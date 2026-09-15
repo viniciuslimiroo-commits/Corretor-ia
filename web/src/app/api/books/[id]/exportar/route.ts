@@ -5,7 +5,9 @@ import { marcaEfetiva } from "@/lib/cobranca";
 import { limparDocumento, imagensDoDocumento } from "@/lib/book-documento";
 import { montarLayout, type ContextoLayout } from "@/lib/book-layout";
 import { fichaDoImovel } from "@/lib/book-montagem";
+import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { montarPdfDoBook, type Qualidade } from "@/lib/book-pdf";
+import { LARGURA_PADRAO, montarImagemDaPagina } from "@/lib/book-imagem";
 import { faltaMigracao, imovelDeMontagem, resolverQr, RECADO_MIGRACAO } from "@/lib/book-servidor";
 
 // Exportar o book em PDF.
@@ -90,6 +92,34 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   const titulo = (data.titulo as string | null) ?? dados?.imovel.titulo ?? "Book";
+  const nomeArquivo = titulo
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 50);
+
+  // Post, Story e carrossel saem em JPG, uma imagem por página: é o que se publica. O
+  // pedido traz `pagina` porque cada imagem é um arquivo -- o carrossel é baixado página
+  // a página, e não um zip que o celular não sabe abrir.
+  if (TIPO_POR_ID[String(data.tipo)]?.saida === "imagem") {
+    const indice = Math.min(Math.max(0, Number(corpo?.pagina ?? 0) || 0), paginas.length - 1);
+    try {
+      const jpg = await montarImagemDaPagina(paginas[indice], { imagens, logo, largura: qualidade === "alta" ? 1440 : LARGURA_PADRAO });
+      return new NextResponse(new Uint8Array(jpg), {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Content-Disposition": `attachment; filename="${nomeArquivo || "material"}${paginas.length > 1 ? `-${indice + 1}` : ""}.jpg"`,
+          "Cache-Control": "no-store",
+          "X-Encena-Bytes": String(jpg.length),
+          "X-Encena-Paginas": String(paginas.length),
+        },
+      });
+    } catch (e) {
+      return NextResponse.json({ error: `Não consegui montar a imagem: ${e instanceof Error ? e.message : e}` }, { status: 500 });
+    }
+  }
+
   let pdf: Buffer;
   try {
     pdf = await montarPdfDoBook({ paginas, imagens, logo, qualidade, titulo });
@@ -97,17 +127,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: `Não consegui montar o PDF: ${e instanceof Error ? e.message : e}` }, { status: 500 });
   }
 
-  const nome = titulo
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .slice(0, 50);
-
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${nome || "book"}${qualidade === "alta" ? "-alta" : ""}.pdf"`,
+      "Content-Disposition": `attachment; filename="${nomeArquivo || "book"}${qualidade === "alta" ? "-alta" : ""}.pdf"`,
       "Cache-Control": "no-store",
       // A tela mostra o peso final; sem isto ela teria que adivinhar.
       "X-Encena-Bytes": String(pdf.length),

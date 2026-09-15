@@ -207,11 +207,13 @@ export function montar(d: DadosMontagem): DocumentoBook {
     },
   });
 
-  // O de WhatsApp é uma página só, de propósito: é o arquivo que se manda na conversa.
-  // As quatro fotos seguintes entram na própria capa, não em páginas novas.
-  if (def.id === "whatsapp") {
-    paginas[0].imagens = [capa?.jobId, ...restantes.slice(0, 4).map((i) => i.jobId)].filter((x): x is string => !!x);
-    paginas[0].textos.descricao = d.imovel.descricao ?? "";
+  // Página única: o PDF de WhatsApp (o arquivo que se manda na conversa), o post e o
+  // Story. As outras fotos entram na própria capa, não viram página nova.
+  if (def.paginaUnica) {
+    const extras = Math.max(0, def.maxFotos - 1);
+    paginas[0].imagens = [capa?.jobId, ...restantes.slice(0, extras).map((i) => i.jobId)].filter((x): x is string => !!x);
+    // No Story a foto ocupa quase tudo e a descrição não cabe: só título, preço e local.
+    if (def.formato !== "story") paginas[0].textos.descricao = d.imovel.descricao ?? "";
     return { versao: 1, tipo: def.id, formato: def.formato, identidade: { cor: d.cor, capaEscura: true }, paginas };
   }
 

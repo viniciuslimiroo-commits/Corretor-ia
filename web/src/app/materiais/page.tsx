@@ -49,12 +49,14 @@ type ItemBiblioteca = { id: string; categoria: string; rotulo: string; detalhe: 
  */
 const DESTINOS: { tipo: TipoBook; rotulo: string; para: string }[] = [
   { tipo: "whatsapp", rotulo: "Mandar no WhatsApp", para: "Uma página só, leve, abre rápido no celular" },
+  { tipo: "post", rotulo: "Postar no Instagram", para: "Imagem quadrada em JPG, pronta pra publicar" },
+  { tipo: "story", rotulo: "Story", para: "Em pé, tela cheia, do jeito que o Story abre" },
   { tipo: "book", rotulo: "Book completo", para: "Todas as fotos, ficha e seu contato" },
   { tipo: "lancamento", rotulo: "Apresentar numa reunião", para: "Deitado, do jeito que se projeta" },
 ];
 
 /** O resto continua existindo, atrás de um clique: é cauda longa, não caminho principal. */
-const OUTROS: TipoBook[] = ["alto_padrao", "investidores", "catalogo", "portfolio"];
+const OUTROS: TipoBook[] = ["carrossel", "alto_padrao", "investidores", "catalogo", "portfolio"];
 
 /** O que dizer enquanto monta. Descreve o que o servidor está fazendo, na ordem real. */
 const PASSOS = [
