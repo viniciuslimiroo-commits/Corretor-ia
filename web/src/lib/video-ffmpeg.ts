@@ -691,6 +691,64 @@ export function argsMiniatura(video: string, saida: string, segundo = 1): string
   return ["-ss", s.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=720:-2", "-q:v", "4", saida];
 }
 
+/**
+ * A CAPA MONTADA: a FOTO da cena escolhida, com o nome do imóvel, o preço e o logo.
+ *
+ * É a imagem que aparece ANTES de alguém tocar no play -- no feed, no WhatsApp, na lista
+ * de vídeos. Um quadro cru vende o cômodo; a capa montada vende o anúncio, e é o único
+ * lugar em que o preço é lido por quem ainda não decidiu assistir.
+ *
+ * Sai da FOTO e não de um quadro do vídeo, e essa é a decisão que importa: o vídeo
+ * carimba título e preço no alto de TODA a duração (`fimDoCarimbo` só some na tela
+ * final), então uma capa tirada dele traria os dois escritos duas vezes -- em cima pelo
+ * carimbo, embaixo pela capa. Foi o que apareceu no primeiro render, e nenhum teste de
+ * string mostraria.
+ *
+ * Tudo aqui é fração da altura, e o enquadramento repete o do vídeo, então a capa vale
+ * igual em 9:16, 1:1 e 4:5 e nunca sai com barra preta no feed.
+ */
+export function argsCapaMontada(o: { foto: string; saida: string; W: number; H: number; titulo?: string; preco?: string; local?: string; cor: string; logo?: string }): string[] {
+  const fonte = caminhoParaFiltro(caminhoFonte());
+  const corHex = /^#[0-9a-fA-F]{6}$/.test(o.cor) ? "0x" + o.cor.slice(1) : "0x0f2d5b";
+  const titulo = (o.titulo ?? "").trim();
+  const preco = (o.preco ?? "").trim();
+  const onde = (o.local ?? "").trim();
+
+  // A faixa cobre o pé do quadro. Alta o bastante pra caber nome e preço, e escura o
+  // bastante pra letra branca ser lida sobre qualquer foto.
+  // Enquadrada como o vídeo e reduzida pra 720 de largura: a capa tem a MESMA proporção
+  // do vídeo, senão a miniatura aparece com barra preta no feed.
+  const larguraCapa = 720;
+  const alturaCapa = Math.round((larguraCapa * o.H) / o.W / 2) * 2;
+  const filtros = [`scale=${larguraCapa}:${alturaCapa}:force_original_aspect_ratio=increase`, `crop=${larguraCapa}:${alturaCapa}`, `drawbox=x=0:y=ih*0.66:w=iw:h=ih*0.34:color=black@0.55:t=fill`];
+
+  const desenhar = (texto: string, tamanho: number, y: number, cor: string, negrito = false) =>
+    `drawtext=fontfile='${fonte}':text=${textoParaFiltro(quebrarLinhas(texto, 640, tamanho, 2), true)}:fontsize=${tamanho}:fontcolor=${cor}:x=40:y=h*${y}${negrito ? ":borderw=0" : ""}`;
+
+  // De baixo pra cima: preço, local, título. Assim o título sobe quando há preço e
+  // desce quando não há, sem uma conta de altura acumulada.
+  if (preco) filtros.push(desenhar(preco, 46, 0.845, "white", true));
+  if (onde) filtros.push(desenhar(onde, 22, 0.788, "0xd8dee8"));
+  if (titulo) filtros.push(desenhar(titulo, 30, onde ? 0.723 : 0.75, "white", true));
+  // Um traço na cor da marca ancora a faixa e diz de quem é o anúncio, mesmo sem logo.
+  filtros.push(`drawbox=x=40:y=ih*0.66+8:w=64:h=6:color=${corHex}@1:t=fill`);
+
+  // `-frames:v 1` fica nas opções de SAÍDA, nunca antes de um `-i`. Antes do `-i` ele é
+  // opção de entrada, e o demuxer de imagem do logo recusa ("Error parsing options for
+  // input file") -- a capa inteira falhava e caía no quadro cru, calada.
+  const entrada = ["-i", o.foto];
+  if (o.logo) {
+    return [
+      ...entrada,
+      "-i", o.logo,
+      "-filter_complex",
+      `[0:v]${filtros.join(",")}[base];[1:v]scale=180:-1[lg];[base][lg]overlay=main_w-overlay_w-36:34[v]`,
+      "-map", "[v]", "-frames:v", "1", "-q:v", "3", o.saida,
+    ];
+  }
+  return [...entrada, "-frames:v", "1", "-vf", filtros.join(","), "-q:v", "3", o.saida];
+}
+
 /** Onde os clipes intermediários de um vídeo ficam no bucket. */
 export function caminhoTemporario(userId: string, videoId: string, nome: string) {
   return `tmp/videos/${userId}/${videoId}/${nome}`;

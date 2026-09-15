@@ -16,6 +16,7 @@ import {
   argsCenaAntesDepois,
   argsCenaClipe,
   argsCenaFoto,
+  argsCapaMontada,
   argsMiniatura,
   argsMontagem,
   argsTelaFinal,
@@ -510,7 +511,50 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       const inicioDaCapa = p.duracoes.slice(0, k).reduce((s, d) => s + d, 0) - emendas.slice(0, k).reduce((s, e) => s + e.segundos, 0);
       const segundoDaCapa = Math.max(0, inicioDaCapa + Math.min(1.5, (p.duracoes[k] ?? 4) / 2));
       const thumb = local("thumb.jpg");
-      await rodarFfmpeg(argsMiniatura(saida, thumb, segundoDaCapa), 30_000).catch(() => null);
+      // A capa MONTADA é a imagem que aparece antes de alguém tocar no play. Só faz
+      // sentido quando há o que escrever nela: sem título nem preço, a faixa escura
+      // cobriria um terço da foto pra não dizer nada, e aí o quadro cru é melhor.
+      const cenaDaCapa = espec.cenas[k];
+      const temCapaMontada = espec.capaMontada !== false && !!(espec.titulo?.trim() || espec.preco?.trim()) && cenaDaCapa?.tipo !== "clipe" && cenaDaCapa?.tipo !== "tour360";
+      let feita = false;
+      if (temCapaMontada) {
+        try {
+          // A FOTO da cena escolhida, não um quadro do vídeo: o carimbo de título e preço
+          // vive no alto do vídeo inteiro, e uma capa tirada dali sairia com os dois
+          // escritos duas vezes.
+          const [fonteCapa] = await fontesDaCena(db, userId, cenaDaCapa);
+          const fotoCapa = local(`capa-fonte${path.extname(fonteCapa) || ".jpg"}`);
+          await baixar(db, fonteCapa, fotoCapa);
+
+          const marcaCapa = await marcaEfetiva(db, userId).catch(() => null);
+          let logoCapa: string | undefined;
+          if (marcaCapa?.logo_path) {
+            logoCapa = local("logo-capa.png");
+            await baixar(db, marcaCapa.logo_path, logoCapa).catch(() => {
+              logoCapa = undefined;
+            });
+          }
+          await rodarFfmpeg(
+            argsCapaMontada({
+              foto: fotoCapa,
+              saida: thumb,
+              W,
+              H,
+              titulo: espec.titulo,
+              preco: espec.preco,
+              local: espec.local,
+              cor: marcaCapa?.cor_marca ?? "#0F2D5B",
+              logo: logoCapa,
+            }),
+            40_000
+          );
+          feita = fs.existsSync(thumb);
+        } catch {
+          feita = false;
+        }
+      }
+      // Sem capa montada, ou se ela falhou: o quadro cru, que é o que sempre houve.
+      if (!feita) await rodarFfmpeg(argsMiniatura(saida, thumb, segundoDaCapa), 30_000).catch(() => null);
       const sonda = await sondarMidia(saida);
 
       const caminhoFinal = caminhoVideoFinal(userId, video.id);

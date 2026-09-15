@@ -457,8 +457,9 @@ export type EspecVideo = {
   legendas?: Legendas | null;
   /** Você aparecendo por cima do vídeo. */
   apresentador?: Apresentador | null;
-  /** Acabamento de cor do vídeo inteiro. A cena pode ter o dela. */
   filtro?: FiltroId;
+  /** Capa com o nome e o preço escritos por cima. Ausente = sim, quando há o que escrever. */
+  capaMontada?: boolean;
 };
 
 /**
@@ -738,6 +739,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       legendas: limparLegendas(b.legendas),
       apresentador: limparApresentador(b.apresentador),
       filtro: ehFiltro(b.filtro),
+      capaMontada: b.capaMontada !== false,
     },
     erro: null,
   };

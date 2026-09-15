@@ -218,6 +218,8 @@ export default function PaginaVideo() {
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   /** Acabamento de cor do vídeo inteiro. Cada cena pode sair da linha no painel dela. */
   const [filtro, setFiltro] = useState<FiltroId>("natural");
+  /** Capa com o nome e o preço escritos por cima do quadro. */
+  const [capaMontada, setCapaMontada] = useState(true);
   const [titulo, setTitulo] = useState("");
   const [preco, setPreco] = useState("");
   const [local, setLocal] = useState("");
@@ -336,8 +338,9 @@ export default function PaginaVideo() {
       legendas,
       apresentador,
       filtro,
+      capaMontada,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, capaMontada]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
@@ -956,6 +959,7 @@ export default function PaginaVideo() {
       setLegendas(e.legendas ?? null);
       setApresentador(e.apresentador ?? null);
       setFiltro(e.filtro ?? "natural");
+      setCapaMontada(e.capaMontada !== false);
       setApreUrl(dd.edicao?.apresentadorUrl ?? null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
@@ -983,6 +987,7 @@ export default function PaginaVideo() {
     setLegendas(null);
     setApresentador(null);
     setFiltro("natural");
+    setCapaMontada(true);
     setApreUrl(null);
     setChamada(CHAMADAS[0]);
     setTelaFinal(true);
@@ -1673,6 +1678,21 @@ export default function PaginaVideo() {
                 <input value={preco} onChange={(e) => setPreco(e.target.value)} maxLength={30} placeholder="Preço (ex.: R$ 690.000)" className={campo} />
                 <input value={local} onChange={(e) => setLocal(e.target.value)} maxLength={50} placeholder="Bairro · Cidade" className={campo} />
               </div>
+              {/* A capa é o que aparece ANTES de alguém tocar no play -- no feed, no
+                  WhatsApp, na lista. Quadro cru vende o cômodo; capa montada vende o
+                  anúncio, e é o único lugar em que o preço é lido por quem ainda não
+                  decidiu assistir. Só oferecida quando há o que escrever nela. */}
+              {(titulo.trim() || preco.trim()) && (
+                <label className="flex items-start gap-2 text-sm text-neutral-700">
+                  <input type="checkbox" checked={capaMontada} onChange={(e) => setCapaMontada(e.target.checked)} className="mt-0.5 accent-marca-coral" />
+                  <span>
+                    Capa com o nome e o preço escritos
+                    <span className="block text-xs text-neutral-500">
+                      A imagem que aparece antes de tocar o vídeo. Sem isso, a capa é o quadro cru da cena escolhida.
+                    </span>
+                  </span>
+                </label>
+              )}
               <label className="flex items-start gap-2 text-sm text-neutral-700">
                 <input type="checkbox" checked={telaFinal} onChange={(e) => setTelaFinal(e.target.checked)} className="mt-0.5 accent-marca-coral" />
                 <span>
