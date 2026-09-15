@@ -53,6 +53,7 @@ import {
 } from "@/lib/video";
 import { aplicarTemplateVideo, mudancasDoTemplate, TEMPLATES_VIDEO, templateVaiApagarTexto, type TemplateVideo } from "@/lib/video-templates";
 import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
+import { useIdioma } from "@/i18n/cliente";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -206,6 +207,9 @@ function dataCurta(iso: string) {
 export default function PaginaVideo() {
   const c = useConta();
   const { user, token } = c;
+  // O idioma vale pras palavras que entram DENTRO do vídeo -- "3 quartos", "Preço",
+  // "/mês". Elas não são interface: saem desenhadas no arquivo que vai pro cliente.
+  const { idioma } = useIdioma();
 
   const [imovelId, setImovelId] = useState<string | null>(null);
   const [geracoes, setGeracoes] = useState<Geracao[]>([]);
@@ -344,7 +348,7 @@ export default function PaginaVideo() {
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
-  const pecas = pecasDoImovel(ficha, marca);
+  const pecas = pecasDoImovel(ficha, marca, idioma);
 
   /**
    * O modelo aberto pra conferência. Clicar num modelo NÃO aplica: mostra o que vai
@@ -464,15 +468,15 @@ export default function PaginaVideo() {
         setLocal((atual) => atual || d.imovel.endereco || "");
         // Preço e dados vêm da ficha: o que está lá não se digita de novo, e o que não
         // está lá não se inventa.
-        setPreco((atual) => atual || valorComPeriodo(d.imovel.ficha?.preco, d.imovel.ficha?.negocio));
-        setFichaResumo(resumoDaFicha(d.imovel.ficha, LIMITES.legendaMax));
+        setPreco((atual) => atual || valorComPeriodo(d.imovel.ficha?.preco, d.imovel.ficha?.negocio, idioma));
+        setFichaResumo(resumoDaFicha(d.imovel.ficha, LIMITES.legendaMax, idioma));
         setFicha(d.imovel.ficha ?? null);
       })
       .catch(() => {});
     return () => {
       vivo = false;
     };
-  }, [user, imovelId, token]);
+  }, [user, imovelId, token, idioma]);
 
   /**
    * Põe uma foto da biblioteca na linha do tempo.

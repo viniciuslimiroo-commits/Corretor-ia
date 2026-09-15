@@ -328,7 +328,7 @@ export async function montarAutomatico(args: {
   // `montar` a ordem da visita reordena tudo de novo, com a nota como desempate.
   const ordenadas = comVista.slice().sort((a, b) => b.qualidade - a.qualidade);
 
-  const dados: DadosMontagem = { tipo: def.id, imovel, imagens: ordenadas, cor };
+  const dados: DadosMontagem = { tipo: def.id, imovel, imagens: ordenadas, cor, idioma };
   const documento = montar(dados);
 
   // Legenda: quando a PESSOA marcou o cômodo ao editar a foto, vale o rótulo dela. Quando

@@ -122,6 +122,27 @@ if (rIA.ok) {
   conferir(!pareceportugues, "o pedido em espanhol não voltou em português");
 }
 
+// ---- 4. o vocabulário da ficha dentro do material ----
+// Estas palavras não são interface: entram impressas na peça que vai pro cliente.
+console.log("\n--- 4. o vocabulário da ficha ---");
+const VOCABULARIO = { pt: /\bquartos?\b|\bvagas?\b/i, es: /\bdormitorios?\b|\bcocheras?\b/i, en: /\bbedrooms?\b|\bgarages?\b/i };
+const NAO_PODE = { pt: /\bbedrooms?\b|\bcocheras?\b/i, es: /\bquartos?\b|\bbedrooms?\b/i, en: /\bquartos?\b|\bdormitorios?\b/i };
+for (const idioma of ["pt", "es", "en"]) {
+  const r = await fetch(`${BASE}/api/books`, { method: "POST", headers: comIdioma(idioma), body: JSON.stringify({ tipo: "book", imovelId: imovel.id }) });
+  const d = await r.json();
+  if (!r.ok) {
+    conferir(false, `${idioma}: material criado`, d.error ?? "");
+    continue;
+  }
+  const carga2 = await (await fetch(`${BASE}/api/books/${d.book.id}`, { headers: comIdioma(idioma) })).json();
+  const tudo = (carga2.layout ?? []).flatMap((pg) => (pg.caixas ?? []).filter((c) => c.tipo === "texto").flatMap((c) => c.linhas)).join(" | ");
+  const achou = VOCABULARIO[idioma].test(tudo);
+  const errado = NAO_PODE[idioma].test(tudo);
+  conferir(achou, `${idioma}: a ficha usa as palavras do idioma`, (tudo.match(VOCABULARIO[idioma]) ?? ["nenhuma"])[0]);
+  conferir(!errado, `${idioma}: e nenhuma palavra de outro idioma`, errado ? (tudo.match(NAO_PODE[idioma]) ?? [""])[0] : "");
+  await fetch(`${BASE}/api/books/${d.book.id}`, { method: "DELETE", headers: comIdioma("pt") });
+}
+
 await fetch(`${BASE}/api/books/${bookId}`, { method: "DELETE", headers: comIdioma("pt") });
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "DELETE", headers: comIdioma("pt") });
 conferir(antes === (await saldo()), "nada disso gastou crédito", `${antes}`);

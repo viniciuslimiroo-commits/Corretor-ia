@@ -7,6 +7,8 @@
 // "a partir de R$ 690.000", "isento". Guardar número obriga a formatar, e formatar moeda
 // é onde o bug mora.
 
+import type { Idioma } from "@/i18n/idiomas";
+
 export type CampoFicha = {
   chave: string;
   rotulo: string;
@@ -70,22 +72,40 @@ export const CHAVES_FICHA = CAMPOS_FICHA.map((c) => c.chave);
  * Sem negócio informado, devolve o valor exatamente como o corretor escreveu. Acrescentar
  * "/mês" por conta própria seria inventar um fato sobre o imóvel, que é justamente o que o
  * guarda de fatos existe pra impedir.
+ *
+ * O vocabulário da ficha, nos três idiomas.
+ *
+ * Existe porque estas palavras NÃO ficam na tela: elas entram desenhadas dentro do vídeo
+ * e impressas no material, que é o que o corretor manda pro cliente dele. "3 quartos"
+ * dentro de um Reels em espanhol não é falta de polimento -- é a peça saindo errada.
+ *
+ * O VALOR em si não é traduzido nem formatado: quem digita o preço é o corretor, no
+ * cadastro, com o símbolo e a pontuação do país dele. A Encena não adivinha moeda; ela
+ * só não estraga o que foi digitado. O que muda aqui é a palavra em volta.
  */
-export function rotuloDoValor(negocio?: string | null): string {
-  if (negocio === "locacao") return "Aluguel";
-  if (negocio === "ambos") return "Venda / aluguel";
-  return "Preço";
+const PALAVRAS: Record<Idioma, { quarto: [string, string]; vaga: [string, string]; suite: [string, string]; banheiro: [string, string]; preco: string; aluguel: string; ambos: string; porMes: string; cond: string }> = {
+  pt: { quarto: ["quarto", "quartos"], vaga: ["vaga", "vagas"], suite: ["suíte", "suítes"], banheiro: ["banheiro", "banheiros"], preco: "Preço", aluguel: "Aluguel", ambos: "Venda / aluguel", porMes: "/mês", cond: "Cond." },
+  es: { quarto: ["dormitorio", "dormitorios"], vaga: ["cochera", "cocheras"], suite: ["suite", "suites"], banheiro: ["baño", "baños"], preco: "Precio", aluguel: "Alquiler", ambos: "Venta / alquiler", porMes: "/mes", cond: "Cond." },
+  en: { quarto: ["bedroom", "bedrooms"], vaga: ["garage", "garages"], suite: ["suite", "suites"], banheiro: ["bathroom", "bathrooms"], preco: "Price", aluguel: "Rent", ambos: "Sale / rent", porMes: "/month", cond: "HOA" },
+};
+
+export function rotuloDoValor(negocio?: string | null, idioma: Idioma = "pt"): string {
+  const pal = PALAVRAS[idioma];
+  if (negocio === "locacao") return pal.aluguel;
+  if (negocio === "ambos") return pal.ambos;
+  return pal.preco;
 }
 
-export function valorComPeriodo(valor: string | null | undefined, negocio?: string | null): string {
+export function valorComPeriodo(valor: string | null | undefined, negocio?: string | null, idioma: Idioma = "pt"): string {
   const v = (valor ?? "").trim();
   if (!v || negocio !== "locacao") return v;
   // Não repete o que já está escrito: o corretor que digitou "R$ 2.500/mês" não merece
-  // "R$ 2.500/mês/mês".
-  if (/\/\s*m[êe]s|por m[êe]s|mensal/i.test(v)) return v;
+  // "R$ 2.500/mês/mês". Vale pros três idiomas, porque quem digitou pode ter escrito em
+  // qualquer um deles.
+  if (/\/\s*m[êe]s|por m[êe]s|mensal|\/\s*mes\b|\/\s*month|per month|monthly/i.test(v)) return v;
   // "Sob consulta", "a combinar": não é valor, não leva período.
   if (!/\d/.test(v)) return v;
-  return `${v}/mês`;
+  return `${v}${PALAVRAS[idioma].porMes}`;
 }
 
 /**
@@ -96,23 +116,24 @@ export function valorComPeriodo(valor: string | null | undefined, negocio?: stri
  * que o comprador pergunta primeiro -- quartos, vagas, área -- e o que não couber no
  * limite fica de fora em vez de cortar palavra no meio.
  */
-export function resumoDaFicha(ficha: Record<string, unknown> | null | undefined, max = 40): string {
+export function resumoDaFicha(ficha: Record<string, unknown> | null | undefined, max = 40, idioma: Idioma = "pt"): string {
   if (!ficha) return "";
   const n = (k: string) => {
     const v = Number(ficha[k]);
     return Number.isFinite(v) && v > 0 ? v : null;
   };
+  const pal = PALAVRAS[idioma];
   const partes: string[] = [];
   const dorm = n("dormitorios");
-  if (dorm) partes.push(`${dorm} ${dorm === 1 ? "quarto" : "quartos"}`);
+  if (dorm) partes.push(`${dorm} ${pal.quarto[dorm === 1 ? 0 : 1]}`);
   const vagas = n("vagas");
-  if (vagas) partes.push(`${vagas} ${vagas === 1 ? "vaga" : "vagas"}`);
+  if (vagas) partes.push(`${vagas} ${pal.vaga[vagas === 1 ? 0 : 1]}`);
   const area = n("area_util") ?? n("area_total");
   if (area) partes.push(`${String(area).replace(".", ",")} m²`);
   const suites = n("suites");
-  if (suites) partes.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
+  if (suites) partes.push(`${suites} ${pal.suite[suites === 1 ? 0 : 1]}`);
   const banh = n("banheiros");
-  if (banh) partes.push(`${banh} ${banh === 1 ? "banheiro" : "banheiros"}`);
+  if (banh) partes.push(`${banh} ${pal.banheiro[banh === 1 ? 0 : 1]}`);
   let linha = "";
   for (const p of partes) {
     const tentativa = linha ? `${linha} · ${p}` : p;
@@ -135,8 +156,10 @@ export function resumoDaFicha(ficha: Record<string, unknown> | null | undefined,
  */
 export function pecasDoImovel(
   ficha: Record<string, unknown> | null | undefined,
-  marca?: { nome?: string | null; creci?: string | null; whatsapp?: string | null } | null
+  marca?: { nome?: string | null; creci?: string | null; whatsapp?: string | null } | null,
+  idioma: Idioma = "pt"
 ): { id: string; rotulo: string; texto: string }[] {
+  const pal = PALAVRAS[idioma];
   const pecas: { id: string; rotulo: string; texto: string }[] = [];
   const f = ficha ?? {};
   const num = (k: string) => {
@@ -153,19 +176,19 @@ export function pecasDoImovel(
   if (preco) pecas.push({ id: "preco", rotulo: rotuloDoValor(negocio), texto: preco });
 
   const dorm = num("dormitorios");
-  if (dorm) pecas.push({ id: "dormitorios", rotulo: "Quartos", texto: `${dorm} ${dorm === 1 ? "quarto" : "quartos"}` });
+  if (dorm) pecas.push({ id: "dormitorios", rotulo: pal.quarto[1], texto: `${dorm} ${pal.quarto[dorm === 1 ? 0 : 1]}` });
   const suites = num("suites");
-  if (suites) pecas.push({ id: "suites", rotulo: "Suítes", texto: `${suites} ${suites === 1 ? "suíte" : "suítes"}` });
+  if (suites) pecas.push({ id: "suites", rotulo: pal.suite[1], texto: `${suites} ${pal.suite[suites === 1 ? 0 : 1]}` });
   const banheiros = num("banheiros");
-  if (banheiros) pecas.push({ id: "banheiros", rotulo: "Banheiros", texto: `${banheiros} ${banheiros === 1 ? "banheiro" : "banheiros"}` });
+  if (banheiros) pecas.push({ id: "banheiros", rotulo: pal.banheiro[1], texto: `${banheiros} ${pal.banheiro[banheiros === 1 ? 0 : 1]}` });
   const vagas = num("vagas");
-  if (vagas) pecas.push({ id: "vagas", rotulo: "Vagas", texto: `${vagas} ${vagas === 1 ? "vaga" : "vagas"}` });
+  if (vagas) pecas.push({ id: "vagas", rotulo: pal.vaga[1], texto: `${vagas} ${pal.vaga[vagas === 1 ? 0 : 1]}` });
   const area = num("area_util") ?? num("area_total");
   if (area) pecas.push({ id: "area", rotulo: "Área", texto: `${String(area).replace(".", ",")} m²` });
   const cond = txt("condominio");
-  if (cond) pecas.push({ id: "condominio", rotulo: "Condomínio", texto: `Cond. ${cond}` });
+  if (cond) pecas.push({ id: "condominio", rotulo: pal.cond, texto: `${pal.cond} ${cond}` });
 
-  const resumo = resumoDaFicha(f, 44);
+  const resumo = resumoDaFicha(f, 44, idioma);
   if (resumo && resumo.includes("·")) pecas.push({ id: "resumo", rotulo: "Resumo", texto: resumo });
 
   if (marca?.nome) pecas.push({ id: "corretor", rotulo: "Nome", texto: marca.nome });

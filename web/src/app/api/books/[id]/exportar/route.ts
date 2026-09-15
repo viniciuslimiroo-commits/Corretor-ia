@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const marca = await marcaEfetiva(db, userId);
   const contexto: ContextoLayout = {
     marca: { nome: marca.nome, creci: marca.creci, whatsapp: marca.whatsapp, temLogo: !!marca.logo_path },
-    ficha: dados ? fichaDoImovel(dados.imovel) : [],
+    ficha: dados ? fichaDoImovel(dados.imovel, idiomaDaRequisicao(req)) : [],
     link: dados?.shareToken ? `${origemDoApp(req).replace(/\/$/, "")}/c/${dados.shareToken}` : null,
     idioma: idiomaDaRequisicao(req),
   };

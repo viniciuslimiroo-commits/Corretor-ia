@@ -1,5 +1,6 @@
 import { TIPOS_ESPACO, rotuloDoTipo } from "./acoes";
 import { rotuloDoValor, valorComPeriodo } from "./ficha-imovel";
+import type { Idioma } from "@/i18n/idiomas";
 import { TIPO_POR_ID, type TipoBook } from "./book-tipos";
 import { novoId, type DocumentoBook, type Pagina } from "./book-documento";
 
@@ -142,7 +143,8 @@ export function escolherCapa(imagens: ImagemDisponivel[], capaMarcada?: string |
 }
 
 /** A ficha técnica, só com o que está preenchido. Campo vazio não vira linha em branco. */
-export function fichaDoImovel(i: ImovelMontagem): { rotulo: string; valor: string }[] {
+export function fichaDoImovel(i: ImovelMontagem, idioma: Idioma = "pt"): { rotulo: string; valor: string }[] {
+  const r = ROTULOS_FICHA[idioma];
   const linhas: { rotulo: string; valor: string }[] = [];
   // Número sai no formato daqui: 96,5 e não 96.5. O ponto decimal num material que vai
   // pro cliente brasileiro parece erro de sistema.
@@ -151,23 +153,38 @@ export function fichaDoImovel(i: ImovelMontagem): { rotulo: string; valor: strin
     const texto = typeof valor === "number" ? String(valor).replace(".", ",") : String(valor);
     linhas.push({ rotulo, valor: `${texto}${sufixo}` });
   };
-  por("Área útil", i.area_util, " m²");
-  por("Área total", i.area_total, " m²");
-  por("Dormitórios", i.dormitorios);
-  por("Suítes", i.suites);
-  por("Banheiros", i.banheiros);
-  por("Vagas", i.vagas);
-  por("Ano", i.ano_construcao);
-  por("Condomínio", i.condominio);
-  por("IPTU", i.iptu);
+  por(r.areaUtil, i.area_util, " m²");
+  por(r.areaTotal, i.area_total, " m²");
+  por(r.dormitorios, i.dormitorios);
+  por(r.suites, i.suites);
+  por(r.banheiros, i.banheiros);
+  por(r.vagas, i.vagas);
+  por(r.ano, i.ano_construcao);
+  por(r.condominio, i.condominio);
+  por(r.iptu, i.iptu);
   return linhas;
 }
+
+/**
+ * Os rótulos da ficha impressa, nos três idiomas.
+ *
+ * A ficha vai IMPRESSA no material que o corretor manda pro cliente: "Dormitórios" numa
+ * página em espanhol é a peça saindo errada, não um detalhe de interface. "IPTU" fica
+ * como está de propósito -- é o nome de um imposto brasileiro, não uma palavra.
+ */
+const ROTULOS_FICHA: Record<Idioma, { areaUtil: string; areaTotal: string; dormitorios: string; suites: string; banheiros: string; vagas: string; ano: string; condominio: string; iptu: string }> = {
+  pt: { areaUtil: "Área útil", areaTotal: "Área total", dormitorios: "Dormitórios", suites: "Suítes", banheiros: "Banheiros", vagas: "Vagas", ano: "Ano", condominio: "Condomínio", iptu: "IPTU" },
+  es: { areaUtil: "Superficie útil", areaTotal: "Superficie total", dormitorios: "Dormitorios", suites: "Suites", banheiros: "Baños", vagas: "Cocheras", ano: "Año", condominio: "Expensas", iptu: "IPTU" },
+  en: { areaUtil: "Usable area", areaTotal: "Total area", dormitorios: "Bedrooms", suites: "Suites", banheiros: "Bathrooms", vagas: "Garages", ano: "Year", condominio: "HOA", iptu: "Property tax" },
+};
 
 export type DadosMontagem = {
   tipo: TipoBook;
   imovel: ImovelMontagem;
   imagens: ImagemDisponivel[];
   cor?: string;
+  /** Idioma dos textos que a montagem escreve sozinha (preço com período, ficha). */
+  idioma?: Idioma;
 };
 
 /**
@@ -202,7 +219,7 @@ export function montar(d: DadosMontagem): DocumentoBook {
     textos: {
       titulo: d.imovel.titulo,
       subtitulo: d.imovel.endereco ?? "",
-      ...(def.usaPreco && d.imovel.preco ? { preco: valorComPeriodo(d.imovel.preco, d.imovel.negocio) } : {}),
+      ...(def.usaPreco && d.imovel.preco ? { preco: valorComPeriodo(d.imovel.preco, d.imovel.negocio, d.idioma) } : {}),
       ...(descricaoNaCapa && d.imovel.descricao ? { descricao: d.imovel.descricao } : {}),
     },
   });

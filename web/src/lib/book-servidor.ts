@@ -178,7 +178,7 @@ export async function prepararLeitura(
   ]);
   const ctx: ContextoLayout = {
     marca: { nome: marca.nome, creci: marca.creci, whatsapp: marca.whatsapp, temLogo: !!marca.logo_path },
-    ficha: imovel ? fichaDoImovel(imovel) : [],
+    ficha: imovel ? fichaDoImovel(imovel, idioma) : [],
     link: shareToken ? `${origem.replace(/\/$/, "")}/c/${shareToken}` : null,
     temEditada,
     idioma,
