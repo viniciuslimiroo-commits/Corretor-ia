@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       .from("jobs")
       // properties!jobs_property_id_fkey: há DUAS chaves entre jobs e properties
       // (jobs.property_id e properties.capa_job_id); sem nomear, o PostgREST recusa.
-      .select("id, tipo, parametros, input_path, output_path, criado_em, property_id, properties!jobs_property_id_fkey(titulo)")
+      .select("id, tipo, parametros, input_path, output_path, criado_em, property_id, favorito, properties!jobs_property_id_fkey(titulo)")
       .eq("user_id", userId)
       .eq("status", "concluido")
       .not("output_path", "is", null)
@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
         imovel: j.property_id ? { id: j.property_id, titulo: imovel?.titulo ?? "Imóvel" } : null,
         miniatura,
         antes,
+        favorito: !!j.favorito,
       };
     })
   );

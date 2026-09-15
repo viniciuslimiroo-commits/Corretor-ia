@@ -58,6 +58,7 @@ export default function Materiais() {
   const [ordem, setOrdem] = useState<Ordem>("recentes");
   /** Índice (em `filtrados`) do item aberto no visualizador. */
   const [aberto, setAberto] = useState<number | null>(null);
+  const [soFavoritos, setSoFavoritos] = useState(false);
   const [enviando, setEnviando] = useState(0);
   const [recado, setRecado] = useState<string | null>(null);
   const { user, token } = c;
@@ -85,6 +86,7 @@ export default function Materiais() {
     const desde = periodo.desde;
     const lista = (itens ?? []).filter((i) => {
       if (categoria !== "tudo" && i.categoria !== categoria) return false;
+      if (soFavoritos && !i.favorito) return false;
       if (imovelFiltro && i.imovel?.id !== imovelFiltro) return false;
       if (desde && new Date(i.criadoEm).getTime() < desde) return false;
       if (termo && !`${i.rotulo} ${i.detalhe} ${i.imovel?.titulo ?? ""}`.toLowerCase().includes(termo)) return false;
@@ -92,7 +94,7 @@ export default function Materiais() {
     });
     // A lista já vem do servidor do mais novo pro mais velho; "antigos" só inverte.
     return ordem === "antigos" ? [...lista].reverse() : lista;
-  }, [itens, categoria, imovelFiltro, busca, periodo, ordem]);
+  }, [itens, categoria, soFavoritos, imovelFiltro, busca, periodo, ordem]);
 
   /** Só imagem entra em PDF -- vídeo fica de fora da seleção. */
   const selecionaveis = useMemo(() => filtrados.filter((i) => i.categoria !== "video"), [filtrados]);
@@ -182,6 +184,27 @@ export default function Materiais() {
       setImoveis(d.imoveis);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao apagar.");
+    }
+  }
+
+  /** Estrela: guarda no job (migração 16). Otimista na tela; desfaz se o servidor recusar. */
+  async function favoritar(id: string, favorito: boolean) {
+    setErro(null);
+    setItens((lista) => (lista ?? []).map((i) => (i.id === id ? { ...i, favorito } : i)));
+    try {
+      const r = await fetch(`/api/job/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ favorito }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error ?? "Não consegui guardar o favorito.");
+      // Reaplica a resposta do servidor: a leitura da lista pode ter voltado no meio do
+      // caminho, com o valor antigo, e desfeito o que a tela já mostrava. Aconteceu.
+      setItens((lista) => (lista ?? []).map((i) => (i.id === id ? { ...i, favorito: !!d.favorito } : i)));
+    } catch (e) {
+      setItens((lista) => (lista ?? []).map((i) => (i.id === id ? { ...i, favorito: !favorito } : i)));
+      setErro(e instanceof Error ? e.message : "Erro ao favoritar.");
     }
   }
 
@@ -341,6 +364,9 @@ export default function Materiais() {
               {k.rotulo}
             </Chip>
           ))}
+          <Chip ativo={soFavoritos} onClick={() => setSoFavoritos((v) => !v)} title="Só o que você marcou com estrela">
+            ★ Favoritos
+          </Chip>
           {imoveis.length > 0 && (
             <select
               value={imovelFiltro}
@@ -442,6 +468,21 @@ export default function Materiais() {
                   {!video && (
                     <button
                       type="button"
+                      onClick={() => favoritar(i.id, !i.favorito)}
+                      aria-pressed={!!i.favorito}
+                      aria-label={i.favorito ? "Tirar dos favoritos" : "Favoritar"}
+                      title={i.favorito ? "Tirar dos favoritos" : "Favoritar"}
+                      className={
+                        "absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full transition " +
+                        (i.favorito ? "bg-amber-400 text-white" : "bg-black/25 text-white/70 hover:bg-black/40 hover:text-white")
+                      }
+                    >
+                      <Icone nome="estrela" className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {!video && (
+                    <button
+                      type="button"
                       onClick={() => alternar(i.id)}
                       aria-pressed={marcado}
                       aria-label={marcado ? "Desmarcar" : "Marcar pra usar em material"}
@@ -473,6 +514,7 @@ export default function Materiais() {
           aoApagarVideo={apagarVideo}
           aoUsarEmMaterial={(id) => criarMaterial([id])}
           aoMudarImovel={mudarImovel}
+          aoFavoritar={favoritar}
         />
       )}
 

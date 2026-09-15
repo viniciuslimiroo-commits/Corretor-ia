@@ -39,6 +39,8 @@ export async function GET(req: NextRequest) {
       progresso,
       nome: marca.nome,
       temLogo: !!marca.logo_path,
+      /** Decide se "Chame no WhatsApp" faz sentido como frase de tela final. */
+      temWhatsapp: !!marca.whatsapp,
       /** Herdada da imobiliária: o corretor vê a marca da casa sem ter preenchido nada. */
       daImobiliaria: marca.deImobiliaria,
     },

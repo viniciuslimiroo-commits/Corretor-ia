@@ -261,7 +261,7 @@ export default function Landing() {
           <Link href="/termos" className="hover:text-marca-indigo">{t("landing.rodape.termos")}</Link>
           <Link href="/privacidade" className="hover:text-marca-indigo">{t("landing.rodape.privacidade")}</Link>
           <Link href="/planos" className="hover:text-marca-indigo">{t("landing.rodape.planos")}</Link>
-          <SeletorIdioma />
+          <SeletorIdioma paraCima />
           <span className="ml-auto">{t("landing.rodape.aviso")}</span>
         </div>
       </footer>

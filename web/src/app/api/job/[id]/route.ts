@@ -366,22 +366,28 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const userId = userData.user.id;
 
   const corpo = await req.json().catch(() => ({}));
-  if (!("imovelId" in corpo)) return NextResponse.json({ error: "Nada pra alterar." }, { status: 400 });
+  const mudaImovel = "imovelId" in corpo;
+  const mudaFavorito = typeof corpo.favorito === "boolean";
+  if (!mudaImovel && !mudaFavorito) return NextResponse.json({ error: "Nada pra alterar." }, { status: 400 });
   const imovelId: string | null = typeof corpo.imovelId === "string" && corpo.imovelId ? corpo.imovelId : null;
 
-  if (imovelId) {
+  if (mudaImovel && imovelId) {
     const { data: imovel } = await db.from("properties").select("id").eq("id", imovelId).eq("user_id", userId).maybeSingle();
     if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 404 });
   }
 
-  const { data: alterado } = await db
+  const mudancas: { property_id?: string | null; favorito?: boolean } = {};
+  if (mudaImovel) mudancas.property_id = imovelId;
+  if (mudaFavorito) mudancas.favorito = corpo.favorito; // migração 16
+  const { data: alterado, error: erroUpdate } = await db
     .from("jobs")
-    .update({ property_id: imovelId })
+    .update(mudancas)
     .eq("id", id)
     .eq("user_id", userId)
-    .select("id, property_id");
+    .select("id, property_id, favorito");
+  if (erroUpdate) return NextResponse.json({ error: `Não consegui alterar: ${erroUpdate.message}` }, { status: 500 });
   if (!alterado || alterado.length === 0) return NextResponse.json({ error: "Geração não encontrada." }, { status: 404 });
-  if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
+  if (mudaImovel && imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 
-  return NextResponse.json({ jobId: id, imovelId });
+  return NextResponse.json({ jobId: id, imovelId: alterado[0].property_id ?? null, favorito: !!alterado[0].favorito });
 }

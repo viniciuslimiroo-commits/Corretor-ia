@@ -28,6 +28,8 @@ export type ItemAcervo = {
   miniatura: string | null;
   /** A foto original, quando o job guardou: liga o antes/depois. */
   antes?: string | null;
+  /** Só imagem (migração 16). */
+  favorito?: boolean;
 };
 
 function quando(iso: string) {
@@ -45,6 +47,7 @@ export default function VisualizadorAcervo({
   aoApagarVideo,
   aoUsarEmMaterial,
   aoMudarImovel,
+  aoFavoritar,
 }: {
   itens: ItemAcervo[];
   indice: number;
@@ -56,6 +59,7 @@ export default function VisualizadorAcervo({
   aoApagarVideo: (id: string) => Promise<void> | void;
   aoUsarEmMaterial: (id: string) => void;
   aoMudarImovel: (id: string, imovelId: string | null) => Promise<void> | void;
+  aoFavoritar: (id: string, favorito: boolean) => Promise<void> | void;
 }) {
   const item = itens[indice];
   const [zoom, setZoom] = useState(false);
@@ -234,6 +238,17 @@ export default function VisualizadorAcervo({
           </>
         ) : (
           <>
+            <button
+              type="button"
+              onClick={() => rodar(() => aoFavoritar(item.id, !item.favorito))}
+              disabled={ocupado}
+              aria-pressed={!!item.favorito}
+              className={acao + (item.favorito ? " border-amber-300/60 bg-amber-400/20 text-amber-200" : "")}
+              title={item.favorito ? "Tirar dos favoritos" : "Guardar nos favoritos"}
+            >
+              <Icone nome="estrela" className="h-4 w-4" />
+              {item.favorito ? "Favorito" : "Favoritar"}
+            </button>
             {item.antes && (
               <button type="button" onClick={() => setComparar((v) => !v)} className={acao + (comparar ? " bg-white/20" : "")} title="A foto original guardada, lado a lado com a editada">
                 <Icone nome="olho" className="h-4 w-4" />
