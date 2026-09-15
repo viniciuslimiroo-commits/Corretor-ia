@@ -122,6 +122,62 @@ export function resumoDaFicha(ficha: Record<string, unknown> | null | undefined,
   return linha;
 }
 
+/**
+ * As PEÇAS do imóvel: cada dado da ficha já escrito do jeito que vai pro vídeo ou pro
+ * material, pronto pra virar um texto na tela.
+ *
+ * Existe pra o editor não pedir que o corretor digite "R$ 690.000" de novo -- ele já
+ * digitou uma vez, no cadastro. Só entra o que está preenchido: peça vazia não vira
+ * botão, e botão que insere texto em branco é pior que botão nenhum.
+ *
+ * A marca entra junto porque, na hora de montar, CRECI e WhatsApp são da mesma família
+ * de "dados que eu não quero digitar" -- e vêm do mesmo lugar pra vídeo e pra book.
+ */
+export function pecasDoImovel(
+  ficha: Record<string, unknown> | null | undefined,
+  marca?: { nome?: string | null; creci?: string | null; whatsapp?: string | null } | null
+): { id: string; rotulo: string; texto: string }[] {
+  const pecas: { id: string; rotulo: string; texto: string }[] = [];
+  const f = ficha ?? {};
+  const num = (k: string) => {
+    const v = Number(f[k]);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const txt = (k: string) => {
+    const v = f[k];
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+
+  const negocio = txt("negocio");
+  const preco = valorComPeriodo(txt("preco"), negocio);
+  if (preco) pecas.push({ id: "preco", rotulo: rotuloDoValor(negocio), texto: preco });
+
+  const dorm = num("dormitorios");
+  if (dorm) pecas.push({ id: "dormitorios", rotulo: "Quartos", texto: `${dorm} ${dorm === 1 ? "quarto" : "quartos"}` });
+  const suites = num("suites");
+  if (suites) pecas.push({ id: "suites", rotulo: "Suítes", texto: `${suites} ${suites === 1 ? "suíte" : "suítes"}` });
+  const banheiros = num("banheiros");
+  if (banheiros) pecas.push({ id: "banheiros", rotulo: "Banheiros", texto: `${banheiros} ${banheiros === 1 ? "banheiro" : "banheiros"}` });
+  const vagas = num("vagas");
+  if (vagas) pecas.push({ id: "vagas", rotulo: "Vagas", texto: `${vagas} ${vagas === 1 ? "vaga" : "vagas"}` });
+  const area = num("area_util") ?? num("area_total");
+  if (area) pecas.push({ id: "area", rotulo: "Área", texto: `${String(area).replace(".", ",")} m²` });
+  const cond = txt("condominio");
+  if (cond) pecas.push({ id: "condominio", rotulo: "Condomínio", texto: `Cond. ${cond}` });
+
+  const resumo = resumoDaFicha(f, 44);
+  if (resumo && resumo.includes("·")) pecas.push({ id: "resumo", rotulo: "Resumo", texto: resumo });
+
+  if (marca?.nome) pecas.push({ id: "corretor", rotulo: "Nome", texto: marca.nome });
+  if (marca?.creci) pecas.push({ id: "creci", rotulo: "CRECI", texto: `CRECI ${marca.creci}` });
+  if (marca?.whatsapp) {
+    const n = marca.whatsapp.replace(/\D/g, "").slice(-11);
+    const formatado = n.length === 11 ? `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}` : n.length === 10 ? `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}` : marca.whatsapp;
+    pecas.push({ id: "whatsapp", rotulo: "WhatsApp", texto: formatado });
+  }
+  return pecas;
+}
+
 /** Limpa o que veio do navegador, campo a campo, pelo tipo declarado acima. */
 export function limparFicha(corpo: Record<string, unknown>): Record<string, string | number | null> {
   const saida: Record<string, string | number | null> = {};

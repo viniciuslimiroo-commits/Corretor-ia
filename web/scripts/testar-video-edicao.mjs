@@ -9,9 +9,9 @@
 //
 //   node --experimental-strip-types --import ./scripts/resolver-ts.mjs scripts/testar-video-edicao.mjs
 
-import { CHAMADAS, LIMITES, duracaoEstimada, emendasDoVideo, limparEspec } from "../src/lib/video.ts";
-import { argsCenaClipe, argsMiniatura, argsMontagem, argsTelaFinal } from "../src/lib/video-ffmpeg.ts";
-import { resumoDaFicha } from "../src/lib/ficha-imovel.ts";
+import { CHAMADAS, LIMITES, duracaoEstimada, emendasDoVideo, limparEspec, textosDaCena } from "../src/lib/video.ts";
+import { argsCenaClipe, argsMiniatura, argsMontagem, argsTelaFinal, filtrosDeTexto } from "../src/lib/video-ffmpeg.ts";
+import { pecasDoImovel, resumoDaFicha } from "../src/lib/ficha-imovel.ts";
 
 let falhas = 0;
 const conferir = (ok, oque, extra = "") => {
@@ -160,6 +160,61 @@ console.log("\n--- 5. linha do tempo: emendas por cena e aparar ---");
   conferir(f.includes("offset=3.92") && f.includes("offset=7.32"), "as posições acumulam certo", (f.match(/offset=[\d.]+/g) ?? []).join(" "));
   const t = a[a.indexOf("-t") + 1];
   conferir(t === "11.32", "a duração total bate com a soma menos as emendas", t + "s");
+}
+
+console.log("\n--- 6. textos e peças do imóvel ---");
+{
+  const { espec } = limparEspec({
+    ...base,
+    cenas: [{ tipo: "foto", jobId: JOB, legenda: "Sala de estar", textos: [{ texto: "Lançamento", estilo: "etiqueta", posicao: "topo", animacao: "surgir" }, { texto: "R$ 690.000", estilo: "destaque", posicao: "base" }] }],
+  });
+  const t = espec.cenas[0].textos ?? [];
+  conferir(t.length === 2, "os textos da cena são guardados", String(t.length));
+  conferir(t[0].estilo === "etiqueta" && t[0].posicao === "topo" && t[0].animacao === "surgir", "estilo, posição e entrada");
+  conferir(t[1].animacao === "nenhuma", "sem entrada informada, fica parado");
+  const todos = textosDaCena(espec.cenas[0]);
+  conferir(todos.length === 3 && todos[0].texto === "Sala de estar", "a legenda é o primeiro texto, pelo mesmo motor", todos.map((x) => x.texto).join(" · "));
+}
+{
+  const { espec } = limparEspec({ ...base, cenas: [{ tipo: "foto", jobId: JOB, textos: [{ texto: "  " }, { texto: "Ok", estilo: "inventado", posicao: "diagonal" }] }] });
+  const t = espec.cenas[0].textos ?? [];
+  conferir(t.length === 1, "texto vazio não entra");
+  conferir(t[0].estilo === "faixa" && t[0].posicao === "base", "estilo e posição inventados caem no padrão");
+  const { espec: e6 } = limparEspec({ ...base, cenas: [{ tipo: "foto", jobId: JOB, textos: Array.from({ length: 9 }, () => ({ texto: "x" })) }] });
+  conferir((e6.cenas[0].textos ?? []).length === LIMITES.textosPorCena, `no máximo ${LIMITES.textosPorCena} por cena`);
+}
+{
+  const f = filtrosDeTexto(
+    [
+      { texto: "Preço", estilo: "destaque", posicao: "base", animacao: "nenhuma" },
+      { texto: "3 quartos", estilo: "faixa", posicao: "base", animacao: "subir" },
+      { texto: "Lançamento", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+    ],
+    1080,
+    1920
+  );
+  conferir(f.length === 3, "um filtro por texto");
+  const baseY = f.map((x) => /y=([^:]+)/.exec(x)?.[1]);
+  conferir(baseY[0] !== baseY[1], "dois textos embaixo EMPILHAM em vez de se sobrepor", baseY.slice(0, 2).join("  vs  "));
+  conferir(f[1].includes("min(t/0.5\\,1)"), "‘subir’ escapa a vírgula do min (senão vira outro filtro)");
+  conferir(f[2].includes("enable='gte(t\\,0.5)'"), "‘surgir’ entra depois de meio segundo");
+  const tam = (x) => Number(/fontsize=(\d+)/.exec(x)?.[1]);
+  conferir(tam(f[0]) > tam(f[1]) && tam(f[1]) > tam(f[2]), "destaque > faixa > etiqueta", `${tam(f[0])} · ${tam(f[1])} · ${tam(f[2])}`);
+  conferir(f[2].includes("0xf06b4f"), "etiqueta sai coral");
+}
+{
+  const ficha = { negocio: "venda", preco: "R$ 690.000", dormitorios: 3, suites: 1, vagas: 2, area_util: 120, condominio: "R$ 780" };
+  const p = pecasDoImovel(ficha, { nome: "Ana Lima", creci: "12345", whatsapp: "62999990000" });
+  const porId = Object.fromEntries(p.map((x) => [x.id, x.texto]));
+  conferir(porId.preco === "R$ 690.000", "peça de preço", porId.preco);
+  conferir(porId.dormitorios === "3 quartos" && porId.vagas === "2 vagas" && porId.area === "120 m²", "quartos, vagas e área");
+  conferir(porId.creci === "CRECI 12345", "CRECI vem da marca");
+  conferir(porId.whatsapp === "(62) 99999-0000", "WhatsApp formatado", porId.whatsapp);
+  conferir(!!porId.resumo && porId.resumo.includes("·"), "e o resumo de uma linha", porId.resumo);
+  const aluguel = pecasDoImovel({ negocio: "locacao", preco: "R$ 2.500" }, null);
+  conferir(aluguel[0].rotulo === "Aluguel" && aluguel[0].texto === "R$ 2.500/mês", "na locação vira Aluguel e ganha /mês", aluguel[0].texto);
+  conferir(pecasDoImovel({}, null).length === 0, "ficha vazia não oferece peça nenhuma");
+  conferir(pecasDoImovel({ dormitorios: 0, vagas: null }, null).length === 0, "zero e nulo não viram peça");
 }
 
 console.log(falhas === 0 ? "\nTODOS OK" : `\n${falhas} FALHA(S)`);

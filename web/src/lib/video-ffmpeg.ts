@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360 } from "./video";
+import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -66,6 +66,56 @@ type OpcoesPill = {
   enable?: string;
   fonte?: string;
 };
+
+/**
+ * Os textos de uma cena, virados em filtros de desenho.
+ *
+ * Um motor só: a legenda de sempre e os textos que a pessoa acrescenta passam por aqui.
+ * Textos na mesma posição EMPILHAM em vez de se sobrepor -- dois preços um por cima do
+ * outro é o defeito que aparece no arquivo final e em nenhum teste de string.
+ *
+ * As animações não mexem em transparência de propósito: no `drawtext`, `alpha` afeta o
+ * texto e não a caixa atrás dele, então um "aparecer suave" deixaria a caixa piscando
+ * inteira antes da letra. Mexer em POSIÇÃO e em QUANDO aparece é o que funciona igual em
+ * todos os estilos.
+ */
+export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOcupado = false): string[] {
+  const usadas: Record<string, number> = {};
+  return textos.map((t) => {
+    const posicao = t.posicao ?? "base";
+    const nivel = usadas[posicao] ?? 0;
+    usadas[posicao] = nivel + 1;
+    const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"] ?? ESTILO_TEXTO_POR_ID.faixa;
+    const tamanho = Math.max(18, Math.round(H * est.tamanho));
+    const passo = Math.round(tamanho * 2.1);
+    // O título e o preço do vídeo são carimbados no topo DEPOIS, na montagem. Quando eles
+    // existem, o texto de topo começa abaixo da faixa deles -- senão um cobre o outro, e
+    // isso só aparece no arquivo final (apareceu: a etiqueta saiu sob o título).
+    const alto = Math.round(H * (topoOcupado ? 0.19 : 0.08)) + nivel * passo;
+    const baixo = Math.round(H * 0.09) + nivel * passo;
+    const parado = posicao === "topo" ? `${alto}` : posicao === "centro" ? `(h-text_h)/2+${nivel * passo}` : `h-text_h-${baixo}`;
+
+    // "subir": entra deslocado e chega no lugar em 0,5s. A vírgula do `min` é escapada
+    // porque, dentro de um filtro, vírgula separa filtros.
+    const desloc = Math.round(H * 0.035);
+    const y = t.animacao === "subir" ? `${parado}+(1-min(t/0.5\\,1))*${desloc}` : parado;
+
+    const partes = [
+      `fontfile='${caminhoParaFiltro(caminhoFonte())}'`,
+      `text=${textoParaFiltro(t.texto)}`,
+      `fontsize=${tamanho}`,
+      `fontcolor=white`,
+      `x=(w-text_w)/2`,
+      `y=${y}`,
+      `box=1`,
+      `boxcolor=${est.cor}@0.85`,
+      `boxborderw=${Math.round(tamanho * 0.45)}`,
+    ];
+    // "surgir": a cena começa sem ele e ele entra depois de meio segundo.
+    if (t.animacao === "surgir") partes.push(`enable='gte(t\\,0.5)'`);
+    return `drawtext=${partes.join(":")}`;
+  });
+}
 
 /** Um "pill": texto branco sobre caixa arredondada índigo, como as legendas do export. */
 export function pill(o: OpcoesPill): string {
@@ -138,10 +188,10 @@ function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string
 }
 
 /** Cena de foto parada com movimento de câmera (Ken Burns). Um quadro de entrada. */
-export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: number; duracao: number; efeito: EfeitoId; legenda?: string }): string[] {
+export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: number; duracao: number; efeito: EfeitoId; textos?: TextoCena[]; topoOcupado?: boolean }): string[] {
   const frames = Math.round(o.duracao * FPS);
   const filtros = [enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), "format=yuv420p"];
-  if (o.legenda) filtros.push(pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }));
+  filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
   return ["-i", o.foto, "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
@@ -149,15 +199,17 @@ export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: num
  * Antes e depois: mostra a original, uma cortina passa da esquerda pra direita e fica
  * o resultado. As duas ficam paradas de propósito -- o movimento é a cortina.
  */
-export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; legenda?: string }): string[] {
+export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean }): string[] {
   const trans = 1.4;
   const cada = (o.duracao + trans) / 2;
   const offset = cada - trans;
   const base = `${enquadrar(o.W, o.H)},format=yuv420p`;
   const rotA = pill({ texto: "Antes", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0x111111" });
   const rotB = pill({ texto: "Depois", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0xf06b4f" });
-  const legenda = o.legenda ? "," + pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }) : "";
-  const filtro = `[0:v]${base},${rotA}[a];[1:v]${base},${rotB}[b];[a][b]xfade=transition=wipeleft:duration=${trans}:offset=${offset.toFixed(2)}${legenda ? "[ab];[ab]" + legenda.slice(1) : ""}[v]`;
+  // Os textos entram DEPOIS da limpeza entre as duas fotos, senão o "Antes"/"Depois"
+  // passaria por cima deles na virada.
+  const texto = filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado).join(",");
+  const filtro = `[0:v]${base},${rotA}[a];[1:v]${base},${rotB}[b];[a][b]xfade=transition=wipeleft:duration=${trans}:offset=${offset.toFixed(2)}${texto ? "[ab];[ab]" + texto : ""}[v]`;
   return [
     "-loop", "1", "-framerate", String(FPS), "-t", cada.toFixed(2), "-i", o.antes,
     "-loop", "1", "-framerate", String(FPS), "-t", cada.toFixed(2), "-i", o.depois,
@@ -170,11 +222,11 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; legenda?: string; melhorar?: boolean; inicio?: number }): string[] {
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean }): string[] {
   const filtros = [`fps=${FPS}`, enquadrar(o.W, o.H), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
-  if (o.legenda) filtros.push(pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }));
+  filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
   // O clipe entra CURTO de propósito e o `tpad` clona o último quadro até fechar a
   // duração: os últimos instantes ficam parados. Vale pro vídeo da pessoa e, sobretudo,
   // pro clipe da IA -- que termina onde o modelo parou, muitas vezes no meio do gesto.
@@ -210,7 +262,8 @@ export function argsCena360(o: {
   H: number;
   duracao: number;
   movimento: Movimento360Id;
-  legenda?: string;
+  textos?: TextoCena[];
+  topoOcupado?: boolean;
   /** "equirect" (câmera 360) ou "panoramica" (modo panorâmico do celular). */
   projecao?: Projecao360;
   /** Tamanho da imagem de entrada: só usado pra calcular o campo de visão da panorâmica. */
@@ -279,7 +332,7 @@ export function argsCena360(o: {
     `scale=${o.W}:${o.H}:flags=lanczos`,
     "format=yuv420p",
   ];
-  if (o.legenda) filtros.push(pill({ texto: o.legenda, W: o.W, H: o.H, tamanho: 0.03, posicao: "base" }));
+  filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
 
   const entrada = o.ehVideo
     ? ["-t", o.duracao.toFixed(2), "-i", o.entrada]

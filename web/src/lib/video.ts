@@ -174,6 +174,64 @@ export function ehTransicao(v: unknown): TransicaoId {
   return TRANSICOES.some((t) => t.id === v) ? (v as TransicaoId) : "dissolver";
 }
 
+// ---- texto sobre a cena ----
+//
+// Não é um editor de texto livre, e isso é escolha. Posição livre (arrastar o texto pra
+// qualquer ponto) exige uma tela de canvas, e o resultado quase sempre fica torto: o
+// corretor põe o preço em cima da janela, o Instagram corta a borda, e o vídeo sai pior
+// do que sairia sem. Três posições, três estilos e três animações cobrem o que um Reel de
+// imóvel usa, e todas as combinações ficam boas.
+
+export type PosicaoTexto = "topo" | "centro" | "base";
+export type EstiloTexto = "faixa" | "destaque" | "etiqueta";
+export type AnimacaoTexto = "nenhuma" | "surgir" | "subir";
+
+export type TextoCena = {
+  texto: string;
+  posicao?: PosicaoTexto;
+  estilo?: EstiloTexto;
+  animacao?: AnimacaoTexto;
+};
+
+export const POSICOES_TEXTO: { id: PosicaoTexto; rotulo: string }[] = [
+  { id: "topo", rotulo: "Em cima" },
+  { id: "centro", rotulo: "No meio" },
+  { id: "base", rotulo: "Embaixo" },
+];
+
+export const ESTILOS_TEXTO: { id: EstiloTexto; rotulo: string; tamanho: number; cor: string; dica: string }[] = [
+  { id: "faixa", rotulo: "Faixa", tamanho: 0.03, cor: "0x0f2d5b", dica: "Branco sobre a cor da marca. É a legenda de sempre." },
+  { id: "destaque", rotulo: "Destaque", tamanho: 0.052, cor: "0x0f2d5b", dica: "Grande, pro preço e pros números." },
+  { id: "etiqueta", rotulo: "Etiqueta", tamanho: 0.026, cor: "0xf06b4f", dica: "Pequena e coral, pra “Lançamento”, “Vendido”." },
+];
+
+export const ESTILO_TEXTO_POR_ID = Object.fromEntries(ESTILOS_TEXTO.map((e) => [e.id, e])) as Record<EstiloTexto, (typeof ESTILOS_TEXTO)[number]>;
+
+export const ANIMACOES_TEXTO: { id: AnimacaoTexto; rotulo: string }[] = [
+  { id: "nenhuma", rotulo: "Parado" },
+  { id: "surgir", rotulo: "Surgir" },
+  { id: "subir", rotulo: "Subir" },
+];
+
+/**
+ * As etiquetas que o mercado imobiliário usa, prontas.
+ *
+ * Existem porque ninguém abre um editor pra digitar "Lançamento" — abre pra terminar o
+ * vídeo. Cada uma já vem com o estilo e o lugar em que costuma ficar boa.
+ */
+export const SELOS_IMOVEL: { id: string; texto: string; estilo: EstiloTexto; posicao: PosicaoTexto }[] = [
+  { id: "lancamento", texto: "Lançamento", estilo: "etiqueta", posicao: "topo" },
+  { id: "novo", texto: "Novo no mercado", estilo: "etiqueta", posicao: "topo" },
+  { id: "oportunidade", texto: "Oportunidade", estilo: "etiqueta", posicao: "topo" },
+  { id: "alto_padrao", texto: "Alto padrão", estilo: "etiqueta", posicao: "topo" },
+  { id: "venda", texto: "À venda", estilo: "etiqueta", posicao: "topo" },
+  { id: "aluguel", texto: "Para alugar", estilo: "etiqueta", posicao: "topo" },
+  { id: "vendido", texto: "Vendido", estilo: "etiqueta", posicao: "centro" },
+  { id: "reservado", texto: "Reservado", estilo: "etiqueta", posicao: "centro" },
+  { id: "visita", texto: "Agende sua visita", estilo: "faixa", posicao: "base" },
+  { id: "whats", texto: "Chame no WhatsApp", estilo: "faixa", posicao: "base" },
+];
+
 export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada" | "tour360";
 
 export type Cena = {
@@ -187,6 +245,8 @@ export type Cena = {
   /** Só tour360: como a câmera se move dentro da esfera. */
   movimento?: Movimento360Id;
   legenda?: string;
+  /** Textos por cima da cena, além da legenda. Até `LIMITES.textosPorCena`. */
+  textos?: TextoCena[];
   /** Segundos em tela. */
   duracao?: number;
   /** Só clipe: corrige cor e nitidez antes de entrar. */
@@ -307,6 +367,9 @@ export const LIMITES = {
   musicaVolumePadrao: 0.8,
   /** Teto de quanto dá pra aparar do começo de um clipe. */
   aparaMax: 60,
+  /** Três já é muito numa tela de celular; a quarta linha vira poluição. */
+  textosPorCena: 3,
+  textoMax: 44,
   telaFinalSegundos: 4,
   transicaoSegundos: 0.6,
 };
@@ -346,6 +409,36 @@ function texto(v: unknown, max: number): string {
   return typeof v === "string" ? v.replace(/[\r\n\t]+/g, " ").trim().slice(0, max) : "";
 }
 
+/** Os textos de uma cena, limpos. Tudo que vier torto vira o padrão; vazio some. */
+function limparTextos(bruto: unknown): TextoCena[] | undefined {
+  if (!Array.isArray(bruto)) return undefined;
+  const lista: TextoCena[] = [];
+  for (const b of bruto.slice(0, LIMITES.textosPorCena)) {
+    const t = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
+    const conteudo = texto(t.texto, LIMITES.textoMax);
+    if (!conteudo) continue;
+    lista.push({
+      texto: conteudo,
+      posicao: POSICOES_TEXTO.some((p) => p.id === t.posicao) ? (t.posicao as PosicaoTexto) : "base",
+      estilo: ESTILOS_TEXTO.some((e) => e.id === t.estilo) ? (t.estilo as EstiloTexto) : "faixa",
+      animacao: ANIMACOES_TEXTO.some((a) => a.id === t.animacao) ? (t.animacao as AnimacaoTexto) : "nenhuma",
+    });
+  }
+  return lista.length ? lista : undefined;
+}
+
+/**
+ * Os textos que a cena desenha, na ordem: a legenda primeiro, depois os outros.
+ *
+ * A legenda continua sendo um campo só dela porque é o texto que quase toda cena tem, e
+ * pedir "adicione um texto" pra escrever "Sala de estar" seria burocracia. Mas ela é
+ * DESENHADA pelo mesmo caminho dos outros -- um motor de texto só, não dois.
+ */
+export function textosDaCena(c: Pick<Cena, "legenda" | "textos">): TextoCena[] {
+  const daLegenda: TextoCena[] = c.legenda ? [{ texto: c.legenda, posicao: "base", estilo: "faixa", animacao: "nenhuma" }] : [];
+  return [...daLegenda, ...(c.textos ?? [])].slice(0, LIMITES.textosPorCena + 1);
+}
+
 /**
  * Valida e limpa o pedido vindo do navegador. Devolve o espec pronto ou uma mensagem
  * de erro em português. Nunca confia no que veio: os textos vão pro drawtext e o
@@ -383,6 +476,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       animacao: tipo === "animada" ? (ehId(ANIMACOES, c.animacao) ? c.animacao : "caminhar") : undefined,
       movimento: tipo === "tour360" ? (ehId(MOVIMENTOS_360, c.movimento) ? c.movimento : "olhar_volta") : undefined,
       legenda: texto(c.legenda, LIMITES.legendaMax) || undefined,
+      textos: limparTextos(c.textos),
       duracao: Number.isFinite(duracaoNum) ? Math.min(Math.max(Math.round(duracaoNum), LIMITES.duracaoMin), teto) : padrao,
       melhorar: tipo === "clipe" ? c.melhorar === true : undefined,
     });

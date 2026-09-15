@@ -14,6 +14,8 @@ import ffmpeg from "ffmpeg-static";
 const RAIZ = path.resolve(import.meta.dirname, "..");
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "encena-tl-"));
+const SAIDA = path.join(RAIZ, "..", "docs", "testes-reais", "editor");
+fs.mkdirSync(SAIDA, { recursive: true });
 
 const env = Object.fromEntries(
   fs
@@ -51,7 +53,21 @@ conferir(fotos.length === 3, "três fotos reais da conta", fotos.map((f) => f.ro
 const espec = {
   formato: "9:16",
   cenas: [
-    { tipo: "foto", jobId: fotos[0].id, duracao: 4, efeito: "aproximar", transicao: "deslizar", legenda: "Sala" },
+    // A 1ª cena leva os três textos, com as três animações e as três posições: se o
+    // escape da vírgula (min, gte) estiver errado, o ffmpeg quebra aqui e o vídeo falha.
+    {
+      tipo: "foto",
+      jobId: fotos[0].id,
+      duracao: 4,
+      efeito: "aproximar",
+      transicao: "deslizar",
+      legenda: "Sala",
+      textos: [
+        { texto: "Lançamento", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+        { texto: "R$ 690.000", estilo: "destaque", posicao: "base", animacao: "subir" },
+        { texto: "3 quartos · 2 vagas", estilo: "faixa", posicao: "centro", animacao: "nenhuma" },
+      ],
+    },
     { tipo: "foto", jobId: fotos[1].id, duracao: 4, efeito: "afastar", transicao: "desfoque" },
     { tipo: "foto", jobId: fotos[2].id, duracao: 4, efeito: "direita" },
   ],
@@ -93,6 +109,13 @@ if (pronto) {
   const real = m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : NaN;
   conferir(Math.abs(real - esperado) < 0.4, "o arquivo tem a duração que a conta previu", `${real?.toFixed(2)}s vs ${esperado}s`);
   conferir((pronto.espec?.cenas ?? []).map((c) => c.transicao).join(",") === "deslizar,desfoque,", "as emendas voltam no espec ao reabrir", (pronto.espec?.cenas ?? []).map((c) => c.transicao ?? "—").join(" · "));
+  conferir((pronto.espec?.cenas?.[0]?.textos ?? []).length === 3, "os três textos voltam no espec", String((pronto.espec?.cenas?.[0]?.textos ?? []).length));
+
+  // O quadro da 1ª cena, pra conferir a olho que os textos saíram nos três lugares.
+  const quadro = path.join(SAIDA, "cena-com-textos.jpg");
+  spawnSync(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-ss", "2", "-i", arquivo, "-frames:v", "1", "-vf", "scale=360:-2", quadro], { timeout: 60_000 });
+  conferir(fs.existsSync(quadro), "quadro salvo pra conferência", path.relative(path.join(RAIZ, ".."), quadro));
+
   // Limpa: era teste, não material dele.
   await fetch(`${BASE}/api/video/${dV.videoId}`, { method: "DELETE", headers: cab });
   console.log("     vídeo de teste apagado da conta");

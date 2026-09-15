@@ -6,33 +6,43 @@ import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import {
   ANIMACOES,
+  ANIMACOES_TEXTO,
   BUCKET_UPLOADS,
   CHAMADAS,
   CREDITOS,
   EFEITOS,
+  ESTILOS_TEXTO,
+  ESTILO_TEXTO_POR_ID,
   FORMATOS,
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
+  POSICOES_TEXTO,
+  SELOS_IMOVEL,
   TRANSICOES,
   VOZES,
   custoDoVideo,
   duracaoEstimada,
   ehTransicao,
+  textosDaCena,
   vozDeIA,
   type AnimacaoId,
+  type AnimacaoTexto,
   type Cena,
   type EfeitoId,
   type EspecVideo,
+  type EstiloTexto,
   type FormatoId,
   type Movimento360Id,
   type MusicaId,
   type Narracao,
   type OrigemVoz,
+  type PosicaoTexto,
+  type TextoCena,
   type TransicaoId,
   type VozId,
 } from "@/lib/video";
-import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
+import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -64,6 +74,8 @@ type CenaUI = {
   legenda: string;
   duracao: number;
   melhorar: boolean;
+  /** Textos por cima da cena, além da legenda. */
+  textos?: TextoCena[];
   /** Clipe: de que segundo do arquivo esta cena começa. */
   inicio?: number;
   /** A emenda desta cena pra próxima. Ausente = a do vídeo. */
@@ -157,6 +169,7 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     animacao: c.animacao ?? "caminhar",
     movimento: c.movimento ?? "olhar_volta",
     legenda: c.legenda ?? "",
+    textos: c.textos,
     duracao: c.duracao ?? LIMITES.duracaoPadrao,
     melhorar: c.melhorar ?? false,
     inicio: c.inicio,
@@ -198,6 +211,9 @@ export default function PaginaVideo() {
   const [editandoDe, setEditandoDe] = useState<{ id: string; titulo: string } | null>(null);
   /** "3 quartos · 2 vagas · 120 m²", da ficha do imóvel escolhido. */
   const [fichaResumo, setFichaResumo] = useState("");
+  /** A ficha crua e a marca: viram as PEÇAS que o editor oferece pra virar texto. */
+  const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
+  const [marca, setMarca] = useState<{ nome?: string | null; creci?: string | null; whatsapp?: string | null } | null>(null);
   const [narrar, setNarrar] = useState(false);
   /** De onde vem a voz: IA, gravada aqui, ou um arquivo que a pessoa já tinha. */
   const [origemVoz, setOrigemVoz] = useState<OrigemVoz>("ia");
@@ -249,7 +265,7 @@ export default function PaginaVideo() {
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao })),
       musica,
       musicaVolume,
       // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
@@ -305,6 +321,16 @@ export default function PaginaVideo() {
       .catch(() => setVideos([]));
   }, [user, carregarVideos]);
 
+  // A marca vira PEÇA de texto (nome, CRECI, WhatsApp) junto com a ficha do imóvel.
+  useEffect(() => {
+    if (!user) return;
+    token()
+      .then((t) => fetch("/api/marca", { headers: { Authorization: `Bearer ${t}` } }))
+      .then((r) => r.json())
+      .then((d) => setMarca({ nome: d.nome, creci: d.creci, whatsapp: d.whatsapp }))
+      .catch(() => {});
+  }, [user, token]);
+
   // Chegou com `?job=`: uma imagem da Encena querendo virar cena. É o caminho "Animar esta
   // imagem" / "Usar em vídeo" do editor -- sem baixar e subir de novo. Roda uma vez por
   // job, e antes de qualquer imóvel estar escolhido: a imagem pode não ter imóvel nenhum.
@@ -359,6 +385,7 @@ export default function PaginaVideo() {
         // está lá não se inventa.
         setPreco((atual) => atual || valorComPeriodo(d.imovel.ficha?.preco, d.imovel.ficha?.negocio));
         setFichaResumo(resumoDaFicha(d.imovel.ficha, LIMITES.legendaMax));
+        setFicha(d.imovel.ficha ?? null);
       })
       .catch(() => {});
     return () => {
@@ -550,6 +577,24 @@ export default function PaginaVideo() {
     });
   }
 
+  // ---- textos da cena ----
+  function adicionarTexto(k: string, novo: TextoCena) {
+    setCenas((lista) =>
+      lista.map((s) => {
+        if (s.chave !== k) return s;
+        const atuais = s.textos ?? [];
+        if (atuais.length >= LIMITES.textosPorCena) return s;
+        return { ...s, textos: [...atuais, novo] };
+      })
+    );
+  }
+  function mudarTexto(k: string, i: number, mudanca: Partial<TextoCena>) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, textos: (s.textos ?? []).map((t, j) => (j === i ? { ...t, ...mudanca } : t)) } : s)));
+  }
+  function removerTexto(k: string, i: number) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, textos: (s.textos ?? []).filter((_, j) => j !== i) } : s)));
+  }
+
   /** Arrastar na linha do tempo: solta a cena arrastada na posição da cena alvo. */
   function soltarEm(alvo: string) {
     const de = arrastando.current;
@@ -735,6 +780,8 @@ export default function PaginaVideo() {
   // uma tela que não responde ao que a pessoa clica.
   const indiceAtual = Math.max(0, cenas.findIndex((s) => s.chave === selecionada));
   const cenaAtual: CenaUI | null = cenas[indiceAtual] ?? null;
+  // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
+  const pecas = pecasDoImovel(ficha, marca);
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
 
@@ -836,11 +883,33 @@ export default function PaginaVideo() {
                     <span className="truncate rounded bg-marca-indigo/90 px-2 py-1 text-[11px] font-semibold text-white">{titulo}</span>
                   </span>
                 )}
-                {cenaAtual?.legenda && (
-                  <span className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
-                    <span className="truncate rounded bg-black/70 px-2 py-1 text-[11px] text-white">{cenaAtual.legenda}</span>
-                  </span>
-                )}
+                {/* Os textos da cena, no lugar em que vão sair. Não é o render (isso é
+                    ffmpeg), é o ensaio: dá pra ver se o preço cobriu a janela. */}
+                {cenaAtual &&
+                  textosDaCena({ legenda: cenaAtual.legenda || undefined, textos: cenaAtual.textos }).map((t, i) => {
+                    const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"];
+                    const pos = t.posicao ?? "base";
+                    return (
+                      <span
+                        key={i}
+                        className={
+                          "pointer-events-none absolute inset-x-0 flex justify-center px-3 " +
+                          (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]")
+                        }
+                      >
+                        <span
+                          className="max-w-full truncate rounded px-2 py-1 text-white"
+                          style={{
+                            background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
+                            fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
+                            fontWeight: est.id === "destaque" ? 700 : 500,
+                          }}
+                        >
+                          {t.texto || "texto"}
+                        </span>
+                      </span>
+                    );
+                  })}
               </div>
               <p className="mt-2 truncate text-center text-xs text-neutral-500">
                 {cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}
@@ -1036,6 +1105,85 @@ export default function PaginaVideo() {
                   placeholder="Legenda (ex.: Sala de estar · 32 m²)"
                   className={campo}
                 />
+
+                {/* ---------- textos da cena ----------
+                     Etiquetas prontas e as PEÇAS do imóvel: ninguém abre um editor pra
+                     digitar "Lançamento" nem pra escrever de novo um preço que já está
+                     no cadastro. Três posições e três estilos, porque posição livre num
+                     vídeo de celular quase sempre sai torta. */}
+                <div className="rounded-lg bg-neutral-50 p-2.5">
+                  <p className="text-xs font-medium text-neutral-600">Textos nesta cena</p>
+
+                  {(cenaAtual.textos ?? []).map((t, i) => (
+                    <div key={i} className="mt-2 rounded-lg border border-neutral-200 bg-white p-2">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={t.texto}
+                          onChange={(e) => mudarTexto(cenaAtual.chave, i, { texto: e.target.value })}
+                          maxLength={LIMITES.textoMax}
+                          placeholder="Escreva o texto"
+                          className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-2 py-1 text-sm focus:border-marca-indigo focus:outline-none"
+                        />
+                        <button onClick={() => removerTexto(cenaAtual.chave, i)} className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600" title="Tirar este texto">
+                          <Icone nome="fechar" className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <select value={t.posicao ?? "base"} onChange={(e) => mudarTexto(cenaAtual.chave, i, { posicao: e.target.value as PosicaoTexto })} className="rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs" aria-label="Posição do texto">
+                          {POSICOES_TEXTO.map((p) => (
+                            <option key={p.id} value={p.id}>{p.rotulo}</option>
+                          ))}
+                        </select>
+                        <select value={t.estilo ?? "faixa"} onChange={(e) => mudarTexto(cenaAtual.chave, i, { estilo: e.target.value as EstiloTexto })} className="rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs" aria-label="Estilo do texto" title={ESTILOS_TEXTO.find((x) => x.id === (t.estilo ?? "faixa"))?.dica}>
+                          {ESTILOS_TEXTO.map((x) => (
+                            <option key={x.id} value={x.id}>{x.rotulo}</option>
+                          ))}
+                        </select>
+                        <select value={t.animacao ?? "nenhuma"} onChange={(e) => mudarTexto(cenaAtual.chave, i, { animacao: e.target.value as AnimacaoTexto })} className="rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs" aria-label="Entrada do texto">
+                          {ANIMACOES_TEXTO.map((a) => (
+                            <option key={a.id} value={a.id}>{a.rotulo}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(cenaAtual.textos ?? []).length < LIMITES.textosPorCena ? (
+                    <div className="mt-2">
+                      {pecas.length > 0 && (
+                        <>
+                          <p className="text-[11px] text-neutral-500">Do imóvel — já preenchido</p>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {pecas.map((p) => (
+                              <Chip
+                                key={p.id}
+                                ativo={false}
+                                onClick={() => adicionarTexto(cenaAtual.chave, { texto: p.texto, estilo: p.id === "preco" ? "destaque" : "faixa", posicao: "base", animacao: "surgir" })}
+                                title={`${p.rotulo}: ${p.texto}`}
+                              >
+                                + {p.rotulo}
+                              </Chip>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      <p className="mt-2 text-[11px] text-neutral-500">Etiquetas</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {SELOS_IMOVEL.map((s) => (
+                          <Chip key={s.id} ativo={false} onClick={() => adicionarTexto(cenaAtual.chave, { texto: s.texto, estilo: s.estilo, posicao: s.posicao, animacao: "surgir" })}>
+                            {s.texto}
+                          </Chip>
+                        ))}
+                        <Chip ativo={false} onClick={() => adicionarTexto(cenaAtual.chave, { texto: "", estilo: "faixa", posicao: "centro", animacao: "nenhuma" })}>
+                          + Escrever
+                        </Chip>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-neutral-500">Três textos já é o limite desta cena.</p>
+                  )}
+                </div>
 
                 {indiceAtual < cenas.length - 1 && (
                   <div>
