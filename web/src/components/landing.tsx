@@ -59,7 +59,9 @@ export default function Landing() {
       {/* ---------- herói ---------- */}
       <section className="mx-auto grid max-w-6xl gap-10 px-5 pt-14 pb-10 lg:grid-cols-12 lg:items-center lg:pt-20">
         <div className="lg:col-span-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-coral">Inteligência artificial para imóveis</p>
+          {/* Não "inteligência artificial para imóveis": é a categoria, e a categoria não
+              diferencia ninguém. O que diferencia é o percurso inteiro e a marca do corretor. */}
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-marca-coral">Da foto ao anúncio, com a sua marca</p>
           <h1 className="mt-3 text-4xl font-semibold leading-[1.1] text-neutral-900 sm:text-5xl">O imóvel inteiro, pronto para anunciar.</h1>
           <p className="mt-5 max-w-lg text-lg text-neutral-600">
             Fotos, vídeo, tour 360°, planta baixa e medidas do terreno — tudo no mesmo lugar. Mobília o ambiente vazio, tira o que atrapalha, troca piso e parede, e monta o anúncio com a sua marca. Em minutos, pelo celular.

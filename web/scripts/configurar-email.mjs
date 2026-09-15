@@ -99,7 +99,7 @@ const molde = (titulo, frase, rotuloBotao, pe) =>
     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:460px;background:#ffffff;border-radius:14px;padding:32px;">
       <tr><td>
         <div style="font-size:26px;font-weight:700;letter-spacing:-0.5px;color:${INDIGO};">Encena</div>
-        <div style="font-size:10px;letter-spacing:2.4px;text-transform:uppercase;color:#8a8a8a;margin-top:2px;">Inteligência artificial para imóveis</div>
+        <div style="font-size:10px;letter-spacing:2.4px;text-transform:uppercase;color:#8a8a8a;margin-top:2px;">Da foto ao anúncio, com a sua marca</div>
 
         <h1 style="font-size:19px;color:#1a1a1a;margin:26px 0 8px;font-weight:600;">${titulo}</h1>
         <p style="font-size:15px;line-height:1.55;color:#4a4a4a;margin:0 0 22px;">${frase}</p>

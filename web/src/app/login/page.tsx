@@ -115,8 +115,12 @@ export default function Login() {
         <img src="/marca-encena.svg" alt="" width={44} height={44} className="h-11 w-11" />
         <span className="text-3xl font-bold tracking-tight text-marca-indigo">Encena</span>
       </Link>
-      <h1 className="mt-4 text-2xl font-semibold">Fotos que vendem melhor.</h1>
-      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Inteligência artificial para imóveis</p>
+      {/* A mesma frase da landing, de propósito. "Fotos que vendem melhor" ficou aqui
+          parada quando o produto passou a entregar vídeo, book, planta e terreno --
+          e o rótulo "inteligência artificial para imóveis" é a categoria, não a promessa:
+          Pedra e mais vinte usam igual. A linha de baixo nomeia o percurso e o diferencial. */}
+      <h1 className="mt-4 text-2xl font-semibold">O imóvel inteiro, pronto para anunciar.</h1>
+      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Da foto ao anúncio, com a sua marca</p>
 
       {enviado ? (
         <div className="mt-6 rounded-lg border border-marca-teal/40 bg-marca-teal/10 p-3 text-sm text-marca-indigo">
