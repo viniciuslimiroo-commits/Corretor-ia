@@ -9,6 +9,7 @@ import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { ACAO_TERRENO_POR_ID, ACOES_TERRENO, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, TIPOS_REFERENCIA } from "@/lib/terreno-ia";
+import { CUSTO_OBRA, ETAPAS_OBRA } from "@/lib/obra-etapas";
 
 // Terreno com medidas. A pessoa toca nos cantos do lote na foto, digita os metros de
 // cada lado e a área, e o desenho sai por cima da foto -- na hora, na tela, e depois
@@ -75,6 +76,11 @@ export default function Terreno() {
   const [erro, setErro] = useState<string | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
   const [acaoIa, setAcaoIa] = useState(ACOES_TERRENO[0].id);
+  // A obra é uma sequência, não uma ação: quatro imagens encadeadas, cada uma nascendo da
+  // anterior. Por isso tem estado próprio -- o resultado não é UMA imagem.
+  const [etapasFeitas, setEtapasFeitas] = useState<{ id: string; rotulo: string; url: string; jobId: string }[]>([]);
+  const [etapaAgora, setEtapaAgora] = useState<string | null>(null);
+  const [comEquipe, setComEquipe] = useState(false);
   const [camposIa, setCamposIa] = useState<Record<string, string>>({});
   const [extras, setExtras] = useState<string[]>(["jardim"]);
   const [textoIa, setTextoIa] = useState("");
@@ -188,6 +194,62 @@ export default function Terreno() {
     }
   }
 
+  /**
+   * A obra inteira, etapa por etapa.
+   *
+   * O encadeamento é o ponto: a etapa 2 recebe a IMAGEM da etapa 1, não a foto do
+   * terreno. É o que faz a casa da cobertura ser a mesma casa da alvenaria. Gerar as
+   * quatro a partir do lote vazio daria quatro casas diferentes.
+   *
+   * Cada etapa é um job normal: se o navegador fechar no meio, o que já ficou pronto está
+   * salvo no acervo e no imóvel, e o que falhou estorna sozinho.
+   */
+  async function gerarObra() {
+    if (!foto || gerandoIa) return;
+    setGerandoIa(true);
+    setErro(null);
+    setEtapasFeitas([]);
+    setResultadoIa(null);
+    try {
+      const token = await c.token();
+      let entrada: File = foto;
+
+      for (const etapa of ETAPAS_OBRA) {
+        setEtapaAgora(etapa.id);
+        const f = new FormData();
+        f.append("foto", entrada);
+        f.append("acao", etapa.id);
+        f.append("equipe", comEquipe ? "1" : "");
+        for (const campo of etapa.campos ?? []) f.append(campo.chave, camposIa[campo.chave] ?? campo.padrao);
+        if (imovelId) f.append("imovelId", imovelId);
+
+        const r = await fetch("/api/terreno/ia", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: f });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+
+        let url: string | null = null;
+        for (let i = 0; i < 40 && !url; i++) {
+          await new Promise((z) => setTimeout(z, 3000));
+          const j = await (await fetch(`/api/job/${d.jobId}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+          if (j.status === "concluido" && j.url) url = j.url as string;
+          else if (j.status === "falhou" || j.error) throw new Error(j.error ?? `A etapa "${etapa.rotulo}" não saiu. O crédito volta sozinho.`);
+        }
+        if (!url) throw new Error(`A etapa "${etapa.rotulo}" demorou demais. O crédito volta sozinho.`);
+
+        setEtapasFeitas((lista) => [...lista, { id: etapa.id, rotulo: etapa.rotulo, url: url!, jobId: d.jobId }]);
+        // A imagem pronta vira a entrada da próxima. É aqui que a obra fica sendo UMA obra.
+        const blob = await (await fetch(url)).blob();
+        entrada = new File([blob], `${etapa.id}.jpg`, { type: blob.type || "image/jpeg" });
+        c.recarregar?.();
+      }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao gerar a obra.");
+    } finally {
+      setEtapaAgora(null);
+      setGerandoIa(false);
+    }
+  }
+
   async function gerar() {
     if (!foto || pontos.length < 3) return;
     setGerando(true);
@@ -225,7 +287,20 @@ export default function Terreno() {
 
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
   const fechado = pontos.length >= 3;
-  const acaoTerreno = ACAO_TERRENO_POR_ID[acaoIa] ?? ACOES_TERRENO[0];
+  // "obra" não está em ACOES_TERRENO porque não é uma imagem: é uma sequência de quatro.
+  // Entra na mesma fileira de chips porque, pra quem usa, é só mais uma coisa que dá pra
+  // fazer com a foto do lote -- a diferença é o preço e o tempo, e os dois estão no botão.
+  const ehObra = acaoIa === "obra";
+  const acaoTerreno = ehObra
+    ? {
+        id: "obra",
+        rotulo: "Obra do início ao fim",
+        descricao: "Quatro imagens encadeadas: fundação, estrutura, cobertura e a casa pronta. Cada uma nasce da anterior, então é a mesma casa subindo.",
+        selo: ETAPAS_OBRA[0].selo,
+        campos: ETAPAS_OBRA[0].campos,
+        prompt: () => "",
+      }
+    : (ACAO_TERRENO_POR_ID[acaoIa] ?? ACOES_TERRENO[0]);
   const traco = Math.max(2, (caixaPx || 640) * PROPORCAO_TRACO * espessura.fator);
 
   return (
@@ -404,7 +479,9 @@ export default function Terreno() {
 
           {foto && (
             <Cartao>
-              <Rotulo>Transformar com IA · 1 crédito</Rotulo>
+              {/* Sem preço no título: com a obra, o preço deixou de ser um só. Cada botão
+                  diz quanto custa, que é onde a pessoa olha antes de clicar. */}
+              <Rotulo>Transformar com IA</Rotulo>
               <p className="text-sm text-neutral-500">
                 Quem olha foto de mato não enxerga a casa. Isto é ilustração e sai avisando; as medidas acima continuam exatas e de graça.
               </p>
@@ -414,6 +491,9 @@ export default function Terreno() {
                     {a.rotulo}
                   </Chip>
                 ))}
+                <Chip ativo={ehObra} onClick={() => setAcaoIa("obra")}>
+                  Obra do início ao fim
+                </Chip>
               </div>
               <p className="mt-2 text-xs text-neutral-500">{acaoTerreno.descricao}</p>
 
@@ -507,10 +587,73 @@ export default function Terreno() {
                 </div>
               )}
 
-              <Botao onClick={gerarIa} disabled={!!gerandoIa || (acaoIa === "livre" && textoIa.trim().length < 3)} className="mt-3 w-full py-2.5">
-                {gerandoIa ? "Gerando…" : `${acaoTerreno.rotulo} · 1 crédito`}
+              {ehObra && (
+                <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-neutral-200 p-2.5 text-sm">
+                  <input type="checkbox" checked={comEquipe} onChange={(e) => setComEquipe(e.target.checked)} className="mt-0.5 h-4 w-4 accent-marca-coral" />
+                  <span>
+                    Equipe trabalhando no canteiro
+                    <span className="block text-xs text-neutral-500">
+                      Só nas etapas de obra, de longe e sem rosto. A casa pronta nunca sai com gente — morador inventado num anúncio é personagem, não imóvel.
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              <Botao
+                onClick={ehObra ? gerarObra : gerarIa}
+                disabled={!!gerandoIa || (acaoIa === "livre" && textoIa.trim().length < 3)}
+                className="mt-3 w-full py-2.5"
+              >
+                {gerandoIa ? "Gerando…" : ehObra ? `Ver a obra · ${CUSTO_OBRA} créditos` : `${acaoTerreno.rotulo} · 1 crédito`}
               </Botao>
-              {gerandoIa && <p className="mt-2 text-center text-xs text-neutral-500">Leva cerca de meio minuto.</p>}
+              {gerandoIa && !ehObra && <p className="mt-2 text-center text-xs text-neutral-500">Leva cerca de meio minuto.</p>}
+
+              {/* O andamento da obra. Quatro linhas que mudam de estado: o que já saiu, o
+                  que está saindo agora e o que ainda vem. Sem isto, dois minutos de tela
+                  parada parecem travamento -- foi exatamente a reclamação do vídeo. */}
+              {ehObra && (gerandoIa || etapasFeitas.length > 0) && (
+                <ol className="mt-3 space-y-1.5">
+                  {ETAPAS_OBRA.map((etapa) => {
+                    const pronta = etapasFeitas.find((f) => f.id === etapa.id);
+                    const agora = etapaAgora === etapa.id;
+                    return (
+                      <li key={etapa.id} className="flex items-center gap-2.5 text-sm">
+                        <span
+                          className={
+                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold " +
+                            (pronta ? "bg-marca-teal text-white" : agora ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-400")
+                          }
+                        >
+                          {pronta ? "✓" : etapa.ordem}
+                        </span>
+                        <span className={pronta ? "text-neutral-700" : agora ? "font-medium text-marca-indigo" : "text-neutral-400"}>
+                          {agora ? etapa.espera : etapa.rotulo}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+
+              {etapasFeitas.length > 0 && (
+                <div className="mt-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {etapasFeitas.map((f) => (
+                      <a key={f.jobId} href={f.url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border border-neutral-200">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={f.url} alt={f.rotulo} className="aspect-[4/3] w-full object-cover" />
+                        <span className="block px-2 py-1 text-[11px] text-neutral-600">{f.rotulo}</span>
+                      </a>
+                    ))}
+                  </div>
+                  {etapasFeitas.length === ETAPAS_OBRA.length && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      As quatro estão no imóvel e no acervo. Pra virar vídeo, monte em{" "}
+                      <Link href="/video" className="text-marca-indigo underline">Vídeo do imóvel</Link> — elas entram na ordem e o próprio vídeo faz a transição.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {resultadoIa && (
                 <div className="mt-3">

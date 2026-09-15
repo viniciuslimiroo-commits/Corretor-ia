@@ -5,6 +5,7 @@ import { caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazena
 import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
 import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, type Referencia } from "@/lib/terreno-ia";
+import { ETAPA_OBRA_POR_ID } from "@/lib/obra-etapas";
 
 // Terreno com IA: limpar o mato, terraplanar, murar, construir a casa que a pessoa quer,
 // ou pedir por texto. Uma imagem de IA, 1 crédito -- as linhas e medidas do lote continuam
@@ -29,7 +30,11 @@ export async function POST(req: NextRequest) {
   const foto = form.get("foto") as File | null;
   if (!foto) return NextResponse.json({ error: "Envie a foto do terreno." }, { status: 400 });
 
-  const acao = ACAO_TERRENO_POR_ID[String(form.get("acao") ?? "")];
+  // As etapas da obra entram pela mesma porta das outras ações: cada uma é uma imagem de
+  // IA, 1 crédito, um job. O que as diferencia é de onde vem a FOTO -- na obra, a foto é
+  // o resultado da etapa anterior, e quem encadeia é a tela.
+  const idAcao = String(form.get("acao") ?? "");
+  const acao = ACAO_TERRENO_POR_ID[idAcao] ?? ETAPA_OBRA_POR_ID[idAcao];
   if (!acao) return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
 
   const texto = String(form.get("texto") ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, LIMITE_TEXTO_LIVRE);
@@ -43,7 +48,9 @@ export async function POST(req: NextRequest) {
     .filter((v) => EXTRAS_CASA.some((e) => e.valor === v))
     .join(",");
 
-  const parametros: Record<string, string> = { texto, extras };
+  // "1" ou nada: o prompt da etapa decide se a equipe cabe, e a etapa final ignora isto
+  // de propósito (casa pronta com gente é morador inventado, não obra).
+  const parametros: Record<string, string> = { texto, extras, equipe: form.get("equipe") === "1" ? "1" : "" };
   for (const campo of acao.campos ?? []) {
     const v = String(form.get(campo.chave) ?? "");
     parametros[campo.chave] = campo.opcoes.some((o) => o.valor === v) ? v : campo.padrao;

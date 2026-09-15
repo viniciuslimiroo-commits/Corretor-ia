@@ -374,6 +374,13 @@ const ROTULOS_ESPECIAIS: Record<string, string> = {
   terreno_limpar: "Terreno limpo",
   terreno_construir: "Casa no terreno",
   terreno_livre: "Terreno editado",
+  // A obra, etapa por etapa. Os rótulos dizem em que pé a construção está porque as
+  // quatro imagens convivem na mesma galeria, e "Terreno obra estrutura" (o que a rede de
+  // segurança lá embaixo produziria) não conta isso pra ninguém.
+  terreno_obra_fundacao: "Obra · fundação",
+  terreno_obra_estrutura: "Obra · estrutura",
+  terreno_obra_cobertura: "Obra · cobertura",
+  terreno_obra_pronta: "Obra · casa pronta",
   planta: "Planta baixa",
   planta_humanizada: "Planta humanizada",
   mapa: "Mapa do endereço",
