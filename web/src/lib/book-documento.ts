@@ -170,6 +170,23 @@ export function definirTexto(d: DocumentoBook, id: string, chave: string, valor:
   );
 }
 
+/**
+ * A etiqueta da capa: "À VENDA", "VENDIDO", "OPEN HOUSE". Vazio tira.
+ *
+ * Tem função própria, e não `definirTexto`, por causa de UMA diferença: não marca a
+ * página como mexida à mão. A fase do anúncio é outro eixo -- a pessoa troca de
+ * "À venda" pra "Vendido" e continua querendo que Refazer reescreva o título e a
+ * descrição. Com `definirTexto` a capa virava manual e Refazer passava por ela sem
+ * tocar, calado.
+ */
+export function definirSelo(d: DocumentoBook, texto: string): DocumentoBook {
+  const limpo = texto.trim().slice(0, 24);
+  return comPaginas(
+    d,
+    d.paginas.map((p) => (p.tipo === "capa" ? { ...p, textos: { ...p.textos, selo: limpo } } : p))
+  );
+}
+
 export function trocarImagem(d: DocumentoBook, id: string, indice: number, jobId: string): DocumentoBook {
   return comPaginas(
     d,

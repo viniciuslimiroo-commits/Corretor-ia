@@ -191,6 +191,28 @@ export const TIPOS: DefBook[] = [
 export const TIPO_POR_ID: Record<string, DefBook> = Object.fromEntries(TIPOS.map((t) => [t.id, t]));
 
 /**
+ * As fases em que um anúncio vive, prontas pra virar etiqueta na capa.
+ *
+ * O tipo de material (post, Story, carrossel) diz o FORMATO; isto diz o RECADO, que é a
+ * outra metade do que separa um post de imobiliária de outro. O mesmo post com "À venda"
+ * e com "Vendido" são duas peças diferentes e ninguém quer montar duas vezes.
+ *
+ * "Vendido" e "Alugado" estão aqui de propósito: é o post que menos parece anúncio e
+ * mais traz cliente, porque mostra o corretor trabalhando em vez de pedir atenção.
+ */
+export const SELOS_MATERIAL: { id: string; texto: string; dica: string }[] = [
+  { id: "venda", texto: "À venda", dica: "O anúncio de sempre." },
+  { id: "aluguel", texto: "Para alugar", dica: "Locação." },
+  { id: "lancamento", texto: "Lançamento", dica: "Obra nova, planta, pré-lançamento." },
+  { id: "novo", texto: "Novo no mercado", dica: "Acabou de entrar na sua carteira." },
+  { id: "open_house", texto: "Open house", dica: "Visitação aberta, dia marcado." },
+  { id: "preco_novo", texto: "Preço novo", dica: "Baixou. É o post que mais traz mensagem." },
+  { id: "reservado", texto: "Reservado", dica: "Em negociação, mas ainda de pé." },
+  { id: "vendido", texto: "Vendido", dica: "Prova social: mostra você trabalhando." },
+  { id: "alugado", texto: "Alugado", dica: "A mesma prova social, na locação." },
+];
+
+/**
  * Qual tipo sugerir. Não é aleatório: sai do que existe.
  *
  * Abaixo de cinco imagens o book de 14 páginas fica pior que nenhum -- repete foto e

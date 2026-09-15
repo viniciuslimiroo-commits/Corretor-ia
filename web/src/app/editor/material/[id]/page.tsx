@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import { useBook } from "@/lib/use-book";
-import { TIPO_POR_ID } from "@/lib/book-tipos";
+import { SELOS_MATERIAL, TIPO_POR_ID } from "@/lib/book-tipos";
 import { Aviso, Botao, BotaoConfirma, Icone } from "@/components/ui";
 import Pagina, { type DadosPagina } from "@/components/book/pagina";
 import PainelPagina from "@/components/book/painel-pagina";
@@ -16,6 +16,7 @@ import {
   FONTES_BOOK,
   definirFoco,
   definirIdentidade,
+  definirSelo,
   imagensDoDocumento,
   inserir,
   mover,
@@ -171,6 +172,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   });
 
   const manuaisNoBook = book.documento.paginas.filter((p) => p.origem === "manual").length;
+  const seloAtual = (book.documento.paginas.find((p) => p.tipo === "capa")?.textos.selo ?? "").trim();
   const indice = Math.min(atual, book.documento.paginas.length - 1);
   const paginaAtual = book.documento.paginas[indice];
 
@@ -553,6 +555,29 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                       </button>
                     );
                   })}
+                  {/* A fase do anúncio. Mesma peça, recado diferente: o post com "À venda"
+                      e o com "Vendido" são dois materiais, e montar o segundo do zero era
+                      trabalho à toa. Não marca a capa como mexida à mão -- trocar de fase
+                      não pode desligar o Refazer. */}
+                  <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Etiqueta na capa</p>
+                  <span className="flex flex-wrap gap-1 px-2 pb-1">
+                    {[{ id: "", texto: "Sem etiqueta", dica: "" }, ...SELOS_MATERIAL].map((s) => {
+                      const ativo = seloAtual === s.texto || (!s.id && !seloAtual);
+                      return (
+                        <button
+                          key={s.id || "nenhum"}
+                          onClick={() => book.aplicar((d) => definirSelo(d, s.id ? s.texto : ""))}
+                          title={s.dica}
+                          className={
+                            "rounded-full border px-2.5 py-1 text-[11px] transition " +
+                            (ativo ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                          }
+                        >
+                          {s.texto}
+                        </button>
+                      );
+                    })}
+                  </span>
                   <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Capa</p>
                   {[
                     { escura: true, rotulo: "Escura", descricao: "A foto com faixa escura e o texto por cima." },

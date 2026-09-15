@@ -189,6 +189,37 @@ export function montarPagina(
     const alturaFaixa = deitado ? 190 : ehStory ? 230 : 120;
     caixas.push({ tipo: "retangulo", x: 0, y: alturaFoto - alturaFaixa, l: L, a: alturaFaixa, cor: capaEscura ? "#000000" : "#ffffff", opacidade: capaEscura ? 0.5 : 0.88 });
 
+    // ---------- o selo ----------
+    // "À VENDA", "VENDIDO", "OPEN HOUSE": em que fase o imóvel está, dito antes de
+    // qualquer outra coisa. Mora no alto da foto, do lado OPOSTO ao logo -- no Story o
+    // logo fica na esquerda, então o selo vai pra direita; nos outros é o contrário.
+    // Sai na cor da marca e não numa cor própria: duas cores fortes na mesma capa e o
+    // preço perde a briga com uma etiqueta.
+    const selo = (pagina.textos.selo ?? "").trim().toUpperCase();
+    if (selo) {
+      const tamSelo = ehStory || deitado ? 13 : 12;
+      const altSelo = Math.round(tamSelo * 2.2);
+      const larguraTexto = medir(selo, tamSelo, true);
+      const respiro = tamSelo * 1.9;
+      const largSelo = Math.round(larguraTexto + respiro);
+      const xSelo = ehStory ? L - MARGEM - largSelo : MARGEM;
+      const ySelo = ehStory ? 46 : 36;
+      caixas.push({ tipo: "retangulo", x: xSelo, y: ySelo, l: largSelo, a: altSelo, cor });
+      // Centrado na mão: a caixa de texto só sabe alinhar à esquerda e à direita, e meio
+      // respiro de cada lado é exatamente o centro da etiqueta.
+      por(
+        texto(selo, medir, {
+          x: xSelo + Math.round(respiro / 2),
+          y: ySelo + Math.round((altSelo - tamSelo * 1.05) / 2),
+          l: Math.ceil(larguraTexto) + 2,
+          tamanho: tamSelo,
+          negrito: true,
+          cor: "#ffffff",
+          maxLinhas: 1,
+        })
+      );
+    }
+
     let y = alturaFoto - alturaFaixa + 30;
     const tituloT = deitado ? 34 : ehStory ? 22 : 26;
     const t = texto(pagina.textos.titulo ?? "", medir, { x: MARGEM, y, l: util, tamanho: tituloT, negrito: true, cor: corDoTitulo, maxLinhas: 2 });
@@ -202,6 +233,16 @@ export function montarPagina(
       por(texto(pagina.textos.preco ?? "", medir, { x: MARGEM, y: A - (ehStory ? 74 : 58), l: util, tamanho: ehStory ? 26 : 20, negrito: true, cor: corDoTitulo, maxLinhas: 1 }));
       // No Story o logo fica em cima, longe do texto e da barra de progresso do app.
       if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: ehStory ? MARGEM : L - MARGEM - 130, y: ehStory ? 46 : 36, l: 130, a: 54, placa: true });
+      // O aviso de imagem editada, que a capa cheia não tinha.
+      //
+      // Nas outras páginas ele vem no rodapé, e esta saía antes de chegar lá. No Story
+      // isso deixava o material SEM aviso nenhum: o Story é de uma página só, e o selo
+      // que a própria foto carrega fica no canto de baixo à direita -- justamente o que
+      // o corte pra 9:16 joga fora. Saía um imóvel com mobília virtual anunciado sem
+      // dizer que é virtual.
+      if (ctx.temEditada !== false) {
+        por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 17, l: util, tamanho: 6.5, cor: capaEscura ? "#c9cfd8" : "#8a929e" }));
+      }
       return { id: pagina.id, largura: L, altura: A, caixas };
     }
 
