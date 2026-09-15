@@ -352,6 +352,32 @@ export function definirIdentidade(d: DocumentoBook, mudanca: Partial<Identidade>
   return { ...d, identidade: { ...d.identidade, ...mudanca } };
 }
 
+/**
+ * Troca o formato do material inteiro -- o post que vira Story, o Story que vira feed.
+ *
+ * Mexe SÓ na geometria. O tipo continua o mesmo, e com ele o número de fotos, as páginas
+ * fixas e o fato de sair em JPG ou PDF: quem troca o formato quer o mesmo material noutro
+ * enquadramento, não outro material.
+ *
+ * Nenhuma página é marcada como manual. O layout é recalculado inteiro a partir do
+ * formato novo, e os elementos da camada livre acompanham porque moram em fração.
+ */
+export function definirFormato(d: DocumentoBook, formato: Formato): DocumentoBook {
+  return formato === d.formato ? d : { ...d, formato };
+}
+
+/**
+ * Os formatos que fazem sentido oferecer pra este material.
+ *
+ * Separados por destino, não por gosto: material que sai em JPG é pra rede social e vive
+ * em quadrado, 9:16 ou 4:5; material que sai em PDF é pra mandar ou imprimir e vive em
+ * A4 ou widescreen. Misturar os dois lados ofereceria "Story em A4", que não existe.
+ */
+export function formatosDoMaterial(d: DocumentoBook): Formato[] {
+  const paraRede = TIPO_POR_ID[d.tipo]?.saida === "imagem";
+  return paraRede ? ["quadrado", "story", "feed"] : ["a4_retrato", "a4_paisagem", "widescreen"];
+}
+
 /** Todos os jobIds usados, sem repetir. Serve pra assinar URL e pra baixar no export. */
 export function imagensDoDocumento(d: DocumentoBook): string[] {
   return [...new Set(d.paginas.flatMap((p) => p.imagens).filter(Boolean))];

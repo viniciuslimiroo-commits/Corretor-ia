@@ -817,7 +817,13 @@ export default function PaginaVideo() {
     }
   }
 
-  async function gerar() {
+  /**
+   * Gera o vídeo. `sobrepor` troca alguns campos do espec SEM mexer no editor -- é o que
+   * faz "fazer também em quadrado" ser um clique: as mesmas cenas, os mesmos textos, o
+   * mesmo áudio, outro enquadramento. E não custa crédito de novo: o clipe animado já
+   * existe e o servidor confere isso por conta própria.
+   */
+  async function gerar(sobrepor?: Partial<EspecVideo>) {
     if (cenas.length === 0 || gerando) return;
     setSegundosGerando(0);
     setGerando(true);
@@ -829,7 +835,7 @@ export default function PaginaVideo() {
       const r = await fetch("/api/video", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-        body: JSON.stringify({ imovelId, espec }),
+        body: JSON.stringify({ imovelId, espec: sobrepor ? { ...espec, ...sobrepor } : espec }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Não consegui iniciar o vídeo.");
@@ -992,7 +998,7 @@ export default function PaginaVideo() {
             {custo === 0 ? " · sem crédito" : ` · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
           </p>
         </div>
-        <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0}>
+        <Botao onClick={() => gerar()} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0}>
           <Icone nome="play" className="h-4 w-4" />
           {gerando ? progresso?.mensagem ?? "Gerando…" : "Gerar vídeo"}
         </Botao>
@@ -1036,6 +1042,23 @@ export default function PaginaVideo() {
                 </Botao>
                 <Botao variante="discreta" onClick={() => setResultado(null)}>Fechar</Botao>
               </div>
+              {/* Adaptar pra outro formato.
+                  O mesmo vídeo serve pro Reels e pro feed, e refazer tudo à mão pra
+                  trocar o enquadramento era o passo que mandava a pessoa pro CapCut.
+                  As cenas, os textos e o áudio são os mesmos; muda o quadro. Não custa
+                  crédito: o clipe animado já existe e é reaproveitado. */}
+              {cenas.length > 0 && (
+                <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
+                  <p className="text-xs text-neutral-500">Fazer também em</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {FORMATOS.filter((f) => f.id !== resultado.formato).map((f) => (
+                      <Chip key={f.id} ativo={false} onClick={() => gerar({ formato: f.id })} disabled={gerando} title={f.dica}>
+                        {f.rotulo} · {f.id}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-3">
                 <Compartilhar token={token} videoId={resultado.videoId} texto="Olha o vídeo do imóvel:" />
               </div>

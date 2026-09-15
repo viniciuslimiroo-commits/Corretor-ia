@@ -112,9 +112,11 @@ export function Chip({
   ativo,
   children,
   onClick,
+  disabled,
   title,
 }: {
   ativo: boolean;
+  disabled?: boolean;
   children: ReactNode;
   onClick: () => void;
   title?: string;
@@ -123,10 +125,11 @@ export function Chip({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       title={title}
       aria-pressed={ativo}
       className={
-        "rounded-full border px-3 py-1.5 text-sm transition " +
+        "rounded-full border px-3 py-1.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 " +
         (ativo
           ? "border-marca-indigo bg-marca-indigo text-white"
           : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400")

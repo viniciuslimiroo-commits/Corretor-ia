@@ -161,8 +161,14 @@ conferir(!!pronto, "o modelo virou vídeo");
 if (pronto) {
   const arquivo = path.join(tmp, "modelo.mp4");
   fs.writeFileSync(arquivo, Buffer.from(await (await fetch(pronto.url)).arrayBuffer()));
-  const sonda = spawnSync(ffmpeg.replace("ffmpeg", "ffprobe"), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", arquivo], { encoding: "utf8" });
-  const medido = Number(String(sonda.stdout ?? "").trim()) || Number(pronto.duracao);
+  // A duração sai do próprio ffmpeg: `ffmpeg-static` não traz ffprobe, e trocar
+  // "ffmpeg" por "ffprobe" no caminho acerta o nome da PASTA, não o executável -- a
+  // sonda nunca rodava e o teste caía calado no valor que a API tinha dito, que é a
+  // previsão e não a medida. Aqui o ffmpeg lê o arquivo e imprime a duração no stderr.
+  const sonda = spawnSync(ffmpeg, ["-hide_banner", "-i", arquivo], { encoding: "utf8" });
+  const achou = /Duration:\s*(\d+):(\d+):(\d+\.?\d*)/.exec(`${sonda.stderr ?? ""}`);
+  conferir(!!achou, "consegui medir a duração no arquivo", achou ? achou[0] : "a sonda não respondeu");
+  const medido = achou ? Number(achou[1]) * 3600 + Number(achou[2]) * 60 + Number(achou[3]) : 0;
   console.log(`     medido:   ${medido.toFixed(2)}s`);
   conferir(Math.abs(medido - previsto) < 0.6, "o tempo do arquivo bate com o previsto pelo modelo", `${medido.toFixed(2)}s vs ${previsto.toFixed(2)}s`);
 

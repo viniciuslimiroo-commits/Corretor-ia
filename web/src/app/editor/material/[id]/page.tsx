@@ -17,10 +17,9 @@ import {
   definirFoco,
   definirIdentidade,
   definirSelo,
-  adicionarElemento,
+  definirFormato,
+  formatosDoMaterial,
   mudarElemento,
-  removerElemento,
-  ESTILOS_ELEMENTO,
   imagensDoDocumento,
   inserir,
   mover,
@@ -65,6 +64,16 @@ type Carga = {
   logo: string | null;
   ctx: ContextoLayout;
   qrs: Record<string, string>;
+};
+
+/** Nome de gente pros formatos, com o destino de cada um. */
+const NOME_FORMATO: Record<string, { rotulo: string; dica: string }> = {
+  quadrado: { rotulo: "Quadrado", dica: "Feed do Instagram e do Facebook" },
+  story: { rotulo: "Story 9:16", dica: "Story e Reels, tela inteira do celular" },
+  feed: { rotulo: "Feed 4:5", dica: "Feed do Instagram, ocupa mais tela" },
+  a4_retrato: { rotulo: "A4 em pé", dica: "Pra mandar e pra imprimir" },
+  a4_paisagem: { rotulo: "A4 deitado", dica: "Pra ler na tela" },
+  widescreen: { rotulo: "Apresentação", dica: "Pra projetar numa reunião" },
 };
 
 const LARGURA_BASE = 520;
@@ -570,6 +579,29 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                       e o com "Vendido" são dois materiais, e montar o segundo do zero era
                       trabalho à toa. Não marca a capa como mexida à mão -- trocar de fase
                       não pode desligar o Refazer. */}
+                  {/* Formato: o mesmo material noutro enquadramento. Um post que rende
+                      bem vira Story sem refazer nada -- e a camada livre acompanha,
+                      porque mora em fração da página. */}
+                  <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Formato</p>
+                  <span className="flex flex-wrap gap-1 px-2 pb-1">
+                    {formatosDoMaterial(book.documento).map((f) => {
+                      const ativo = book.documento.formato === f;
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => book.aplicar((d) => definirFormato(d, f))}
+                          title={NOME_FORMATO[f].dica}
+                          className={
+                            "rounded-full border px-2.5 py-1 text-[11px] transition " +
+                            (ativo ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                          }
+                        >
+                          {NOME_FORMATO[f].rotulo}
+                        </button>
+                      );
+                    })}
+                  </span>
+
                   <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Etiqueta na capa</p>
                   <span className="flex flex-wrap gap-1 px-2 pb-1">
                     {[{ id: "", texto: "Sem etiqueta", dica: "" }, ...SELOS_MATERIAL].map((s) => {
