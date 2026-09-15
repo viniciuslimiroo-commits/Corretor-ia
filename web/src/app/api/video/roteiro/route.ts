@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { chamarSincrono } from "@/lib/fal";
 import { conferirFatos } from "@/lib/book-fatos";
+import { REGRA_IDIOMA, idiomaDaRequisicao } from "@/i18n/idiomas";
 
 // Roteiro da narração escrito por IA a partir do que a pessoa já preencheu (título,
 // preço, local, legendas das cenas). Curto de propósito: 3 a 4 frases, cabe em 20-25s
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest) {
   const legendas = Array.isArray(corpo?.legendas) ? corpo.legendas.map((l: unknown) => texto(l, 40)).filter(Boolean).slice(0, 12) : [];
 
   const prompt = [
-    "Escreva a narração de um vídeo curto de anúncio de imóvel para redes sociais, em português do Brasil.",
+    "Escreva a narração de um vídeo curto de anúncio de imóvel para redes sociais.",
+    REGRA_IDIOMA[idiomaDaRequisicao(req)],
     "Regras: 3 a 4 frases, no máximo 60 palavras no total, tom acolhedor e direto, sem exageros nem promessas (nada de 'melhor da cidade'), sem emojis, sem hashtags, sem preço inventado. Termine convidando a chamar no WhatsApp para agendar uma visita. Responda só com o texto da narração.",
     titulo ? `Imóvel: ${titulo}.` : "",
     local ? `Local: ${local}.` : "",

@@ -37,3 +37,46 @@ export function idiomaDoNavegador(acceptLanguage: string | null | undefined): Id
 export function langHtml(idioma: Idioma): string {
   return IDIOMAS.find((i) => i.id === idioma)?.lang ?? "pt-BR";
 }
+
+/**
+ * O idioma de uma requisição de API: o cookie que a pessoa escolheu, senão o navegador.
+ *
+ * Existe porque traduzir só a tela não basta. O que a IA ESCREVE -- descrição do book,
+ * roteiro da narração -- e o aviso gravado dentro da imagem saem do servidor, e sair em
+ * português numa conta em espanhol não é falta de polimento: é material que o corretor
+ * não pode mandar pro cliente dele.
+ */
+export function idiomaDaRequisicao(req: { headers: { get(nome: string): string | null } }): Idioma {
+  const cookie = req.headers.get("cookie") ?? "";
+  const achou = new RegExp(`(?:^|;\\s*)${COOKIE_IDIOMA}=([^;]+)`).exec(cookie);
+  const doCookie = achou?.[1]?.trim();
+  if (ehIdioma(doCookie)) return doCookie;
+  return idiomaDoNavegador(req.headers.get("accept-language"));
+}
+
+/**
+ * A regra de língua que vai no prompt, por extenso.
+ *
+ * "Espanhol neutro" e não de um país: um anúncio em espanhol rioplatense lido no México
+ * soa estrangeiro, e a Encena não sabe em que país o corretor está -- sabe só que idioma
+ * ele escolheu. Neutro é o que serve aos dois.
+ *
+ * A frase diz, com todas as letras, que as INSTRUÇÕES e os DADOS vêm em português e
+ * ainda assim a resposta é na outra língua. Sem isso não funciona: medido
+ * (`scripts/testar-idioma-servidor.mjs`) -- um "Escribe en español" no meio de um prompt
+ * em português devolve português, porque o modelo segue a língua dominante do texto que
+ * está lendo. A regra também entra DUAS vezes no prompt, na primeira linha e na última:
+ * o meio é onde instrução se perde.
+ */
+export const REGRA_IDIOMA: Record<Idioma, string> = {
+  pt: "Escreva em Português do Brasil.",
+  es: "IMPORTANTE: responde SOLO en español neutro de Latinoamérica, sin modismos de un país específico. Las instrucciones y los datos del inmueble están en portugués a propósito; tu respuesta tiene que estar en español de todas formas.",
+  en: "IMPORTANT: answer ONLY in English (US). The instructions and the property data are in Portuguese on purpose; your answer must still be in English.",
+};
+
+/** O aviso que fica gravado na imagem editada, por idioma. */
+export const AVISO_IMAGEM: Record<Idioma, { prefixo: string; generico: string }> = {
+  pt: { prefixo: "Imagem ilustrativa", generico: "Imagem ilustrativa · editada digitalmente" },
+  es: { prefixo: "Imagen ilustrativa", generico: "Imagen ilustrativa · editada digitalmente" },
+  en: { prefixo: "Illustrative image", generico: "Illustrative image · digitally edited" },
+};

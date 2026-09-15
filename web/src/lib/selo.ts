@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { ACOES_POR_ID } from "./acoes";
+import { AVISO_IMAGEM, type Idioma } from "@/i18n/idiomas";
 
 // Selo de "imagem ilustrativa" (Sprint 4 do plano, puxado pra cá porque é pré-requisito
 // pra colocar o produto na mão de corretor de verdade).
@@ -27,10 +28,18 @@ import { ACOES_POR_ID } from "./acoes";
 // que protege o corretor.
 //
 // Ação desconhecida e sem selo próprio recebe o genérico: na dúvida, avisar é o lado seguro.
-export function textoDoSelo(acao: string, seloDoJob?: string | null): string | null {
+export function textoDoSelo(acao: string, seloDoJob?: string | null, idioma: Idioma = "pt"): string | null {
   if (typeof seloDoJob === "string" && seloDoJob.trim()) return seloDoJob.trim();
   const def = ACOES_POR_ID[acao];
-  return def ? def.selo : "Imagem ilustrativa · editada digitalmente";
+  // Fora do português, o aviso GENÉRICO da língua, e não o específico da ação.
+  //
+  // O aviso vai QUEIMADO na imagem e é o que protege o corretor; metade dele em
+  // português dentro de um material em espanhol não protege ninguém e ainda parece
+  // erro. O específico ("a casa não está incluída") é mais informativo e volta pra cada
+  // idioma quando os catálogos de ação forem traduzidos -- até lá, dizer que a imagem
+  // foi editada digitalmente, na língua certa, é o mínimo correto.
+  if (idioma !== "pt") return AVISO_IMAGEM[idioma].generico;
+  return def ? def.selo : AVISO_IMAGEM.pt.generico;
 }
 
 function escaparXml(texto: string): string {

@@ -5,6 +5,7 @@ import { marcaEfetiva, membroDe } from "@/lib/cobranca";
 import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { montar, montarCatalogo, montarPortfolio, type ImovelDoCatalogo } from "@/lib/book-montagem";
 import { montarAutomatico, comOlhar, verFotos, type Relatorio } from "@/lib/book-ia";
+import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { imagensDoDocumento, type DocumentoBook } from "@/lib/book-documento";
 import { faltaMigracao, imagensDoImovel, imovelDeMontagem, jobsParaImagens, RECADO_MIGRACAO } from "@/lib/book-servidor";
 
@@ -219,7 +220,7 @@ export async function POST(req: NextRequest) {
   let documento;
   let relatorio: Relatorio | null = null;
   if (automatico) {
-    const feito = await montarAutomatico({ db, userId, tipo: def.id, imovel, imagens, cor, falKey: process.env.FAL_KEY });
+    const feito = await montarAutomatico({ db, userId, tipo: def.id, imovel, imagens, cor, falKey: process.env.FAL_KEY, idioma: idiomaDaRequisicao(req) });
     documento = feito.documento;
     relatorio = feito.relatorio;
   } else {

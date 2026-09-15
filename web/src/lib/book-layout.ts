@@ -1,6 +1,7 @@
 import { DIMENSOES, TIPO_POR_ID } from "./book-tipos";
 import { ESTILO_ELEMENTO_POR_ID, type DocumentoBook, type FonteBook, type Pagina } from "./book-documento";
 import { medidorDaFonte } from "./book-metricas";
+import type { Idioma } from "@/i18n/idiomas";
 
 // O MOTOR DE LAYOUT: a página vira uma lista de caixas em coordenadas de página.
 //
@@ -46,12 +47,23 @@ export type ContextoLayout = {
    * existe pra dizer. Ausente = assume que sim, que é o lado seguro.
    */
   temEditada?: boolean;
+  /**
+   * Em que língua saem os avisos impressos. O material vai pro CLIENTE do corretor: um
+   * aviso legal em português dentro de um book em espanhol não avisa ninguém, e é
+   * justamente o aviso que protege quem assina o anúncio. Ausente = português.
+   */
+  idioma?: Idioma;
 };
 
 const MARGEM = 40;
 const CINZA = "#6b7380";
 const GRAFITE = "#1a1f26";
-const AVISO_EDITADA = "Imagens ilustrativas · algumas editadas digitalmente";
+
+const AVISO_EDITADA: Record<Idioma, string> = {
+  pt: "Imagens ilustrativas · algumas editadas digitalmente",
+  es: "Imágenes ilustrativas · algunas editadas digitalmente",
+  en: "Illustrative images · some digitally edited",
+};
 
 /** Escurece a cor da marca pra virar fundo de capa sem estourar num tom claro. */
 function fundo(hex: string): string {
@@ -147,7 +159,7 @@ function corpoDaPagina(
     const assinatura = assinaturaDe(ctx);
     if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 30, l: util - 30, tamanho: 8, cor: CINZA }));
     por(texto(String(numero), medir, { x: L - MARGEM - 20, y: A - 30, l: 20, tamanho: 8, cor: CINZA, alinhamento: "direita" }));
-    if (ctx.temEditada !== false) por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
+    if (ctx.temEditada !== false) por(texto(AVISO_EDITADA[ctx.idioma ?? "pt"], medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
   }
 
   if (pagina.tipo === "capa") {
@@ -241,7 +253,7 @@ function corpoDaPagina(
       // o corte pra 9:16 joga fora. Saía um imóvel com mobília virtual anunciado sem
       // dizer que é virtual.
       if (ctx.temEditada !== false) {
-        por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 17, l: util, tamanho: 6.5, cor: capaEscura ? "#c9cfd8" : "#8a929e" }));
+        por(texto(AVISO_EDITADA[ctx.idioma ?? "pt"], medir, { x: MARGEM, y: A - 17, l: util, tamanho: 6.5, cor: capaEscura ? "#c9cfd8" : "#8a929e" }));
       }
       return { id: pagina.id, largura: L, altura: A, caixas };
     }
@@ -285,7 +297,7 @@ function corpoDaPagina(
       if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 78, l: util - 100, tamanho: 11, negrito: true, cor: GRAFITE }));
       if (ctx.link) caixas.push({ tipo: "qr", x: L - MARGEM - 78, y: A - 118, l: 78, a: 78, conteudo: ctx.link });
       if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: MARGEM, y: A - 118, l: 100, a: 34, placa: false });
-      if (ctx.temEditada !== false) por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
+      if (ctx.temEditada !== false) por(texto(AVISO_EDITADA[ctx.idioma ?? "pt"], medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
     } else if (doc.paginas.length === 1) {
       // Material de uma página só e sem grade (o post): o pé leva o contato, senão sobra
       // meia tela em branco embaixo do preço -- e um post com espaço vazio parece
@@ -294,7 +306,7 @@ function corpoDaPagina(
       if (assinatura) por(texto(assinatura, medir, { x: MARGEM, y: A - 78, l: util - 100, tamanho: 11, negrito: true, cor: GRAFITE }));
       if (ctx.link) caixas.push({ tipo: "qr", x: L - MARGEM - 78, y: A - 118, l: 78, a: 78, conteudo: ctx.link });
       if (ctx.marca.temLogo) caixas.push({ tipo: "logo", x: MARGEM, y: A - 118, l: 100, a: 34, placa: false });
-      if (ctx.temEditada !== false) por(texto(AVISO_EDITADA, medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
+      if (ctx.temEditada !== false) por(texto(AVISO_EDITADA[ctx.idioma ?? "pt"], medir, { x: MARGEM, y: A - 19, l: util, tamanho: 6.5, cor: "#a7aeb9" }));
     } else if (ctx.marca.temLogo) {
       caixas.push({ tipo: "logo", x: MARGEM, y: A - 100, l: 110, a: 45, placa: false });
     }

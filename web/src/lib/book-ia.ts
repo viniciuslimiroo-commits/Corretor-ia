@@ -5,6 +5,7 @@ import { fichaDoImovel, montar, type DadosMontagem, type ImagemDisponivel, type 
 import { novoId, type DocumentoBook, type Pagina } from "./book-documento";
 import { TIPO_POR_ID, type TipoBook } from "./book-tipos";
 import { garantirMapa } from "./mapa";
+import { REGRA_IDIOMA, type Idioma } from "@/i18n/idiomas";
 
 // "Criar automaticamente": do imóvel cadastrado a um book pronto, sem a pessoa escolher
 // nada.
@@ -194,8 +195,12 @@ function dossie(imovel: ImovelMontagem, ambientes: string[]): string {
     .join("\n");
 }
 
-const REGRAS = [
-  "Português do Brasil.",
+/**
+ * As regras que toda escrita de book obedece. O idioma é o primeiro item de propósito:
+ * é a instrução que o modelo mais ignora quando vem no fim de uma lista longa.
+ */
+const regras = (idioma: Idioma) => [
+  REGRA_IDIOMA[idioma],
   "NÃO INVENTE FATO. Metragem, quantidade de cômodos, vagas, ano, preço, condomínio, IPTU e endereço só podem sair da ficha cadastrada acima, com o mesmo número e o mesmo rótulo.",
   "Não afirme nada que não esteja na ficha nem na frase do corretor: nada de distância até shopping, escola ou metrô, nada de andar, nada de vista, nada de nome de bairro novo, nada de acabamento que ninguém citou.",
   "Se você não tem o dado, escreva a frase sem ele. Frase mais curta é melhor que frase inventada.",
@@ -211,11 +216,15 @@ const REGRAS = [
 export async function escreverTextos(
   imovel: ImovelMontagem,
   ambientes: string[],
-  falKey: string | undefined
+  falKey: string | undefined,
+  idioma: Idioma = "pt"
 ): Promise<TextosDoBook | null> {
   if (!falKey) return null;
 
   const pedido = [
+    // Abre com o idioma e fecha com ele: o meio do prompt é onde instrução se perde, e
+    // tudo no meio aqui está em português.
+    REGRA_IDIOMA[idioma],
     "Escreva os textos de um material de divulgação de imóvel. Responda SÓ com um JSON, sem markdown:",
     '{"descricao":"...","destaques":["...","..."],"extras":["...","..."],"chamada":"..."}',
     "descricao: 2 ou 3 frases, até 55 palavras, pra abrir o material embaixo do preço. Comece pelo que o imóvel é.",
@@ -223,9 +232,11 @@ export async function escreverTextos(
     "extras: de 0 a 4 itens sobre O QUE ELE TEM A MAIS, e SÓ a partir da lista de ambientes que aparecem nas fotos (área gourmet, piscina, academia, varanda, closet, home office, salão de festas, playground, quintal). Até 6 palavras, sem ponto final. Se a lista de ambientes não tiver nada além de sala, quarto, cozinha e banheiro, devolva a lista vazia -- não force.",
     "Não repita em extras o que já está em destaques.",
     "chamada: até 5 palavras, o convite final pra visitar.",
-    REGRAS,
+    regras(idioma),
     "",
     dossie(imovel, ambientes),
+    "",
+    REGRA_IDIOMA[idioma],
   ].join("\n");
 
   let bruto: Record<string, unknown> | null = null;
@@ -292,9 +303,11 @@ export async function montarAutomatico(args: {
   imovel: ImovelMontagem;
   imagens: ImagemDisponivel[];
   cor?: string;
+  /** Idioma em que a IA escreve. Vem do cookie da pessoa, lido na rota. */
+  idioma?: Idioma;
   falKey: string | undefined;
 }): Promise<{ documento: DocumentoBook; relatorio: Relatorio }> {
-  const { db, userId, tipo, imovel, imagens, cor, falKey } = args;
+  const { db, userId, tipo, imovel, imagens, cor, falKey, idioma = "pt" } = args;
   const def = TIPO_POR_ID[tipo] ?? TIPO_POR_ID.book;
 
   // Teto de leitura: um imóvel com 60 fotos não vira 60 chamadas de visão pra montar um
@@ -334,7 +347,7 @@ export async function montarAutomatico(args: {
   }
 
   const ambientes = [...new Set(comVista.map((i) => i.tipoEspaco).filter((x): x is string => !!x && x !== "auto"))];
-  const textos = await escreverTextos(imovel, ambientes, falKey).catch(() => null);
+  const textos = await escreverTextos(imovel, ambientes, falKey, idioma).catch(() => null);
 
   if (textos) {
     const capa = documento.paginas.find((p) => p.tipo === "capa");

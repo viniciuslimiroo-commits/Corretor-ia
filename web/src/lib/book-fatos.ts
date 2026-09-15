@@ -17,29 +17,81 @@ import type { ImovelMontagem } from "./book-montagem";
 
 export type Violacao = { trecho: string; motivo: string };
 
-/** Números por extenso viram dígito antes da conferência: "três quartos" é uma afirmação. */
+/**
+ * Números por extenso viram dígito antes da conferência: "três quartos" é uma afirmação.
+ *
+ * Nos três idiomas, e SÓ com palavras que não existem nos outros dois. "dos" fica de
+ * fora de propósito: é dois em espanhol e é "de os" em português, e converter "a vista
+ * dos quartos" em "2 quartos" reprovaria uma frase honesta no idioma principal. Palavra
+ * ambígua sobe pra AMBIGUOS, onde só conta se o substantivo vier logo atrás.
+ */
 const EXTENSO: Record<string, number> = {
-  um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8,
+  dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8,
   nove: 9, dez: 10, onze: 11, doze: 12, treze: 13, quatorze: 14, catorze: 14, quinze: 15,
   dezesseis: 16, dezessete: 17, dezoito: 18, dezenove: 19, vinte: 20,
+  // espanhol
+  cuatro: 4, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, veinte: 20,
+  // inglês
+  two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, twenty: 20,
 };
 
+/**
+ * Palavras que só viram número quando um substantivo de contagem vem logo depois.
+ *
+ * "um quarto" é contagem; "um condomínio completo" é artigo. Vale igual pro "un/una" do
+ * espanhol e pro "one" do inglês. O "a" do inglês NÃO entra: em português "a suíte" é
+ * artigo definido e viraria "1 suíte", reprovando frase honesta num imóvel de 2 suítes.
+ */
+const AMBIGUOS: Record<string, number> = { um: 1, uma: 1, un: 1, una: 1, one: 1 };
+
 /** Qual campo do cadastro responde por cada palavra. Fora desta lista, número não passa. */
+/**
+ * A unidade contada, em português, espanhol e inglês.
+ *
+ * Trilíngue porque o guarda roda DEPOIS da IA, e a IA escreve no idioma da pessoa. Com
+ * vocabulário só em português, um texto correto em espanhol caía na peneira da sobra
+ * ("número sem origem no cadastro") e era recusado -- o guarda barrando justamente o
+ * texto que ele deveria aprovar. Medido em `scripts/testar-idioma-servidor.mjs`.
+ *
+ * As chaves vêm sem acento e em minúsculas porque `semAcento` já passou: "baños" chega
+ * aqui como "banos".
+ */
 const CAMPO_DA_UNIDADE: Record<string, keyof ImovelMontagem> = {
   quarto: "dormitorios",
   quartos: "dormitorios",
   dormitorio: "dormitorios",
   dormitorios: "dormitorios",
+  habitacion: "dormitorios",
+  habitaciones: "dormitorios",
+  recamara: "dormitorios",
+  recamaras: "dormitorios",
+  bedroom: "dormitorios",
+  bedrooms: "dormitorios",
   suite: "suites",
   suites: "suites",
   banheiro: "banheiros",
   banheiros: "banheiros",
   lavabo: "banheiros",
   lavabos: "banheiros",
+  bano: "banheiros",
+  banos: "banheiros",
+  aseo: "banheiros",
+  aseos: "banheiros",
+  bathroom: "banheiros",
+  bathrooms: "banheiros",
   vaga: "vagas",
   vagas: "vagas",
   garagem: "vagas",
   garagens: "vagas",
+  cochera: "vagas",
+  cocheras: "vagas",
+  plaza: "vagas",
+  plazas: "vagas",
+  estacionamiento: "vagas",
+  estacionamientos: "vagas",
+  garage: "vagas",
+  garages: "vagas",
 };
 
 // As duas expressões abaixo repetem a lista de unidades em vez de montá-la a partir das
@@ -49,10 +101,10 @@ const CAMPO_DA_UNIDADE: Record<string, keyof ImovelMontagem> = {
 // listas juntas: se divergirem, um caso cai.
 
 /** Número colado num substantivo de contagem: "3 quartos", "2 vagas na garagem". */
-const CONTAGEM = /(\d+)\s*(?:[a-z]+\s+){0,2}?(quartos?|dormitorios?|suites?|banheiros?|lavabos?|vagas?|garagens?)\b/g;
+const CONTAGEM = new RegExp(String.raw`(\d+)\s*(?:[a-z]+\s+){0,2}?(quartos?|dormitorios?|habitaciones?|habitacion|recamaras?|bedrooms?|suites?|banheiros?|lavabos?|banos?|aseos?|bathrooms?|vagas?|garagens?|cocheras?|plazas?|estacionamientos?|garages?)\b`, "g");
 
-/** "um quarto" conta; "um condomínio" é artigo. */
-const ARTIGO_QUE_CONTA = /\b(?:um|uma)\b((?:\s+\w+){0,2}\s+(?:quartos?|dormitorios?|suites?|banheiros?|lavabos?|vagas?|garagens?)\b)/g;
+/** "um quarto" conta; "um condomínio" é artigo. Vale pro "un/una" e pro "one". */
+const ARTIGO_QUE_CONTA = new RegExp(String.raw`\b(um|uma|un|una|one)\b((?:\s+\w+){0,2}\s+(?:quartos?|dormitorios?|habitaciones?|habitacion|recamaras?|bedrooms?|suites?|banheiros?|lavabos?|banos?|aseos?|bathrooms?|vagas?|garagens?|cocheras?|plazas?|estacionamientos?|garages?)\b)`, "g");
 
 export function semAcento(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -83,9 +135,10 @@ function textoDoCorretor(i: ImovelMontagem): string {
  * lazer" não.
  */
 function comExtensoEmDigito(texto: string): string {
-  const t = texto.replace(ARTIGO_QUE_CONTA, (_todo, resto: string) => `1${resto}`);
+  const t = texto.replace(ARTIGO_QUE_CONTA, (_todo, palavra: string, resto: string) => `${AMBIGUOS[palavra] ?? 1}${resto}`);
   return t.replace(/\b([a-z]+)\b/g, (palavra) => {
-    if (palavra === "um" || palavra === "uma") return palavra;
+    // A palavra ambígua que sobreviveu ao passo acima é artigo: fica como está.
+    if (AMBIGUOS[palavra] !== undefined) return palavra;
     const n = EXTENSO[palavra];
     return n === undefined ? palavra : String(n);
   });
@@ -112,7 +165,7 @@ export function conferirFatos(texto: string, imovel: ImovelMontagem): Violacao[]
   const ehDoCorretor = (trecho: string) => doCorretor.includes(trecho.trim());
 
   // ---- metragem ----
-  for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)\s*(m2|m²|metros? quadrados?)/g)) {
+  for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)\s*(m2|m²|metros? quadrados?|metros? cuadrados?|sq\.?\s?m|square meters?)/g)) {
     marcar(m.index, m.index + m[0].length);
     const v = numero(m[1]);
     const cabe = [imovel.area_util, imovel.area_total].some((a) => a != null && Math.abs(Number(a) - v) <= 0.5);
@@ -132,7 +185,9 @@ export function conferirFatos(texto: string, imovel: ImovelMontagem): Violacao[]
   }
 
   // ---- dinheiro ----
-  for (const m of t.matchAll(/r\$\s*([\d.,]+)/g)) {
+  // Qualquer moeda, não só R$: o texto em espanhol ou inglês escreve US$ ou $, e um
+  // valor que não está no cadastro é invenção em qualquer símbolo.
+  for (const m of t.matchAll(/(?:r\$|us\$|\$|€)\s*([\d.,]+)/g)) {
     marcar(m.index, m.index + m[0].length);
     const d = soDigitos(m[1]);
     const vale = [imovel.preco, imovel.condominio, imovel.iptu].some((v) => v && soDigitos(String(v)) === d);

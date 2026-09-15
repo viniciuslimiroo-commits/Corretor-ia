@@ -3,6 +3,7 @@ import { usuarioDaRota, origemDoApp } from "@/lib/auth-rota";
 import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { limparDocumento } from "@/lib/book-documento";
 import { faltaMigracao, imovelDeMontagem, prepararLeitura, RECADO_MIGRACAO } from "@/lib/book-servidor";
+import { idiomaDaRequisicao } from "@/i18n/idiomas";
 
 // Um book: ler, salvar e apagar.
 //
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!documento) return NextResponse.json({ error: "Este book está corrompido. Crie outro a partir do imóvel." }, { status: 500 });
 
   const dados = data.property_id ? await imovelDeMontagem(db, userId, data.property_id) : null;
-  const { layout, urls, logo, ctx: contexto, qrs } = await prepararLeitura(db, userId, documento, dados?.imovel ?? null, dados?.shareToken ?? null, origemDoApp(req));
+  const { layout, urls, logo, ctx: contexto, qrs } = await prepararLeitura(db, userId, documento, dados?.imovel ?? null, dados?.shareToken ?? null, origemDoApp(req), idiomaDaRequisicao(req));
 
   return NextResponse.json({
     book: {

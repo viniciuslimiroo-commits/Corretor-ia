@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota, origemDoApp } from "@/lib/auth-rota";
 import { BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { marcaEfetiva } from "@/lib/cobranca";
+import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { limparDocumento, imagensDoDocumento } from "@/lib/book-documento";
 import { montarLayout, type ContextoLayout } from "@/lib/book-layout";
 import { fichaDoImovel } from "@/lib/book-montagem";
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     marca: { nome: marca.nome, creci: marca.creci, whatsapp: marca.whatsapp, temLogo: !!marca.logo_path },
     ficha: dados ? fichaDoImovel(dados.imovel) : [],
     link: dados?.shareToken ? `${origemDoApp(req).replace(/\/$/, "")}/c/${dados.shareToken}` : null,
+    idioma: idiomaDaRequisicao(req),
   };
   const paginas = await resolverQr(montarLayout(documento, contexto));
 

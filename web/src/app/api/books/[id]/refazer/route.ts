@@ -4,6 +4,7 @@ import { marcaEfetiva } from "@/lib/cobranca";
 import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { remontarCom } from "@/lib/book-montagem";
 import { montarAutomatico } from "@/lib/book-ia";
+import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { limparDocumento } from "@/lib/book-documento";
 import { faltaMigracao, imagensDoImovel, imovelDeMontagem, RECADO_MIGRACAO } from "@/lib/book-servidor";
 
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     imagens,
     cor,
     falKey: process.env.FAL_KEY,
+    idioma: idiomaDaRequisicao(req),
   });
 
   const { documento, descartadas } = remontarCom(atual, feito.documento);

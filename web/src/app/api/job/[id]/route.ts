@@ -12,6 +12,7 @@ import {
   type Provedor,
 } from "@/lib/fal";
 import { aplicarSelo, textoDoSelo } from "@/lib/selo";
+import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { ALVO_LARGURA_UPSCALE, saldoFal } from "@/lib/custo";
 import { ACOES_COM_CHECAGEM_DE_IGUALDADE, pareceIgual } from "@/lib/comparar";
 import { ACOES_POR_ID } from "@/lib/acoes";
@@ -123,7 +124,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // O selo é queimado ANTES de guardar, de propósito: assim a única cópia que existe
     // já está carimbada. Carimbar só na hora do download deixaria a versão sem aviso
     // acessível por quem pegasse a URL assinada.
-    const textoSelo = textoDoSelo(job!.tipo, job!.selo);
+    const textoSelo = textoDoSelo(job!.tipo, job!.selo, idiomaDaRequisicao(req));
     const bytesFinais = await aplicarSelo(bytesCrus, textoSelo);
     const dim = await sharp(bytesFinais).metadata();
 

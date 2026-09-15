@@ -65,5 +65,31 @@ caso("garantia inventada", "Estrutura com 20 anos de garantia.", false);
 caso("extenso inventado", "São cinco dormitórios.", false);
 caso("mistura certo e errado", "96,5 m² com 3 quartos a 300 metros do parque.", false);
 
+// O guarda roda DEPOIS da IA, e a IA escreve no idioma de quem pediu. Com vocabulário
+// só em português, um texto correto em espanhol caía na peneira da sobra e era recusado:
+// o guarda barrando justamente o texto que devia aprovar.
+console.log("\n--- espanhol: deve PASSAR ---");
+caso("es · dormitorios", "Cuenta con 3 dormitorios y 1 suite.", true);
+caso("es · habitaciones", "Tiene 3 habitaciones amplias.", true);
+caso("es · baños", "Dispone de 2 baños completos.", true);
+caso("es · estacionamiento", "Incluye 2 lugares de estacionamiento.", true);
+caso("es · plazas de garaje", "Con 2 plazas de garaje.", true);
+caso("es · metros cuadrados", "Área útil de 96,5 metros cuadrados.", true);
+
+console.log("\n--- espanhol: deve REPROVAR ---");
+caso("es · habitaciones a mais", "Tiene 5 habitaciones amplias.", false);
+caso("es · distancia inventada", "A 5 minutos del centro comercial.", false);
+caso("es · moeda inventada", "Precio de US$ 120.000.", false);
+
+console.log("\n--- inglês: deve PASSAR ---");
+caso("en · bedrooms", "Three bedrooms, one of them a suite.", true);
+caso("en · bathrooms", "It has 2 bathrooms.", true);
+caso("en · parking", "Comes with 2 garage spaces.", true);
+caso("en · square meters", "96,5 square meters of usable area.", true);
+
+console.log("\n--- inglês: deve REPROVAR ---");
+caso("en · bedrooms a mais", "Four spacious bedrooms.", false);
+caso("en · andar inventado", "Unit on the 12th floor.", false);
+
 console.log(falhas ? `\n${falhas} falha(s)` : "\ntudo certo");
 process.exit(falhas ? 1 : 0);

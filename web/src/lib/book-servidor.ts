@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import QRCode from "qrcode";
 import { assinar } from "./armazenamento";
 import { marcaEfetiva } from "./cobranca";
+import type { Idioma } from "@/i18n/idiomas";
 import { fichaDoImovel, type ImagemDisponivel, type ImovelMontagem } from "./book-montagem";
 import { montarLayout, type ContextoLayout, type PaginaLayout } from "./book-layout";
 import { imagensDoDocumento, type DocumentoBook } from "./book-documento";
@@ -167,7 +168,8 @@ export async function prepararLeitura(
   doc: DocumentoBook,
   imovel: ImovelMontagem | null,
   shareToken: string | null,
-  origem: string
+  origem: string,
+  idioma: Idioma = "pt"
 ): Promise<{ layout: PaginaLayout[]; urls: Record<string, string>; logo: string | null; ctx: ContextoLayout; qrs: Record<string, string> }> {
   const [marca, urls, temEditada] = await Promise.all([
     marcaEfetiva(db, userId),
@@ -179,6 +181,7 @@ export async function prepararLeitura(
     ficha: imovel ? fichaDoImovel(imovel) : [],
     link: shareToken ? `${origem.replace(/\/$/, "")}/c/${shareToken}` : null,
     temEditada,
+    idioma,
   };
   const layout = await resolverQr(montarLayout(doc, ctx));
   const logo = marca.logo_path ? await assinar(db, marca.logo_path).catch(() => null) : null;

@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { apagarEntradas, caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
 import { limparFaixaDoSelo, textoDoSelo } from "@/lib/selo";
+import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { UPSCALER, corpoRequisicao, despachar } from "@/lib/fal";
 import { ACOES_POR_ID, limparParametros } from "@/lib/acoes";
 import { saldoFal } from "@/lib/custo";
@@ -126,7 +127,9 @@ export async function POST(req: NextRequest) {
     bytesBase = await limparFaixaDoSelo(
       Buffer.from(await arquivo.arrayBuffer()),
       // O texto vai junto pra cobrir a caixa exata, e não o rodapé inteiro.
-      textoDoSelo(base.tipo as string, base.selo as string | null)
+      // No idioma da pessoa: a caixa a cobrir tem a largura do texto que foi carimbado,
+      // e um aviso em espanhol medido com a frase em português deixa ponta de fora.
+      textoDoSelo(base.tipo as string, base.selo as string | null, idiomaDaRequisicao(req))
     );
     // O refino herda o imóvel da origem: a v2 da sala continua sendo daquele apartamento.
     if (!imovelIdBruto && base.property_id) imovelIdBruto = base.property_id as string;

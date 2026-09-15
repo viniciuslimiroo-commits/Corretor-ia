@@ -5,6 +5,7 @@ import { limparDocumento } from "@/lib/book-documento";
 import { faltaMigracao, RECADO_MIGRACAO, imovelDeMontagem, imagensDoImovel, urlsDoDocumento } from "@/lib/book-servidor";
 import { fichaDoImovel, legendaDaImagem, type ImovelMontagem } from "@/lib/book-montagem";
 import { conferirFatos } from "@/lib/book-fatos";
+import { REGRA_IDIOMA, idiomaDaRequisicao, type Idioma } from "@/i18n/idiomas";
 
 // Escreve UM campo de UMA página. Não reescreve o book inteiro: texto gerado em bloco
 // ninguém lê antes de mandar, e o corretor assina embaixo do que sai daqui.
@@ -58,8 +59,8 @@ const REGRAS: Record<string, { max: number; instrucao: string }> = {
   },
 };
 
-const REGRAS_GERAIS = [
-  "Português do Brasil.",
+const regrasGerais = (idioma: Idioma) => [
+  REGRA_IDIOMA[idioma],
   "Só use o que eu te der ou o que aparece na foto em anexo. Não invente metragem, preço, número de quartos ou vagas, vista, vizinhança nem nome de bairro.",
   "Sem superlativo e sem promessa: nada de 'o melhor', 'imperdível', 'único', 'oportunidade'.",
   "Sem enchimento: nada de 'ideal para você', 'perfeito para a família', 'venha conferir'. Cada frase tem que dizer um fato.",
@@ -137,7 +138,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "Preencha a ficha do imóvel primeiro — sem os dados, a IA só teria o que inventar." }, { status: 422 });
   }
 
-  const prompt = [regra.instrucao, REGRAS_GERAIS, "", "Dados do imóvel:", ...linhas].join("\n");
+  // A regra de idioma ABRE e FECHA o prompt. O modelo segue a língua dominante do que
+  // lê, e tudo no meio -- instrução, regras e ficha -- está em português.
+  const idioma = idiomaDaRequisicao(req);
+  const prompt = [REGRA_IDIOMA[idioma], regra.instrucao, regrasGerais(idioma), "", "Dados do imóvel:", ...linhas, "", REGRA_IDIOMA[idioma]].join("\n");
 
   // A chave numa const local: dentro da closure o TypeScript perde o estreitamento feito
   // pelo `if (!falKey) return` lá em cima.
