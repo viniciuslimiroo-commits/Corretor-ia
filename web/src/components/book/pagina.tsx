@@ -40,7 +40,114 @@ export type Interacao = {
   aoMoverFoco?: (jobId: string, dx: number, dy: number) => void;
   /** Clique numa caixa de imagem (abre a gaveta pra trocar). */
   aoClicarImagem?: (jobId: string, indiceNaPagina: number) => void;
+  /** Camada livre: qual elemento está selecionado e o que fazer quando ele muda. */
+  elementoSelecionado?: string | null;
+  aoSelecionarElemento?: (id: string | null) => void;
+  /** Soltou o elemento numa posição nova. x/y em fração da página. */
+  aoMoverElemento?: (id: string, x: number, y: number) => void;
+  /** Largura nova, em fração da largura da página. */
+  aoRedimensionarElemento?: (id: string, l: number) => void;
 };
+
+/**
+ * A alça de um elemento livre: um retângulo transparente exatamente em cima do que foi
+ * desenhado, pra arrastar e redimensionar.
+ *
+ * Vem do LAYOUT, não do elemento: as caixas carregam `elementoId`, e a alça é a união
+ * delas. Calcular a altura a partir do estilo daria um retângulo aproximado, e alça que
+ * não coincide com o que se vê é pior que alça nenhuma -- a pessoa arrasta o vazio.
+ *
+ * Os números vão pro documento em FRAÇÃO da página, arredondados a meio por cento. O
+ * arredondamento é o que faz dois elementos arrastados "pro mesmo lugar" acabarem de
+ * fato alinhados.
+ */
+function Alca({
+  id,
+  caixa,
+  escala,
+  larguraPagina,
+  alturaPagina,
+  selecionado,
+  interacao,
+}: {
+  id: string;
+  caixa: { x: number; y: number; l: number; a: number };
+  escala: number;
+  larguraPagina: number;
+  alturaPagina: number;
+  selecionado: boolean;
+  interacao: Interacao;
+}) {
+  /**
+   * O arraste é ouvido no DOCUMENTO, não no próprio elemento.
+   *
+   * A primeira versão usava `setPointerCapture` na alça. Funciona na teoria e falhou na
+   * prática: a bolinha de largura tem 12px, o ponteiro sai dela no primeiro movimento e
+   * os `onPointerMove` do React param de chegar -- a alça ficava parada enquanto o
+   * ponteiro andava. Ouvir no documento não depende de captura, de o ponteiro continuar
+   * em cima nem de o navegador aceitar o `pointerId`.
+   */
+  function comecar(modo: "mover" | "largura", ev: React.PointerEvent) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    interacao.aoSelecionarElemento?.(id);
+    const inicio = { px: ev.clientX, py: ev.clientY, x: caixa.x / larguraPagina, y: caixa.y / alturaPagina, l: caixa.l / larguraPagina };
+    const passo = (v: number) => Math.round(v * 200) / 200;
+
+    const mover = (e: PointerEvent) => {
+      const dx = (e.clientX - inicio.px) / escala / larguraPagina;
+      const dy = (e.clientY - inicio.py) / escala / alturaPagina;
+      if (modo === "mover") interacao.aoMoverElemento?.(id, passo(inicio.x + dx), passo(inicio.y + dy));
+      else interacao.aoRedimensionarElemento?.(id, passo(inicio.l + dx));
+    };
+    const soltar = () => {
+      document.removeEventListener("pointermove", mover);
+      document.removeEventListener("pointerup", soltar);
+      document.removeEventListener("pointercancel", soltar);
+    };
+    document.addEventListener("pointermove", mover);
+    document.addEventListener("pointerup", soltar);
+    document.addEventListener("pointercancel", soltar);
+  }
+
+  const lado = 14;
+  return (
+    <div
+      onPointerDown={(e) => comecar("mover", e)}
+      style={{
+        position: "absolute",
+        left: caixa.x * escala,
+        top: caixa.y * escala,
+        width: caixa.l * escala,
+        height: caixa.a * escala,
+        cursor: "move",
+        outline: selecionado ? "2px solid #f06b4f" : "1px dashed rgba(240,107,79,0.45)",
+        outlineOffset: 1,
+        touchAction: "none",
+      }}
+    >
+      {selecionado && (
+        <div
+          onPointerDown={(e) => comecar("largura", e)}
+          title="Arraste para mudar a largura"
+          style={{
+            position: "absolute",
+            right: -lado / 2,
+            top: "50%",
+            marginTop: -lado / 2,
+            width: lado,
+            height: lado,
+            borderRadius: lado,
+            background: "#f06b4f",
+            border: "2px solid #fff",
+            cursor: "ew-resize",
+            touchAction: "none",
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 function Texto({ c, escala, fonte }: { c: Extract<Caixa, { tipo: "texto" }>; escala: number; fonte: FonteBook }) {
   return (
@@ -54,7 +161,7 @@ function Texto({ c, escala, fonte }: { c: Extract<Caixa, { tipo: "texto" }>; esc
         fontSize: c.tamanho * escala,
         lineHeight: `${c.entrelinha * escala}px`,
         fontWeight: c.negrito ? 700 : 400,
-        textAlign: c.alinhamento === "direita" ? "right" : "left",
+        textAlign: c.alinhamento === "direita" ? "right" : c.alinhamento === "centro" ? "center" : "left",
         // A família da identidade do documento, metricamente igual à do PDF (Arial =
         // Helvetica, Times New Roman = Times). É o que deixa a quebra de linha do
         // servidor cair no mesmo lugar aqui.
@@ -217,9 +324,32 @@ export default function Pagina({
       ),
     [dados.layout.caixas]
   );
+  // A área de cada elemento livre: a união das caixas que ele desenhou. Uma etiqueta é
+  // fundo + texto, e a alça precisa cobrir as duas.
+  const areas = useMemo(() => {
+    const por = new Map<string, { x: number; y: number; l: number; a: number }>();
+    for (const c of dados.layout.caixas) {
+      const id = (c as { elementoId?: string }).elementoId;
+      if (!id) continue;
+      const altura = c.tipo === "texto" ? c.linhas.length * c.entrelinha : c.tipo === "retangulo" ? c.a : 0;
+      const atual = por.get(id);
+      if (!atual) {
+        por.set(id, { x: c.x, y: c.y, l: c.l, a: altura });
+        continue;
+      }
+      const x = Math.min(atual.x, c.x);
+      const y = Math.min(atual.y, c.y);
+      por.set(id, { x, y, l: Math.max(atual.x + atual.l, c.x + c.l) - x, a: Math.max(atual.y + atual.a, c.y + altura) - y });
+    }
+    return [...por.entries()];
+  }, [dados.layout.caixas]);
+
+  const podeMexerNosElementos = !!interacao?.aoMoverElemento;
+
   return (
     <div
       className={className}
+      onPointerDown={podeMexerNosElementos ? () => interacao?.aoSelecionarElemento?.(null) : undefined}
       style={{
         position: "relative",
         width: largura,
@@ -233,6 +363,20 @@ export default function Pagina({
       {dados.layout.caixas.map((c, i) => (
         <Uma key={i} c={c} dados={dados} escala={escala} indice={indiceDaImagem[i]} interacao={interacao} />
       ))}
+      {podeMexerNosElementos &&
+        interacao &&
+        areas.map(([id, area]) => (
+          <Alca
+            key={id}
+            id={id}
+            caixa={area}
+            escala={escala}
+            larguraPagina={dados.layout.largura}
+            alturaPagina={dados.layout.altura}
+            selecionado={interacao.elementoSelecionado === id}
+            interacao={interacao}
+          />
+        ))}
     </div>
   );
 }

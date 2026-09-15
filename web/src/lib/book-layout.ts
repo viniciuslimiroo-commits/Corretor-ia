@@ -1,5 +1,5 @@
 import { DIMENSOES, TIPO_POR_ID } from "./book-tipos";
-import type { DocumentoBook, FonteBook, Pagina } from "./book-documento";
+import { ESTILO_ELEMENTO_POR_ID, type DocumentoBook, type FonteBook, type Pagina } from "./book-documento";
 import { medidorDaFonte } from "./book-metricas";
 
 // O MOTOR DE LAYOUT: a página vira uma lista de caixas em coordenadas de página.
@@ -20,9 +20,9 @@ import { medidorDaFonte } from "./book-metricas";
 // pdf-lib (origem embaixo) é o renderizador de PDF, num lugar só.
 
 export type Caixa =
-  | { tipo: "retangulo"; x: number; y: number; l: number; a: number; cor: string; opacidade?: number }
+  | { tipo: "retangulo"; x: number; y: number; l: number; a: number; cor: string; opacidade?: number; elementoId?: string }
   | { tipo: "imagem"; x: number; y: number; l: number; a: number; jobId: string; modo: "cobrir" | "conter"; foco?: { x: number; y: number } }
-  | { tipo: "texto"; x: number; y: number; l: number; linhas: string[]; tamanho: number; entrelinha: number; negrito: boolean; cor: string; alinhamento: "esquerda" | "direita" }
+  | { tipo: "texto"; x: number; y: number; l: number; linhas: string[]; tamanho: number; entrelinha: number; negrito: boolean; cor: string; alinhamento: "esquerda" | "centro" | "direita"; elementoId?: string }
   | { tipo: "logo"; x: number; y: number; l: number; a: number; placa: boolean }
   | { tipo: "qr"; x: number; y: number; l: number; a: number; conteudo: string; png?: string };
 
@@ -88,8 +88,8 @@ function quebrar(texto: string, medir: Medidor, tamanho: number, negrito: boolea
 function texto(
   conteudo: string,
   medir: Medidor,
-  o: { x: number; y: number; l: number; tamanho: number; negrito?: boolean; cor?: string; maxLinhas?: number; alinhamento?: "esquerda" | "direita" }
-): { caixa: Caixa; alturaUsada: number } | null {
+  o: { x: number; y: number; l: number; tamanho: number; negrito?: boolean; cor?: string; maxLinhas?: number; alinhamento?: "esquerda" | "centro" | "direita" }
+): { caixa: Extract<Caixa, { tipo: "texto" }>; alturaUsada: number } | null {
   const limpo = (conteudo ?? "").trim();
   if (!limpo) return null;
   const negrito = !!o.negrito;
@@ -122,7 +122,7 @@ function assinaturaDe(c: ContextoLayout): string {
  * Monta uma página. Puro e síncrono: o QR sai sem o PNG, que é preenchido depois por
  * `resolverQr` -- assim esta função continua testável sem nada assíncrono em volta.
  */
-export function montarPagina(
+function corpoDaPagina(
   pagina: Pagina,
   doc: DocumentoBook,
   ctx: ContextoLayout,
@@ -648,6 +648,63 @@ export function montarPagina(
  * é exatamente a divergência que este motor existe pra impedir. `medir` explícito só pra
  * teste.
  */
+/**
+ * A camada livre virada em caixas, por cima de tudo que a página já tinha.
+ *
+ * Fica fora de `corpoDaPagina` de propósito: o corpo tem um `return` por tipo de página
+ * (capa, foto, ficha, contato…), e uma camada que precisa valer em TODAS não pode
+ * depender de alguém lembrar de chamá-la em cada saída. Aqui ela é aplicada num lugar só,
+ * ao resultado, e passa a existir em qualquer tipo de página -- inclusive nos que forem
+ * criados depois.
+ *
+ * As frações viram pontos aqui, na última hora. É isso que faz o mesmo elemento cair no
+ * lugar certo quando o material troca de formato.
+ */
+function caixasDaCamadaLivre(pagina: Pagina, doc: DocumentoBook, medir: Medidor, L: number, A: number): Caixa[] {
+  const elementos = pagina.elementos ?? [];
+  if (!elementos.length) return [];
+  const cor = doc.identidade.cor ?? "#0f2d5b";
+  const caixas: Caixa[] = [];
+
+  for (const e of elementos) {
+    const x = e.x * L;
+    const y = e.y * A;
+    const l = e.l * L;
+
+    if (e.estilo === "bloco") {
+      caixas.push({ tipo: "retangulo", x, y, l, a: (e.a ?? 0.08) * A, cor, opacidade: 0.92, elementoId: e.id });
+      continue;
+    }
+
+    const tamanho = Math.max(7, ESTILO_ELEMENTO_POR_ID[e.estilo].padrao.tamanho * A);
+    const comFundo = e.estilo === "faixa" || e.estilo === "etiqueta";
+    const respiro = Math.round(tamanho * 0.6);
+    const corTexto = comFundo ? "#ffffff" : e.estilo === "nota" ? CINZA : cor;
+    const t = texto(e.texto, medir, {
+      x: x + (comFundo ? respiro : 0),
+      y: y + (comFundo ? respiro : 0),
+      l: l - (comFundo ? respiro * 2 : 0),
+      tamanho,
+      negrito: e.estilo !== "nota",
+      cor: corTexto,
+      maxLinhas: 3,
+      alinhamento: e.alinhamento ?? "esquerda",
+    });
+    if (!t) continue;
+    // O fundo é desenhado em volta do texto JÁ MEDIDO: caixa de altura fixa com texto de
+    // duas linhas sobra pra fora, e num material isso aparece como letra cortada.
+    if (comFundo) caixas.push({ tipo: "retangulo", x, y, l, a: t.alturaUsada + respiro * 2, cor, elementoId: e.id });
+    caixas.push({ ...t.caixa, elementoId: e.id });
+  }
+  return caixas;
+}
+
+export function montarPagina(pagina: Pagina, doc: DocumentoBook, ctx: ContextoLayout, medir: Medidor, numero: number): PaginaLayout {
+  const base = corpoDaPagina(pagina, doc, ctx, medir, numero);
+  const livres = caixasDaCamadaLivre(pagina, doc, medir, base.largura, base.altura);
+  return livres.length ? { ...base, caixas: [...base.caixas, ...livres] } : base;
+}
+
 export function montarLayout(doc: DocumentoBook, ctx: ContextoLayout, medir?: Medidor): PaginaLayout[] {
   const fonte: FonteBook = doc.identidade.fonte === "classica" ? "classica" : "moderna";
   const medidor = medir ?? medidorDaFonte(fonte);

@@ -1,16 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { definirLayout, definirTexto, duplicar, limiteDeImagens, podeRemover, remover, type DocumentoBook, type Pagina } from "@/lib/book-documento";
+import {
+  ESTILOS_ELEMENTO,
+  ESTILO_ELEMENTO_POR_ID,
+  adicionarElemento,
+  definirLayout,
+  definirTexto,
+  duplicar,
+  limiteDeImagens,
+  mudarElemento,
+  podeRemover,
+  remover,
+  removerElemento,
+  type DocumentoBook,
+  type Pagina,
+} from "@/lib/book-documento";
 import type { LayoutFoto } from "@/lib/book-tipos";
 import { Icone, Rotulo } from "@/components/ui";
 
 // O painel da direita: a lista COMPLETA do que dá pra editar naquela página.
 //
-// A régua: se algo não está aqui, não é editável -- e isso é dito, não escondido. A
-// unidade de edição é a página, nunca o elemento. Não existe fonte, cor de texto,
-// alinhamento, camada nem caixa flutuante, e isso é decisão de produto: é o TEMPLATE que
+// A régua: se algo não está aqui, não é editável -- e isso é dito, não escondido. Não
+// existe fonte, cor de texto nem sombra, e isso é decisão de produto: é o TEMPLATE que
 // segura a estrutura, pra que alguém sem prática não consiga fazer material feio.
+//
+// A exceção é a CAMADA LIVRE, no fim do painel: título, faixa, etiqueta, observação e
+// bloco de cor, que a pessoa põe onde quiser. Continua sendo lista fechada de estilos --
+// o que ela escolhe é o LUGAR, e lugar é a única liberdade que não estraga um material.
 
 type Campo = { chave: string; rotulo: string; max: number; linhas?: number; dica?: string };
 
@@ -133,6 +150,8 @@ export default function PainelPagina({
   aoIrPara,
   aoEscreverIA,
   aoBuscarMapa,
+  elementoSelecionado,
+  aoSelecionarElemento,
 }: {
   pagina: Pagina;
   numero: number;
@@ -144,6 +163,9 @@ export default function PainelPagina({
   aoEscreverIA?: (paginaId: string, campo: string) => Promise<string>;
   /** Busca o mapa do endereço cadastrado e devolve o jobId da imagem. */
   aoBuscarMapa?: (paginaId: string) => Promise<void>;
+  /** Camada livre: qual elemento está aberto no painel. */
+  elementoSelecionado?: string | null;
+  aoSelecionarElemento?: (id: string | null) => void;
 }) {
   const [escrevendo, setEscrevendo] = useState<string | null>(null);
   const [erroIA, setErroIA] = useState<{ campo: string; texto: string } | null>(null);
@@ -335,6 +357,102 @@ export default function PainelPagina({
           )}
         </label>
       ))}
+
+      {/* ---------- camada livre ----------
+           A única parte do editor em que a pessoa escolhe ONDE a coisa fica. Os estilos
+           continuam vindo de lista fechada: é o que separa "escrever em cima da foto" de
+           "montar um material feio com liberdade total". */}
+      <div className="mt-2 border-t border-neutral-100 pt-3">
+        <Rotulo>Pôr por cima</Rotulo>
+        <div className="flex flex-wrap gap-1">
+          {ESTILOS_ELEMENTO.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              title={e.dica}
+              onClick={() => aoMudar((d) => adicionarElemento(d, pagina.id, e.id))}
+              className="rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] text-neutral-600 transition hover:border-marca-coral hover:text-marca-coral"
+            >
+              + {e.rotulo}
+            </button>
+          ))}
+        </div>
+
+        {(pagina.elementos ?? []).length === 0 ? (
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Nada por cima ainda. Um título, uma faixa ou uma etiqueta entram onde você arrastar.
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-col gap-2">
+            {(pagina.elementos ?? []).map((el) => {
+              const aberto = el.id === elementoSelecionado;
+              return (
+                <div
+                  key={el.id}
+                  onClick={() => aoSelecionarElemento?.(el.id)}
+                  className={"rounded-lg border p-2 transition " + (aberto ? "border-marca-coral bg-marca-coral/5" : "border-neutral-200")}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-600">
+                      {ESTILO_ELEMENTO_POR_ID[el.estilo].rotulo}
+                      {el.texto ? ` · ${el.texto}` : ""}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => aoMudar((d) => removerElemento(d, pagina.id, el.id))}
+                      title="Tirar da página"
+                      className="shrink-0 rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Icone nome="lixeira" className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {aberto && el.estilo !== "bloco" && (
+                    <>
+                      <input
+                        value={el.texto}
+                        onChange={(e) => aoMudar((d) => mudarElemento(d, pagina.id, el.id, { texto: e.target.value.slice(0, 160) }))}
+                        maxLength={160}
+                        placeholder="Escreva aqui"
+                        className="mt-1.5 w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-sm focus:border-marca-indigo focus:outline-none"
+                      />
+                      <div className="mt-1.5 flex gap-1">
+                        {(["esquerda", "centro", "direita"] as const).map((a) => (
+                          <button
+                            key={a}
+                            type="button"
+                            onClick={() => aoMudar((d) => mudarElemento(d, pagina.id, el.id, { alinhamento: a }))}
+                            className={
+                              "flex-1 rounded border px-1 py-0.5 text-[10px] capitalize transition " +
+                              ((el.alinhamento ?? "esquerda") === a ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-500")
+                            }
+                          >
+                            {a}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {aberto && el.estilo === "bloco" && (
+                    <label className="mt-1.5 block text-[11px] text-neutral-500">
+                      Altura
+                      <input
+                        type="range"
+                        min={0.02}
+                        max={0.6}
+                        step={0.005}
+                        value={el.a ?? 0.08}
+                        onChange={(e) => aoMudar((d) => mudarElemento(d, pagina.id, el.id, { a: Number(e.target.value) }))}
+                        className="mt-0.5 w-full accent-marca-coral"
+                      />
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-neutral-400">Arraste na página pra mover. A bolinha muda a largura.</p>
+          </div>
+        )}
+      </div>
 
       <p className="mt-1 border-t border-neutral-100 pt-2 text-[11px] text-neutral-400">
         A tipografia, as margens e as cores são do modelo, iguais em todos os books. É o que faz o material parecer feito por agência.

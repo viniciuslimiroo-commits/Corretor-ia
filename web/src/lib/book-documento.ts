@@ -11,9 +11,49 @@ import { DIMENSOES, TIPO_POR_ID, TIPOS_PAGINA, type Formato, type LayoutFoto, ty
 // Todas as funções aqui são PURAS: recebem o documento, devolvem um novo. Sem React, sem
 // rede, sem banco. É a parte que mais erra e a mais fácil de conferir isolada.
 
+export type EstiloElemento = "titulo" | "faixa" | "etiqueta" | "nota" | "bloco";
+
+/**
+ * Um elemento que a pessoa põe onde quiser na página.
+ *
+ * É a camada livre -- e é livre em POSIÇÃO, não em tudo. O estilo continua vindo de uma
+ * lista curta: cinco acabamentos, cada um com tamanho, cor e peso já resolvidos. Foi de
+ * propósito: seletor de fonte, roda de cor e sombra soltos é o que faz material caseiro
+ * parecer caseiro, e quem abre a Encena quer sair com uma peça pronta, não com um Canva.
+ *
+ * As coordenadas são FRAÇÕES da página (0 a 1), nunca pontos. Assim o mesmo elemento
+ * cai no lugar certo num post quadrado e num Story em pé, e sobrevive a mudar o formato
+ * do material -- que é justamente o que se faz com um post que virou Story.
+ */
+export type ElementoLivre = {
+  id: string;
+  estilo: EstiloElemento;
+  texto: string;
+  /** Canto superior esquerdo, em fração da página. */
+  x: number;
+  y: number;
+  /** Largura, em fração da largura da página. */
+  l: number;
+  /** Só "bloco": altura em fração da altura da página. */
+  a?: number;
+  alinhamento?: "esquerda" | "centro" | "direita";
+};
+
+export const ESTILOS_ELEMENTO: { id: EstiloElemento; rotulo: string; dica: string; padrao: { texto: string; l: number; tamanho: number } }[] = [
+  { id: "titulo", rotulo: "Título", dica: "Grande, na cor da marca. Pro recado principal.", padrao: { texto: "Escreva aqui", l: 0.7, tamanho: 0.045 } },
+  { id: "faixa", rotulo: "Faixa", dica: "Texto branco sobre a cor da marca, de ponta a ponta.", padrao: { texto: "Agende sua visita", l: 0.86, tamanho: 0.028 } },
+  { id: "etiqueta", rotulo: "Etiqueta", dica: "Pequena e destacada. “Últimas unidades”, “Aceita financiamento”.", padrao: { texto: "Últimas unidades", l: 0.42, tamanho: 0.022 } },
+  { id: "nota", rotulo: "Observação", dica: "Miúda e discreta, pro que precisa estar escrito mas não gritar.", padrao: { texto: "Valores sujeitos a alteração", l: 0.6, tamanho: 0.016 } },
+  { id: "bloco", rotulo: "Bloco de cor", dica: "Um retângulo na cor da marca. Cobre, separa ou dá fundo.", padrao: { texto: "", l: 0.5, tamanho: 0.02 } },
+];
+
+export const ESTILO_ELEMENTO_POR_ID = Object.fromEntries(ESTILOS_ELEMENTO.map((e) => [e.id, e])) as Record<EstiloElemento, (typeof ESTILOS_ELEMENTO)[number]>;
+
 export type Pagina = {
   id: string;
   tipo: TipoPagina;
+  /** O que a pessoa pôs por cima, onde quis. Desenhado depois de tudo. */
+  elementos?: ElementoLivre[];
   /** 'auto' = a montagem fez; 'manual' = a pessoa mexeu. Remontar só mexe nas 'auto'. */
   origem: "auto" | "manual";
   layout?: LayoutFoto;
@@ -118,7 +158,17 @@ export function inserir(d: DocumentoBook, nova: Pagina, depoisDe?: string): Docu
 export function duplicar(d: DocumentoBook, id: string): DocumentoBook {
   const i = d.paginas.findIndex((p) => p.id === id);
   if (i < 0) return d;
-  const copia: Pagina = { ...d.paginas[i], id: novoId(), origem: "manual", textos: { ...d.paginas[i].textos }, imagens: [...d.paginas[i].imagens] };
+  const original = d.paginas[i];
+  const copia: Pagina = {
+    ...original,
+    id: novoId(),
+    origem: "manual",
+    textos: { ...original.textos },
+    imagens: [...original.imagens],
+    // Os elementos vêm junto, com id NOVO: dois elementos com o mesmo id em páginas
+    // diferentes fariam mover um mexer nos dois.
+    ...(original.elementos?.length ? { elementos: original.elementos.map((e) => ({ ...e, id: novoId() })) } : {}),
+  };
   const lista = [...d.paginas];
   lista.splice(i + 1, 0, copia);
   return comPaginas(d, lista);
@@ -184,6 +234,65 @@ export function definirSelo(d: DocumentoBook, texto: string): DocumentoBook {
   return comPaginas(
     d,
     d.paginas.map((p) => (p.tipo === "capa" ? { ...p, textos: { ...p.textos, selo: limpo } } : p))
+  );
+}
+
+/**
+ * A camada livre, em quatro operações.
+ *
+ * Mexer em elemento NÃO marca a página como manual, pela mesma razão do selo: a pessoa
+ * põe um "Últimas unidades" por cima e continua querendo que Refazer reescreva a
+ * descrição embaixo. Os elementos são uma camada separada, e é por isso que valem a pena.
+ */
+export function adicionarElemento(d: DocumentoBook, paginaId: string, estilo: EstiloElemento): DocumentoBook {
+  const def = ESTILO_ELEMENTO_POR_ID[estilo];
+  const pagina = d.paginas.find((p) => p.id === paginaId);
+  if (!pagina || !def) return d;
+  // Entra no meio da página, um degrau abaixo do anterior: dois elementos novos
+  // exatamente em cima um do outro parecem um só, e a pessoa arrasta o que não queria.
+  const quantos = pagina.elementos?.length ?? 0;
+  const novo: ElementoLivre = {
+    id: novoId(),
+    estilo,
+    texto: def.padrao.texto,
+    x: Math.min(0.9 - def.padrao.l, 0.07 + quantos * 0.03),
+    y: Math.min(0.85, 0.4 + quantos * 0.06),
+    l: def.padrao.l,
+    ...(estilo === "bloco" ? { a: 0.08 } : {}),
+    alinhamento: estilo === "faixa" ? "centro" : "esquerda",
+  };
+  return comPaginas(
+    d,
+    d.paginas.map((p) => (p.id === paginaId ? { ...p, elementos: [...(p.elementos ?? []), novo] } : p))
+  );
+}
+
+export function mudarElemento(d: DocumentoBook, paginaId: string, elementoId: string, mudanca: Partial<Omit<ElementoLivre, "id">>): DocumentoBook {
+  const limite = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+  return comPaginas(
+    d,
+    d.paginas.map((p) =>
+      p.id !== paginaId
+        ? p
+        : {
+            ...p,
+            elementos: (p.elementos ?? []).map((e) => {
+              if (e.id !== elementoId) return e;
+              const j = { ...e, ...mudanca };
+              // Preso dentro da página: elemento com metade pra fora não é liberdade,
+              // é material cortado na hora de exportar.
+              const l = limite(j.l, 0.08, 1);
+              return { ...j, l, x: limite(j.x, 0, 1 - l), y: limite(j.y, 0, 0.98), a: j.a === undefined ? undefined : limite(j.a, 0.02, 1) };
+            }),
+          }
+    )
+  );
+}
+
+export function removerElemento(d: DocumentoBook, paginaId: string, elementoId: string): DocumentoBook {
+  return comPaginas(
+    d,
+    d.paginas.map((p) => (p.id === paginaId ? { ...p, elementos: (p.elementos ?? []).filter((e) => e.id !== elementoId) } : p))
   );
 }
 
@@ -254,6 +363,8 @@ const LAYOUTS: LayoutFoto[] = ["cheia", "duas", "foto_texto"];
 
 /** O maior `limiteDeImagens` de qualquer tipo de página. Sanitização não pode cortar abaixo disso. */
 const MAX_IMAGENS_POR_PAGINA = 6;
+/** Oito elementos numa página já é poluição; o teto existe pra segurar arquivo inflado. */
+const MAX_ELEMENTOS_POR_PAGINA = 8;
 
 /**
  * Limpa o que veio do banco ou do navegador. Nada aqui confia na entrada: o documento é
@@ -298,9 +409,37 @@ export function limparDocumento(bruto: unknown): DocumentoBook | null {
       }
     }
 
+    // A camada livre. Cada campo é conferido: fração fora de 0..1 desloca o elemento pra
+    // fora do papel, e estilo desconhecido não tem como ser desenhado. O elemento inteiro
+    // é descartado quando não dá pra confiar nele -- mas nunca em silêncio pela metade,
+    // que é como as três perdas anteriores deste arquivo aconteceram.
+    const elementos: ElementoLivre[] = [];
+    for (const bruto of Array.isArray(p.elementos) ? p.elementos.slice(0, MAX_ELEMENTOS_POR_PAGINA) : []) {
+      if (!bruto || typeof bruto !== "object") continue;
+      const e = bruto as Record<string, unknown>;
+      const estilo = typeof e.estilo === "string" && e.estilo in ESTILO_ELEMENTO_POR_ID ? (e.estilo as EstiloElemento) : null;
+      if (!estilo) continue;
+      const fr = (v: unknown, padrao: number, min = 0, max = 1) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n * 1000) / 1000)) : padrao;
+      };
+      const l = fr(e.l, ESTILO_ELEMENTO_POR_ID[estilo].padrao.l, 0.08, 1);
+      elementos.push({
+        id: typeof e.id === "string" && e.id.length <= 40 ? e.id : novoId(),
+        estilo,
+        texto: typeof e.texto === "string" ? e.texto.slice(0, 160) : "",
+        l,
+        x: fr(e.x, 0.07, 0, 1 - l),
+        y: fr(e.y, 0.4, 0, 0.98),
+        a: e.a === undefined || e.a === null ? undefined : fr(e.a, 0.08, 0.02, 1),
+        alinhamento: e.alinhamento === "centro" || e.alinhamento === "direita" ? e.alinhamento : "esquerda",
+      });
+    }
+
     paginas.push({
       id: typeof p.id === "string" && p.id.length <= 40 ? p.id : novoId(),
       tipo,
+      ...(elementos.length ? { elementos } : {}),
       origem: p.origem === "manual" ? "manual" : "auto",
       layout: typeof p.layout === "string" && LAYOUTS.includes(p.layout as LayoutFoto) ? (p.layout as LayoutFoto) : undefined,
       // O teto tem que acompanhar o tipo de página que MAIS aceita imagens (hoje a grade

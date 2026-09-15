@@ -17,6 +17,10 @@ import {
   definirFoco,
   definirIdentidade,
   definirSelo,
+  adicionarElemento,
+  mudarElemento,
+  removerElemento,
+  ESTILOS_ELEMENTO,
   imagensDoDocumento,
   inserir,
   mover,
@@ -30,10 +34,15 @@ import {
 // O editor do book. Três faixas: páginas à esquerda, a página no meio, o que dá pra mexer
 // nela à direita -- e nada mais.
 //
-// O que ele NÃO é, de propósito: não há tela em branco, caixa de texto solta, seletor de
-// fonte, roda de cores, camada, régua nem alinhamento. O TEMPLATE segura a estrutura, e é
-// isso que impede alguém sem prática de fazer material feio. Construir Canva aqui dentro
-// multiplicaria a complexidade sem melhorar um book.
+// O que ele NÃO é, de propósito: não há tela em branco, seletor de fonte, roda de cores
+// nem régua. O TEMPLATE segura a estrutura, e é isso que impede alguém sem prática de
+// fazer material feio.
+//
+// A CAMADA LIVRE é a exceção, e é uma exceção estreita: dá pra pôr título, faixa,
+// etiqueta, observação e bloco de cor onde se quiser na página. Livre em POSIÇÃO, não em
+// tudo -- cada um já vem com tamanho, cor e peso resolvidos. O corretor precisava
+// escrever "Últimas unidades" em cima da foto e estava indo fazer isso em outro
+// aplicativo; o que ele não precisa é de um seletor de sombra.
 
 type Book = {
   id: string;
@@ -134,6 +143,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   const [menuMais, setMenuMais] = useState(false);
   /** Estilo do book inteiro: fonte e capa. Duas escolhas nomeadas, não um seletor. */
   const [menuEstilo, setMenuEstilo] = useState(false);
+  /** Elemento da camada livre selecionado na página aberta. */
+  const [elemento, setElemento] = useState<string | null>(null);
   const [refazendo, setRefazendo] = useState(false);
   /** Post, Story e carrossel saem em JPG: o que é publicado, não mandado. */
   const ehImagem = TIPO_POR_ID[carga.book.tipo]?.saida === "imagem";
@@ -826,6 +837,10 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                                 return definirFoco(d, p.id, jobId, f.x - dx, f.y - dy);
                               }),
                             aoClicarImagem: (_jobId, idx) => setGaveta({ modo: "trocar", indice: idx }),
+                            elementoSelecionado: elemento,
+                            aoSelecionarElemento: setElemento,
+                            aoMoverElemento: (elId, x, y) => book.aplicar((d) => mudarElemento(d, p.id, elId, { x, y })),
+                            aoRedimensionarElemento: (elId, l) => book.aplicar((d) => mudarElemento(d, p.id, elId, { l })),
                           }
                         : undefined
                     }
@@ -834,7 +849,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
               ) : null
             )}
             <p className="w-full max-w-[520px] pb-10 text-center text-xs text-neutral-500">
-              Arraste as páginas pra reordenar, clique numa foto pra trocar, arraste a foto dentro do quadro pra enquadrar. Tudo salva sozinho.
+              Arraste as páginas pra reordenar, clique numa foto pra trocar, arraste a foto dentro do quadro pra enquadrar. Elementos você arrasta
+              pela própria peça e a bolinha muda a largura. Tudo salva sozinho.
             </p>
           </div>
         </div>
@@ -851,6 +867,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
               aoIrPara={irPara}
               aoEscreverIA={escreverComIA}
               aoBuscarMapa={buscarMapa}
+              elementoSelecionado={elemento}
+              aoSelecionarElemento={setElemento}
             />
           )}
         </aside>
@@ -887,6 +905,8 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
                 aoIrPara={irPara}
                 aoEscreverIA={escreverComIA}
                 aoBuscarMapa={buscarMapa}
+                elementoSelecionado={elemento}
+                aoSelecionarElemento={setElemento}
               />
             </div>
           ) : (

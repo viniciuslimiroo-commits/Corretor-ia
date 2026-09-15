@@ -186,7 +186,8 @@ async function desenhar(pg: PDFPage, c: Caixa, f: Ferramentas) {
     c.linhas.forEach((linha, i) => {
       const topoDaLinha = c.y + i * c.entrelinha;
       const base = f.paraPdf(topoDaLinha + c.tamanho * ALTURA_ACIMA_DA_BASE);
-      const x = c.alinhamento === "direita" ? c.x + c.l - larguraSegura(fonte, linha, c.tamanho) : c.x;
+      const sobra = c.l - larguraSegura(fonte, linha, c.tamanho);
+      const x = c.alinhamento === "direita" ? c.x + sobra : c.alinhamento === "centro" ? c.x + sobra / 2 : c.x;
       try {
         pg.drawText(linha, { x, y: base, size: c.tamanho, font: fonte, color: cor(c.cor) });
       } catch {

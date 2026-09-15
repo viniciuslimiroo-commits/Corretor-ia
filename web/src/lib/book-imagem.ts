@@ -141,8 +141,8 @@ export async function montarImagemDaPagina(p: PaginaLayout, e: EntradaImagem): P
       const tamanho = c.tamanho * escala * AJUSTE_FONTE;
       const entrelinha = c.entrelinha * escala;
       const base = y + ALTURA_ACIMA_DA_BASE * (c.tamanho * escala);
-      const ancora = c.alinhamento === "direita" ? "end" : "start";
-      const xTexto = c.alinhamento === "direita" ? Math.round((c.x + c.l) * escala) : x;
+      const ancora = c.alinhamento === "direita" ? "end" : c.alinhamento === "centro" ? "middle" : "start";
+      const xTexto = c.alinhamento === "direita" ? Math.round((c.x + c.l) * escala) : c.alinhamento === "centro" ? Math.round((c.x + c.l / 2) * escala) : x;
       c.linhas.forEach((linha, i) => {
         if (!linha) return;
         svgTexto.push(
