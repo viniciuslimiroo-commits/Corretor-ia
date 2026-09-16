@@ -195,8 +195,35 @@ export type PosicaoTexto = "topo" | "centro" | "base";
 export type EstiloTexto = "faixa" | "destaque" | "etiqueta" | "contorno" | "sombra" | "gigante" | "fino" | "selo";
 export type AnimacaoTexto = "nenhuma" | "surgir" | "subir" | "descer" | "entrar_esquerda" | "entrar_direita" | "piscar" | "no_fim";
 
+/**
+ * O VISUAL de um texto, quando ele foge do estilo base.
+ *
+ * Existe porque uma galeria em que todo cartão é uma caixa azul com palavras diferentes
+ * não é uma galeria -- é uma lista com fundo. O que faz alguém escolher vendo é cada
+ * modelo ter COR, CAIXA e CONTORNO próprios.
+ *
+ * Cores em hexa sem "#": o drawtext quer "0xRRGGBB" e a tela quer "#RRGGBB", e cada lado
+ * converte. `caixa: null` é sem caixa atrás; `contorno: null`, sem borda.
+ */
+export type VisualTexto = {
+  cor?: string;
+  caixa?: string | null;
+  contorno?: string | null;
+  sombra?: boolean;
+  /** Fração da altura do vídeo. Ausente = a do estilo base. */
+  tamanho?: number;
+};
+
 export type TextoCena = {
   texto: string;
+  /**
+   * Id de um MODELO DE ARTE (texto-arte.ts). Quando existe, o texto não é desenhado pelo
+   * drawtext: vira SVG, é rasterizado e entra como IMAGEM por cima da cena. É o que
+   * permite contorno duplo, brilho, relevo e adesivo -- coisas que o drawtext não faz.
+   */
+  arte?: string;
+  /** Acabamento próprio deste texto, por cima do estilo. Ignorado quando há `arte`. */
+  visual?: VisualTexto;
   posicao?: PosicaoTexto;
   estilo?: EstiloTexto;
   animacao?: AnimacaoTexto;
@@ -335,39 +362,64 @@ export type ModeloTexto = {
   estilo: EstiloTexto;
   posicao: PosicaoTexto;
   animacao: AnimacaoTexto;
+  /** O acabamento próprio deste modelo. É o que faz um cartão não parecer o outro. */
+  visual: VisualTexto;
 };
 
 export const MODELOS_TEXTO: ModeloTexto[] = [
-  // situação
-  { id: "a_venda", texto: "À venda", categoria: "status", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
-  { id: "para_alugar", texto: "Para alugar", categoria: "status", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
-  { id: "lancamento", texto: "Lançamento", categoria: "status", estilo: "selo", posicao: "topo", animacao: "descer" },
-  { id: "vendido", texto: "VENDIDO", categoria: "status", estilo: "gigante", posicao: "centro", animacao: "piscar" },
-  { id: "reservado", texto: "Reservado", categoria: "status", estilo: "etiqueta", posicao: "centro", animacao: "piscar" },
-  { id: "exclusivo", texto: "Exclusivo", categoria: "status", estilo: "selo", posicao: "topo", animacao: "entrar_esquerda" },
+  // ---- situação ----
+  { id: "a_venda", texto: "À VENDA", categoria: "status", estilo: "etiqueta", posicao: "topo", animacao: "surgir",
+    visual: { cor: "ffffff", caixa: "f06b4f", contorno: null, tamanho: 0.03 } },
+  { id: "para_alugar", texto: "PARA ALUGAR", categoria: "status", estilo: "etiqueta", posicao: "topo", animacao: "surgir",
+    visual: { cor: "0f2d5b", caixa: "ffffff", tamanho: 0.028 } },
+  { id: "lancamento", texto: "Lançamento", categoria: "status", estilo: "selo", posicao: "topo", animacao: "descer",
+    visual: { cor: "0b1a2e", caixa: "f5c451", tamanho: 0.034 } },
+  { id: "vendido", texto: "VENDIDO", categoria: "status", estilo: "gigante", posicao: "centro", animacao: "piscar",
+    visual: { cor: "ffffff", caixa: null, contorno: "8c1c1c", tamanho: 0.085 } },
+  { id: "reservado", texto: "RESERVADO", categoria: "status", estilo: "etiqueta", posicao: "centro", animacao: "piscar",
+    visual: { cor: "ffffff", caixa: "1a1a1a", tamanho: 0.04 } },
+  { id: "exclusivo", texto: "Exclusivo", categoria: "status", estilo: "selo", posicao: "topo", animacao: "entrar_esquerda",
+    visual: { cor: "ffffff", caixa: "2cb1a3", tamanho: 0.03 } },
 
-  // condição
-  { id: "financiamento", texto: "Aceita financiamento", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir" },
-  { id: "fgts", texto: "Aceita FGTS", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir" },
-  { id: "permuta", texto: "Aceita permuta", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir" },
-  { id: "pronto", texto: "Pronto pra morar", categoria: "condicao", estilo: "selo", posicao: "base", animacao: "surgir" },
-  { id: "na_planta", texto: "Na planta", categoria: "condicao", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
-  { id: "mobiliado", texto: "Mobiliado", categoria: "condicao", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+  // ---- condição ----
+  { id: "financiamento", texto: "Aceita financiamento", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir",
+    visual: { cor: "ffffff", caixa: "0f2d5b", tamanho: 0.028 } },
+  { id: "fgts", texto: "Aceita FGTS", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir",
+    visual: { cor: "0b1a2e", caixa: "2cb1a3", tamanho: 0.03 } },
+  { id: "permuta", texto: "Aceita permuta", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir",
+    visual: { cor: "ffffff", caixa: "5b4a8f", tamanho: 0.028 } },
+  { id: "pronto", texto: "PRONTO PRA MORAR", categoria: "condicao", estilo: "selo", posicao: "base", animacao: "surgir",
+    visual: { cor: "ffffff", caixa: null, contorno: "0b1a2e", tamanho: 0.04 } },
+  { id: "na_planta", texto: "Na planta", categoria: "condicao", estilo: "etiqueta", posicao: "topo", animacao: "surgir",
+    visual: { cor: "0b1a2e", caixa: "d9e4f5", tamanho: 0.028 } },
+  { id: "mobiliado", texto: "Mobiliado", categoria: "condicao", estilo: "etiqueta", posicao: "topo", animacao: "surgir",
+    visual: { cor: "ffffff", caixa: "8a6a3f", tamanho: 0.028 } },
 
-  // chamada
-  { id: "agende", texto: "Agende sua visita", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir" },
-  { id: "whatsapp", texto: "Chame no WhatsApp", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir" },
-  { id: "link_bio", texto: "Link na bio", categoria: "chamada", estilo: "contorno", posicao: "base", animacao: "no_fim" },
-  { id: "arraste", texto: "Arraste pra ver mais →", categoria: "chamada", estilo: "contorno", posicao: "base", animacao: "entrar_direita" },
-  { id: "salve", texto: "Salve pra não perder", categoria: "chamada", estilo: "sombra", posicao: "base", animacao: "no_fim" },
-  { id: "manda_zap", texto: "Manda um oi no zap", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir" },
+  // ---- chamada ----
+  { id: "agende", texto: "Agende sua visita", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir",
+    visual: { cor: "ffffff", caixa: "f06b4f", tamanho: 0.032 } },
+  { id: "whatsapp", texto: "Chame no WhatsApp", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir",
+    visual: { cor: "ffffff", caixa: "1f8f4e", tamanho: 0.032 } },
+  { id: "link_bio", texto: "Link na bio", categoria: "chamada", estilo: "contorno", posicao: "base", animacao: "no_fim",
+    visual: { cor: "ffffff", caixa: null, contorno: "000000", tamanho: 0.042 } },
+  { id: "arraste", texto: "Arraste pra ver mais →", categoria: "chamada", estilo: "contorno", posicao: "base", animacao: "entrar_direita",
+    visual: { cor: "f5c451", caixa: null, contorno: "0b1a2e", tamanho: 0.036 } },
+  { id: "salve", texto: "Salve pra não perder", categoria: "chamada", estilo: "sombra", posicao: "base", animacao: "no_fim",
+    visual: { cor: "ffffff", caixa: null, sombra: true, tamanho: 0.036 } },
+  { id: "manda_zap", texto: "Manda um oi no zap", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir",
+    visual: { cor: "0b1a2e", caixa: "f5c451", tamanho: 0.03 } },
 
-  // urgência
-  { id: "ultimas", texto: "Últimas unidades", categoria: "urgencia", estilo: "etiqueta", posicao: "topo", animacao: "piscar" },
-  { id: "novo_mercado", texto: "Novo no mercado", categoria: "urgencia", estilo: "etiqueta", posicao: "topo", animacao: "descer" },
-  { id: "visita_hoje", texto: "Visita ainda hoje", categoria: "urgencia", estilo: "contorno", posicao: "centro", animacao: "no_fim" },
-  { id: "abaixou", texto: "Preço abaixou", categoria: "urgencia", estilo: "selo", posicao: "topo", animacao: "entrar_esquerda" },
+  // ---- urgência ----
+  { id: "ultimas", texto: "ÚLTIMAS UNIDADES", categoria: "urgencia", estilo: "etiqueta", posicao: "topo", animacao: "piscar",
+    visual: { cor: "ffffff", caixa: "c0392b", tamanho: 0.032 } },
+  { id: "novo_mercado", texto: "Novo no mercado", categoria: "urgencia", estilo: "etiqueta", posicao: "topo", animacao: "descer",
+    visual: { cor: "0b1a2e", caixa: "a8e6cf", tamanho: 0.03 } },
+  { id: "visita_hoje", texto: "Visita ainda hoje", categoria: "urgencia", estilo: "contorno", posicao: "centro", animacao: "no_fim",
+    visual: { cor: "f5c451", caixa: null, contorno: "000000", tamanho: 0.046 } },
+  { id: "abaixou", texto: "PREÇO ABAIXOU", categoria: "urgencia", estilo: "selo", posicao: "topo", animacao: "entrar_esquerda",
+    visual: { cor: "ffffff", caixa: "e07a1f", tamanho: 0.034 } },
 ];
+
 
 export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada" | "tour360";
 
@@ -727,6 +779,25 @@ function texto(v: unknown, max: number): string {
 }
 
 /** Os textos de uma cena, limpos. Tudo que vier torto vira o padrão; vazio some. */
+/** Os ids de arte que existem. Preenchido pelo catálogo (texto-arte.ts) na carga. */
+const ARTES_VALIDAS = new Set(["adesivo", "contorno_duplo", "relevo", "brilho", "fita", "sublinhado", "colchetes", "degrade", "placa", "carimbo"]);
+
+/** Cor hexa de 6 dígitos, sem "#". Qualquer outra coisa é descartada. */
+function corHex(v: unknown): string | undefined {
+  return typeof v === "string" && /^[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : undefined;
+}
+
+function limparVisual(b: Record<string, unknown>): VisualTexto {
+  const n = Number(b.tamanho);
+  return {
+    ...(corHex(b.cor) ? { cor: corHex(b.cor) } : {}),
+    ...(b.caixa === null ? { caixa: null } : corHex(b.caixa) ? { caixa: corHex(b.caixa) } : {}),
+    ...(b.contorno === null ? { contorno: null } : corHex(b.contorno) ? { contorno: corHex(b.contorno) } : {}),
+    ...(b.sombra === true ? { sombra: true } : {}),
+    ...(Number.isFinite(n) && n > 0.005 && n < 0.2 ? { tamanho: n } : {}),
+  };
+}
+
 function limparTextos(bruto: unknown): TextoCena[] | undefined {
   if (!Array.isArray(bruto)) return undefined;
   const lista: TextoCena[] = [];

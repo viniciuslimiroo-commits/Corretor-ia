@@ -12,6 +12,9 @@ import { ESTILO_TEXTO_POR_ID, FILTRO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanor
 // "veryfast" CRF 23 -- o mesmo perfil pra montagem poder emendar sem surpresa.
 
 export const FPS = 24;
+
+/** A barra que escapa vírgula dentro de um filtro. Numa string comum ela vai sozinha. */
+const ESC = "\\";
 export const PRESET_X264 = "veryfast";
 export const CRF = "23";
 
@@ -116,6 +119,66 @@ type OpcoesPill = {
  * inteira antes da letra. Mexer em POSIÇÃO e em QUANDO aparece é o que funciona igual em
  * todos os estilos.
  */
+/**
+ * Onde cada texto fica na cena, em pixels. Serve pro drawtext e pra sobreposição de arte.
+ *
+ * Textos na mesma posição EMPILHAM: dois preços um por cima do outro é o defeito que só
+ * aparece no arquivo e em nenhum teste de string.
+ */
+export function lugaresDoTexto(textos: TextoCena[], H: number, topoOcupado = false, alturas: number[] = []): { y: number; posicao: string }[] {
+  const usadas: Record<string, number> = {};
+  return textos.map((t, i) => {
+    const posicao = t.posicao ?? "base";
+    const nivel = usadas[posicao] ?? 0;
+    usadas[posicao] = nivel + 1;
+    const alt = alturas[i] ?? Math.round(H * 0.08);
+    const passo = Math.round(alt * 1.25);
+    const alto = Math.round(H * (topoOcupado ? 0.19 : 0.08)) + nivel * passo;
+    const baixo = H - Math.round(H * 0.09) - alt - nivel * passo;
+    const meio = Math.round((H - alt) / 2) + nivel * passo;
+    return { y: posicao === "topo" ? alto : posicao === "centro" ? meio : baixo, posicao };
+  });
+}
+
+/**
+ * Sobrepõe as ARTES de texto (PNGs já rasterizados) numa cena.
+ *
+ * A arte é uma IMAGEM, não uma letra desenhada pelo ffmpeg -- é o que permite contorno
+ * duplo, brilho e relevo. A entrada de cada PNG e o filtro de overlay saem daqui juntos,
+ * porque o índice da entrada e o rótulo do filtro têm que combinar.
+ */
+export function sobreporArtes(
+  artes: { arquivo: string; y: number; largura: number; altura: number; animacao?: string; duracao: number }[],
+  W: number,
+  idxPrimeiro: number,
+  entrada = "v"
+): { entradas: string[]; partes: string[]; saida: string } {
+  if (!artes.length) return { entradas: [], partes: [], saida: entrada };
+  const entradas: string[] = [];
+  const partes: string[] = [];
+  let atual = entrada;
+  artes.forEach((a, i) => {
+    entradas.push("-i", a.arquivo);
+    const x = Math.round((W - a.largura) / 2);
+    const chegada = "(1-min(t/0.5" + ESC + ",1))";
+    const desloc = Math.round(W * 0.25);
+    let ex = String(x);
+    let ey = String(a.y);
+    let enable = "";
+    if (a.animacao === "subir") ey = a.y + "+" + chegada + "*" + Math.round(a.altura * 0.8);
+    else if (a.animacao === "descer") ey = a.y + "-" + chegada + "*" + Math.round(a.altura * 0.8);
+    else if (a.animacao === "entrar_esquerda") ex = x + "-" + chegada + "*" + desloc;
+    else if (a.animacao === "entrar_direita") ex = x + "+" + chegada + "*" + desloc;
+    else if (a.animacao === "surgir") enable = ":enable='gte(t" + ESC + ",0.5)'";
+    else if (a.animacao === "no_fim") enable = ":enable='gte(t" + ESC + "," + (a.duracao * 0.62).toFixed(2) + ")'";
+    else if (a.animacao === "piscar") enable = ":enable='lt(mod(t" + ESC + ",0.7)" + ESC + ",0.35)'";
+    const proximo = "va" + i;
+    partes.push("[" + atual + "][" + (idxPrimeiro + i) + ":v]overlay=" + ex + ":" + ey + enable + "[" + proximo + "]");
+    atual = proximo;
+  });
+  return { entradas, partes, saida: atual };
+}
+
 export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOcupado = false, duracao = 4): string[] {
   const usadas: Record<string, number> = {};
   return textos.map((t) => {
@@ -123,7 +186,11 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
     const nivel = usadas[posicao] ?? 0;
     usadas[posicao] = nivel + 1;
     const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"] ?? ESTILO_TEXTO_POR_ID.faixa;
-    const tamanho = Math.max(18, Math.round(H * est.tamanho));
+    // O VISUAL do texto vence o estilo base. É o que faz cada modelo da galeria ter cara
+    // própria -- e o que faz a prévia no cartão ser verdade, porque os dois lados leem os
+    // mesmos campos.
+    const v = t.visual ?? {};
+    const tamanho = Math.max(18, Math.round(H * (v.tamanho ?? est.tamanho)));
     const passo = Math.round(tamanho * 2.1);
     // O título e o preço do vídeo são carimbados no topo DEPOIS, na montagem. Quando eles
     // existem, o texto de topo começa abaixo da faixa deles -- senão um cobre o outro, e
@@ -160,7 +227,7 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
       `fontfile='${caminhoParaFiltro(caminhoFonte())}'`,
       `text=${textoParaFiltro(t.texto)}`,
       `fontsize=${tamanho}`,
-      `fontcolor=white`,
+      `fontcolor=0x${v.cor ?? "ffffff"}`,
       `x=${x}`,
       `y=${y}`,
     ];
@@ -169,14 +236,25 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
     //
     // É o que faz letra branca ser lida sobre parede branca. Sem isso metade dos textos
     // some na foto, e some justamente nos imóveis bem iluminados.
-    if (est.fundo === "caixa") {
-      partes.push(`box=1`, `boxcolor=${est.cor}@0.85`, `boxborderw=${Math.round(tamanho * 0.45)}`);
-    } else if (est.fundo === "contorno") {
-      partes.push(`borderw=${Math.max(2, Math.round(tamanho * 0.1))}`, `bordercolor=0x000000@0.92`);
-    } else {
-      // Sombra: deslocamento proporcional ao corpo da letra, pra não sumir no texto miúdo.
+    // A caixa: a do visual quando ele diz, a do estilo quando cala. `caixa: null` no
+    // visual é uma ESCOLHA de não ter caixa, e não a ausência de escolha -- por isso o
+    // teste é `undefined`, não falsidade.
+    const temCaixa = v.caixa !== undefined ? v.caixa !== null : est.fundo === "caixa";
+    const corCaixa = v.caixa ?? est.cor.replace("0x", "");
+    const temContorno = v.contorno !== undefined ? v.contorno !== null : est.fundo === "contorno";
+    if (temCaixa) {
+      partes.push(`box=1`, `boxcolor=0x${corCaixa}@0.9`, `boxborderw=${Math.round(tamanho * 0.42)}`);
+      if (temContorno) partes.push(`borderw=${Math.max(2, Math.round(tamanho * 0.06))}`, `bordercolor=0x${v.contorno ?? "000000"}@0.9`);
+    } else if (temContorno) {
+      partes.push(`borderw=${Math.max(2, Math.round(tamanho * 0.1))}`, `bordercolor=0x${v.contorno ?? "000000"}@0.92`);
+    } else if (v.sombra || est.fundo === "sombra") {
       const d = Math.max(2, Math.round(tamanho * 0.07));
       partes.push(`shadowcolor=0x000000@0.75`, `shadowx=${d}`, `shadowy=${d}`);
+    } else {
+      // Sem caixa, sem contorno e sem sombra pedida: uma sombra fina mesmo assim, senão
+      // letra branca some em parede branca -- e some justo no imóvel bem iluminado.
+      const d = Math.max(2, Math.round(tamanho * 0.05));
+      partes.push(`shadowcolor=0x000000@0.6`, `shadowx=${d}`, `shadowy=${d}`);
     }
 
     if (enable) partes.push(`enable='${enable}'`);
@@ -315,11 +393,34 @@ export function filtrosDeImagem(filtro: FiltroId | undefined, luz: number | unde
 }
 
 /** Cena de foto parada com movimento de câmera (Ken Burns). Um quadro de entrada. */
-export function argsCenaFoto(o: { foto: string; saida: string; W: number; H: number; duracao: number; efeito: EfeitoId; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number }): string[] {
+export function argsCenaFoto(o: {
+  foto: string;
+  saida: string;
+  W: number;
+  H: number;
+  duracao: number;
+  efeito: EfeitoId;
+  textos?: TextoCena[];
+  topoOcupado?: boolean;
+  filtro?: FiltroId;
+  luz?: number;
+  /** Artes de texto já rasterizadas pelo pipeline. Entram como IMAGEM, não como letra. */
+  artes?: { arquivo: string; y: number; largura: number; altura: number; animacao?: string }[];
+}): string[] {
   const frames = Math.round(o.duracao * FPS);
   const filtros = [enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
-  filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
-  return ["-i", o.foto, "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
+  // Só os textos SEM arte passam pelo drawtext; os com arte entram como sobreposição.
+  filtros.push(...filtrosDeTexto((o.textos ?? []).filter((t) => !t.arte), o.W, o.H, o.topoOcupado, o.duracao));
+  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
+  return [
+    "-i", o.foto,
+    ...arte.entradas,
+    "-filter_complex", [`[0:v]${filtros.join(",")}[v]`, ...arte.partes].join(";"),
+    "-map", `[${arte.saida}]`,
+    "-t", o.duracao.toFixed(2),
+    ...CODEC_VIDEO,
+    o.saida,
+  ];
 }
 
 /**

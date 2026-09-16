@@ -60,6 +60,7 @@ import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
+import { lerLegenda } from "@/lib/legenda-arquivo";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
@@ -1469,6 +1470,63 @@ export default function PaginaVideo() {
                      Reel de imóvel circula com o som desligado. As legendas saem do
                      áudio da VOZ (nunca da música) e ficam editáveis: transcrição erra
                      nome de bairro e de rua, que é o que o vídeo está anunciando. */}
+                {/* Três caminhos pra ter legenda, porque as pessoas chegam de três jeitos:
+                    quem gravou a voz aqui transcreve; quem já legendou noutro lugar traz o
+                    arquivo; e quem não tem voz nenhuma escreve na mão -- Reel de imóvel
+                    circula com o som desligado, então legenda sem voz também vale. */}
+                {!legendas && (
+                  <div className="mt-3 grid gap-1.5">
+                    <button
+                      type="button"
+                      onClick={gerarLegendas}
+                      disabled={!vozArquivo || transcrevendo}
+                      className="rounded-lg border border-neutral-200 p-2.5 text-left transition hover:border-marca-coral disabled:opacity-40"
+                    >
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
+                        <Icone nome="magica" className="h-4 w-4" />
+                        Legendas automáticas
+                        <span className="rounded bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">Grátis</span>
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-neutral-500">
+                        {vozArquivo ? "Ouve a sua voz e escreve sozinho. Dá pra corrigir depois." : "Grave ou envie a voz aqui em cima primeiro."}
+                      </span>
+                    </button>
+
+                    <label className="cursor-pointer rounded-lg border border-neutral-200 p-2.5 transition hover:border-marca-coral">
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
+                        <Icone nome="download" className="h-4 w-4" />
+                        Carregar arquivo de legenda
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-neutral-500">Formatos aceitos: .srt e .vtt</span>
+                      <input
+                        type="file"
+                        accept=".srt,.vtt,text/plain"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!f) return;
+                          const lido = lerLegenda(await f.text());
+                          if (lido.trechos) setLegendas({ estilo: "faixa", trechos: lido.trechos });
+                          else setErro(lido.erro);
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setLegendas({ estilo: "faixa", trechos: [{ inicio: 0, fim: 3, texto: "" }] })}
+                      className="rounded-lg border border-neutral-200 p-2.5 text-left transition hover:border-marca-coral"
+                    >
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
+                        <Icone nome="editar_prompt" className="h-4 w-4" />
+                        Escrever na mão
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-neutral-500">Você digita cada trecho e o tempo dele. Não precisa de voz.</span>
+                    </button>
+                  </div>
+                )}
+
                 <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-medium text-neutral-600">Legendas</span>

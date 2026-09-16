@@ -9,6 +9,7 @@ import { chamarSincrono, consultar, despachar, extrairImagem, resultado } from "
 import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
+import { rasterizarArtes } from "./texto-arte-servidor";
 import { creditar, marcaEfetiva } from "./cobranca";
 import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, filtroDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
@@ -359,7 +360,10 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const foto = local(`foto${i}${extensaoDe(fonte)}`);
         await baixar(db, fonte, foto);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: cena.efeito ?? "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz }));
+        // As artes de texto viram PNG antes do comando: o ffmpeg recebe imagem pronta,
+        // não instrução de desenho. É o que permite contorno duplo, brilho e relevo.
+        const artes = await rasterizarArtes(textosDaCena(cena), H, path.dirname(saida), `c${i}`, !!espec.titulo).catch(() => []);
+        const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: cena.efeito ?? "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       }
 

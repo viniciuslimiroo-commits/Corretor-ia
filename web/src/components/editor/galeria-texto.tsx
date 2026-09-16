@@ -10,7 +10,9 @@ import {
   type CategoriaTexto,
   type ModeloTexto,
   type TextoCena,
+  type VisualTexto,
 } from "@/lib/video";
+import { MODELOS_ARTE } from "@/lib/texto-arte";
 
 // A GALERIA DE TEXTO: escolher vendo, não lendo uma lista de nomes.
 //
@@ -26,21 +28,36 @@ import {
 // imóvel, já preenchidos do cadastro. Modelo com preço fixo seria pedir pra digitar de
 // novo o que já existe -- e pra alguém esquecer de trocar antes de publicar.
 
-/** Como o cartão desenha a prévia de um estilo. Espelha `filtrosDeTexto` no servidor. */
-function amostra(estilo: string, texto: string, pequeno = false) {
+/**
+ * O cartão desenha o texto com o MESMO acabamento que o servidor vai dar.
+ *
+ * Lê os mesmos campos de `visual` que o `filtrosDeTexto` lê. Enquanto o cartão mostrava
+ * só o estilo base, metade da galeria ficava igual -- vinte caixas azuis com palavras
+ * diferentes não é galeria, é lista com fundo.
+ */
+function amostra(estilo: string, visual: VisualTexto | undefined, pequeno = false): React.CSSProperties {
   const est = ESTILO_TEXTO_POR_ID[estilo as keyof typeof ESTILO_TEXTO_POR_ID] ?? ESTILO_TEXTO_POR_ID.faixa;
-  // A altura de referência do vídeo é 1920; o cartão tem uns 60px de área útil. O fator
-  // aproxima o tamanho relativo sem fingir precisão que a prévia não tem.
-  const corpo = Math.max(9, Math.min(pequeno ? 15 : 22, Math.round(est.tamanho * (pequeno ? 420 : 620))));
-  const cor = "#" + est.cor.replace("0x", "");
-  const base: React.CSSProperties = { fontSize: corpo, fontWeight: 600, lineHeight: 1.15, whiteSpace: "nowrap" };
-  if (est.fundo === "caixa") {
-    return { ...base, color: "#fff", background: cor, padding: `${Math.round(corpo * 0.3)}px ${Math.round(corpo * 0.55)}px`, borderRadius: 4 };
+  const v = visual ?? {};
+  const fracao = v.tamanho ?? est.tamanho;
+  const corpo = Math.max(9, Math.min(pequeno ? 16 : 24, Math.round(fracao * (pequeno ? 400 : 600))));
+  const cor = "#" + (v.cor ?? "ffffff");
+  const temCaixa = v.caixa !== undefined ? v.caixa !== null : est.fundo === "caixa";
+  const temContorno = v.contorno !== undefined ? v.contorno !== null : est.fundo === "contorno";
+  const base: React.CSSProperties = { fontSize: corpo, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", color: cor };
+  if (temCaixa) {
+    return {
+      ...base,
+      background: "#" + (v.caixa ?? est.cor.replace("0x", "")),
+      padding: `${Math.round(corpo * 0.26)}px ${Math.round(corpo * 0.5)}px`,
+      borderRadius: 4,
+      ...(temContorno ? { WebkitTextStroke: `1px #${v.contorno ?? "000000"}`, paintOrder: "stroke fill" as const } : {}),
+    };
   }
-  if (est.fundo === "contorno") {
-    return { ...base, color: "#fff", WebkitTextStroke: `${Math.max(1, Math.round(corpo * 0.08))}px #000`, paintOrder: "stroke fill" as const };
+  if (temContorno) {
+    return { ...base, WebkitTextStroke: `${Math.max(1, Math.round(corpo * 0.09))}px #${v.contorno ?? "000000"}`, paintOrder: "stroke fill" as const };
   }
-  return { ...base, color: "#fff", textShadow: `${Math.max(1, Math.round(corpo * 0.07))}px ${Math.max(1, Math.round(corpo * 0.07))}px 0 rgba(0,0,0,.75)` };
+  const d = Math.max(1, Math.round(corpo * 0.07));
+  return { ...base, textShadow: `${d}px ${d}px 0 rgba(0,0,0,.7)` };
 }
 
 export default function GaleriaTexto({
@@ -68,7 +85,7 @@ export default function GaleriaTexto({
 
   const modelos = MODELOS_TEXTO.filter((m) => categoria === "todas" || m.categoria === categoria);
 
-  const por = (m: ModeloTexto) => aoAdicionar({ texto: m.texto, estilo: m.estilo, posicao: m.posicao, animacao: m.animacao });
+  const por = (m: ModeloTexto) => aoAdicionar({ texto: m.texto, estilo: m.estilo, posicao: m.posicao, animacao: m.animacao, visual: m.visual });
 
   return (
     <div className="flex flex-col gap-3">
@@ -108,7 +125,7 @@ export default function GaleriaTexto({
                     title={`${p.rotulo}: ${p.texto}`}
                     className="grid h-14 place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900/90 px-1 transition hover:border-marca-coral disabled:opacity-40"
                   >
-                    <span style={amostra(p.id === "preco" ? "gigante" : "faixa", p.texto, true)} className="max-w-full truncate">
+                    <span style={amostra(p.id === "preco" ? "gigante" : "faixa", undefined, true)} className="max-w-full truncate">
                       {p.texto}
                     </span>
                   </button>
@@ -137,21 +154,49 @@ export default function GaleriaTexto({
             })}
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5">
-            {modelos.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                disabled={cheio || desabilitado}
-                onClick={() => por(m)}
-                title={`${m.texto} · ${ESTILO_TEXTO_POR_ID[m.estilo].rotulo}`}
-                className="grid h-14 place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900/90 px-1 transition hover:border-marca-coral disabled:opacity-40"
-              >
-                <span style={amostra(m.estilo, m.texto, true)} className="max-w-full truncate">
-                  {m.texto}
-                </span>
-              </button>
-            ))}
+          {/* ---------- os modelos de ARTE ----------
+               Cada cartão desenha o MESMO SVG que o servidor vai rasterizar e sobrepor no
+               vídeo. Não é uma imitação do resultado; é o resultado, em tamanho de cartão.
+               É isso que separa "modelo de texto" de "cor trocada". */}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Modelos</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {MODELOS_ARTE.filter((a) => categoria === "todas" || a.categoria === categoria).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  disabled={cheio || desabilitado}
+                  onClick={() => aoAdicionar({ texto: a.exemplo, arte: a.id, posicao: "base", animacao: "surgir" })}
+                  title={a.exemplo}
+                  className="grid h-[74px] place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900/90 p-1 transition hover:border-marca-coral disabled:opacity-40"
+                >
+                  <span
+                    className="block max-w-full [&>svg]:h-auto [&>svg]:w-full"
+                    dangerouslySetInnerHTML={{ __html: a.desenhar(a.exemplo, 34).svg }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Frases prontas</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {modelos.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={cheio || desabilitado}
+                  onClick={() => por(m)}
+                  title={`${m.texto} · ${ESTILO_TEXTO_POR_ID[m.estilo].rotulo}`}
+                  className="grid h-14 place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900/90 px-1 transition hover:border-marca-coral disabled:opacity-40"
+                >
+                  <span style={amostra(m.estilo, m.visual, true)} className="max-w-full truncate">
+                    {m.texto}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <button
@@ -175,7 +220,7 @@ export default function GaleriaTexto({
                   title={e.dica}
                   className="grid h-12 place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900/90 px-1 transition hover:border-marca-coral disabled:opacity-40"
                 >
-                  <span style={amostra(e.id, e.rotulo, true)} className="max-w-full truncate">
+                  <span style={amostra(e.id, undefined, true)} className="max-w-full truncate">
                     {e.rotulo}
                   </span>
                 </button>
