@@ -1,0 +1,293 @@
+"use client";
+
+import { useEffect, useMemo, useRef } from "react";
+import { Icone } from "@/components/ui";
+
+// A LINHA DO TEMPO de verdade: régua, blocos proporcionais e cabeçote.
+//
+// Antes as cenas eram uma fila de cartões do MESMO tamanho. Isso é uma lista, não uma
+// linha do tempo -- e era o motivo de a tela não parecer um editor por mais que a coluna
+// estivesse no lugar certo. O que faz alguém reconhecer uma linha do tempo é:
+//
+//   1. o bloco ser LARGO NA MEDIDA DA DURAÇÃO (uma cena de 8s ocupa o dobro de uma de 4s);
+//   2. existir uma RÉGUA em cima com o tempo marcado;
+//   3. existir um CABEÇOTE que diz onde você está e que anda quando toca.
+//
+// Nada disso é enfeite: os três juntos respondem "quanto tempo tem meu vídeo e onde está
+// cada coisa", que é a pergunta que a lista de cartões não respondia.
+//
+// Uma trilha só, de propósito. Doze trilhas é o que faz o corretor fechar a aba -- a
+// música, a voz e as legendas do Encena valem pro vídeo inteiro, então não são blocos
+// que se arrastam: são propriedades, e moram no painel.
+
+export type BlocoCena = {
+  chave: string;
+  rotulo: string;
+  miniatura: string | null;
+  duracao: number;
+  tipo: string;
+  /** Rótulo curto da emenda desta cena pra próxima. */
+  emenda: string;
+};
+
+/** Marcações a cada 1, 2, 5, 10, 15, 30 ou 60s -- a primeira que der pelo menos 64px. */
+function passoDaRegua(pxPorSegundo: number): number {
+  for (const p of [1, 2, 5, 10, 15, 30, 60]) if (p * pxPorSegundo >= 64) return p;
+  return 60;
+}
+
+export function relogio(segundos: number): string {
+  const s = Math.max(0, segundos);
+  const m = Math.floor(s / 60);
+  const r = Math.floor(s % 60);
+  const d = Math.floor((s - Math.floor(s)) * 10);
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}.${d}`;
+}
+
+export default function LinhaDoTempo({
+  blocos,
+  selecionada,
+  capa,
+  telaFinal,
+  segundosDaTelaFinal,
+  tempo,
+  tocando,
+  zoom,
+  gerando,
+  aoSelecionar,
+  aoMoverTempo,
+  aoTocar,
+  aoZoom,
+  aoComecarArraste,
+  aoSoltarEm,
+  aoDuplicar,
+  aoApagar,
+}: {
+  blocos: BlocoCena[];
+  selecionada: string | null;
+  capa: string | null;
+  telaFinal: boolean;
+  segundosDaTelaFinal: number;
+  tempo: number;
+  tocando: boolean;
+  /** Pixels por segundo. É o zoom da linha do tempo. */
+  zoom: number;
+  gerando: boolean;
+  aoSelecionar: (chave: string) => void;
+  aoMoverTempo: (segundos: number) => void;
+  aoTocar: (tocar: boolean) => void;
+  aoZoom: (px: number) => void;
+  aoComecarArraste: (chave: string) => void;
+  aoSoltarEm: (chave: string, ev: React.DragEvent) => void;
+  aoDuplicar: (chave: string) => void;
+  aoApagar: (chave: string) => void;
+}) {
+  const trilho = useRef<HTMLDivElement | null>(null);
+
+  const total = useMemo(
+    () => blocos.reduce((s, b) => s + b.duracao, 0) + (telaFinal ? segundosDaTelaFinal : 0),
+    [blocos, telaFinal, segundosDaTelaFinal]
+  );
+
+  /**
+   * Onde cada bloco começa, em segundos.
+   *
+   * Laço com acumulador LOCAL, não um `let` capturado por uma closure de `map`: o
+   * compilador do React recusa variável reatribuída dentro de callback, e com razão --
+   * é a forma de um valor vazar entre renders.
+   */
+  const inicios = useMemo(() => {
+    const lista: number[] = [];
+    for (let i = 0, acc = 0; i < blocos.length; i++) {
+      lista.push(acc);
+      acc += blocos[i].duracao;
+    }
+    return lista;
+  }, [blocos]);
+
+  const passo = passoDaRegua(zoom);
+  const marcas = useMemo(() => {
+    const lista: number[] = [];
+    for (let s = 0; s <= total + 0.001; s += passo) lista.push(s);
+    return lista;
+  }, [total, passo]);
+
+  // O cabeçote segue o tempo: quando ele sai da vista, a trilha rola atrás.
+  useEffect(() => {
+    if (!tocando || !trilho.current) return;
+    const x = tempo * zoom;
+    const el = trilho.current;
+    if (x < el.scrollLeft + 40 || x > el.scrollLeft + el.clientWidth - 80) {
+      el.scrollTo({ left: Math.max(0, x - el.clientWidth / 2), behavior: "smooth" });
+    }
+  }, [tempo, tocando, zoom]);
+
+  /** Clique na régua ou na trilha leva o cabeçote pra lá. */
+  function irPara(ev: React.MouseEvent<HTMLElement>) {
+    const el = trilho.current;
+    if (!el) return;
+    const caixa = el.getBoundingClientRect();
+    const x = ev.clientX - caixa.left + el.scrollLeft;
+    aoMoverTempo(Math.max(0, Math.min(total, x / zoom)));
+  }
+
+  const larguraTotal = Math.max(240, total * zoom);
+  const bloco = blocos.find((b) => b.chave === selecionada) ?? null;
+
+  return (
+    <div className="flex shrink-0 flex-col border-t border-neutral-200">
+      {/* ---------- barra de reprodução ----------
+           Tocar, onde estou, e o que fazer com a cena escolhida. Fica ENTRE o palco e a
+           trilha porque é o que liga os dois: o botão toca, o cabeçote anda e o palco
+           acompanha. */}
+      <div className="flex items-center gap-2 border-b border-neutral-200 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => aoTocar(!tocando)}
+          disabled={blocos.length === 0}
+          title={tocando ? "Pausar" : "Tocar a prévia"}
+          className="rounded-lg p-1.5 text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-40"
+        >
+          {tocando ? <Icone nome="fechar" className="h-4 w-4" /> : <Icone nome="play" className="h-4 w-4" />}
+        </button>
+        <span className="tabular-nums text-xs text-neutral-500">
+          {relogio(tempo)} <span className="text-neutral-400">/ {relogio(total)}</span>
+        </span>
+
+        <span className="mx-1 h-4 w-px bg-neutral-200" />
+
+        <button
+          type="button"
+          onClick={() => bloco && aoDuplicar(bloco.chave)}
+          disabled={!bloco || gerando}
+          title="Duplicar a cena escolhida"
+          className="rounded-lg p-1.5 text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-30"
+        >
+          <Icone nome="copiar" className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => bloco && aoApagar(bloco.chave)}
+          disabled={!bloco || gerando}
+          title="Tirar a cena escolhida"
+          className="rounded-lg p-1.5 text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-30"
+        >
+          <Icone nome="lixeira" className="h-4 w-4" />
+        </button>
+
+        <span className="min-w-0 flex-1 truncate px-2 text-[11px] text-neutral-400">
+          {blocos.length === 0 ? "Escolha as fotos em Mídia, na trilha da esquerda." : "arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio"}
+        </span>
+
+        {/* Zoom: quantos pixels cabe um segundo. Com vídeo curto ninguém precisa, mas com
+            doze cenas a trilha inteira não cabe na tela, e é aqui que ela encolhe. */}
+        <Icone nome="lote" className="hidden h-3.5 w-3.5 text-neutral-400 sm:block" />
+        <input
+          type="range"
+          min={8}
+          max={90}
+          step={2}
+          value={zoom}
+          onChange={(e) => aoZoom(Number(e.target.value))}
+          title="Zoom da linha do tempo"
+          className="hidden w-24 accent-marca-coral sm:block"
+        />
+      </div>
+
+      {/* ---------- régua e trilha ---------- */}
+      <div ref={trilho} className="relative overflow-x-auto px-3 pb-3">
+        <div style={{ width: larguraTotal }}>
+          {/* régua */}
+          <div className="relative h-5 cursor-pointer select-none" onClick={irPara}>
+            {marcas.map((s) => (
+              <span key={s} className="absolute top-0 flex h-full flex-col items-start" style={{ left: s * zoom }}>
+                <span className="h-1.5 w-px bg-neutral-300" />
+                <span className="mt-0.5 -translate-x-px text-[9px] tabular-nums text-neutral-400">{relogio(s).slice(0, 5)}</span>
+              </span>
+            ))}
+          </div>
+
+          {/* trilha */}
+          <ul className="relative flex items-stretch" onClick={irPara}>
+            {blocos.map((b, i) => {
+              const ativa = selecionada === b.chave;
+              const largura = Math.max(34, b.duracao * zoom);
+              return (
+                <li key={b.chave} className="relative shrink-0" style={{ width: largura }}>
+                  <button
+                    type="button"
+                    draggable={!gerando}
+                    onDragStart={() => aoComecarArraste(b.chave)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => aoSoltarEm(b.chave, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      aoSelecionar(b.chave);
+                      aoMoverTempo(inicios[i]);
+                    }}
+                    title={`${b.rotulo} · ${b.duracao}s`}
+                    className={
+                      "relative block h-16 w-full overflow-hidden rounded-md border-2 text-left transition " +
+                      (ativa ? "border-marca-coral" : "border-transparent hover:border-neutral-300")
+                    }
+                  >
+                    {b.miniatura ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={b.miniatura} alt="" className="h-full w-full object-cover" draggable={false} />
+                    ) : (
+                      <span className="flex h-full items-center justify-center bg-neutral-100 text-neutral-400">
+                        <Icone nome="video" className="h-4 w-4" />
+                      </span>
+                    )}
+                    <span className="absolute top-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px] font-semibold text-white">{i + 1}</span>
+                    {capa === b.chave && <span className="absolute top-0.5 right-0.5 rounded bg-amber-400 px-1 text-[9px] font-bold text-white">★</span>}
+                    {b.tipo === "animada" && <span className="absolute right-0.5 bottom-0.5 rounded bg-marca-coral/90 px-1 text-[9px] text-white">✨</span>}
+                    {largura > 48 && (
+                      <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px] tabular-nums text-white">{b.duracao}s</span>
+                    )}
+                  </button>
+                  {/* A emenda mora na divisa entre dois blocos, que é onde ela acontece. */}
+                  {i < blocos.length - 1 && b.emenda && (
+                    <span
+                      className="pointer-events-none absolute top-1/2 -right-3 z-10 -translate-y-1/2 rounded bg-neutral-900/80 px-1 text-[8px] leading-tight text-white"
+                      title={`Emenda: ${b.emenda}`}
+                    >
+                      {b.emenda.slice(0, 4)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+
+            {telaFinal && (
+              <li className="shrink-0" style={{ width: Math.max(34, segundosDaTelaFinal * zoom) }}>
+                <span
+                  className="grid h-16 w-full place-items-center rounded-md border-2 border-dashed border-neutral-200 text-center text-[9px] leading-tight text-neutral-500"
+                  title="Tela final com nome, CRECI, WhatsApp e logo da sua marca"
+                >
+                  <Icone nome="marca" className="h-3.5 w-3.5" />
+                  Tela final
+                </span>
+              </li>
+            )}
+
+            {blocos.length === 0 && (
+              <li className="grid h-16 w-full place-items-center rounded-md border border-dashed border-neutral-200 text-xs text-neutral-500">
+                Arraste as fotos pra cá, ou escolha em Mídia.
+              </li>
+            )}
+          </ul>
+
+          {/* ---------- cabeçote ----------
+               Uma linha e uma cabeça, por cima de tudo. Sem `pointer-events`, pra não
+               roubar o clique de quem está mirando um bloco. */}
+          {blocos.length > 0 && (
+            <div className="pointer-events-none absolute top-3 bottom-3 z-20 w-px bg-marca-coral" style={{ left: 12 + tempo * zoom }}>
+              <span className="absolute -top-1 -left-[5px] h-2.5 w-2.5 rounded-sm bg-marca-coral" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

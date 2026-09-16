@@ -55,6 +55,7 @@ import { aplicarTemplateVideo, mudancasDoTemplate, TEMPLATES_VIDEO, templateVaiA
 import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import { useIdioma } from "@/i18n/cliente";
 import SeletorImovel from "@/components/seletor-imovel";
+import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
@@ -289,6 +290,19 @@ export default function PaginaVideo() {
   const [enviando, setEnviando] = useState(0);
   /** Aba aberta na trilha de ferramentas. Uma de cada vez, como em qualquer editor. */
   const [aba, setAba] = useState<AbaId>("midia");
+  /** Onde o cabeçote está, em segundos. É o que o palco mostra. */
+  const [tempo, setTempo] = useState(0);
+  const [tocando, setTocando] = useState(false);
+  /** O tempo atual pro efeito de tocar ler sem virar dependência dele. */
+  const tempoRef = useRef(0);
+  /** Zoom da linha do tempo, em pixels por segundo. */
+  const [zoomLinha, setZoomLinha] = useState(30);
+
+  /** Move o cabeçote. Guarda no ref junto, que é de onde o laço de tocar lê o início. */
+  const moverTempo = useCallback((segundos: number) => {
+    tempoRef.current = segundos;
+    setTempo(segundos);
+  }, []);
 
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string } | null>(null);
@@ -1034,6 +1048,81 @@ export default function PaginaVideo() {
     if (resultado?.videoId === id) setResultado(null);
   }
 
+
+  /**
+   * Os blocos da linha do tempo, e onde cada um começa.
+   *
+   * A largura do bloco é a DURAÇÃO -- é isso que transforma uma fila de cartões numa
+   * linha do tempo de verdade, e é o que responde "quanto tempo tem meu vídeo" sem
+   * ninguém somar nada de cabeça.
+   */
+  const blocosDaLinha: BlocoCena[] = useMemo(
+    () =>
+      cenas.map((s) => ({
+        chave: s.chave,
+        rotulo: s.rotulo,
+        miniatura: s.miniatura,
+        duracao: s.duracao,
+        tipo: s.tipo,
+        emenda: TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo ?? "",
+      })),
+    [cenas, transicao]
+  );
+
+  /** Em que segundo cada cena começa. Serve pro cabeçote saber quem está no ar. */
+  const iniciosDasCenas = useMemo(() => {
+    // Acumulador local do laço, não um `let` capturado por closure de `map`: o
+    // compilador do React recusa o segundo, e com razão.
+    const lista: number[] = [];
+    for (let i = 0, acc = 0; i < cenas.length; i++) {
+      lista.push(acc);
+      acc += cenas[i].duracao;
+    }
+    return lista;
+  }, [cenas]);
+
+  const duracaoDaLinha = cenas.reduce((t, s) => t + s.duracao, 0) + (telaFinal ? LIMITES.telaFinalSegundos : 0);
+
+  /**
+   * A PRÉVIA que toca.
+   *
+   * Não é o vídeo montado -- é o cabeçote andando e o palco trocando de cena na hora
+   * certa. Serve pra ver o RITMO antes de gerar: se uma cena está longa demais, isso
+   * aparece assistindo, nunca olhando um número de duração.
+   */
+  useEffect(() => {
+    if (!tocando) return;
+    // Intervalo com DELTA REAL, não requestAnimationFrame: o rAF para quando a aba não
+    // está à frente, e aí a prévia congela sem ninguém entender por quê. O delta vem do
+    // relógio, então o cabeçote anda no tempo certo mesmo se um quadro atrasar.
+    const inicio = performance.now();
+    const daquiAPouco = tempoRef.current;
+    const id = setInterval(() => {
+      const decorrido = (performance.now() - inicio) / 1000;
+      const novo = daquiAPouco + decorrido;
+      if (novo >= duracaoDaLinha) {
+        setTempo(duracaoDaLinha);
+        setTocando(false);
+      } else {
+        setTempo(novo);
+      }
+    }, 50);
+    return () => clearInterval(id);
+  }, [tocando, duracaoDaLinha, moverTempo]);
+
+  /**
+   * Que cena está no ar no segundo do cabeçote.
+   *
+   * DERIVADO, não guardado em estado. A primeira versão tinha um efeito que, enquanto
+   * tocava, empurrava a seleção a cada quadro -- e isso é pedir um render em cascata 60
+   * vezes por segundo. Quem manda enquanto toca é o tempo; parado, manda o clique.
+   */
+  const indiceDoCabecote = useMemo(() => {
+    let i = 0;
+    for (let k = 0; k < iniciosDasCenas.length; k++) if (tempo >= iniciosDasCenas[k]) i = k;
+    return i;
+  }, [tempo, iniciosDasCenas]);
+
   if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
   if (!c.user || !c.conta) {
     return (
@@ -1046,7 +1135,7 @@ export default function PaginaVideo() {
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
   // A cena aberta no painel. Sem escolha, é a primeira: editor sem nada selecionado é
   // uma tela que não responde ao que a pessoa clica.
-  const indiceAtual = Math.max(0, cenas.findIndex((s) => s.chave === selecionada));
+  const indiceAtual = tocando ? indiceDoCabecote : Math.max(0, cenas.findIndex((s) => s.chave === selecionada));
   const cenaAtual: CenaUI | null = cenas[indiceAtual] ?? null;
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
@@ -2124,76 +2213,27 @@ export default function PaginaVideo() {
       </div>
 
       {/* ---------- linha do tempo ----------
-           As cenas em fila, na ordem em que saem. Clicar escolhe; arrastar reordena; a
-           emenda aparece ENTRE as cenas, que é onde ela acontece. Uma trilha só, de
-           propósito: régua de tempo com doze trilhas é o que faz o corretor fechar a aba. */}
-      {/* PRESA embaixo e sempre visível, inclusive vazia: é o chão do editor. Escondida
-          quando não havia cena, a tela deixava de parecer um editor -- sobrava um palco
-          preto e nada mais. */}
-      <div className="shrink-0 border-t border-neutral-200 p-3">
-        <div>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <Rotulo>Linha do tempo</Rotulo>
-            <span className="truncate text-xs text-neutral-500">arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio</span>
-          </div>
-          {cenas.length === 0 && (
-            <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-xs text-neutral-500">
-              Escolha as fotos em <strong>Mídia</strong>, ali na esquerda. Elas viram cenas aqui.
-            </p>
-          )}
-            <ul className="flex items-stretch gap-1 overflow-x-auto pb-2">
-              {cenas.map((s, i) => (
-                <li key={s.chave} className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    draggable={!gerando}
-                    onDragStart={() => (arrastando.current = s.chave)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => soltarEm(s.chave, e)}
-                    onDragEnd={() => (arrastando.current = null)}
-                    onClick={() => setSelecionada(s.chave)}
-                    className={
-                      "relative w-28 overflow-hidden rounded-lg border-2 bg-white text-left transition " +
-                      (cenaAtual?.chave === s.chave ? "border-marca-coral shadow-sm" : "border-transparent hover:border-neutral-300")
-                    }
-                    title={s.rotulo}
-                  >
-                    <div className="relative aspect-[4/3] bg-neutral-100">
-                      {s.miniatura ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={s.miniatura} alt="" className="h-full w-full object-cover" draggable={false} />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-neutral-400">
-                          <Icone nome="video" className="h-5 w-5" />
-                        </div>
-                      )}
-                      <span className="absolute top-1 left-1 rounded bg-black/60 px-1 text-[10px] font-semibold text-white">{i + 1}</span>
-                      {(capa ?? cenas[0]?.chave) === s.chave && <span className="absolute top-1 right-1 rounded bg-amber-400 px-1 text-[10px] font-bold text-white">★</span>}
-                      {s.tipo === "animada" && <span className="absolute right-1 bottom-1 rounded bg-marca-indigo/90 px-1 text-[10px] text-white">✨</span>}
-                      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] tabular-nums text-white">{s.duracao}s</span>
-                    </div>
-                  </button>
-                  {i < cenas.length - 1 && (
-                    <span
-                      className="w-8 shrink-0 self-center rounded bg-neutral-100 px-1 py-2 text-center text-[9px] leading-tight text-neutral-500"
-                      title={`Emenda: ${TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo}. Muda no painel da cena.`}
-                    >
-                      {TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo.slice(0, 5)}
-                    </span>
-                  )}
-                </li>
-              ))}
-              {telaFinal && (
-                <li className="flex shrink-0 items-center gap-1">
-                  <span className="grid w-28 place-items-center rounded-lg border-2 border-dashed border-neutral-200 px-2 py-4 text-center text-[10px] leading-tight text-neutral-500" title="Tela final com nome, CRECI, WhatsApp e logo da sua marca">
-                    <Icone nome="marca" className="mb-1 h-4 w-4" />
-                    Tela final
-                  </span>
-                </li>
-              )}
-            </ul>
-          </div>
-        </div>
-      </div>
+           Régua, blocos do tamanho da duração e cabeçote que anda. O componente inteiro
+           mora em components/editor/linha-do-tempo.tsx -- ver lá o porquê de cada peça. */}
+      <LinhaDoTempo
+        blocos={blocosDaLinha}
+        selecionada={cenaAtual?.chave ?? null}
+        capa={capa ?? cenas[0]?.chave ?? null}
+        telaFinal={telaFinal}
+        segundosDaTelaFinal={LIMITES.telaFinalSegundos}
+        tempo={tempo}
+        tocando={tocando}
+        zoom={zoomLinha}
+        gerando={gerando}
+        aoSelecionar={setSelecionada}
+        aoMoverTempo={moverTempo}
+        aoTocar={(t) => { if (t && tempo >= duracaoDaLinha - 0.05) moverTempo(0); setTocando(t); }}
+        aoZoom={setZoomLinha}
+        aoComecarArraste={(k) => (arrastando.current = k)}
+        aoSoltarEm={soltarEm}
+        aoDuplicar={duplicar}
+        aoApagar={remover}
+      />
+    </div>
   );
 }
