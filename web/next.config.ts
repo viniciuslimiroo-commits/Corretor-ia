@@ -5,7 +5,10 @@ const nextConfig: NextConfig = {
   // não são importados por código, então o rastreio de dependências da Vercel não os
   // veria. Aqui eles entram no bundle das rotas de vídeo explicitamente.
   outputFileTracingIncludes: {
-    "/api/video/**": ["./bin/ffmpeg", "./assets/**"],
+    // `public/adesivos` e `assets/fontes` são lidos do DISCO pela montagem do vídeo: sem
+    // entrar aqui, funcionam local e somem na Vercel, onde a função só leva o que é listado.
+    "/api/video/**": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/**", "./public/musica/**", "./public/efeitos/**"],
+    "/api/editor/**": ["./assets/fontes/**"],
   },
   serverExternalPackages: ["ffmpeg-static"],
 

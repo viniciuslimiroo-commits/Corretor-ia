@@ -66,6 +66,7 @@ import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
 import GaleriaElementos from "@/components/editor/galeria-elementos";
+import ElementosNoPalco from "@/components/editor/elementos-no-palco";
 import PainelFiltros, { type EscopoCor } from "@/components/editor/painel-filtros";
 import FotoComCor from "@/components/editor/foto-com-cor";
 import { AJUSTES_NEUTROS, type Ajustes } from "@/lib/filtros";
@@ -2523,6 +2524,20 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                       </span>
                     );
                   })}
+                {/* As peças (adesivos, ficha, contato, moldura) no lugar em que saem no
+                    vídeo: mesma função de posição que o servidor usa. */}
+                {cenaAtual && (cenaAtual.elementos?.length ?? 0) > 0 && (
+                  <ElementosNoPalco
+                    elementos={cenaAtual.elementos ?? []}
+                    proporcao={PROPORCAO_NUM[formato]}
+                    topoOcupado={!!titulo}
+                    cor={corDaMarca}
+                    itensDaFicha={itensDaFicha}
+                    gatilho={menu.gatilho}
+                    aoMudar={(i, m) => mudarElemento(cenaAtual.chave, i, m)}
+                    aoTirar={(i) => removerElemento(cenaAtual.chave, i)}
+                  />
+                )}
               </div>
               <p className="mt-2 truncate text-center text-xs text-neutral-500">
                 {cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}

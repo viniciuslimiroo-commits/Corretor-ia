@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { ELEMENTO_POR_ID, COR_ELEMENTO_PADRAO, lugarDoElemento, type AncoraElemento } from "./elementos";
+import { ELEMENTO_POR_ID, COR_ELEMENTO_PADRAO, posicionarPecas, type AncoraElemento } from "./elementos";
+import { idDoAdesivo } from "./adesivos";
 import type { PecaNaCena } from "./video-ffmpeg";
 import type { ElementoCena } from "./video";
 
@@ -12,6 +13,17 @@ import type { ElementoCena } from "./video";
 //
 // Duas peças na mesma âncora EMPILHAM. Sem isso, um selo e uma etiqueta escolhidos pro
 // mesmo canto sairiam um por cima do outro -- e isso só apareceria no arquivo final.
+
+/**
+ * Tamanho padrão de um adesivo, em fração da altura do vídeo. 12% de 1920 são 230px -- o
+ * arquivo da biblioteca tem 256px, então não amplia além do que a imagem aguenta.
+ */
+export const TAMANHO_ADESIVO = 0.12;
+
+/** O arquivo do adesivo no disco. Na Vercel o cwd é a raiz da função; `public/adesivos` entra no pacote. */
+export function arquivoDoAdesivo(id: string): string {
+  return path.join(process.cwd(), "public", "adesivos", `${id}.png`);
+}
 
 /** "#rrggbb", ou nada. Devolve `null` em vez de um padrão pra quem chama poder recuar. */
 function corValida(bruta?: string | null): string | null {
@@ -26,58 +38,53 @@ export async function rasterizarElementos(
   prefixo: string,
   opcoes: { cor?: string | null; topoOcupado?: boolean } = {}
 ): Promise<PecaNaCena[]> {
-  const lista = (elementos ?? []).filter((e) => ELEMENTO_POR_ID[e.id]);
+  const lista = (elementos ?? []).filter((e) => ELEMENTO_POR_ID[e.id] || idDoAdesivo(e.id));
   if (!lista.length) return [];
 
   // A cor da peça é a dela, senão a da conta, senão a da casa. Em cascata, e não com um
   // `||` em cima de uma função que já devolve padrão -- isso faria a cor da conta nunca
   // valer, porque a primeira etapa nunca seria falsa.
   const corPadrao = corValida(opcoes.cor) ?? COR_ELEMENTO_PADRAO;
-  /**
-   * Até onde cada âncora já está ocupada, em pixels.
-   *
-   * Guarda a BORDA da peça anterior, não quantas peças já entraram. Um passo calculado
-   * pela altura da peça NOVA erra sempre que a de baixo é mais alta que a de cima: um
-   * selo de 125px seguido de um de 96px empilhava com 115 de passo e as duas se cobriam
-   * por 10 pixels -- medido, e invisível em qualquer teste que não olhasse as duas
-   * coordenadas juntas.
-   */
-  const ocupado: Record<string, number> = {};
-  const folga = Math.max(4, Math.round(H * 0.012));
-  const saida: PecaNaCena[] = [];
+  // Primeiro desenha tudo (o tamanho de cada peça só existe depois de desenhada); depois
+  // posiciona todas de uma vez, com a MESMA função que o palco da tela usa.
+  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; animacao?: string }[] = [];
 
   for (let k = 0; k < lista.length; k++) {
     const e = lista[k];
-    const modelo = ELEMENTO_POR_ID[e.id];
-    const alt = Math.max(12, Math.round(H * (e.tamanho ?? modelo.corpo)));
-    const d = modelo.desenhar({ texto: e.texto ?? modelo.exemplo ?? "", itens: e.itens ?? [], cor: corValida(e.cor) ?? corPadrao }, { alt, W, H });
-
     const arquivo = path.join(pasta, `${prefixo}-el-${k}.png`);
-    await sharp(Buffer.from(d.svg)).png().toFile(arquivo);
+    const adesivo = idDoAdesivo(e.id);
+    const modelo = adesivo ? null : ELEMENTO_POR_ID[e.id];
+    let d: { largura: number; altura: number };
+
+    if (adesivo) {
+      // O adesivo é a imagem pronta da biblioteca, só redimensionada. Quadrado, e o lado
+      // sai da ALTURA do vídeo pelo mesmo motivo dos outros elementos: a peça tem que ter
+      // o mesmo peso visual no 9:16 e no 16:9.
+      const lado = Math.max(24, Math.round(H * (e.tamanho ?? TAMANHO_ADESIVO)));
+      const origem = arquivoDoAdesivo(adesivo);
+      if (!fs.existsSync(origem)) continue;
+      await sharp(origem).resize(lado, lado, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(arquivo);
+      d = { largura: lado, altura: lado };
+    } else {
+      const m = modelo!;
+      const alt = Math.max(12, Math.round(H * (e.tamanho ?? m.corpo)));
+      const desenho = m.desenhar({ texto: e.texto ?? m.exemplo ?? "", itens: e.itens ?? [], cor: corValida(e.cor) ?? corPadrao }, { alt, W, H });
+      await sharp(Buffer.from(desenho.svg)).png().toFile(arquivo);
+      d = desenho;
+    }
     if (!fs.existsSync(arquivo)) continue;
 
-    // Moldura vale o quadro inteiro: nasce em (0,0) e não empilha com nada.
-    if (modelo.quadroInteiro) {
-      saida.push({ arquivo, x: 0, y: 0, largura: d.largura, altura: d.altura, animacao: e.animacao });
-      continue;
-    }
-
-    const ancora = (e.ancora ?? modelo.ancora) as AncoraElemento;
-    const lugar = lugarDoElemento(ancora, W, H, d.largura, d.altura, opcoes.topoOcupado);
-
-    // Empilha PRA CIMA quando a âncora é de baixo e PRA BAIXO nos outros casos: a
-    // segunda peça tem que entrar pra dentro do quadro, nunca sair por fora.
-    let y = lugar.y;
-    const limite = ocupado[ancora];
-    if (ancora.startsWith("base")) {
-      if (limite !== undefined) y = Math.max(0, limite - folga - d.altura);
-      ocupado[ancora] = y;
-    } else {
-      if (limite !== undefined) y = Math.min(Math.max(0, H - d.altura), limite + folga);
-      ocupado[ancora] = y + d.altura;
-    }
-
-    saida.push({ arquivo, x: lugar.x, y, largura: d.largura, altura: d.altura, animacao: e.animacao });
+    desenhadas.push({
+      arquivo,
+      largura: d.largura,
+      altura: d.altura,
+      ancora: (e.ancora ?? modelo?.ancora ?? "topo_dir") as AncoraElemento,
+      // Moldura vale o quadro inteiro: nasce em (0,0) e não empilha com nada.
+      quadroInteiro: modelo?.quadroInteiro,
+      animacao: e.animacao,
+    });
   }
-  return saida;
+
+  const lugares = posicionarPecas(desenhadas, W, H, opcoes.topoOcupado);
+  return desenhadas.map((d, k) => ({ arquivo: d.arquivo, x: lugares[k].x, y: lugares[k].y, largura: d.largura, altura: d.altura, animacao: d.animacao }));
 }

@@ -13,6 +13,7 @@
 import { MODELOS_ARTE } from "./texto-arte";
 import { AJUSTES_NEUTROS, ehFiltro as filtroValido, limparAjustes, type Ajustes as AjustesCor, type FiltroId as IdFiltro, type Grade as GradeCor } from "./filtros";
 import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "./elementos";
+import { idDoAdesivo } from "./adesivos";
 
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
 export const BUCKET_UPLOADS = "resultados";
@@ -894,6 +895,23 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
   const lista: ElementoCena[] = [];
   for (const b of bruto.slice(0, LIMITES.elementosPorCena)) {
     const e = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
+    const tam = Number(e.tamanho);
+    const animacao = ANIMACOES_TEXTO.some((a) => a.id === e.animacao) ? (e.animacao as AnimacaoTexto) : "nenhuma";
+
+    // Adesivo 3D: só existe se o id estiver no catálogo (que é o que tem arquivo no disco).
+    // Não carrega texto nem cor -- é uma imagem pronta -- e nasce num canto de cima, que é
+    // onde um selo de "novo" ou uma chave costuma ir.
+    const adesivo = typeof e.id === "string" ? idDoAdesivo(e.id) : null;
+    if (adesivo) {
+      lista.push({
+        id: `adesivo:${adesivo}`,
+        ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : "topo_dir",
+        ...(Number.isFinite(tam) && tam >= 0.04 && tam <= 0.5 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
+        animacao,
+      });
+      continue;
+    }
+
     const modelo = typeof e.id === "string" ? ELEMENTO_POR_ID[e.id] : undefined;
     if (!modelo) continue;
     const conteudo = texto(e.texto, LIMITES.elementoTextoMax);
@@ -912,7 +930,6 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
       }
       if (!itens.length) continue;
     }
-    const tam = Number(e.tamanho);
     lista.push({
       id: modelo.id,
       ...(conteudo ? { texto: conteudo } : {}),
@@ -920,7 +937,7 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
       ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : modelo.ancora,
       ...(Number.isFinite(tam) && tam >= 0.02 && tam <= 1 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
       ...(typeof e.cor === "string" && /^#[0-9a-fA-F]{6}$/.test(e.cor) ? { cor: e.cor.toLowerCase() } : {}),
-      animacao: ANIMACOES_TEXTO.some((a) => a.id === e.animacao) ? (e.animacao as AnimacaoTexto) : "nenhuma",
+      animacao,
     });
   }
   return lista.length ? lista : undefined;

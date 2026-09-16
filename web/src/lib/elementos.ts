@@ -523,6 +523,40 @@ export const ELEMENTO_POR_ID: Record<string, ModeloElemento> = Object.fromEntrie
 export const COR_ELEMENTO_PADRAO = CORAL;
 
 /**
+ * Onde CADA peça de uma cena fica, já com o empilhamento. Uma função só pro servidor e pro
+ * palco da tela: se cada lado fizesse a própria conta, a peça sairia num lugar no vídeo e
+ * noutro na prévia, e ninguém veria a diferença até o vídeo ficar pronto.
+ *
+ * Empilha PRA CIMA quando a âncora é de baixo e PRA BAIXO nos outros casos -- a segunda
+ * peça entra pra dentro do quadro, nunca por fora. E guarda a BORDA ocupada, não quantas
+ * peças entraram: um passo calculado pela altura da peça nova fazia um selo de 125px e um
+ * de 96px se cobrirem por 10 pixels (medido).
+ */
+export function posicionarPecas(
+  pecas: { ancora: AncoraElemento; largura: number; altura: number; quadroInteiro?: boolean }[],
+  W: number,
+  H: number,
+  topoOcupado = false
+): { x: number; y: number }[] {
+  const ocupado: Record<string, number> = {};
+  const folga = Math.max(4, Math.round(H * 0.012));
+  return pecas.map((p) => {
+    if (p.quadroInteiro) return { x: 0, y: 0 };
+    const lugar = lugarDoElemento(p.ancora, W, H, p.largura, p.altura, topoOcupado);
+    let y = lugar.y;
+    const limite = ocupado[p.ancora];
+    if (p.ancora.startsWith("base")) {
+      if (limite !== undefined) y = Math.max(0, limite - folga - p.altura);
+      ocupado[p.ancora] = y;
+    } else {
+      if (limite !== undefined) y = Math.min(Math.max(0, H - p.altura), limite + folga);
+      ocupado[p.ancora] = y + p.altura;
+    }
+    return { x: lugar.x, y };
+  });
+}
+
+/**
  * Onde a peça encosta, em pixels.
  *
  * `topoOcupado` empurra as âncoras de cima pra baixo da faixa de título/preço, que é

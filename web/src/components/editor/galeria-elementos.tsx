@@ -3,34 +3,39 @@
 import { useMemo, useState } from "react";
 import {
   ANCORAS,
-  CATEGORIAS_ELEMENTO,
   ELEMENTO_POR_ID,
   FICHA_EXEMPLO,
   MODELOS_ELEMENTO,
   type AncoraElemento,
-  type CategoriaElemento,
   type IconeFicha,
 } from "@/lib/elementos";
-import { LIMITES, type ElementoCena } from "@/lib/video";
+import { ADESIVO_POR_ID, CATEGORIAS_ADESIVO, buscarAdesivos, idDoAdesivo, urlDoAdesivo, type CategoriaAdesivo } from "@/lib/adesivos";
+import { ANIMACOES_TEXTO, LIMITES, type AnimacaoTexto, type ElementoCena } from "@/lib/video";
 import { Chip, Icone } from "@/components/ui";
 
-// A GALERIA DE ELEMENTOS: o cartão é a peça, não um desenho parecido com ela.
+// A GALERIA DE ELEMENTOS, na lógica do CapCut: busca em cima, prateleiras embaixo.
 //
-// Cada cartão põe na tela o MESMO SVG que o servidor vai rasterizar e sobrepor no vídeo.
-// Não há uma segunda versão "de prévia" pra divergir da de verdade -- e divergir é o que
-// toda prévia desenhada à parte acaba fazendo, calada, três meses depois.
+// A primeira versão tinha selos, setas e balões DESENHADOS À MÃO em SVG, e foi reprovada
+// ("olhe a diferença", com print do CapCut ao lado). Agora a prateleira principal são os
+// ADESIVOS 3D da biblioteca Fluent Emoji (Microsoft, licença MIT) -- arte de ilustrador,
+// escolhida pra anúncio de imóvel e com busca em português.
 //
-// A categoria "Ficha do imóvel" vem primeiro de propósito. É a razão de a aba existir:
-// adesivo bonito qualquer editor tem; "3 quartos · 2 vagas · 120 m²" desenhado, certo e
-// preenchido do cadastro é o que um corretor não monta sozinho no celular.
+// Os modelos desenhados que ficaram são os que carregam DADO, e que nenhuma biblioteca de
+// adesivo tem: a ficha do imóvel (quartos, vagas, metragem, preenchidos do cadastro), o
+// WhatsApp com o número, e as molduras. Selos e setas desenhados saíram da prateleira --
+// continuam no catálogo só pra vídeo antigo que os usa reabrir igual.
 
-/** Desenha um modelo num quadro de prévia e devolve o SVG pronto pra injetar. */
+const CATEGORIAS_DESENHADAS = ["ficha", "contato", "moldura"] as const;
+const ROTULO_DESENHADA: Record<(typeof CATEGORIAS_DESENHADAS)[number], string> = {
+  ficha: "Ficha do imóvel",
+  contato: "Contato",
+  moldura: "Molduras",
+};
+
+/** Um modelo desenhado num quadro 9:16 pequeno, pro cartão. */
 function previa(id: string, texto: string, itens: { icone: IconeFicha; texto: string }[], cor: string, larguraMax: number) {
   const modelo = ELEMENTO_POR_ID[id];
   if (!modelo) return null;
-  // O quadro de prévia é um 9:16 pequeno: as peças de quadro inteiro (moldura, cantos)
-  // precisam de um W e um H pra existir, e as outras se dimensionam pela altura como no
-  // vídeo. Assim o cartão mostra a proporção real da peça dentro do quadro.
   const H = 220;
   const W = Math.round((H * 9) / 16);
   const alt = Math.max(12, Math.round(H * modelo.corpo));
@@ -39,48 +44,31 @@ function previa(id: string, texto: string, itens: { icone: IconeFicha; texto: st
   return { svg: d.svg, largura: Math.round(d.largura * escala), altura: Math.round(d.altura * escala) };
 }
 
-function Cartao({
-  id,
-  rotulo,
-  texto,
-  itens,
-  cor,
-  escolhido,
-  aoEscolher,
-}: {
-  id: string;
-  rotulo: string;
-  texto: string;
-  itens: { icone: IconeFicha; texto: string }[];
-  cor: string;
-  escolhido: boolean;
-  aoEscolher: () => void;
-}) {
-  const p = useMemo(() => previa(id, texto, itens, cor, 168), [id, texto, itens, cor]);
+function CartaoDesenhado({ id, cor, itens, escolhido, desligado, aoEscolher }: { id: string; cor: string; itens: { icone: IconeFicha; texto: string }[]; escolhido: boolean; desligado: boolean; aoEscolher: () => void }) {
+  const modelo = ELEMENTO_POR_ID[id];
+  const p = useMemo(() => previa(id, modelo?.exemplo ?? "", itens, cor, 150), [id, modelo, itens, cor]);
   return (
     <button
       type="button"
       onClick={aoEscolher}
-      title={rotulo}
+      disabled={desligado}
+      title={modelo?.rotulo}
       className={
-        "flex w-full flex-col items-center gap-1.5 rounded-xl border p-2 transition " +
-        (escolhido ? "border-marca-indigo bg-marca-indigo/5" : "border-neutral-200 hover:border-neutral-400")
+        "flex w-full flex-col items-center gap-1 rounded-xl border p-1.5 transition disabled:opacity-40 " +
+        (escolhido ? "border-marca-coral bg-marca-indigo/5" : "border-neutral-200 hover:border-neutral-400")
       }
     >
-      {/* O fundo escuro é o do vídeo: peça branca sobre cartão branco some, e a pessoa
-          escolheria no escuro -- literalmente. */}
-      <span className="flex h-[74px] w-full items-center justify-center overflow-hidden rounded-lg bg-neutral-800">
+      <span className="flex h-[64px] w-full items-center justify-center overflow-hidden rounded-lg bg-neutral-800">
         {p ? (
           <span
             className="flex items-center justify-center"
             style={{ width: p.largura, height: p.altura }}
-            // O SVG vem do catálogo do próprio produto e o texto passa por `escaparSvg`
-            // antes de entrar nele; não há conteúdo de terceiro nesta string.
+            // SVG do catálogo do próprio produto; o texto passa por `escaparSvg` antes.
             dangerouslySetInnerHTML={{ __html: p.svg.replace("<svg ", `<svg style="width:100%;height:100%" `) }}
           />
         ) : null}
       </span>
-      <span className="text-[11px] leading-tight text-neutral-600">{rotulo}</span>
+      <span className="text-[10px] leading-tight text-neutral-600">{modelo?.rotulo}</span>
     </button>
   );
 }
@@ -103,30 +91,66 @@ export default function GaleriaElementos({
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
 }) {
-  const [categoria, setCategoria] = useState<CategoriaElemento>("ficha");
+  const [busca, setBusca] = useState("");
+  const [categoria, setCategoria] = useState<CategoriaAdesivo | "todos">("todos");
 
-  const daCategoria = MODELOS_ELEMENTO.filter((m) => m.categoria === categoria);
-  const semFicha = itensDaFicha.length === 0;
+  const buscando = busca.trim().length > 0;
+  const adesivos = useMemo(() => {
+    const achados = buscarAdesivos(busca);
+    return buscando || categoria === "todos" ? achados : achados.filter((a) => a.categoria === categoria);
+  }, [busca, buscando, categoria]);
+
+  function porAdesivo(id: string) {
+    if (!podeMais) return;
+    // Nasce no canto de cima e ENTRA (surgir): adesivo parado desde o primeiro quadro
+    // parece carimbado na foto; entrando, parece posto ali.
+    aoAdicionar({ id: `adesivo:${id}`, ancora: "topo_dir", tamanho: 0.12, animacao: "surgir" });
+  }
 
   return (
     <div>
+      {/* ---------- busca ---------- */}
+      <label className="mb-3 flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2">
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
+        </svg>
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Pesquisar elementos: chave, piscina, pet…"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+        />
+      </label>
+
+      {!podeMais && elementos.length >= LIMITES.elementosPorCena && (
+        <p className="mb-2 text-[11px] text-neutral-500">{LIMITES.elementosPorCena} peças já é o limite desta cena. Tire uma pra pôr outra.</p>
+      )}
+
       {/* ---------- o que já está na cena ---------- */}
       {elementos.length > 0 && (
         <div className="mb-3 rounded-lg bg-neutral-50 p-2.5">
           <p className="text-xs font-medium text-neutral-600">Nesta cena</p>
           {elementos.map((e, i) => {
-            const modelo = ELEMENTO_POR_ID[e.id];
-            if (!modelo) return null;
+            const adesivo = idDoAdesivo(e.id);
+            const modelo = adesivo ? null : ELEMENTO_POR_ID[e.id];
+            if (!adesivo && !modelo) return null;
+            const rotulo = adesivo ? ADESIVO_POR_ID[adesivo].rotulo : modelo!.rotulo;
             return (
               <div key={i} className="mt-2 rounded-lg border border-neutral-200 bg-white p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-700">{modelo.rotulo}</span>
+                <div className="flex items-center gap-2">
+                  {adesivo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={urlDoAdesivo(adesivo)} alt="" className="h-7 w-7 shrink-0" />
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-700">{rotulo}</span>
                   <button onClick={() => aoTirar(i)} className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600" title="Tirar esta peça">
                     <Icone nome="fechar" className="h-4 w-4" />
                   </button>
                 </div>
 
-                {modelo.usa === "texto" && (
+                {modelo?.usa === "texto" && (
                   <input
                     type="text"
                     value={e.texto ?? ""}
@@ -137,20 +161,48 @@ export default function GaleriaElementos({
                   />
                 )}
 
-                {/* Moldura vale o quadro inteiro: escolher canto pra ela não quer dizer
-                    nada, então o seletor nem aparece. */}
-                {!modelo.quadroInteiro && (
-                  <select
-                    value={e.ancora ?? modelo.ancora}
-                    onChange={(ev) => aoMudar(i, { ancora: ev.target.value as AncoraElemento })}
-                    className="mt-1.5 w-full rounded-lg border border-neutral-200 px-2 py-1 text-xs focus:border-marca-indigo focus:outline-none"
-                  >
-                    {ANCORAS.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.rotulo}
-                      </option>
-                    ))}
-                  </select>
+                {!modelo?.quadroInteiro && (
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                    <select
+                      value={e.ancora ?? modelo?.ancora ?? "topo_dir"}
+                      onChange={(ev) => aoMudar(i, { ancora: ev.target.value as AncoraElemento })}
+                      className="rounded-lg border border-neutral-200 px-1.5 py-1 text-[11px] focus:border-marca-indigo focus:outline-none"
+                      aria-label="Onde fica"
+                    >
+                      {ANCORAS.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={e.animacao ?? "nenhuma"}
+                      onChange={(ev) => aoMudar(i, { animacao: ev.target.value as AnimacaoTexto })}
+                      className="rounded-lg border border-neutral-200 px-1.5 py-1 text-[11px] focus:border-marca-indigo focus:outline-none"
+                      aria-label="Como entra"
+                    >
+                      {ANIMACOES_TEXTO.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {adesivo && (
+                  <label className="mt-1.5 block text-[11px] text-neutral-500">
+                    Tamanho
+                    <input
+                      type="range"
+                      min={0.06}
+                      max={0.3}
+                      step={0.01}
+                      value={e.tamanho ?? 0.12}
+                      onChange={(ev) => aoMudar(i, { tamanho: Number(ev.target.value) })}
+                      className="mt-0.5 w-full accent-marca-coral"
+                    />
+                  </label>
                 )}
               </div>
             );
@@ -158,52 +210,76 @@ export default function GaleriaElementos({
         </div>
       )}
 
-      {/* ---------- categorias ---------- */}
-      <div className="flex flex-wrap gap-1.5">
-        {CATEGORIAS_ELEMENTO.map((c) => (
-          <Chip key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)} title={c.para}>
-            {c.rotulo}
+      {/* ---------- adesivos 3D ---------- */}
+      <div className="mb-1 flex items-baseline justify-between">
+        <p className="text-xs font-semibold text-neutral-700">{buscando ? `Adesivos · ${adesivos.length}` : "Adesivos"}</p>
+      </div>
+      {!buscando && (
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+          <Chip ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
+            Todos
           </Chip>
-        ))}
-      </div>
-      <p className="mt-2 text-[11px] text-neutral-500">{CATEGORIAS_ELEMENTO.find((c) => c.id === categoria)?.para}</p>
-
-      {categoria === "ficha" && semFicha && (
-        <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
-          Este imóvel ainda não tem quartos, vagas nem metragem no cadastro. As peças abaixo entram com números de exemplo — preencha a ficha
-          do imóvel pra elas saírem certas.
-        </p>
+          {CATEGORIAS_ADESIVO.map((c) => (
+            <Chip key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
+              {c.rotulo}
+            </Chip>
+          ))}
+        </div>
+      )}
+      {adesivos.length === 0 ? (
+        <p className="mb-3 text-xs text-neutral-500">Nenhum adesivo com “{busca}”. Tente casa, chave, dinheiro, praia, festa.</p>
+      ) : (
+        <div className="mb-4 grid max-h-[300px] grid-cols-5 gap-1 overflow-y-auto pr-1">
+          {adesivos.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => porAdesivo(a.id)}
+              disabled={!podeMais}
+              title={a.rotulo}
+              aria-label={`Pôr ${a.rotulo}`}
+              className="rounded-lg p-1 transition hover:bg-neutral-100 disabled:opacity-40"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={urlDoAdesivo(a.id)} alt="" loading="lazy" className="aspect-square w-full" draggable={false} />
+            </button>
+          ))}
+        </div>
       )}
 
-      {/* ---------- a prateleira ---------- */}
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {daCategoria.map((m) => (
-          <Cartao
-            key={m.id}
-            id={m.id}
-            rotulo={m.rotulo}
-            texto={m.exemplo ?? ""}
-            itens={itensDaFicha}
-            cor={cor}
-            escolhido={elementos.some((e) => e.id === m.id)}
-            aoEscolher={() => {
-              if (!podeMais) return;
-              aoAdicionar({
-                id: m.id,
-                ...(m.usa === "texto" ? { texto: m.exemplo ?? "" } : {}),
-                ...(m.usa === "ficha" ? { itens: itensDaFicha.length ? itensDaFicha : FICHA_EXEMPLO } : {}),
-                ancora: m.ancora,
-                cor,
-                animacao: "nenhuma",
-              });
-            }}
-          />
+      {/* ---------- peças que carregam dado ---------- */}
+      {!buscando &&
+        CATEGORIAS_DESENHADAS.map((cat) => (
+          <div key={cat} className="mb-3">
+            <p className="mb-1 text-xs font-semibold text-neutral-700">{ROTULO_DESENHADA[cat]}</p>
+            {cat === "ficha" && itensDaFicha.length === 0 && (
+              <p className="mb-1.5 text-[11px] text-neutral-500">Sem quartos, vagas nem metragem no cadastro deste imóvel: sai com números de exemplo.</p>
+            )}
+            <div className="grid grid-cols-3 gap-1.5">
+              {MODELOS_ELEMENTO.filter((m) => m.categoria === cat).map((m) => (
+                <CartaoDesenhado
+                  key={m.id}
+                  id={m.id}
+                  cor={cor}
+                  itens={itensDaFicha}
+                  escolhido={elementos.some((e) => e.id === m.id)}
+                  desligado={!podeMais}
+                  aoEscolher={() =>
+                    podeMais &&
+                    aoAdicionar({
+                      id: m.id,
+                      ...(m.usa === "texto" ? { texto: m.exemplo ?? "" } : {}),
+                      ...(m.usa === "ficha" ? { itens: itensDaFicha.length ? itensDaFicha : FICHA_EXEMPLO } : {}),
+                      ancora: m.ancora,
+                      cor,
+                      animacao: "nenhuma",
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </div>
         ))}
-      </div>
-
-      {!podeMais && elementos.length >= LIMITES.elementosPorCena && (
-        <p className="mt-2 text-[11px] text-neutral-500">{LIMITES.elementosPorCena} peças já é o limite desta cena.</p>
-      )}
     </div>
   );
 }

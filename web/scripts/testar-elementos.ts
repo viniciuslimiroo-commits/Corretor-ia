@@ -26,6 +26,7 @@ import { argsCenaFoto } from "../src/lib/video-ffmpeg.ts";
 import { rasterizarElementos } from "../src/lib/elementos-servidor.ts";
 import { MODELOS_ELEMENTO, FICHA_EXEMPLO, ELEMENTO_POR_ID } from "../src/lib/elementos.ts";
 import { limparEspec, type ElementoCena } from "../src/lib/video.ts";
+import { ADESIVOS, buscarAdesivos } from "../src/lib/adesivos.ts";
 
 const ffmpeg = ffmpegStatic as unknown as string;
 const RAIZ = path.resolve(import.meta.dirname, "..");
@@ -287,6 +288,64 @@ const demais = limparEspec({
   ],
 });
 conferir((demais.espec?.cenas[0].elementos?.length ?? 9) === 3, "o limite de peças por cena é respeitado", `${demais.espec?.cenas[0].elementos?.length ?? "?"} peças`);
+
+// ---------- 5. adesivos 3D: catálogo, saneador e vídeo ----------
+//
+// O adesivo é a peça que mais facilmente some calada: o id passa no saneador, o arquivo não
+// está no disco (ou não foi pro pacote da função), e `rasterizarElementos` pula a peça sem
+// erro. Então: todo id listado tem arquivo e todo arquivo está listado; e um adesivo passa
+// pelo CAMINHO inteiro -- saneador, rasterização, ffmpeg -- e aparece no quadro.
+{
+  const pasta = path.join(RAIZ, "public", "adesivos");
+  const noDisco = new Set(fs.readdirSync(pasta).filter((f) => f.endsWith(".png")).map((f) => f.replace(/\.png$/, "")));
+  const semArquivo = ADESIVOS.filter((a) => !noDisco.has(a.id)).map((a) => a.id);
+  const sobrando = [...noDisco].filter((id) => !ADESIVOS.some((a) => a.id === id));
+  conferir(semArquivo.length === 0, "todo adesivo do catálogo tem arquivo", semArquivo.join(", "));
+  conferir(sobrando.length === 0, "nenhum arquivo de adesivo fora do catálogo", sobrando.join(", "));
+  conferir(fs.existsSync(path.join(pasta, "LICENSE-fluent-emoji.txt")), "a licença MIT da biblioteca está junto dos arquivos");
+
+  // A busca é o jeito de achar no celular: sem acento, e cada palavra tem que aparecer.
+  conferir(buscarAdesivos("camera").some((a) => a.id === "camera"), "busca sem acento acha \"Câmera\"");
+  conferir(buscarAdesivos("pet").length >= 2, "busca por \"pet\" acha os adesivos de animal", `${buscarAdesivos("pet").length}`);
+  conferir(buscarAdesivos("xyzqw").length === 0, "busca sem resultado devolve vazio");
+
+  const { espec } = limparEspec({
+    formato: "9:16",
+    cenas: [
+      {
+        tipo: "foto",
+        jobId: "00000000-0000-0000-0000-000000000000",
+        duracao: 4,
+        elementos: [
+          { id: "adesivo:chave", ancora: "topo_dir", tamanho: 0.14, animacao: "nenhuma", texto: "ignorado", cor: "#ff0000" },
+          { id: "adesivo:nao_existe" },
+          { id: "adesivo:../../etc/passwd" },
+        ],
+      },
+    ],
+  });
+  const els = espec?.cenas[0].elementos ?? [];
+  conferir(els.length === 1 && els[0].id === "adesivo:chave", "saneador: adesivo que existe passa, inventado e caminho torto não", els.map((e) => e.id).join(", "));
+  conferir(els[0] && els[0].texto === undefined && els[0].cor === undefined, "saneador: adesivo não carrega texto nem cor");
+
+  const pecas = await rasterizarElementos(els, W, H, tmp, "adesivo", {});
+  conferir(pecas.length === 1, "o adesivo vira peça na rasterização", `${pecas.length} peça(s)`);
+  if (pecas.length === 1) {
+    const peca = pecas[0];
+    const lado = Math.round(H * 0.14);
+    conferir(peca.largura === lado && peca.altura === lado, "tamanho é fração da altura do vídeo", `${peca.largura}x${peca.altura}, esperado ${lado}`);
+    const saida = path.join(tmp, "adesivo.mp4");
+    rodar(argsCenaFoto({ foto, saida, W, H, duracao: DUR, efeito: "parado", textos: [], pecas }));
+    const q = await quadro(saida, "adesivo");
+    const d = diferenca(controle, q, peca);
+    conferir(
+      d.parteDentro > 0.1 && d.parteFora < 0.001,
+      "a chave 3D aparece no vídeo, no canto de cima à direita",
+      `pintado ${(d.parteDentro * 100).toFixed(1)}% · fora ${(d.parteFora * 100).toFixed(3)}% · (${peca.x},${peca.y})`
+    );
+    conferir(peca.x + peca.largura > W * 0.9 && peca.y < H * 0.1, "e está mesmo no canto de cima à direita", `x ${peca.x} y ${peca.y}`);
+  }
+}
 
 // ---------- folha de contato ----------
 const mostrar = ["ficha_barra", "ficha_cartao", "selo_redondo", "etiqueta_preco", "whatsapp", "cantos"].filter((id) => ELEMENTO_POR_ID[id]);
