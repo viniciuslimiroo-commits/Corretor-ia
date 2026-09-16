@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { emprestarFotos } from "./emprestar-fotos.mjs";
 import sharp from "sharp";
 
 const RAIZ = path.resolve(import.meta.dirname, "..");
@@ -112,6 +113,9 @@ for (const tipo of ["post", "story", "carrossel"]) {
 }
 
 conferir(antes === (await saldo()), "nada disso gastou crédito", `${antes}`);
+// As fotos voltam pro imóvel de onde vieram ANTES de apagar o de teste: apagar
+// primeiro deixaria cada uma sem imóvel nenhum, e não há histórico pra reconstruir.
+await devolverFotos();
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "DELETE", headers: cab });
 console.log(`\nimagens em ${path.relative(path.join(RAIZ, ".."), SAIDA)}`);
 console.log(falhas === 0 ? "TUDO PASSOU" : `${falhas} FALHA(S)`);

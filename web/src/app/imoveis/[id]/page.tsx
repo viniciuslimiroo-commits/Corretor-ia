@@ -337,8 +337,27 @@ export default function PaginaImovel() {
               <Icone nome="mais" className="h-4 w-4" />
               Uma foto
             </Link>
+            {/* A ponte que faltava: do imóvel pro Editor, com o imóvel já escolhido.
+                O caminho do produto é imóvel → fotos → edição → peça, e daqui a pessoa
+                tinha que voltar pro menu e escolher o imóvel de novo. */}
             {(geracoes ?? []).some((g) => g.status === "concluido") && (
               <>
+                <Link
+                  href={`/editor/video?imovel=${imovel.id}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+                  title="Abre o editor de vídeo com as fotos deste imóvel"
+                >
+                  <Icone nome="video" className="h-4 w-4" />
+                  Fazer vídeo
+                </Link>
+                <Link
+                  href={`/materiais?novo=1&imovel=${imovel.id}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+                  title="Monta book, PDF de WhatsApp, post ou Story deste imóvel"
+                >
+                  <Icone nome="materiais" className="h-4 w-4" />
+                  Fazer material
+                </Link>
                 <Botao variante="secundaria" onClick={baixarTudo} disabled={baixando} title="Todas as fotos prontas, no tamanho dos portais">
                   <Icone nome="download" className="h-4 w-4" />
                   {baixando ? "Preparando…" : "Baixar tudo"}

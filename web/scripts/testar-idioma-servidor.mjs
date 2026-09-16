@@ -16,6 +16,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { emprestarFotos } from "./emprestar-fotos.mjs";
 
 const RAIZ = path.resolve(import.meta.dirname, "..");
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -68,7 +69,7 @@ const antes = await saldo();
 const cri = await fetch(`${BASE}/api/imoveis`, { method: "POST", headers: comIdioma("pt"), body: JSON.stringify({ titulo: "TESTE idioma · Apto 74", endereco: "Setor Bueno · Goiânia" }) });
 const imovel = (await cri.json()).imovel;
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "PATCH", headers: comIdioma("pt"), body: JSON.stringify({ negocio: "venda", preco: "R$ 690.000", dormitorios: 3, suites: 1, vagas: 2, area_util: 120 }) });
-for (const f of fotos) await fetch(`${BASE}/api/job/${f.id}`, { method: "PATCH", headers: comIdioma("pt"), body: JSON.stringify({ imovelId: imovel.id }) });
+const devolverFotos = await emprestarFotos(BASE, comIdioma("pt"), fotos, imovel.id);
 
 const rM = await fetch(`${BASE}/api/books`, { method: "POST", headers: comIdioma("pt"), body: JSON.stringify({ tipo: "book", imovelId: imovel.id }) });
 const dM = await rM.json();
@@ -144,6 +145,9 @@ for (const idioma of ["pt", "es", "en"]) {
 }
 
 await fetch(`${BASE}/api/books/${bookId}`, { method: "DELETE", headers: comIdioma("pt") });
+// As fotos voltam pro imóvel de onde vieram ANTES de apagar o de teste: apagar
+// primeiro deixaria cada uma sem imóvel nenhum, e não há histórico pra reconstruir.
+await devolverFotos();
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "DELETE", headers: comIdioma("pt") });
 conferir(antes === (await saldo()), "nada disso gastou crédito", `${antes}`);
 

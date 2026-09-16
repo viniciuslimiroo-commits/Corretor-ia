@@ -82,7 +82,12 @@ export default function Books() {
   const [erro, setErro] = useState<string | null>(null);
   const [precisaMigracao, setPrecisaMigracao] = useState(false);
   const [criando, setCriando] = useState(false);
-  const [imovelEscolhido, setImovelEscolhido] = useState<string | null>(null);
+  // `?imovel=` vem da página do imóvel. Lido no ESTADO INICIAL e não num efeito: chamar
+  // setState dentro de efeito de montagem dispara um render em cascata, e o compilador do
+  // React reprova com razão -- o valor já se sabe antes do primeiro desenho.
+  const [imovelEscolhido, setImovelEscolhido] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("imovel")
+  );
   const [tipoEscolhido, setTipoEscolhido] = useState<TipoBook>("book");
   const [imagens, setImagens] = useState<ItemBiblioteca[] | null>(null);
   const [marcadas, setMarcadas] = useState<string[]>([]);

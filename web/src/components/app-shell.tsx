@@ -88,7 +88,13 @@ export default function AppShell({
     // "Editor" e não "Vídeo": a área de edição é um LUGAR do produto, com dois
     // contextos (vídeo e material). Quem só quer fazer um vídeo tem o "+ Criar", que vai
     // direto e ainda mostra o custo antes do clique.
-    { href: "/editor", rotulo: "menu.editor", icone: "video", soIcone: false, soDesktop: true },
+    //
+    // E aparece NO CELULAR. Estava como `soDesktop` junto com "Editar foto", pra barra de
+    // baixo não passar de seis alvos -- e o resultado foi que, pra quem usa o produto pelo
+    // telefone, a área de edição inteira simplesmente não existia. Sete alvos em 375px dão
+    // 53px cada, acima dos 47px que a medição reprovou; e esconder a coisa que a pessoa
+    // pediu pra não apertar o rodapé é economia no lugar errado.
+    { href: "/editor", rotulo: "menu.editor", icone: "video", soIcone: false },
     { href: "/imoveis", rotulo: "menu.imoveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa

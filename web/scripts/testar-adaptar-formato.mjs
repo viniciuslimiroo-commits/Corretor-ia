@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { emprestarFotos } from "./emprestar-fotos.mjs";
 import { spawnSync } from "node:child_process";
 import ffmpeg from "ffmpeg-static";
 import sharp from "sharp";
@@ -117,7 +118,7 @@ console.log("\n--- 2. o material em três enquadramentos ---");
 const cri = await fetch(`${BASE}/api/imoveis`, { method: "POST", headers: json, body: JSON.stringify({ titulo: "TESTE formato · Apto 74", endereco: "Setor Bueno · Goiânia" }) });
 const imovel = (await cri.json()).imovel;
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ negocio: "venda", preco: "R$ 690.000", dormitorios: 3, area_util: 120 }) });
-for (const f of fotos) await fetch(`${BASE}/api/job/${f.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ imovelId: imovel.id }) });
+const devolverFotos = await emprestarFotos(BASE, json, fotos, imovel.id);
 
 const rM = await fetch(`${BASE}/api/books`, { method: "POST", headers: json, body: JSON.stringify({ tipo: "post", imovelId: imovel.id }) });
 const dM = await rM.json();
@@ -152,6 +153,9 @@ if (dM.book?.id) {
   }
   await fetch(`${BASE}/api/books/${bookId}`, { method: "DELETE", headers: cab });
 }
+// As fotos voltam pro imóvel de onde vieram ANTES de apagar o de teste: apagar
+// primeiro deixaria cada uma sem imóvel nenhum, e não há histórico pra reconstruir.
+await devolverFotos();
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "DELETE", headers: cab });
 
 conferir(antes === (await saldo()), "adaptar formato não gasta crédito nenhum", `${antes}`);

@@ -431,6 +431,15 @@ export default function PaginaVideo() {
       editarVideo(editar);
       return;
     }
+    // `?imovel=`: veio da página do imóvel. Só escolhe o imóvel; as fotos dele aparecem
+    // sozinhas na coluna da esquerda, e quem monta a linha do tempo é a pessoa.
+    const doImovel = params.get("imovel");
+    if (doImovel && jobDaUrl.current !== `imovel:${doImovel}`) {
+      jobDaUrl.current = `imovel:${doImovel}`;
+      setImovelId((atual) => atual ?? doImovel);
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
     const id = params.get("job");
     if (!id || jobDaUrl.current === id) return;
     jobDaUrl.current = id;

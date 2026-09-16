@@ -9,6 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { emprestarFotos } from "./emprestar-fotos.mjs";
 import sharp from "sharp";
 
 const RAIZ = path.resolve(import.meta.dirname, "..");
@@ -54,7 +55,7 @@ await fetch(`${BASE}/api/imoveis/${imovel.id}`, {
 const materiais = await (await fetch(`${BASE}/api/materiais`, { headers: cab })).json();
 const fotos = (materiais.itens ?? []).filter((i) => i.categoria !== "video").slice(0, 6);
 conferir(fotos.length >= 2, "fotos reais na conta", `${fotos.length}`);
-for (const f of fotos) await fetch(`${BASE}/api/job/${f.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ imovelId: imovel.id }) });
+const devolverFotos = await emprestarFotos(BASE, json, fotos, imovel.id);
 
 const antes = await saldo();
 
@@ -151,6 +152,9 @@ for (const [tipo, lado] of [
 }
 
 conferir(antes === (await saldo()), "pôr etiqueta não gasta crédito", `${antes}`);
+// As fotos voltam pro imóvel de onde vieram ANTES de apagar o de teste: apagar
+// primeiro deixaria cada uma sem imóvel nenhum, e não há histórico pra reconstruir.
+await devolverFotos();
 await fetch(`${BASE}/api/imoveis/${imovel.id}`, { method: "DELETE", headers: cab });
 
 console.log(falhas === 0 ? "\nTUDO PASSOU" : `\n${falhas} FALHA(S)`);
