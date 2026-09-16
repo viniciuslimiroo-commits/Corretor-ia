@@ -217,7 +217,7 @@ export default function VisualizadorGaleria({
                 Baixar
               </a>
             )}
-            <Link href={`/editor/video?editar=${item.id}`} className={acao} title="Reabre as cenas e os ajustes deste vídeo">
+            <Link href={`/videos?editar=${item.id}`} className={acao} title="Reabre as cenas e os ajustes deste vídeo">
               <Icone nome="editar_prompt" className="h-4 w-4" />
               Editar
             </Link>
@@ -265,7 +265,7 @@ export default function VisualizadorGaleria({
               <Icone nome="magica" className="h-4 w-4" />
               Refinar
             </Link>
-            <Link href={`/editor/video?job=${item.id}`} className={acao} title="Vira uma cena com movimento de câmera">
+            <Link href={`/videos?job=${item.id}`} className={acao} title="Vira uma cena com movimento de câmera">
               <Icone nome="play" className="h-4 w-4" />
               Animar
             </Link>

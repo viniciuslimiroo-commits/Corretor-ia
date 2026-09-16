@@ -667,7 +667,7 @@ export default function Terreno() {
                   {etapasFeitas.length === ETAPAS_OBRA.length && (
                     <p className="mt-2 text-xs text-neutral-500">
                       As quatro estão no imóvel e na galeria. Pra virar vídeo, monte em{" "}
-                      <Link href="/editor/video" className="text-marca-indigo underline">Vídeo do imóvel</Link> — elas entram na ordem e o próprio vídeo faz a transição.
+                      <Link href="/videos" className="text-marca-indigo underline">Vídeo do imóvel</Link> — elas entram na ordem e o próprio vídeo faz a transição.
                     </p>
                   )}
                 </div>

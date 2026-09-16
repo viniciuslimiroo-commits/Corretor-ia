@@ -33,7 +33,8 @@ export type Conta = {
 const CRIAR = [
   // Os textos são CHAVES do dicionário (i18n/textos.ts); viram frase no render.
   { href: "/editar", rotulo: "menu.criar.foto", para: "menu.criar.foto.para", custo: "menu.criar.foto.custo", icone: "foto", gratis: false },
-  { href: "/editor/video", rotulo: "menu.criar.video", para: "menu.criar.video.para", custo: "menu.criar.video.custo", icone: "video", gratis: false },
+  // Vai pra /video, não pro Editor: quem aperta "+ Criar" quer o vídeo, não a bancada.
+  { href: "/videos", rotulo: "menu.criar.video", para: "menu.criar.video.para", custo: "menu.criar.video.custo", icone: "video", gratis: false },
   { href: "/materiais?novo=1", rotulo: "menu.criar.material", para: "menu.criar.material.para", custo: "menu.criar.material.custo", icone: "materiais", gratis: true },
 ];
 
@@ -85,16 +86,18 @@ export default function AppShell({
     // do celular ficava com OITO alvos de 47px numa tela de 375 -- medido, e abaixo do que
     // o dedo acerta. No celular quem cria usa o "+ Criar", que é grande e fica no topo.
     { href: "/editar", rotulo: "menu.editar", icone: "foto", soIcone: false, soDesktop: true },
-    // "Editor" e não "Vídeo": a área de edição é um LUGAR do produto, com dois
-    // contextos (vídeo e material). Quem só quer fazer um vídeo tem o "+ Criar", que vai
-    // direto e ainda mostra o custo antes do clique.
+    // "Vídeos" é o caminho de todo dia, e por isso é o que fica na barra: escolher as
+    // fotos, a música, a voz e gerar. O EDITOR é a bancada de quem quer mexer mais, e
+    // roda a mesma edição em tela cheia -- a porta pra ele fica no alto da página de
+    // vídeos, a um toque, além do ícone aqui.
     //
-    // E aparece NO CELULAR. Estava como `soDesktop` junto com "Editar foto", pra barra de
-    // baixo não passar de seis alvos -- e o resultado foi que, pra quem usa o produto pelo
-    // telefone, a área de edição inteira simplesmente não existia. Sete alvos em 375px dão
-    // 53px cada, acima dos 47px que a medição reprovou; e esconder a coisa que a pessoa
-    // pediu pra não apertar o rodapé é economia no lugar errado.
-    { href: "/editor", rotulo: "menu.editor", icone: "video", soIcone: false },
+    // Foi um erro ter trocado um pelo outro: a página de vídeo virou o Editor e quem só
+    // queria um vídeo passou a cair numa tela cheia de ferramenta. Uma coisa não
+    // substitui a outra; são dois jeitos de fazer a mesma coisa, pra duas pressas.
+    { href: "/videos", rotulo: "menu.videos", icone: "video", soIcone: false },
+    // `secundario`: no celular sai da barra de baixo e vai pro "Mais". Não some -- e a
+    // porta principal pra cá é o botão no alto de /video, que fica a um toque.
+    { href: "/editor", rotulo: "menu.editor", icone: "magica", soIcone: true, secundario: true },
     { href: "/imoveis", rotulo: "menu.imoveis", icone: "imoveis", soIcone: false },
     // "Materiais", não "Biblioteca": biblioteca é onde coisa fica guardada, e esta tela é
     // onde o material é FEITO. "Material" também é a palavra que o corretor já usa

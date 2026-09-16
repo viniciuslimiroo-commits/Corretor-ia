@@ -470,7 +470,7 @@ export default function Editor() {
                         {mostrarVersoes ? "Fechar versões" : "Ver versões"}
                       </button>
                       <Link
-                        href={`/editor/video?job=${jobId}`}
+                        href={`/videos?job=${jobId}`}
                         className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-marca-indigo"
                         title="Vira uma cena com movimento de câmera. Só a câmera se move: nada de gente, bicho ou móvel novo."
                       >

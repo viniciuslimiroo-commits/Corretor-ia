@@ -343,7 +343,7 @@ export default function PaginaImovel() {
             {(geracoes ?? []).some((g) => g.status === "concluido") && (
               <>
                 <Link
-                  href={`/editor/video?imovel=${imovel.id}`}
+                  href={`/videos?imovel=${imovel.id}`}
                   className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                   title="Abre o editor de vídeo com as fotos deste imóvel"
                 >

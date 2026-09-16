@@ -313,7 +313,7 @@ export default function LinhaDoTempo({
         </div>
 
         <span className="hidden min-w-0 max-w-[22rem] shrink truncate px-2 text-[11px] text-neutral-400 xl:block">
-          {blocos.length === 0 ? "Escolha as fotos em Mídia, na trilha da esquerda." : "arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio"}
+          {blocos.length === 0 ? "Escolha as fotos em Mídia." : "arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio"}
         </span>
 
         {/* Zoom: quantos pixels cabe um segundo. Com vídeo curto ninguém precisa, mas com
