@@ -50,6 +50,10 @@ export function useMenuContexto() {
 
   useEffect(() => cancelarToque, [cancelarToque]);
 
+  /** Abre o menu num ponto da tela. Pra quem precisa do LUGAR do clique pra decidir
+   *  os itens -- "pôr um texto aqui" depende de onde é "aqui". */
+  const abrir = useCallback((x: number, y: number, itens: ItemMenu[]) => setAberto({ x, y, itens }), []);
+
   /**
    * O que se espalha no elemento-alvo.
    *
@@ -77,7 +81,7 @@ export function useMenuContexto() {
     [cancelarToque]
   );
 
-  return { aberto, fechar, gatilho };
+  return { aberto, fechar, gatilho, abrir };
 }
 
 export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | null; aoFechar: () => void }) {

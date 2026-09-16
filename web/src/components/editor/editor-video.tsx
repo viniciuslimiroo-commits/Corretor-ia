@@ -58,6 +58,7 @@ import { aplicarTemplateVideo, mudancasDoTemplate, TEMPLATES_VIDEO, templateVaiA
 import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import { useIdioma } from "@/i18n/cliente";
 import AppShell from "@/components/app-shell";
+import MenuContexto, { useMenuContexto, type ItemMenu } from "@/components/editor/menu-contexto";
 import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
@@ -231,7 +232,7 @@ const ABAS = [
   { id: "texto", rotulo: "Texto", icone: "editar_prompt", dica: "Modelos de texto e efeitos de entrada" },
   { id: "legendas", rotulo: "Legendas", icone: "compartilhar", dica: "Narração e legenda automática" },
   { id: "transicoes", rotulo: "Transições", icone: "converter_hd", dica: "Como uma cena vira a outra" },
-  { id: "voce", rotulo: "Você", icone: "equipe", dica: "Você aparecendo no próprio vídeo" },
+  { id: "voce", rotulo: "Você", icone: "equipe", dica: "Você no vídeo: aparecendo, ou só a sua voz" },
   { id: "cor", rotulo: "Cor", icone: "magica", dica: "Acabamento de cor e luz" },
   { id: "formato", rotulo: "Formato", icone: "planta", dica: "Reels, feed, quadrado ou horizontal" },
   { id: "marca", rotulo: "Marca", icone: "marca", dica: "Logo, cor e contato que entram no vídeo" },
@@ -324,6 +325,11 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   const [enviando, setEnviando] = useState(0);
   /** Aba aberta na trilha de ferramentas. Uma de cada vez, como em qualquer editor. */
   const [aba, setAba] = useState<AbaId>("midia");
+  // Mexer na coisa, EM CIMA da coisa: botão direito (ou dedo segurado) no palco.
+  const menu = useMenuContexto();
+  /** Qual texto do palco está aberto pra digitar. `null` = nenhum; `-1` = a legenda. */
+  const [editando, setEditando] = useState<{ chave: string; indice: number } | null>(null);
+  const [editandoTitulo, setEditandoTitulo] = useState(false);
   /**
    * Se o painel desta aba aparece agora.
    *
@@ -1182,6 +1188,94 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
     );
   }
 
+  // ---------- o que o botão direito oferece no palco ----------
+  //
+  // Os itens saem daqui e não de dentro da marcação: no meio do JSX eles somem entre as
+  // aspas e ninguém acha de novo pra mudar uma palavra.
+
+  /** Grava o que foi digitado em cima do elemento. Índice -1 é a legenda da cena. */
+  function salvarTextoDoPalco(k: string, indice: number, valor: string) {
+    const limpo = valor.trim();
+    if (indice < 0) mudarCena(k, { legenda: limpo.slice(0, LIMITES.legendaMax) });
+    else mudarTexto(k, indice, { texto: limpo.slice(0, LIMITES.textoMax) });
+    setEditando(null);
+  }
+
+  function itensDoTexto(cena: CenaUI, indice: number, t: TextoCena): ItemMenu[] {
+    const ehLegenda = indice < 0;
+    const mover = (posicao: PosicaoTexto, rotulo: string): ItemMenu => ({
+      rotulo,
+      desligado: (t.posicao ?? "base") === posicao,
+      aoEscolher: () => mudarTexto(cena.chave, indice, { posicao }),
+    });
+    return [
+      { rotulo: "Editar o texto", icone: "editar_prompt", aoEscolher: () => setEditando({ chave: cena.chave, indice }) },
+      ...(ehLegenda
+        ? []
+        : [
+            mover("topo", "Mover pra cima"),
+            mover("centro", "Mover pro meio"),
+            mover("base", "Mover pra baixo"),
+            {
+              rotulo: "Trocar o modelo",
+              icone: "magica",
+              dica: "Abre a galeria de modelos de texto",
+              aoEscolher: () => setAba("texto"),
+            } as ItemMenu,
+            {
+              rotulo: "Duplicar",
+              icone: "copiar",
+              desligado: (cena.textos?.length ?? 0) >= LIMITES.textosPorCena,
+              aoEscolher: () => adicionarTexto(cena.chave, { ...t }),
+            } as ItemMenu,
+          ]),
+      {
+        rotulo: ehLegenda ? "Apagar a legenda" : "Apagar o texto",
+        icone: "lixeira",
+        perigo: true,
+        aoEscolher: () => (ehLegenda ? mudarCena(cena.chave, { legenda: "" }) : removerTexto(cena.chave, indice)),
+      },
+    ];
+  }
+
+  /**
+   * O menu do FUNDO do palco: o que se faz com a cena.
+   *
+   * "Pôr um texto aqui" usa a altura do clique dentro do quadro pra decidir se o texto
+   * nasce em cima, no meio ou embaixo -- é o que faz "aqui" querer dizer alguma coisa.
+   */
+  function abrirMenuDaCena(ev: React.MouseEvent<HTMLElement>, cena: CenaUI) {
+    ev.preventDefault();
+    const caixa = ev.currentTarget.getBoundingClientRect();
+    const fracao = (ev.clientY - caixa.top) / Math.max(1, caixa.height);
+    const posicao: PosicaoTexto = fracao < 0.33 ? "topo" : fracao < 0.66 ? "centro" : "base";
+    const cheio = (cena.textos?.length ?? 0) >= LIMITES.textosPorCena;
+    menu.abrir(ev.clientX, ev.clientY, [
+      {
+        rotulo: "Pôr um texto aqui",
+        icone: "editar_prompt",
+        dica: cheio ? `Esta cena já tem ${LIMITES.textosPorCena} textos` : posicao === "topo" ? "Em cima" : posicao === "centro" ? "No meio" : "Embaixo",
+        desligado: cheio,
+        aoEscolher: () => {
+          adicionarTexto(cena.chave, { texto: "", posicao, estilo: "faixa", animacao: "nenhuma" });
+          setEditando({ chave: cena.chave, indice: cena.textos?.length ?? 0 });
+        },
+      },
+      { rotulo: "Trocar a foto desta cena", icone: "foto", dica: "Abre a mídia do imóvel", aoEscolher: () => setAba("midia") },
+      {
+        rotulo: "Dividir no cabeçote",
+        icone: "dividir",
+        desligado: gerando || cenas.length >= LIMITES.cenasMax || cena.duracao < LIMITES.duracaoMin * 2,
+        aoEscolher: () => dividirNoCabecote(cena.chave),
+      },
+      { rotulo: "Girar um quarto de volta", icone: "girar", desligado: gerando || cena.tipo === "tour360", aoEscolher: () => girarCena(cena.chave) },
+      { rotulo: cena.espelho ? "Desfazer o espelho" : "Espelhar", icone: "espelhar", desligado: gerando || cena.tipo === "tour360", aoEscolher: () => espelharCena(cena.chave) },
+      { rotulo: "Usar como capa do vídeo", icone: "estrela", desligado: (capa ?? cenas[0]?.chave) === cena.chave, aoEscolher: () => setCapa(cena.chave) },
+      { rotulo: "Duplicar a cena", icone: "copiar", desligado: gerando || cenas.length >= LIMITES.cenasMax, aoEscolher: () => duplicar(cena.chave) },
+      { rotulo: "Apagar a cena", icone: "lixeira", perigo: true, desligado: gerando, aoEscolher: () => remover(cena.chave) },
+    ]);
+  }
+
   function girarCena(k: string) {
     setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, giro: ((s.giro ?? 0) + 90) % 360 || undefined } : s)));
   }
@@ -1902,6 +1996,53 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                 <span className="basis-full text-xs text-neutral-500">Não gasta crédito. A câmera só é pedida depois do clique.</span>
               </div>
             )}
+
+            {/* ---------- só a voz ----------
+                 Aparecer no vídeo e narrar o vídeo são a mesma vontade -- "quero que
+                 seja MINHA voz, meu jeito" -- e estavam em duas abas diferentes.
+                 Quem não quer aparecer grava só a voz, aqui, no mesmo lugar.
+
+                 É a MESMA gravação da aba de voz, não uma segunda: mesmos botões,
+                 mesmo estado, mesmo arquivo. Dois gravadores dariam dois áudios e a
+                 pergunta "qual deles entrou no vídeo?". */}
+            <div className="mt-4 border-t border-neutral-200 pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {gravando ? (
+                  <>
+                    <Botao variante="secundaria" onClick={pararGravacao} className="px-3 py-1.5 text-xs">
+                      ⏹ Parar
+                    </Botao>
+                    <span className="inline-flex items-center gap-1.5 text-sm tabular-nums text-red-600">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
+                      {relogio(segundosGravando)}
+                    </span>
+                  </>
+                ) : (
+                  <Botao
+                    variante="secundaria"
+                    onClick={() => {
+                      // Liga a narração e escolhe "gravada" antes de pedir o microfone:
+                      // sem isso o áudio seria guardado e o vídeo sairia sem ele.
+                      setNarrar(true);
+                      setOrigemVoz("gravada");
+                      gravarVoz();
+                    }}
+                    disabled={enviandoVoz || gerando}
+                    className="px-3 py-1.5 text-xs"
+                  >
+                    🎙 {enviandoVoz ? "Guardando…" : vozArquivo ? "Gravar a voz de novo" : "Gravar só a voz"}
+                  </Botao>
+                )}
+                {vozArquivo && !gravando && (
+                  <span className="truncate text-xs text-neutral-500">Sua voz está no vídeo · {vozArquivo.nome}</span>
+                )}
+                {!vozArquivo && !gravando && (
+                  <span className="basis-full text-xs text-neutral-500">
+                    Sem aparecer: você narra e o vídeo mostra o imóvel. Não gasta crédito.
+                  </span>
+                )}
+              </div>
+            </div>
           </Cartao>
           )}
 
@@ -2145,6 +2286,10 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
               <div
                 className="relative mx-auto h-[44vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
                 style={{ aspectRatio: PROPORCAO[formato] }}
+                // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
+                // com a cena. Os textos por cima têm o menu DELES e param o evento aqui,
+                // senão apagar um texto viraria apagar a cena inteira.
+                onContextMenu={cenaAtual ? (ev) => abrirMenuDaCena(ev, cenaAtual) : undefined}
               >
                 {cenaAtual?.miniatura ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -2157,7 +2302,37 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                 )}
                 {titulo && (
                   <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
-                    <span className="truncate rounded bg-marca-indigo/90 px-2 py-1 text-[11px] font-semibold text-white">{titulo}</span>
+                    {editandoTitulo ? (
+                      <input
+                        autoFocus
+                        defaultValue={titulo}
+                        maxLength={LIMITES.tituloMax}
+                        onBlur={(e) => {
+                          setTitulo(e.target.value.trim());
+                          setEditandoTitulo(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") setEditandoTitulo(false);
+                        }}
+                        className="pointer-events-auto w-full max-w-[85%] rounded bg-marca-indigo px-2 py-1 text-center text-[11px] font-semibold text-white outline-none ring-2 ring-white/70"
+                      />
+                    ) : (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setEditandoTitulo(true)}
+                        onKeyDown={(e) => e.key === "Enter" && setEditandoTitulo(true)}
+                        {...menu.gatilho([
+                          { rotulo: "Editar o título", icone: "editar_prompt", aoEscolher: () => setEditandoTitulo(true) },
+                          { rotulo: "Tirar o título do vídeo", icone: "lixeira", perigo: true, dica: "A faixa some do topo de todas as cenas", aoEscolher: () => setTitulo("") },
+                        ])}
+                        title="Clique pra editar · botão direito pra mais"
+                        className="pointer-events-auto cursor-pointer truncate rounded bg-marca-indigo/90 px-2 py-1 text-[11px] font-semibold text-white transition hover:ring-2 hover:ring-white/70"
+                      >
+                        {titulo}
+                      </span>
+                    )}
                   </span>
                 )}
                 {/* Os textos da cena, no lugar em que vão sair. Não é o render (isso é
@@ -2166,6 +2341,12 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                   textosDaCena({ legenda: cenaAtual.legenda || undefined, textos: cenaAtual.textos }).map((t, i) => {
                     const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"];
                     const pos = t.posicao ?? "base";
+                    // `textosDaCena` põe a legenda na frente da lista. Aqui ela vira o
+                    // índice -1, porque legenda é um CAMPO da cena e os outros são itens
+                    // de um vetor -- apagar um pelo caminho do outro apagaria o errado.
+                    const ehLegenda = !!cenaAtual.legenda && i === 0;
+                    const indice = ehLegenda ? -1 : i - (cenaAtual.legenda ? 1 : 0);
+                    const emEdicao = editando?.chave === cenaAtual.chave && editando.indice === indice;
                     return (
                       <span
                         key={i}
@@ -2174,16 +2355,37 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                           (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]")
                         }
                       >
-                        <span
-                          className="max-w-full truncate rounded px-2 py-1 text-white"
-                          style={{
-                            background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
-                            fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
-                            fontWeight: est.id === "destaque" ? 700 : 500,
-                          }}
-                        >
-                          {t.texto || "texto"}
-                        </span>
+                        {emEdicao ? (
+                          <input
+                            autoFocus
+                            defaultValue={t.texto}
+                            maxLength={ehLegenda ? LIMITES.legendaMax : LIMITES.textoMax}
+                            onBlur={(e) => salvarTextoDoPalco(cenaAtual.chave, indice, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                              if (e.key === "Escape") setEditando(null);
+                            }}
+                            className="pointer-events-auto w-full max-w-[90%] rounded bg-marca-indigo px-2 py-1 text-center text-white outline-none ring-2 ring-white/70"
+                            style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12 }}
+                          />
+                        ) : (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setEditando({ chave: cenaAtual.chave, indice })}
+                            onKeyDown={(e) => e.key === "Enter" && setEditando({ chave: cenaAtual.chave, indice })}
+                            {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
+                            title="Clique pra editar · botão direito pra mais"
+                            className="pointer-events-auto max-w-full cursor-pointer truncate rounded px-2 py-1 text-white transition hover:ring-2 hover:ring-white/70"
+                            style={{
+                              background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
+                              fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
+                              fontWeight: est.id === "destaque" ? 700 : 500,
+                            }}
+                          >
+                            {t.texto || "texto"}
+                          </span>
+                        )}
                       </span>
                     );
                   })}
@@ -2537,6 +2739,10 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
         aoVelocidade={velocidadeDaCena}
         aoCongelar={congelarCena}
       />
+
+      {/* O menu do botão direito. Um só, no fim, porque é `position: fixed` -- dentro do
+          palco ele seria cortado pelo `overflow-hidden` do quadro. */}
+      <MenuContexto aberto={menu.aberto} aoFechar={menu.fechar} />
     </div>
   );
 
