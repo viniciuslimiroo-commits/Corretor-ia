@@ -147,8 +147,20 @@ export function lugaresDoTexto(textos: TextoCena[], H: number, topoOcupado = fal
  * duplo, brilho e relevo. A entrada de cada PNG e o filtro de overlay saem daqui juntos,
  * porque o índice da entrada e o rótulo do filtro têm que combinar.
  */
+export type ArteNaCena = { arquivo: string; y: number; largura: number; altura: number; animacao?: string };
+
+/**
+ * Os textos que o drawtext ainda desenha: os que NAO viraram arte.
+ *
+ * Sem este filtro o texto sairia duas vezes -- uma desenhada, uma sobreposta. Vale pra
+ * toda cena, nao so pra foto: foi exatamente o que faltava em clipe, antes/depois e 360.
+ */
+export function textosSemArte(textos?: TextoCena[]): TextoCena[] {
+  return (textos ?? []).filter((t) => !t.arte);
+}
+
 export function sobreporArtes(
-  artes: { arquivo: string; y: number; largura: number; altura: number; animacao?: string; duracao: number }[],
+  artes: (ArteNaCena & { duracao: number })[],
   W: number,
   idxPrimeiro: number,
   entrada = "v"
@@ -405,12 +417,12 @@ export function argsCenaFoto(o: {
   filtro?: FiltroId;
   luz?: number;
   /** Artes de texto já rasterizadas pelo pipeline. Entram como IMAGEM, não como letra. */
-  artes?: { arquivo: string; y: number; largura: number; altura: number; animacao?: string }[];
+  artes?: ArteNaCena[];
 }): string[] {
   const frames = Math.round(o.duracao * FPS);
   const filtros = [enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   // Só os textos SEM arte passam pelo drawtext; os com arte entram como sobreposição.
-  filtros.push(...filtrosDeTexto((o.textos ?? []).filter((t) => !t.arte), o.W, o.H, o.topoOcupado, o.duracao));
+  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
   const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
   return [
     "-i", o.foto,
@@ -427,7 +439,7 @@ export function argsCenaFoto(o: {
  * Antes e depois: mostra a original, uma cortina passa da esquerda pra direita e fica
  * o resultado. As duas ficam paradas de propósito -- o movimento é a cortina.
  */
-export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number }): string[] {
+export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; artes?: ArteNaCena[] }): string[] {
   const trans = 1.4;
   const cada = (o.duracao + trans) / 2;
   const offset = cada - trans;
@@ -438,12 +450,15 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
   const rotB = pill({ texto: "Depois", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0xf06b4f" });
   // Os textos entram DEPOIS da limpeza entre as duas fotos, senão o "Antes"/"Depois"
   // passaria por cima deles na virada.
-  const texto = filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado).join(",");
+  const texto = filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado).join(",");
   const filtro = `[0:v]${base},${rotA}[a];[1:v]${base},${rotB}[b];[a][b]xfade=transition=wipeleft:duration=${trans}:offset=${offset.toFixed(2)}${texto ? "[ab];[ab]" + texto : ""}[v]`;
+  // As duas fotos ja ocupam as entradas 0 e 1; a arte comeca na 2.
+  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 2);
   return [
     "-loop", "1", "-framerate", String(FPS), "-t", cada.toFixed(2), "-i", o.antes,
     "-loop", "1", "-framerate", String(FPS), "-t", cada.toFixed(2), "-i", o.depois,
-    "-filter_complex", filtro, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida,
+    ...arte.entradas,
+    "-filter_complex", [filtro, ...arte.partes].join(";"), "-map", `[${arte.saida}]`, "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida,
   ];
 }
 
@@ -452,11 +467,11 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number }): string[] {
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; artes?: ArteNaCena[] }): string[] {
   const filtros = [`fps=${FPS}`, enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
-  filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
+  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
   // O clipe entra CURTO de propósito e o `tpad` clona o último quadro até fechar a
   // duração: os últimos instantes ficam parados. Vale pro vídeo da pessoa e, sobretudo,
   // pro clipe da IA -- que termina onde o modelo parou, muitas vezes no meio do gesto.
@@ -465,7 +480,8 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   // descartar. É o "aparar o começo" -- o pedaço em que a pessoa ainda estava acertando
   // o celular não entra no vídeo.
   const inicio = Math.max(0, o.inicio ?? 0);
-  return ["-ss", inicio.toFixed(2), "-t", corte.toFixed(2), "-i", o.clipe, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
+  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
+  return ["-ss", inicio.toFixed(2), "-t", corte.toFixed(2), "-i", o.clipe, ...arte.entradas, "-an", "-filter_complex", [`[0:v]${filtros.join(",")}[v]`, ...arte.partes].join(";"), "-map", `[${arte.saida}]`, "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
 /** Suavização em S: começa e termina devagar, como uma câmera de verdade. */
@@ -501,6 +517,7 @@ export function argsCena360(o: {
   /** Tamanho da imagem de entrada: só usado pra calcular o campo de visão da panorâmica. */
   entradaLargura?: number;
   entradaAltura?: number;
+  artes?: ArteNaCena[];
 }): string[] {
   const projecao = o.projecao ?? "equirect";
   const presetBase = MOVIMENTOS_360.find((m) => m.id === o.movimento) ?? MOVIMENTOS_360[0];
@@ -565,13 +582,14 @@ export function argsCena360(o: {
     ...filtrosDeImagem(o.filtro, o.luz),
     "format=yuv420p",
   ];
-  filtros.push(...filtrosDeTexto(o.textos ?? [], o.W, o.H, o.topoOcupado));
+  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
+  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
 
   const entrada = o.ehVideo
     ? ["-t", o.duracao.toFixed(2), "-i", o.entrada]
     : ["-loop", "1", "-framerate", String(FPS), "-t", o.duracao.toFixed(2), "-i", o.entrada];
 
-  return [...entrada, "-an", "-filter_complex", `[0:v]${filtros.join(",")}[v]`, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
+  return [...entrada, ...arte.entradas, "-an", "-filter_complex", [`[0:v]${filtros.join(",")}[v]`, ...arte.partes].join(";"), "-map", `[${arte.saida}]`, "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
 /** Tela final: cor da marca, logo (se houver), frase de chamada, nome, CRECI e WhatsApp. */
