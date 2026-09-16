@@ -35,6 +35,82 @@
   color-scheme: light;
 }
 
+/* ---------- O EDITOR É ESCURO ----------
+   E é a única parte do produto que é.
+   O resto da Encena é claro por decisão de identidade (índigo sobre branco). O editor
+   inverte porque ali a tela existe para a FOTO: fundo claro em volta de um quadro de
+   imóvel rouba o contraste e a pessoa não enxerga o que está editando. É o mesmo motivo
+   de todo editor de vídeo e foto do mundo ser escuro, e não é moda.
+   Os tons saem da PRÓPRIA MARCA: o índigo #0f2d5b aprofundado, não o cinza de editor
+   genérico. É o que faz a tela ser reconhecidamente Encena e não uma cópia -- mesma
+   lógica de layout, identidade nossa. A seleção é o coral, que no claro já quer dizer
+   "isto está ativo".
+   Escopo fechado em `.editor-escuro`. Nada aqui vaza pro resto do site, e os cartões e
+   controles que já existem continuam sendo os mesmos componentes -- o que muda é a cor
+   que eles vestem dentro do editor. Sem isso, cada campo precisaria de uma variante
+   escura própria, e seriam trinta arquivos em vez de um bloco. */
+.editor-escuro {
+  color-scheme: dark;
+  --fundo-editor: #081227;
+  --painel-editor: #112744;
+  --borda-editor: #1e3a67;
+  --letra-editor: #e9eef7;
+  --letra-fraca: #94a6c4;
+}
+.editor-escuro,
+.editor-escuro .bg-white {
+  background-color: var(--painel-editor);
+  color: var(--letra-editor);
+}
+.editor-escuro .bg-neutral-50,
+.editor-escuro .bg-neutral-100 {
+  background-color: #1a3159;
+}
+.editor-escuro .border-neutral-100,
+.editor-escuro .border-neutral-200,
+.editor-escuro .border-neutral-300 {
+  border-color: var(--borda-editor);
+}
+.editor-escuro .text-neutral-800,
+.editor-escuro .text-neutral-700,
+.editor-escuro .text-neutral-900 {
+  color: var(--letra-editor);
+}
+.editor-escuro .text-neutral-600,
+.editor-escuro .text-neutral-500,
+.editor-escuro .text-neutral-400 {
+  color: var(--letra-fraca);
+}
+/* O índigo é a cor da marca sobre BRANCO. No escuro ele some, então a seleção passa a
+   ser o coral -- a outra cor da casa, e a que já quer dizer "isto está ativo". */
+.editor-escuro .text-marca-indigo {
+  color: var(--marca-coral);
+}
+.editor-escuro .bg-marca-indigo\/5,
+.editor-escuro .bg-marca-indigo\/10 {
+  background-color: rgb(240 107 79 / 0.16);
+}
+.editor-escuro .border-marca-indigo {
+  border-color: var(--marca-coral);
+}
+/* O coral cheio continua coral, com letra branca: é o botão de gerar. */
+.editor-escuro .bg-marca-indigo {
+  background-color: var(--marca-coral);
+}
+.editor-escuro input,
+.editor-escuro select,
+.editor-escuro textarea {
+  background-color: #0d1e3a;
+  color: var(--letra-editor);
+}
+.editor-escuro ::placeholder {
+  color: #6d82a5;
+}
+/* O palco é o mais escuro de tudo: é o que faz a foto saltar. */
+.editor-escuro .palco {
+  background-color: var(--fundo-editor);
+}
+
 /* Barra de progresso indeterminada do editor. */
 @keyframes deslizar {
   0% { transform: translateX(-100%); }

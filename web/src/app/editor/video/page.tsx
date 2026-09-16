@@ -54,7 +54,6 @@ import {
 import { aplicarTemplateVideo, mudancasDoTemplate, TEMPLATES_VIDEO, templateVaiApagarTexto, type TemplateVideo } from "@/lib/video-templates";
 import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import { useIdioma } from "@/i18n/cliente";
-import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
@@ -1053,114 +1052,39 @@ export default function PaginaVideo() {
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
 
   return (
-    <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
-      {/* ---------- barra do editor ----------
-           O nome do que está sendo editado, a conta do que vai sair e o botão que gera.
-           Fica em cima porque é o que a pessoa olha entre uma mexida e outra. */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 pb-3">
+    // ---------- O EDITOR É UM APLICATIVO, NÃO UMA PÁGINA ----------
+    //
+    // Tela inteira, sem o cabeçalho nem o menu do site. Não é enfeite: numa página do
+    // site sobravam 300px de altura pro palco depois do menu, do título e das margens,
+    // e a linha do tempo caía abaixo da dobra. A pessoa abria o editor e via um
+    // retângulo preto sem nenhuma ferramenta à vista.
+    //
+    // A saída é pela seta no canto, que volta pro Editor. Enquanto se edita, a tela é
+    // do trabalho -- é o que todo editor faz, e é o que faz a tela parecer um.
+    <div className="editor-escuro fixed inset-0 z-30 flex flex-col">
+      {/* ---------- barra do editor ---------- */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-3 py-2">
+        <Link href="/editor" title="Sair do editor" className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100">
+          <Icone nome="cima" className="h-4 w-4 -rotate-90" />
+        </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-semibold">{editandoDe?.titulo || titulo || "Vídeo do imóvel"}</h1>
-          <p className="text-xs text-neutral-500">
-            {cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s ·{" "}
-            {FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato}
+          <h1 className="truncate text-sm font-semibold">{editandoDe?.titulo || titulo || "Vídeo do imóvel"}</h1>
+          <p className="truncate text-[11px] text-neutral-500">
+            {cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s · {resumoDosAjustes}
             {custo === 0 ? " · sem crédito" : ` · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
           </p>
-          {/* O que está valendo, sem precisar abrir aba nenhuma. Era o resumo do antigo
-              "Ajustes"; com a trilha, o lugar dele é aqui em cima. */}
-          <p className="truncate text-xs text-neutral-400">{resumoDosAjustes}</p>
         </div>
-        <Botao onClick={() => gerar()} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0}>
+        <span className="hidden shrink-0 text-xs text-neutral-500 sm:inline">{c.conta.creditos ?? "…"} cr.</span>
+        <Botao onClick={() => gerar()} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="shrink-0 px-3 py-2">
           <Icone nome="play" className="h-4 w-4" />
           {gerando ? progresso?.mensagem ?? "Gerando…" : "Gerar vídeo"}
         </Botao>
-      </div>
+      </header>
 
-      {erro && (
-        <div className="mt-4">
-          <Aviso tipo="erro">{erro}</Aviso>
-        </div>
-      )}
-
-      {editandoDe && (
-        <div className="mt-4">
-          <Aviso tipo="info">
-            Editando <strong>{editandoDe.titulo}</strong>. Gerar cria um vídeo novo — o atual continua em Seus vídeos. Cena animada que não mudou não custa de novo.{" "}
-            <button type="button" onClick={comecarDoZero} className="underline">Começar do zero</button>
-          </Aviso>
-        </div>
-      )}
-
-      {resultado && (
-        <Cartao className="mt-5">
-          <div className="grid gap-5 lg:grid-cols-12">
-            <div className={"lg:col-span-5 " + (vertical ? "mx-auto w-full max-w-[280px]" : "lg:col-span-7")}>
-              <video key={resultado.url} src={resultado.url} poster={resultado.miniatura ?? undefined} controls playsInline className="w-full rounded-xl bg-black" />
-            </div>
-            <div className={vertical ? "lg:col-span-7" : "lg:col-span-5"}>
-              <Rotulo>Seu vídeo está pronto</Rotulo>
-              <p className="text-sm text-neutral-600">
-                {resultado.duracao ? `${Math.round(resultado.duracao)} segundos · ` : ""}
-                {FORMATOS.find((f) => f.id === resultado.formato)?.rotulo ?? resultado.formato}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <a href={resultado.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
-                  <Icone nome="download" className="h-4 w-4" />
-                  Baixar MP4
-                </a>
-                <Botao variante="secundaria" onClick={() => editarVideo(resultado.videoId)} title="Reabre as cenas e os ajustes deste vídeo. Gerar de novo cria outro vídeo.">
-                  <Icone nome="editar_prompt" className="h-4 w-4" />
-                  Editar
-                </Botao>
-                <Botao variante="discreta" onClick={() => setResultado(null)}>Fechar</Botao>
-              </div>
-              {/* Adaptar pra outro formato.
-                  O mesmo vídeo serve pro Reels e pro feed, e refazer tudo à mão pra
-                  trocar o enquadramento era o passo que mandava a pessoa pro CapCut.
-                  As cenas, os textos e o áudio são os mesmos; muda o quadro. Não custa
-                  crédito: o clipe animado já existe e é reaproveitado. */}
-              {cenas.length > 0 && (
-                <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
-                  <p className="text-xs text-neutral-500">Fazer também em</p>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {FORMATOS.filter((f) => f.id !== resultado.formato).map((f) => (
-                      <Chip key={f.id} ativo={false} onClick={() => gerar({ formato: f.id })} disabled={gerando} title={f.dica}>
-                        {f.rotulo} · {f.id}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="mt-3">
-                <Compartilhar token={token} videoId={resultado.videoId} texto="Olha o vídeo do imóvel:" />
-              </div>
-              {resultado.avisos.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-1 text-xs text-amber-700">
-                  {resultado.avisos.map((a, i) => (
-                    <li key={i}>⚠ {a}</li>
-                  ))}
-                </ul>
-              )}
-              <p className="mt-3 text-xs text-neutral-500">No celular, toque em Baixar e depois em compartilhar para mandar pelo WhatsApp ou postar no Instagram.</p>
-            </div>
-          </div>
-        </Cartao>
-      )}
-
-      {/* ---------- corpo do editor ----------
-
-           TRILHA à esquerda, PAINEL da aba ao lado, PALCO no meio. É o arranjo que todo
-           editor de vídeo usa, e é o que a pessoa já reconhece de outro aplicativo.
-
-           Antes era uma coluna de oito cartões abertos atrás de um "Ajustes" que abria
-           tudo de uma vez: 28 escolhas numa rolagem só. A trilha resolve o mesmo problema
-           melhor -- cada assunto atrás de um ícone, um de cada vez, e o nome do que está
-           aberto sempre visível.
-
-           No celular a trilha vira uma faixa que rola de lado, embaixo do palco: ali o
-           dedo alcança, e o que importa ver primeiro é o quadro. */}
-      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-4">
+      {/* ---------- miolo: trilha · painel · palco ---------- */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ---------- trilha de ferramentas ---------- */}
-        <nav className="order-2 -mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 pb-1 lg:order-1 lg:mx-0 lg:w-[78px] lg:flex-col lg:overflow-visible lg:px-0">
+        <nav className="order-2 flex shrink-0 gap-1 overflow-x-auto border-neutral-200 px-2 py-1 md:order-1 md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:px-1 md:py-2">
           {ABAS.map((a) => {
             const ativa = aba === a.id;
             return (
@@ -1183,7 +1107,7 @@ export default function PaginaVideo() {
         </nav>
 
         {/* ---------- painel da aba ---------- */}
-        <div className="order-3 flex flex-col gap-4 lg:order-2 lg:w-[340px] lg:shrink-0">
+        <div className="order-3 flex flex-col gap-3 overflow-y-auto border-neutral-200 p-3 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px]">
           {aba === "midia" && (
           <Cartao>
             <Rotulo>Mídia</Rotulo>
@@ -1748,21 +1672,101 @@ export default function PaginaVideo() {
         </div>
 
         {/* ---------- palco e painel da cena ---------- */}
-        <section className="order-1 flex min-w-0 flex-1 flex-col gap-4 lg:order-3">
+        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:order-3">
+      {erro && (
+        <div className="mx-auto w-full max-w-2xl text-sm">
+          <Aviso tipo="erro">{erro}</Aviso>
+        </div>
+      )}
+
+      {editandoDe && (
+        <div className="mx-auto w-full max-w-2xl text-sm">
+          <Aviso tipo="info">
+            Editando <strong>{editandoDe.titulo}</strong>. Gerar cria um vídeo novo — o atual continua em Seus vídeos. Cena animada que não mudou não custa de novo.{" "}
+            <button type="button" onClick={comecarDoZero} className="underline">Começar do zero</button>
+          </Aviso>
+        </div>
+      )}
+
+      {resultado && (
+        <Cartao className="mx-auto w-full max-w-3xl">
+          <div className="grid gap-5 lg:grid-cols-12">
+            <div className={"lg:col-span-5 " + (vertical ? "mx-auto w-full max-w-[280px]" : "lg:col-span-7")}>
+              <video key={resultado.url} src={resultado.url} poster={resultado.miniatura ?? undefined} controls playsInline className="w-full rounded-xl bg-black" />
+            </div>
+            <div className={vertical ? "lg:col-span-7" : "lg:col-span-5"}>
+              <Rotulo>Seu vídeo está pronto</Rotulo>
+              <p className="text-sm text-neutral-600">
+                {resultado.duracao ? `${Math.round(resultado.duracao)} segundos · ` : ""}
+                {FORMATOS.find((f) => f.id === resultado.formato)?.rotulo ?? resultado.formato}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <a href={resultado.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
+                  <Icone nome="download" className="h-4 w-4" />
+                  Baixar MP4
+                </a>
+                <Botao variante="secundaria" onClick={() => editarVideo(resultado.videoId)} title="Reabre as cenas e os ajustes deste vídeo. Gerar de novo cria outro vídeo.">
+                  <Icone nome="editar_prompt" className="h-4 w-4" />
+                  Editar
+                </Botao>
+                <Botao variante="discreta" onClick={() => setResultado(null)}>Fechar</Botao>
+              </div>
+              {/* Adaptar pra outro formato.
+                  O mesmo vídeo serve pro Reels e pro feed, e refazer tudo à mão pra
+                  trocar o enquadramento era o passo que mandava a pessoa pro CapCut.
+                  As cenas, os textos e o áudio são os mesmos; muda o quadro. Não custa
+                  crédito: o clipe animado já existe e é reaproveitado. */}
+              {cenas.length > 0 && (
+                <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
+                  <p className="text-xs text-neutral-500">Fazer também em</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {FORMATOS.filter((f) => f.id !== resultado.formato).map((f) => (
+                      <Chip key={f.id} ativo={false} onClick={() => gerar({ formato: f.id })} disabled={gerando} title={f.dica}>
+                        {f.rotulo} · {f.id}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="mt-3">
+                <Compartilhar token={token} videoId={resultado.videoId} texto="Olha o vídeo do imóvel:" />
+              </div>
+              {resultado.avisos.length > 0 && (
+                <ul className="mt-3 flex flex-col gap-1 text-xs text-amber-700">
+                  {resultado.avisos.map((a, i) => (
+                    <li key={i}>⚠ {a}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-3 text-xs text-neutral-500">No celular, toque em Baixar e depois em compartilhar para mandar pelo WhatsApp ou postar no Instagram.</p>
+            </div>
+          </div>
+        </Cartao>
+      )}
+
           {/* ---------- palco ----------
                A cena escolhida no tamanho e na proporção em que ela vai sair, com o
                título e a legenda por cima. Não é o vídeo tocando -- é o quadro. Ver o
                enquadramento antes de gastar crédito é metade do trabalho do editor. */}
           <Cartao className="p-3 sm:p-4">
+            {/* O palco tem TETO DE ALTURA nas telas pequenas.
+                Um vídeo 9:16 numa largura de 360 dá 640 de altura: sozinho, ele comia a
+                tela inteira do celular e empurrava a trilha de ferramentas e a linha do
+                tempo pra fora da vista. A pessoa abria o editor e via um retângulo preto.
+                Com altura fixa em 44vh e largura derivada da proporção, o quadro continua
+                exato e sobra tela pro resto. No computador volta a ser a largura que manda. */}
             <div className="mx-auto w-full" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
-              <div className="relative overflow-hidden rounded-xl bg-neutral-900" style={{ aspectRatio: PROPORCAO[formato] }}>
+              <div
+                className="relative mx-auto h-[44vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
+                style={{ aspectRatio: PROPORCAO[formato] }}
+              >
                 {cenaAtual?.miniatura ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={cenaAtual.miniatura} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-neutral-500">
                     <Icone nome={cenaAtual ? "video" : "foto"} className="h-9 w-9" />
-                    <span className="px-6 text-center text-xs">{cenaAtual ? "Clipe — aparece no vídeo montado" : "Escolha as fotos abaixo"}</span>
+                    <span className="px-6 text-center text-xs">{cenaAtual ? "Clipe — aparece no vídeo montado" : "Escolha as fotos em Mídia"}</span>
                   </div>
                 )}
                 {titulo && (
@@ -2083,7 +2087,7 @@ export default function PaginaVideo() {
           {(cenas.length === 0 || gerando || semSaldo || custo === 0) && (
           <Cartao>
             {cenas.length === 0 && !gerando && (
-              <p className="text-center text-xs text-neutral-500">Escolha as fotos ao lado. O resto já vem pronto.</p>
+              <p className="text-center text-xs text-neutral-500">Escolha as fotos em Mídia, na trilha da esquerda. O resto já vem pronto.</p>
             )}
             {custo === 0 && !gerando && cenas.length > 0 && (
               <p className="text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e voz de IA ({CREDITOS.narracao}).</p>
@@ -2123,13 +2127,20 @@ export default function PaginaVideo() {
            As cenas em fila, na ordem em que saem. Clicar escolhe; arrastar reordena; a
            emenda aparece ENTRE as cenas, que é onde ela acontece. Uma trilha só, de
            propósito: régua de tempo com doze trilhas é o que faz o corretor fechar a aba. */}
-      {cenas.length > 0 && (
-        <div className="mt-4">
-          <Cartao className="p-3">
-            <div className="mb-2 flex items-baseline justify-between">
-              <Rotulo>Linha do tempo</Rotulo>
-              <span className="text-xs text-neutral-500">arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio</span>
-            </div>
+      {/* PRESA embaixo e sempre visível, inclusive vazia: é o chão do editor. Escondida
+          quando não havia cena, a tela deixava de parecer um editor -- sobrava um palco
+          preto e nada mais. */}
+      <div className="shrink-0 border-t border-neutral-200 p-3">
+        <div>
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <Rotulo>Linha do tempo</Rotulo>
+            <span className="truncate text-xs text-neutral-500">arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio</span>
+          </div>
+          {cenas.length === 0 && (
+            <p className="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-xs text-neutral-500">
+              Escolha as fotos em <strong>Mídia</strong>, ali na esquerda. Elas viram cenas aqui.
+            </p>
+          )}
             <ul className="flex items-stretch gap-1 overflow-x-auto pb-2">
               {cenas.map((s, i) => (
                 <li key={s.chave} className="flex shrink-0 items-center gap-1">
@@ -2181,9 +2192,8 @@ export default function PaginaVideo() {
                 </li>
               )}
             </ul>
-          </Cartao>
+          </div>
         </div>
-      )}
-    </AppShell>
+      </div>
   );
 }
