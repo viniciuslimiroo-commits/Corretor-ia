@@ -19,6 +19,55 @@ import { CATEGORIAS_MUSICA, MUSICAS, type CategoriaMusica, type MusicaId } from 
 
 type Item = { id: string; rotulo: string; descricao: string; arquivo: string | null };
 
+/**
+ * A CAPA da faixa, desenhada e não baixada.
+ *
+ * Toda biblioteca de áudio mostra uma arte por faixa, e sem ela a lista é uma planilha.
+ * Mas baixar arte de banco é licença pra administrar, e gerar 15 imagens com IA é gastar
+ * dinheiro numa miniatura de 28px. Desenhada em SVG: sai da cor da CATEGORIA, o desenho
+ * é determinístico pelo id da faixa (a mesma faixa tem sempre a mesma capa) e o peso é
+ * zero.
+ *
+ * As barras não são a forma de onda de verdade -- seria mentira desenhar uma sem ler o
+ * arquivo. São um motivo gráfico, e o que identifica a faixa é a COR e o desenho, não a
+ * promessa de mostrar o áudio.
+ */
+const TINTAS: Record<string, [string, string]> = {
+  calma: ["#2cb1a3", "#0f2d5b"],
+  elegante: ["#0f2d5b", "#6b4a8f"],
+  moderna: ["#2a6df4", "#12224a"],
+  alegre: ["#f0a24f", "#f06b4f"],
+  cinematografica: ["#f06b4f", "#5b1436"],
+  efeito: ["#475569", "#0f172a"],
+};
+
+function CapaFaixa({ id, categoria, tamanho = 28 }: { id: string; categoria: string; tamanho?: number }) {
+  const [a, b] = TINTAS[categoria] ?? TINTAS.efeito;
+  // Semente estável: mesma faixa, mesmo desenho, entre sessões e entre máquinas. O
+  // acumulador fica no LAÇO e não numa closure de map -- o compilador do React recusa
+  // variável reatribuída dentro de callback, e é a forma de um valor vazar entre renders.
+  const barras: number[] = [];
+  for (let i = 0, semente = 0; i < 7; i++) {
+    if (i === 0) for (let k = 0; k < id.length; k++) semente = (semente * 31 + id.charCodeAt(k)) % 9973;
+    semente = (semente * 1103515245 + 12345) % 2147483648;
+    barras.push(0.3 + ((semente >> 8) % 70) / 100);
+  }
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 28 28" className="shrink-0 rounded-md" aria-hidden>
+      <defs>
+        <linearGradient id={`g-${id}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={a} />
+          <stop offset="1" stopColor={b} />
+        </linearGradient>
+      </defs>
+      <rect width="28" height="28" rx="6" fill={`url(#g-${id})`} />
+      {barras.map((h, i) => (
+        <rect key={i} x={3 + i * 3.4} y={14 - (h * 18) / 2} width="2" height={h * 18} rx="1" fill="#fff" opacity="0.75" />
+      ))}
+    </svg>
+  );
+}
+
 export default function BibliotecaAudio({
   escolhida,
   aoEscolher,
@@ -154,9 +203,19 @@ export default function BibliotecaAudio({
                   type="button"
                   onClick={() => ouvir(m, pasta)}
                   title={nesta ? "Parar" : "Ouvir"}
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200"
+                  className="group relative grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md transition"
                 >
-                  <Icone nome={nesta ? "fechar" : "play"} className="h-3.5 w-3.5" />
+                  <CapaFaixa id={m.id} categoria={(m as { categoria?: string }).categoria ?? "efeito"} />
+                  {/* O play cobre a capa: a arte diz QUAL faixa é, o botão diz o que ele faz.
+                      Some quando não se aponta pra ele, e fica sempre visível na que toca. */}
+                  <span
+                    className={
+                      "absolute inset-0 grid place-items-center bg-black/45 text-white transition " +
+                      (nesta ? "opacity-100" : "opacity-0 group-hover:opacity-100")
+                    }
+                  >
+                    <Icone nome={nesta ? "fechar" : "play"} className="h-3 w-3" />
+                  </span>
                 </button>
                 <button
                   type="button"

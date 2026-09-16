@@ -285,13 +285,21 @@ export type FiltroId = "natural" | "claro" | "quente" | "sobrio" | "cinema" | "p
  * `-filter_complex` a vírgula separa filtros, e emendar essas strings à mão é como se
  * criam os erros de escape mais caros deste arquivo.
  */
-export const FILTROS: { id: FiltroId; rotulo: string; dica: string; ffmpeg: string[] }[] = [
-  { id: "natural", rotulo: "Natural", dica: "A imagem como ela é.", ffmpeg: [] },
-  { id: "claro", rotulo: "Claro e limpo", dica: "Mais luz e contraste. É o acabamento de anúncio de imóvel.", ffmpeg: ["eq=brightness=0.05:contrast=1.12:saturation=1.06"] },
-  { id: "quente", rotulo: "Aconchegante", dica: "Puxa pro dourado: sala de estar, fim de tarde.", ffmpeg: ["colorbalance=rs=0.08:bs=-0.05:rm=0.10:bm=-0.09:rh=0.05:bh=-0.05", "eq=saturation=1.12"] },
-  { id: "sobrio", rotulo: "Sóbrio", dica: "Puxa pro azul: comercial, moderno, alto padrão.", ffmpeg: ["colorbalance=rs=-0.04:bs=0.08:rm=-0.09:bm=0.12:rh=-0.04:bh=0.05", "eq=contrast=1.08:saturation=0.98"] },
-  { id: "cinema", rotulo: "Cinema", dica: "Sombra azulada, luz quente, contraste alto.", ffmpeg: ["colorbalance=bs=0.09:rh=0.06:bh=-0.03", "eq=contrast=1.18:saturation=0.95"] },
-  { id: "pb", rotulo: "Preto e branco", dica: "Sem cor. Vai bem em fachada e detalhe de arquitetura.", ffmpeg: ["hue=s=0", "eq=contrast=1.12"] },
+/**
+ * O acabamento de cor, com o equivalente em CSS ao lado.
+ *
+ * O `css` existe pra a PRÉVIA mostrar o filtro na foto de verdade da cena. Um quadradinho
+ * de cor ao lado do nome não diz nada: "Cinema" só quer dizer alguma coisa aplicado à
+ * sala que a pessoa está editando. Não é a mesma conta do ffmpeg -- é a aproximação mais
+ * próxima que o navegador sabe fazer, e é o bastante pra escolher.
+ */
+export const FILTROS: { id: FiltroId; rotulo: string; dica: string; ffmpeg: string[]; css: string }[] = [
+  { id: "natural", rotulo: "Natural", dica: "A imagem como ela é.", ffmpeg: [], css: "none" },
+  { id: "claro", rotulo: "Claro e limpo", dica: "Mais luz e contraste. É o acabamento de anúncio de imóvel.", ffmpeg: ["eq=brightness=0.05:contrast=1.12:saturation=1.06"], css: "brightness(1.06) contrast(1.12) saturate(1.06)" },
+  { id: "quente", rotulo: "Aconchegante", dica: "Puxa pro dourado: sala de estar, fim de tarde.", ffmpeg: ["colorbalance=rs=0.08:bs=-0.05:rm=0.10:bm=-0.09:rh=0.05:bh=-0.05", "eq=saturation=1.12"], css: "sepia(0.22) saturate(1.2) hue-rotate(-8deg)" },
+  { id: "sobrio", rotulo: "Sóbrio", dica: "Puxa pro azul: comercial, moderno, alto padrão.", ffmpeg: ["colorbalance=rs=-0.04:bs=0.08:rm=-0.09:bm=0.12:rh=-0.04:bh=0.05", "eq=contrast=1.08:saturation=0.98"], css: "contrast(1.08) saturate(0.95) hue-rotate(8deg)" },
+  { id: "cinema", rotulo: "Cinema", dica: "Sombra azulada, luz quente, contraste alto.", ffmpeg: ["colorbalance=bs=0.09:rh=0.06:bh=-0.03", "eq=contrast=1.18:saturation=0.95"], css: "contrast(1.18) saturate(0.92) hue-rotate(4deg)" },
+  { id: "pb", rotulo: "Preto e branco", dica: "Sem cor. Vai bem em fachada e detalhe de arquitetura.", ffmpeg: ["hue=s=0", "eq=contrast=1.12"], css: "grayscale(1) contrast(1.12)" },
 ];
 
 export const FILTRO_POR_ID = Object.fromEntries(FILTROS.map((f) => [f.id, f])) as Record<FiltroId, (typeof FILTROS)[number]>;
@@ -299,6 +307,67 @@ export const FILTRO_POR_ID = Object.fromEntries(FILTROS.map((f) => [f.id, f])) a
 export function ehFiltro(v: unknown): FiltroId {
   return typeof v === "string" && v in FILTRO_POR_ID ? (v as FiltroId) : "natural";
 }
+
+/**
+ * MODELOS DE TEXTO: a frase pronta, já com o acabamento certo.
+ *
+ * Não são os do CapCut (retrô, vlog, neon). São os que aparecem num anúncio de imóvel e
+ * que o corretor escreveria à mão todo dia -- status, condição de pagamento, chamada.
+ * Escolher aqui é um clique; escrever é uma frase, um estilo, uma posição e uma entrada.
+ *
+ * O que NÃO está aqui é tudo que vem do cadastro: preço, quartos, área e vagas entram
+ * pelas PEÇAS do imóvel, já preenchidas. Modelo com preço fixo seria pedir pra digitar
+ * de novo o que já está cadastrado -- e pra alguém esquecer de trocar.
+ */
+export type CategoriaTexto = "status" | "condicao" | "chamada" | "urgencia";
+
+export const CATEGORIAS_TEXTO: { id: CategoriaTexto; rotulo: string; para: string }[] = [
+  { id: "status", rotulo: "Situação", para: "Onde o imóvel está: à venda, vendido, reservado" },
+  { id: "condicao", rotulo: "Condição", para: "Como se compra: financiamento, permuta, entrega" },
+  { id: "chamada", rotulo: "Chamada", para: "O que você quer que a pessoa faça" },
+  { id: "urgencia", rotulo: "Urgência", para: "O que faz alguém parar de rolar. Use com verdade." },
+];
+
+export type ModeloTexto = {
+  id: string;
+  texto: string;
+  categoria: CategoriaTexto;
+  estilo: EstiloTexto;
+  posicao: PosicaoTexto;
+  animacao: AnimacaoTexto;
+};
+
+export const MODELOS_TEXTO: ModeloTexto[] = [
+  // situação
+  { id: "a_venda", texto: "À venda", categoria: "status", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+  { id: "para_alugar", texto: "Para alugar", categoria: "status", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+  { id: "lancamento", texto: "Lançamento", categoria: "status", estilo: "selo", posicao: "topo", animacao: "descer" },
+  { id: "vendido", texto: "VENDIDO", categoria: "status", estilo: "gigante", posicao: "centro", animacao: "piscar" },
+  { id: "reservado", texto: "Reservado", categoria: "status", estilo: "etiqueta", posicao: "centro", animacao: "piscar" },
+  { id: "exclusivo", texto: "Exclusivo", categoria: "status", estilo: "selo", posicao: "topo", animacao: "entrar_esquerda" },
+
+  // condição
+  { id: "financiamento", texto: "Aceita financiamento", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir" },
+  { id: "fgts", texto: "Aceita FGTS", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir" },
+  { id: "permuta", texto: "Aceita permuta", categoria: "condicao", estilo: "faixa", posicao: "base", animacao: "subir" },
+  { id: "pronto", texto: "Pronto pra morar", categoria: "condicao", estilo: "selo", posicao: "base", animacao: "surgir" },
+  { id: "na_planta", texto: "Na planta", categoria: "condicao", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+  { id: "mobiliado", texto: "Mobiliado", categoria: "condicao", estilo: "etiqueta", posicao: "topo", animacao: "surgir" },
+
+  // chamada
+  { id: "agende", texto: "Agende sua visita", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir" },
+  { id: "whatsapp", texto: "Chame no WhatsApp", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir" },
+  { id: "link_bio", texto: "Link na bio", categoria: "chamada", estilo: "contorno", posicao: "base", animacao: "no_fim" },
+  { id: "arraste", texto: "Arraste pra ver mais →", categoria: "chamada", estilo: "contorno", posicao: "base", animacao: "entrar_direita" },
+  { id: "salve", texto: "Salve pra não perder", categoria: "chamada", estilo: "sombra", posicao: "base", animacao: "no_fim" },
+  { id: "manda_zap", texto: "Manda um oi no zap", categoria: "chamada", estilo: "faixa", posicao: "base", animacao: "subir" },
+
+  // urgência
+  { id: "ultimas", texto: "Últimas unidades", categoria: "urgencia", estilo: "etiqueta", posicao: "topo", animacao: "piscar" },
+  { id: "novo_mercado", texto: "Novo no mercado", categoria: "urgencia", estilo: "etiqueta", posicao: "topo", animacao: "descer" },
+  { id: "visita_hoje", texto: "Visita ainda hoje", categoria: "urgencia", estilo: "contorno", posicao: "centro", animacao: "no_fim" },
+  { id: "abaixou", texto: "Preço abaixou", categoria: "urgencia", estilo: "selo", posicao: "topo", animacao: "entrar_esquerda" },
+];
 
 export type TipoCena = "foto" | "antes_depois" | "clipe" | "animada" | "tour360";
 

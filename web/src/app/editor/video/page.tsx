@@ -59,6 +59,7 @@ import { useIdioma } from "@/i18n/cliente";
 import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
+import GaleriaTexto from "@/components/editor/galeria-texto";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
@@ -212,11 +213,14 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
 const ABAS = [
   { id: "midia", rotulo: "Mídia", icone: "materiais", dica: "As fotos e os clipes deste imóvel" },
   { id: "modelos", rotulo: "Modelos", icone: "lote", dica: "Um ponto de partida por tipo de imóvel" },
-  { id: "audio", rotulo: "Áudio", icone: "som", dica: "Música, transição e narração" },
-  { id: "texto", rotulo: "Texto", icone: "editar_prompt", dica: "Título, preço, local e tela final" },
+  { id: "audio", rotulo: "Áudio", icone: "som", dica: "Músicas e efeitos sonoros, com prévia" },
+  { id: "texto", rotulo: "Texto", icone: "editar_prompt", dica: "Modelos de texto e efeitos de entrada" },
+  { id: "legendas", rotulo: "Legendas", icone: "compartilhar", dica: "Narração e legenda automática" },
+  { id: "transicoes", rotulo: "Transições", icone: "converter_hd", dica: "Como uma cena vira a outra" },
   { id: "voce", rotulo: "Você", icone: "equipe", dica: "Você aparecendo no próprio vídeo" },
   { id: "cor", rotulo: "Cor", icone: "magica", dica: "Acabamento de cor e luz" },
   { id: "formato", rotulo: "Formato", icone: "planta", dica: "Reels, feed, quadrado ou horizontal" },
+  { id: "marca", rotulo: "Marca", icone: "marca", dica: "Logo, cor e contato que entram no vídeo" },
   { id: "videos", rotulo: "Vídeos", icone: "historico", dica: "Os vídeos que você já fez" },
 ] as const;
 
@@ -262,7 +266,7 @@ export default function PaginaVideo() {
   const [fichaResumo, setFichaResumo] = useState("");
   /** A ficha crua e a marca: viram as PEÇAS que o editor oferece pra virar texto. */
   const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
-  const [marca, setMarca] = useState<{ nome?: string | null; creci?: string | null; whatsapp?: string | null } | null>(null);
+  const [marca, setMarca] = useState<{ nome?: string | null; creci?: string | null; whatsapp?: string | null; cor?: string | null; logo?: string | null; instagram?: string | null } | null>(null);
   const [narrar, setNarrar] = useState(false);
   /** De onde vem a voz: IA, gravada aqui, ou um arquivo que a pessoa já tinha. */
   const [origemVoz, setOrigemVoz] = useState<OrigemVoz>("ia");
@@ -454,7 +458,7 @@ export default function PaginaVideo() {
     token()
       .then((t) => fetch("/api/marca", { headers: { Authorization: `Bearer ${t}` } }))
       .then((r) => r.json())
-      .then((d) => setMarca({ nome: d.nome, creci: d.creci, whatsapp: d.whatsapp }))
+      .then((d) => setMarca({ nome: d.nome, creci: d.creci, whatsapp: d.whatsapp, cor: d.cor_marca ?? d.cor, logo: d.logoUrl ?? d.logo_url ?? null, instagram: d.instagram }))
       .catch(() => {});
   }, [user, token]);
 
@@ -1327,22 +1331,54 @@ export default function PaginaVideo() {
                 )}
               </label>
             )}
-            <div className="mt-3">
-              <p className="text-xs text-neutral-500">Emenda entre as cenas — a cena pode ter a sua</p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {TRANSICOES.map((t) => (
-                  <Chip key={t.id} ativo={transicao === t.id} onClick={() => { setTransicao(t.id); setCenas((lista) => lista.map((s) => ({ ...s, transicao: undefined }))); }}>
-                    {t.rotulo}
-                  </Chip>
-                ))}
-              </div>
+          </Cartao>
+          )}
+
+          {/* ---------- transições ----------
+               Cada cartão DESENHA o que a emenda faz: dois quadros e o jeito como um vira
+               o outro. "Dissolver" e "Deslizar" são palavras que só querem dizer alguma
+               coisa depois de ver -- e o vídeo inteiro muda de ritmo com essa escolha. */}
+          {aba === "transicoes" && (
+          <Cartao>
+            <Rotulo>Transições</Rotulo>
+            <p className="-mt-1 mb-3 text-xs text-neutral-500">
+              Como uma cena vira a outra. Vale pro vídeo inteiro; uma cena pode sair da linha no painel dela.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {TRANSICOES.map((t) => {
+                const ativa = transicao === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={gerando}
+                    onClick={() => { setTransicao(t.id); setCenas((lista) => lista.map((s) => ({ ...s, transicao: undefined }))); }}
+                    title={`${t.rotulo} · ${t.segundos}s de emenda`}
+                    className={
+                      "overflow-hidden rounded-lg border-2 p-2 text-left transition disabled:opacity-40 " +
+                      (ativa ? "border-marca-coral" : "border-neutral-200 hover:border-neutral-400")
+                    }
+                  >
+                    <span className="flex h-9 items-center gap-0.5 overflow-hidden rounded bg-neutral-800">
+                      <span className="h-full flex-1 bg-marca-indigo/70" />
+                      <span
+                        className="h-full shrink-0 bg-gradient-to-r from-marca-indigo/70 to-marca-coral/80"
+                        style={{ width: t.id === "corte" ? 2 : t.id === "desfoque" ? 26 : 18, filter: t.id === "desfoque" ? "blur(3px)" : undefined }}
+                      />
+                      <span className="h-full flex-1 bg-marca-coral/80" />
+                    </span>
+                    <span className={"mt-1 block text-xs " + (ativa ? "text-marca-indigo" : "text-neutral-600")}>{t.rotulo}</span>
+                    <span className="block text-[10px] text-neutral-500">{t.segundos}s</span>
+                  </button>
+                );
+              })}
             </div>
           </Cartao>
           )}
 
-          {aba === "audio" && (
+          {aba === "legendas" && (
           <Cartao>
-            <Rotulo>Voz</Rotulo>
+            <Rotulo>Voz e legendas</Rotulo>
             <label className="flex items-center gap-2 text-sm text-neutral-700">
               <input type="checkbox" checked={narrar} onChange={(e) => setNarrar(e.target.checked)} className="accent-marca-coral" />
               Falar por cima do vídeo
@@ -1502,6 +1538,23 @@ export default function PaginaVideo() {
                 )}
               </div>
             )}
+          </Cartao>
+          )}
+
+          {/* A galeria vem ANTES dos campos de marca: o que a pessoa abre a aba Texto
+              pra fazer é por uma frase na cena, não preencher título do vídeo. */}
+          {aba === "texto" && cenaAtual && (
+          <Cartao>
+            <Rotulo>Texto na cena {indiceAtual + 1}</Rotulo>
+            <GaleriaTexto
+              pecas={pecas}
+              aoAdicionar={(t) => adicionarTexto(cenaAtual.chave, t)}
+              aoTrocarAnimacao={(id) => mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { animacao: id as AnimacaoTexto })}
+              animacaoAtual={(cenaAtual.textos ?? []).at(-1)?.animacao ?? null}
+              temTextoSelecionado={(cenaAtual.textos ?? []).length > 0}
+              cheio={(cenaAtual.textos ?? []).length >= LIMITES.textosPorCena}
+              desabilitado={gerando}
+            />
           </Cartao>
           )}
 
@@ -1686,20 +1739,32 @@ export default function PaginaVideo() {
             <p className="-mt-1 mb-3 text-xs text-neutral-500">
               O acabamento vale pro vídeo inteiro. Uma cena pode sair da linha no painel dela.
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            {/* A prévia mostra o filtro NA FOTO da cena aberta, não num quadradinho de
+                cor: "Cinema" só quer dizer alguma coisa aplicado à sala que a pessoa
+                está editando. O CSS é a aproximação do que o ffmpeg vai fazer -- não é a
+                mesma conta, mas é o bastante pra escolher sem gerar o vídeo. */}
+            <div className="grid grid-cols-3 gap-1.5">
               {FILTROS.map((f) => (
                 <button
                   key={f.id}
                   type="button"
                   onClick={() => setFiltro(f.id)}
                   disabled={gerando}
+                  title={f.dica}
                   className={
-                    "rounded-xl border px-3 py-2 text-left text-sm transition " +
-                    (filtro === f.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
+                    "overflow-hidden rounded-lg border-2 text-left transition disabled:opacity-40 " +
+                    (filtro === f.id ? "border-marca-coral" : "border-transparent hover:border-neutral-400")
                   }
                 >
-                  <span className="font-medium">{f.rotulo}</span>
-                  <span className="block text-xs text-neutral-500">{f.dica}</span>
+                  <span className="block aspect-[4/3] overflow-hidden bg-neutral-800">
+                    {cenaAtual?.miniatura ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cenaAtual.miniatura} alt="" className="h-full w-full object-cover" style={{ filter: f.css }} draggable={false} />
+                    ) : (
+                      <span className="grid h-full place-items-center text-[10px] text-neutral-500">sem foto</span>
+                    )}
+                  </span>
+                  <span className={"block truncate px-1 py-1 text-[11px] " + (filtro === f.id ? "text-marca-indigo" : "text-neutral-600")}>{f.rotulo}</span>
                 </button>
               ))}
             </div>
@@ -1717,6 +1782,55 @@ export default function PaginaVideo() {
                 </button>
               ))}
             </div>
+          </Cartao>
+          )}
+
+          {/* ---------- kit de marca ----------
+               Não é um formulário: é o ESPELHO do que já está em Minha marca, mostrando o
+               que vai entrar no vídeo sem ninguém pedir. Editar é lá -- a marca vale pro
+               produto inteiro, e ter dois lugares que a mudam é ter duas verdades. */}
+          {aba === "marca" && (
+          <Cartao>
+            <Rotulo>Kit de marca</Rotulo>
+            <p className="-mt-1 mb-3 text-xs text-neutral-500">
+              Entra sozinho na tela final, na capa e nos carimbos. Mexer aqui é em <Link href="/marca" className="underline">Minha marca</Link>, e vale pro produto inteiro.
+            </p>
+            <div className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3">
+              <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                {marca?.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={marca.logo} alt="" className="h-full w-full object-contain p-1" />
+                ) : (
+                  <Icone nome="marca" className="h-5 w-5 text-neutral-400" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{marca?.nome || "Sem nome cadastrado"}</p>
+                <p className="truncate text-xs text-neutral-500">
+                  {[marca?.creci ? `CRECI ${marca.creci}` : null, marca?.whatsapp, marca?.instagram].filter(Boolean).join(" · ") || "Sem CRECI nem contato"}
+                </p>
+              </div>
+              <span className="h-8 w-8 shrink-0 rounded-lg border border-neutral-200" style={{ background: marca?.cor || "#0f2d5b" }} title={`Cor da marca: ${marca?.cor || "#0f2d5b"}`} />
+            </div>
+
+            <ul className="mt-3 flex flex-col gap-1.5 text-xs text-neutral-600">
+              {[
+                ["Tela final", telaFinal ? "ligada" : "desligada"],
+                ["Capa do vídeo", capaMontada && (titulo.trim() || preco.trim()) ? "com nome e preço" : "quadro cru"],
+                ["Cor dos textos", "sai da cor da marca"],
+              ].map(([o, q]) => (
+                <li key={o} className="flex items-baseline justify-between gap-2 border-b border-neutral-100 pb-1">
+                  <span>{o}</span>
+                  <span className="text-neutral-400">{q}</span>
+                </li>
+              ))}
+            </ul>
+
+            {!marca?.nome && !marca?.whatsapp && !marca?.logo && (
+              <p className="mt-3 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] text-amber-700">
+                Sem nome, WhatsApp ou logo, o vídeo sai sem tela final. <Link href="/marca" className="underline">Preencher agora</Link>.
+              </p>
+            )}
           </Cartao>
           )}
 
