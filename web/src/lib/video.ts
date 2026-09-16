@@ -585,13 +585,16 @@ export const MUSICAS: { id: MusicaId; rotulo: string; descricao: string; arquivo
  *
  * Gerados por nós (scripts/gerar-efeitos-sonoros.mjs), pelo mesmo motivo das músicas.
  */
-export type EfeitoSonoroId = "nenhum" | "passagem" | "clique" | "brilho";
+export type EfeitoSonoroId = "nenhum" | "passagem" | "clique" | "brilho" | "impacto" | "sino" | "toque";
 
 export const EFEITOS_SONOROS: { id: EfeitoSonoroId; rotulo: string; descricao: string; arquivo: string | null }[] = [
   { id: "nenhum", rotulo: "Sem efeito", descricao: "Nenhum som nas viradas", arquivo: null },
   { id: "passagem", rotulo: "Passagem", descricao: "Um sopro curto na troca de cena", arquivo: "passagem.m4a" },
   { id: "clique", rotulo: "Clique", descricao: "Obturador de câmera", arquivo: "clique.m4a" },
   { id: "brilho", rotulo: "Brilho", descricao: "Um tilintar, pra revelar ambiente", arquivo: "brilho.m4a" },
+  { id: "impacto", rotulo: "Impacto", descricao: "Uma batida seca, pra lançamento", arquivo: "impacto.m4a" },
+  { id: "sino", rotulo: "Sino", descricao: "Um toque claro, pra marcar o preço", arquivo: "sino.m4a" },
+  { id: "toque", rotulo: "Toque", descricao: "Um pop macio, discreto", arquivo: "toque.m4a" },
 ];
 
 export const EFEITO_SONORO_POR_ID = Object.fromEntries(EFEITOS_SONOROS.map((e) => [e.id, e])) as Record<EfeitoSonoroId, (typeof EFEITOS_SONOROS)[number]>;
