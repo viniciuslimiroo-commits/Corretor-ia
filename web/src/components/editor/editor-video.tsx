@@ -59,7 +59,6 @@ import {
 import { aplicarTemplateVideo, mudancasDoTemplate, TEMPLATES_VIDEO, templateVaiApagarTexto, type TemplateVideo } from "@/lib/video-templates";
 import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import { useIdioma } from "@/i18n/cliente";
-import AppShell from "@/components/app-shell";
 import MenuContexto, { useMenuContexto, type ItemMenu } from "@/components/editor/menu-contexto";
 import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
@@ -259,15 +258,6 @@ const ABAS = [
 
 type AbaId = (typeof ABAS)[number]["id"];
 
-/**
- * O que cabe no caminho rápido da página de vídeo.
- *
- * A régua: entra o que TODO vídeo precisa (as fotos, o ritmo, o som, o formato) e o que
- * mostra o que já foi feito. Fica de fora o que é ajuste fino -- e ajuste fino é o
- * motivo de o Editor existir.
- */
-const ABAS_RAPIDAS: AbaId[] = ["midia", "modelos", "audio", "legendas", "formato", "marca", "videos"];
-
 /** A proporção de cada formato, pro palco mostrar o quadro certo. */
 const PROPORCAO: Record<FormatoId, string> = { "9:16": "9 / 16", "16:9": "16 / 9", "1:1": "1 / 1", "4:5": "4 / 5" };
 const PROPORCAO_NUM: Record<FormatoId, number> = { "9:16": 9 / 16, "16:9": 16 / 9, "1:1": 1, "4:5": 4 / 5 };
@@ -277,19 +267,14 @@ function dataCurta(iso: string) {
 }
 
 /**
- * A edição de vídeo, nas duas formas em que ela existe.
+ * O Editor Encena de vídeo: tela cheia, escura, uma ferramenta de cada vez na trilha da
+ * esquerda e a linha do tempo embaixo -- pra quem quer mexer mais.
  *
- * "simples" é a página /video de sempre: dentro do site, com o menu em volta e tudo
- * empilhado numa coluna -- quem quer o vídeo e não quer aprender um editor.
- *
- * "editor" é o Editor Encena: tela cheia, escura, uma ferramenta de cada vez na trilha
- * da esquerda e a linha do tempo embaixo -- quem quer mexer mais.
- *
- * Um componente só, de propósito. Duas telas com a mesma função envelhecem em direções
- * diferentes, e o recurso novo acaba existindo só numa delas.
+ * O caminho RÁPIDO é outra página (/videos), a de antes do Editor. Houve uma tentativa de
+ * fazer dela uma "forma simples" deste componente, e mesmo enxuta ficava informação
+ * demais: a régua de "enxuto" era a do Editor. Foi desfeita a pedido de quem usa.
  */
-export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | "editor" }) {
-  const simples = modo === "simples";
+export default function EditorDeVideo() {
   const c = useConta();
   const { user, token } = c;
   // O idioma vale pras palavras que entram DENTRO do vídeo -- "3 quartos", "Preço",
@@ -362,19 +347,8 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   /** Qual texto do palco está aberto pra digitar. `null` = nenhum; `-1` = a legenda. */
   const [editando, setEditando] = useState<{ chave: string; indice: number } | null>(null);
   const [editandoTitulo, setEditandoTitulo] = useState(false);
-  /**
-   * Se o painel desta aba aparece agora.
-   *
-   * No Editor é um de cada vez, escolhido na trilha -- e são todos.
-   *
-   * Na página de vídeo é o CAMINHO RÁPIDO: escolher as fotos, pegar um modelo, o som, o
-   * formato, gerar. Só isso. Texto por cena, legenda, transição, apresentador, cor e kit
-   * de marca ficam no Editor, e a página oferece a porta pra lá.
-   *
-   * Empilhar as onze abas aqui seria transformar a página rápida no editor com outra
-   * roupa -- e aí não existiria mais caminho rápido, que é justamente o que ela é.
-   */
-  const mostrarAba = (id: AbaId) => (simples ? ABAS_RAPIDAS.includes(id) : aba === id);
+  /** Se o painel desta aba aparece agora: um de cada vez, escolhido na trilha. */
+  const mostrarAba = (id: AbaId) => aba === id;
   /** Onde o cabeçote está, em segundos. É o que o palco mostra. */
   const [tempo, setTempo] = useState(0);
   const [tocando, setTocando] = useState(false);
@@ -1437,20 +1411,15 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
 
-  // ---------- O EDITOR É UM APLICATIVO; A PÁGINA DE VÍDEO É UMA PÁGINA ----------
+  // ---------- O EDITOR É UM APLICATIVO, NÃO UMA PÁGINA ----------
   //
-  // No modo "editor": tela inteira, sem o cabeçalho nem o menu do site. Não é enfeite --
-  // numa página do site sobravam 300px de altura pro palco depois do menu, do título e
-  // das margens, e a linha do tempo caía abaixo da dobra. A pessoa abria o editor e via
-  // um retângulo preto sem nenhuma ferramenta à vista. A saída é pela seta no canto.
-  //
-  // No modo "simples": a mesma coisa dentro do site, empilhada numa coluna, com o menu
-  // em volta. É a página de vídeo de sempre -- e continua sendo o caminho de quem só
-  // quer o vídeo.
-  const corpo = (
-    <div className={simples ? "mt-4 flex flex-col gap-4" : "editor-escuro fixed inset-0 z-30 flex flex-col"}>
+  // Tela inteira, sem o cabeçalho nem o menu do site. Não é enfeite: numa página do site
+  // sobravam 300px de altura pro palco depois do menu, do título e das margens, e a linha
+  // do tempo caía abaixo da dobra. A pessoa abria o editor e via um retângulo preto sem
+  // nenhuma ferramenta à vista. A saída é pela seta no canto.
+  return (
+    <div className="editor-escuro fixed inset-0 z-30 flex flex-col">
       {/* ---------- barra do editor ---------- */}
-      {!simples && (
       <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-3 py-2">
         <Link href="/editor" title="Sair do editor" className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100">
           <Icone nome="cima" className="h-4 w-4 -rotate-90" />
@@ -1468,12 +1437,10 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
           {gerando ? progresso?.mensagem ?? "Gerando…" : "Gerar vídeo"}
         </Botao>
       </header>
-      )}
 
       {/* ---------- miolo: trilha · painel · palco ---------- */}
-      <div className={simples ? "flex flex-col gap-4" : "flex min-h-0 flex-1 flex-col md:flex-row"}>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ---------- trilha de ferramentas ---------- */}
-        {!simples && (
         <nav className="order-2 flex shrink-0 gap-1 overflow-x-auto border-neutral-200 px-2 py-1 md:order-1 md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:px-1 md:py-2">
           {ABAS.map((a) => {
             const ativa = aba === a.id;
@@ -1495,16 +1462,9 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
             );
           })}
         </nav>
-        )}
 
         {/* ---------- painel da aba ---------- */}
-        <div
-          className={
-            simples
-              ? "order-3 flex flex-col gap-4"
-              : "order-3 flex flex-col gap-3 overflow-y-auto border-neutral-200 p-3 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px]"
-          }
-        >
+        <div className="order-3 flex flex-col gap-3 overflow-y-auto border-neutral-200 p-3 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px]">
           {mostrarAba("midia") && (
           <Cartao>
             <Rotulo>Mídia</Rotulo>
@@ -2326,7 +2286,7 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
         </div>
 
         {/* ---------- palco e painel da cena ---------- */}
-        <section className={simples ? "order-1 flex min-w-0 flex-col gap-4" : "palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:order-3"}>
+        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:order-3">
       {erro && (
         <div className="mx-auto w-full max-w-2xl text-sm">
           <Aviso tipo="erro">{erro}</Aviso>
@@ -2731,11 +2691,7 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                      digitar "Lançamento" nem pra escrever de novo um preço que já está
                      no cadastro. Três posições e três estilos, porque posição livre num
                      vídeo de celular quase sempre sai torta.
-
-                     Só no Editor: na página rápida, a legenda acima já resolve o caso
-                     comum, e três textos com estilo e animação por cena é exatamente o
-                     ajuste fino que faz a pessoa querer a bancada. */}
-                {!simples && (
+ */}
                 <div className="rounded-lg bg-neutral-50 p-2.5">
                   <p className="text-xs font-medium text-neutral-600">Textos nesta cena</p>
 
@@ -2809,9 +2765,8 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                     <p className="mt-2 text-[11px] text-neutral-500">Três textos já é o limite desta cena.</p>
                   )}
                 </div>
-                )}
 
-                {!simples && indiceAtual < cenas.length - 1 && (
+                {indiceAtual < cenas.length - 1 && (
                   <div>
                     <p className="text-xs text-neutral-500">Emenda com a cena {indiceAtual + 2}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
@@ -2830,7 +2785,7 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
           {(cenas.length === 0 || gerando || semSaldo || custo === 0) && (
           <Cartao>
             {cenas.length === 0 && !gerando && (
-              <p className="text-center text-xs text-neutral-500">Escolha as fotos em Mídia{simples ? "" : ", na trilha da esquerda"}. O resto já vem pronto.</p>
+              <p className="text-center text-xs text-neutral-500">Escolha as fotos em Mídia, na trilha da esquerda. O resto já vem pronto.</p>
             )}
             {custo === 0 && !gerando && cenas.length > 0 && (
               <p className="text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e voz de IA ({CREDITOS.narracao}).</p>
@@ -2899,54 +2854,5 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
           palco ele seria cortado pelo `overflow-hidden` do quadro. */}
       <MenuContexto aberto={menu.aberto} aoFechar={menu.fechar} />
     </div>
-  );
-
-  if (!simples) return corpo;
-
-  // ---------- a página de vídeo, dentro do site ----------
-  //
-  // O cabeçalho aqui faz o que a barra do editor faz lá: diz o que se está montando,
-  // quanto vai custar e oferece o botão de gerar. E oferece a porta pro Editor, que é
-  // a MESMA edição em tela cheia -- o estado vive no componente, então quem passar pra
-  // lá continua de onde parou.
-  return (
-    <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold">Vídeos</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            {cenas.length
-              ? `${cenas.length} ${cenas.length === 1 ? "cena" : "cenas"} · ≈ ${Math.round(duracao)} s · ${custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}`
-              : "As fotos do imóvel viram vídeo com movimento de câmera, música e a sua marca."}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Link
-            href="/editor/video"
-            title="A mesma edição em tela cheia, com trilha de ferramentas e linha do tempo"
-            className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-sm hover:border-neutral-400"
-          >
-            <Icone nome="magica" className="h-4 w-4" />
-            Abrir no Editor
-          </Link>
-          <Botao onClick={() => gerar()} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0}>
-            <Icone nome="play" className="h-4 w-4" />
-            {gerando ? progresso?.mensagem ?? "Gerando…" : "Gerar vídeo"}
-          </Botao>
-        </div>
-      </div>
-      {corpo}
-
-      {/* O que NÃO está aqui, e onde está. Dito uma vez, no fim, em vez de um "só no
-          Editor" repetido em cada controle que falta -- que seria propaganda dentro da
-          ferramenta. */}
-      <p className="mt-4 text-center text-xs text-neutral-500">
-        Quer mexer mais? Texto por cena, legenda, transição, você no vídeo, cor e kit de marca estão no{" "}
-        <Link href="/editor/video" className="text-marca-indigo underline">
-          Editor
-        </Link>
-        , com linha do tempo e as ferramentas de corte.
-      </p>
-    </AppShell>
   );
 }
