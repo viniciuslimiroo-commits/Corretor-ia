@@ -32,6 +32,7 @@ import {
   duracaoEstimada,
   ehTransicao,
   textosDaCena,
+  gradeDaCena,
   temVideoCorrendo,
   vozDeIA,
   type AnimacaoId,
@@ -65,6 +66,9 @@ import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
 import GaleriaElementos from "@/components/editor/galeria-elementos";
+import PainelFiltros, { type EscopoCor } from "@/components/editor/painel-filtros";
+import FotoComCor from "@/components/editor/foto-com-cor";
+import { AJUSTES_NEUTROS, type Ajustes } from "@/lib/filtros";
 import { COR_ELEMENTO_PADRAO, type IconeFicha } from "@/lib/elementos";
 import { lerLegenda } from "@/lib/legenda-arquivo";
 import Compartilhar from "@/components/compartilhar";
@@ -102,6 +106,10 @@ type CenaUI = {
   elementos?: ElementoCena[];
   /** Acabamento de cor desta cena. Ausente = o do vídeo. */
   filtro?: FiltroId;
+  /** Quanto do filtro desta cena entra (0 a 1). */
+  intensidade?: number;
+  /** Ajustes finos desta cena. Ausente = os do vídeo. */
+  ajustes?: Partial<Ajustes>;
   /** Correção de luz, de -0.25 a 0.25. */
   luz?: number;
   /** Clipe: de que segundo do arquivo esta cena começa. */
@@ -209,6 +217,8 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     duracao: c.duracao ?? LIMITES.duracaoPadrao,
     melhorar: c.melhorar ?? false,
     filtro: c.filtro,
+    intensidade: c.intensidade,
+    ajustes: c.ajustes,
     luz: c.luz,
     inicio: c.inicio,
     giro: c.giro,
@@ -240,7 +250,7 @@ const ABAS = [
   { id: "legendas", rotulo: "Legendas", icone: "compartilhar", dica: "Narração e legenda automática" },
   { id: "transicoes", rotulo: "Transições", icone: "converter_hd", dica: "Como uma cena vira a outra" },
   { id: "voce", rotulo: "Você", icone: "equipe", dica: "Você no vídeo: aparecendo, ou só a sua voz" },
-  { id: "cor", rotulo: "Cor", icone: "magica", dica: "Acabamento de cor e luz" },
+  { id: "cor", rotulo: "Filtros", icone: "magica", dica: "Filtros e ajustes de luz e cor, vendo na foto" },
   { id: "formato", rotulo: "Formato", icone: "planta", dica: "Reels, feed, quadrado ou horizontal" },
   { id: "marca", rotulo: "Marca", icone: "marca", dica: "Logo, cor e contato que entram no vídeo" },
   { id: "videos", rotulo: "Vídeos", icone: "historico", dica: "Os vídeos que você já fez" },
@@ -259,6 +269,7 @@ const ABAS_RAPIDAS: AbaId[] = ["midia", "modelos", "audio", "legendas", "formato
 
 /** A proporção de cada formato, pro palco mostrar o quadro certo. */
 const PROPORCAO: Record<FormatoId, string> = { "9:16": "9 / 16", "16:9": "16 / 9", "1:1": "1 / 1", "4:5": "4 / 5" };
+const PROPORCAO_NUM: Record<FormatoId, number> = { "9:16": 9 / 16, "16:9": 16 / 9, "1:1": 1, "4:5": 4 / 5 };
 
 function dataCurta(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -295,6 +306,10 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   /** Acabamento de cor do vídeo inteiro. Cada cena pode sair da linha no painel dela. */
   const [filtro, setFiltro] = useState<FiltroId>("natural");
+  const [intensidadeFiltro, setIntensidadeFiltro] = useState(1);
+  const [ajustesVideo, setAjustesVideo] = useState<Partial<Ajustes> | undefined>(undefined);
+  /** A aba Filtros mexe no vídeo inteiro ou só na cena aberta. */
+  const [escopoCor, setEscopoCor] = useState<EscopoCor>("video");
   /** Capa com o nome e o preço escritos por cima do quadro. */
   const [capaMontada, setCapaMontada] = useState(true);
   const [titulo, setTitulo] = useState("");
@@ -425,7 +440,7 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, elementos: s.elementos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, luz: s.luz, giro: s.giro, espelho: s.espelho, velocidade: s.velocidade, congelar: s.congelar })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, elementos: s.elementos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, intensidade: s.intensidade, ajustes: s.ajustes, luz: s.luz, giro: s.giro, espelho: s.espelho, velocidade: s.velocidade, congelar: s.congelar })),
       musica,
       musicaVolume,
       // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
@@ -449,10 +464,12 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
       legendas,
       apresentador,
       filtro,
+      intensidadeFiltro: filtro !== "natural" && intensidadeFiltro < 1 ? intensidadeFiltro : undefined,
+      ajustes: ajustesVideo,
       capaMontada,
       efeitoSonoro,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, capaMontada, efeitoSonoro]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, intensidadeFiltro, ajustesVideo, capaMontada, efeitoSonoro]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
@@ -1103,6 +1120,8 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
       setLegendas(e.legendas ?? null);
       setApresentador(e.apresentador ?? null);
       setFiltro(e.filtro ?? "natural");
+      setIntensidadeFiltro(e.intensidadeFiltro ?? 1);
+      setAjustesVideo(e.ajustes);
       setCapaMontada(e.capaMontada !== false);
       setEfeitoSonoro(e.efeitoSonoro ?? "nenhum");
       setApreUrl(dd.edicao?.apresentadorUrl ?? null);
@@ -1132,6 +1151,8 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
     setLegendas(null);
     setApresentador(null);
     setFiltro("natural");
+    setIntensidadeFiltro(1);
+    setAjustesVideo(undefined);
     setCapaMontada(true);
     setEfeitoSonoro("nenhum");
     setApreUrl(null);
@@ -2137,39 +2158,55 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
 
           {mostrarAba("cor") && (
           <Cartao>
-            <Rotulo>Cor do vídeo</Rotulo>
-            <p className="-mt-1 mb-3 text-xs text-neutral-500">
-              O acabamento vale pro vídeo inteiro. Uma cena pode sair da linha no painel dela.
-            </p>
-            {/* A prévia mostra o filtro NA FOTO da cena aberta, não num quadradinho de
-                cor: "Cinema" só quer dizer alguma coisa aplicado à sala que a pessoa
-                está editando. O CSS é a aproximação do que o ffmpeg vai fazer -- não é a
-                mesma conta, mas é o bastante pra escolher sem gerar o vídeo. */}
-            <div className="grid grid-cols-3 gap-1.5">
-              {FILTROS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setFiltro(f.id)}
-                  disabled={gerando}
-                  title={f.dica}
-                  className={
-                    "overflow-hidden rounded-lg border-2 text-left transition disabled:opacity-40 " +
-                    (filtro === f.id ? "border-marca-coral" : "border-transparent hover:border-neutral-400")
-                  }
-                >
-                  <span className="block aspect-[4/3] overflow-hidden bg-neutral-800">
-                    {cenaAtual?.miniatura ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={cenaAtual.miniatura} alt="" className="h-full w-full object-cover" style={{ filter: f.css }} draggable={false} />
-                    ) : (
-                      <span className="grid h-full place-items-center text-[10px] text-neutral-500">sem foto</span>
-                    )}
-                  </span>
-                  <span className={"block truncate px-1 py-1 text-[11px] " + (filtro === f.id ? "text-marca-indigo" : "text-neutral-600")}>{f.rotulo}</span>
-                </button>
-              ))}
-            </div>
+            <Rotulo>Filtros</Rotulo>
+            {/* A miniatura de cada filtro é a FOTO da cena aberta passando pela mesma
+                tabela de cor que vira LUT no servidor -- não um CSS parecido. O que se
+                escolhe olhando é o que sai no vídeo. */}
+            {(() => {
+              const naCena = escopoCor === "cena" && !!cenaAtual;
+              const cenaTemCor = !!cenaAtual && (!!cenaAtual.filtro || !!cenaAtual.ajustes);
+              const filtroAtual = naCena ? cenaAtual!.filtro ?? filtro : filtro;
+              const intensidadeAtual = naCena ? (cenaAtual!.filtro ? cenaAtual!.intensidade ?? 1 : intensidadeFiltro) : intensidadeFiltro;
+              const ajustesAtuais: Ajustes = { ...AJUSTES_NEUTROS, ...(naCena ? cenaAtual!.ajustes ?? ajustesVideo : ajustesVideo) };
+              return (
+                <PainelFiltros
+                  foto={cenaAtual?.miniatura ?? null}
+                  escopo={escopoCor}
+                  temCena={!!cenaAtual}
+                  cenaTemCorPropria={cenaTemCor}
+                  filtro={filtroAtual}
+                  intensidade={intensidadeAtual}
+                  ajustes={ajustesAtuais}
+                  desligado={gerando}
+                  aoEscopo={setEscopoCor}
+                  aoFiltro={(id) => {
+                    if (naCena) mudarCena(cenaAtual!.chave, { filtro: id, intensidade: 1 });
+                    else {
+                      setFiltro(id);
+                      setIntensidadeFiltro(1);
+                    }
+                  }}
+                  aoIntensidade={(v) => {
+                    // Mexer na intensidade da cena sem filtro próprio cria o filtro próprio
+                    // com o do vídeo: senão o controle andaria e nada mudaria.
+                    if (naCena) mudarCena(cenaAtual!.chave, { filtro: cenaAtual!.filtro ?? filtro, intensidade: v });
+                    else setIntensidadeFiltro(v);
+                  }}
+                  aoAjuste={(k, v) => {
+                    const novo = { ...ajustesAtuais, [k]: v };
+                    const limpo = Object.fromEntries(Object.entries(novo).filter(([, x]) => x)) as Partial<Ajustes>;
+                    const valor = Object.keys(limpo).length ? limpo : undefined;
+                    if (naCena) mudarCena(cenaAtual!.chave, { ajustes: valor ?? {} });
+                    else setAjustesVideo(valor);
+                  }}
+                  aoZerar={() => {
+                    if (naCena) mudarCena(cenaAtual!.chave, { ajustes: {} });
+                    else setAjustesVideo(undefined);
+                  }}
+                  aoVoltarProVideo={() => cenaAtual && mudarCena(cenaAtual.chave, { filtro: undefined, intensidade: undefined, ajustes: undefined, luz: undefined })}
+                />
+              );
+            })()}
           </Cartao>
           )}
 
@@ -2381,8 +2418,16 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                 onContextMenu={cenaAtual ? (ev) => abrirMenuDaCena(ev, cenaAtual) : undefined}
               >
                 {cenaAtual?.miniatura ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cenaAtual.miniatura} alt="" className="h-full w-full object-cover" />
+                  // O palco mostra a foto COM a cor que vai sair: filtro, intensidade,
+                  // ajustes e vinheta, na mesma conta do servidor. Antes o palco mostrava
+                  // a foto crua e o filtro só existia na miniatura da aba.
+                  <FotoComCor
+                    src={cenaAtual.miniatura}
+                    grade={gradeDaCena(cenaAtual, { filtro, intensidadeFiltro, ajustes: ajustesVideo })}
+                    proporcao={PROPORCAO_NUM[formato]}
+                    lado={640}
+                    className="h-full w-full"
+                  />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-neutral-500">
                     <Icone nome={cenaAtual ? "video" : "foto"} className="h-9 w-9" />

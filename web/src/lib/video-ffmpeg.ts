@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
-import { ESTILO_TEXTO_POR_ID, FILTRO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type FiltroId, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
+import { anguloDaVinheta } from "./filtros";
+import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -442,7 +443,7 @@ function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string
 }
 
 /**
- * O acabamento de cor da cena: o filtro com nome, mais a correção de luz.
+ * O acabamento de cor da cena: o filtro, os ajustes e a vinheta.
  *
  * Vem ANTES dos textos na cadeia, sempre. Texto é peça gráfica: escurecer a cena não pode
  * escurecer o preço junto, senão "Claro e limpo" deixa a faixa branca cinza.
@@ -450,10 +451,21 @@ function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string
  * Devolve lista, nunca string com vírgula -- quem emenda isso numa string de filtro com
  * `join(",")` no lugar certo não erra; quem cola à mão erra.
  */
-export function filtrosDeImagem(filtro: FiltroId | undefined, luz: number | undefined): string[] {
-  const lista = [...(FILTRO_POR_ID[filtro ?? "natural"]?.ffmpeg ?? [])];
-  const l = Number(luz ?? 0);
-  if (Number.isFinite(l) && Math.abs(l) > 0.005) lista.push(`eq=brightness=${Math.max(-0.4, Math.min(0.4, l)).toFixed(2)}`);
+/**
+ * A cor de uma cena, já PREPARADA pelo pipeline: o arquivo da LUT escrito em disco e a
+ * força da vinheta. Construtor de comando não escreve arquivo -- recebe o caminho pronto.
+ */
+export type CorDaCena = { lut?: string; vinheta?: number };
+
+/**
+ * O filtro e os ajustes viram DOIS filtros do ffmpeg: `lut3d` (a função de cor inteira,
+ * amostrada em 33³ pontos) e `vignette` (a borda escura, que é espacial e não cabe numa
+ * LUT). A conta dos dois é a mesma que a miniatura faz no navegador -- ver filtros.ts.
+ */
+export function filtrosDeImagem(cor?: CorDaCena): string[] {
+  const lista: string[] = [];
+  if (cor?.lut) lista.push(`lut3d=file='${caminhoParaFiltro(cor.lut)}':interp=tetrahedral`);
+  if (cor?.vinheta && cor.vinheta > 0) lista.push(`vignette=angle=${anguloDaVinheta(cor.vinheta).toFixed(4)}`);
   return lista;
 }
 
@@ -467,8 +479,7 @@ export function argsCenaFoto(o: {
   efeito: EfeitoId;
   textos?: TextoCena[];
   topoOcupado?: boolean;
-  filtro?: FiltroId;
-  luz?: number;
+  cor?: CorDaCena;
   giro?: number;
   espelho?: boolean;
   /** Artes de texto já rasterizadas pelo pipeline. Entram como IMAGEM, não como letra. */
@@ -477,7 +488,7 @@ export function argsCenaFoto(o: {
   pecas?: PecaNaCena[];
 }): string[] {
   const frames = Math.round(o.duracao * FPS);
-  const filtros = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
+  const filtros = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.cor), "format=yuv420p"];
   // Só os textos SEM arte passam pelo drawtext; os com arte entram como sobreposição.
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
   const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 1);
@@ -496,13 +507,13 @@ export function argsCenaFoto(o: {
  * Antes e depois: mostra a original, uma cortina passa da esquerda pra direita e fica
  * o resultado. As duas ficam paradas de propósito -- o movimento é a cortina.
  */
-export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
+export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
   const trans = 1.4;
   const cada = (o.duracao + trans) / 2;
   const offset = cada - trans;
   // O acabamento vale pras DUAS: comparar antes e depois com cores diferentes seria
   // vender a correção de cor como se fosse a reforma.
-  const base = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"].join(",");
+  const base = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.cor), "format=yuv420p"].join(",");
   const rotA = pill({ texto: "Antes", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0x111111" });
   const rotB = pill({ texto: "Depois", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0xf06b4f" });
   // Os textos entram DEPOIS da limpeza entre as duas fotos, senão o "Antes"/"Depois"
@@ -524,12 +535,12 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
   // Velocidade é `setpts`, e vem ANTES do `fps`: primeiro os carimbos de tempo mudam,
   // depois o ffmpeg reamostra pra taxa fixa. Na ordem inversa o vídeo fica aos trancos,
   // porque a reamostragem acontece contra um relógio que ainda vai mudar.
   const vel = Math.min(2, Math.max(0.5, o.velocidade ?? 1));
-  const filtros = [...(vel !== 1 ? [`setpts=PTS/${vel}`] : []), `fps=${FPS}`, ...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
+  const filtros = [...(vel !== 1 ? [`setpts=PTS/${vel}`] : []), `fps=${FPS}`, ...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.cor), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
@@ -574,8 +585,7 @@ export function argsCena360(o: {
   movimento: Movimento360Id;
   textos?: TextoCena[];
   topoOcupado?: boolean;
-  filtro?: FiltroId;
-  luz?: number;
+  cor?: CorDaCena;
   /** "equirect" (câmera 360) ou "panoramica" (modo panorâmico do celular). */
   projecao?: Projecao360;
   /** Tamanho da imagem de entrada: só usado pra calcular o campo de visão da panorâmica. */
@@ -644,7 +654,7 @@ export function argsCena360(o: {
     `sendcmd=f='${caminhoParaFiltro(arquivoCmd)}'`,
     `v360=${entradaFiltro}:output=flat:h_fov=${preset.fov[0].toFixed(2)}:v_fov=${vFov.toFixed(2)}:w=${wi}:h=${hi}:interp=line`,
     `scale=${o.W}:${o.H}:flags=lanczos`,
-    ...filtrosDeImagem(o.filtro, o.luz),
+    ...filtrosDeImagem(o.cor),
     "format=yuv420p",
   ];
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));

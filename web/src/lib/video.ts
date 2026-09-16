@@ -11,6 +11,7 @@
 
 
 import { MODELOS_ARTE } from "./texto-arte";
+import { AJUSTES_NEUTROS, ehFiltro as filtroValido, limparAjustes, type Ajustes as AjustesCor, type FiltroId as IdFiltro, type Grade as GradeCor } from "./filtros";
 import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "./elementos";
 
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
@@ -302,42 +303,12 @@ export const SELOS_IMOVEL: { id: string; texto: string; estilo: EstiloTexto; pos
   { id: "whats", texto: "Chame no WhatsApp", estilo: "faixa", posicao: "base" },
 ];
 
-export type FiltroId = "natural" | "claro" | "quente" | "sobrio" | "cinema" | "pb";
-
-/**
- * Os filtros de imagem, como ACABAMENTOS e não como controles.
- *
- * Ninguém abre um editor de imóvel pra girar matiz e saturação: abre pra deixar a sala
- * clara. Então o que a tela oferece é o resultado com nome -- "Claro e limpo", que é
- * literalmente o que toda foto de anúncio recebe -- e um controle de luz pra corrigir a
- * foto que nasceu escura. Os números ficam aqui.
- *
- * `ffmpeg` é uma LISTA de filtros já separados, não uma string com vírgula: dentro de um
- * `-filter_complex` a vírgula separa filtros, e emendar essas strings à mão é como se
- * criam os erros de escape mais caros deste arquivo.
- */
-/**
- * O acabamento de cor, com o equivalente em CSS ao lado.
- *
- * O `css` existe pra a PRÉVIA mostrar o filtro na foto de verdade da cena. Um quadradinho
- * de cor ao lado do nome não diz nada: "Cinema" só quer dizer alguma coisa aplicado à
- * sala que a pessoa está editando. Não é a mesma conta do ffmpeg -- é a aproximação mais
- * próxima que o navegador sabe fazer, e é o bastante pra escolher.
- */
-export const FILTROS: { id: FiltroId; rotulo: string; dica: string; ffmpeg: string[]; css: string }[] = [
-  { id: "natural", rotulo: "Natural", dica: "A imagem como ela é.", ffmpeg: [], css: "none" },
-  { id: "claro", rotulo: "Claro e limpo", dica: "Mais luz e contraste. É o acabamento de anúncio de imóvel.", ffmpeg: ["eq=brightness=0.05:contrast=1.12:saturation=1.06"], css: "brightness(1.06) contrast(1.12) saturate(1.06)" },
-  { id: "quente", rotulo: "Aconchegante", dica: "Puxa pro dourado: sala de estar, fim de tarde.", ffmpeg: ["colorbalance=rs=0.08:bs=-0.05:rm=0.10:bm=-0.09:rh=0.05:bh=-0.05", "eq=saturation=1.12"], css: "sepia(0.22) saturate(1.2) hue-rotate(-8deg)" },
-  { id: "sobrio", rotulo: "Sóbrio", dica: "Puxa pro azul: comercial, moderno, alto padrão.", ffmpeg: ["colorbalance=rs=-0.04:bs=0.08:rm=-0.09:bm=0.12:rh=-0.04:bh=0.05", "eq=contrast=1.08:saturation=0.98"], css: "contrast(1.08) saturate(0.95) hue-rotate(8deg)" },
-  { id: "cinema", rotulo: "Cinema", dica: "Sombra azulada, luz quente, contraste alto.", ffmpeg: ["colorbalance=bs=0.09:rh=0.06:bh=-0.03", "eq=contrast=1.18:saturation=0.95"], css: "contrast(1.18) saturate(0.92) hue-rotate(4deg)" },
-  { id: "pb", rotulo: "Preto e branco", dica: "Sem cor. Vai bem em fachada e detalhe de arquitetura.", ffmpeg: ["hue=s=0", "eq=contrast=1.12"], css: "grayscale(1) contrast(1.12)" },
-];
-
-export const FILTRO_POR_ID = Object.fromEntries(FILTROS.map((f) => [f.id, f])) as Record<FiltroId, (typeof FILTROS)[number]>;
-
-export function ehFiltro(v: unknown): FiltroId {
-  return typeof v === "string" && v in FILTRO_POR_ID ? (v as FiltroId) : "natural";
-}
+// Os filtros moraram pra filtros.ts: lá cada filtro é uma função de cor que a tela e o
+// servidor usam IGUAL. Os nomes continuam exportados daqui porque o resto do produto já
+// importava de "./video", e trocar vinte imports por uma mudança de endereço não
+// compra nada.
+export type { FiltroId, Ajustes, Grade } from "./filtros";
+export { MODELOS_FILTRO as FILTROS, FILTRO_POR_ID, ehFiltro } from "./filtros";
 
 /**
  * MODELOS DE TEXTO: a frase pronta, já com o acabamento certo.
@@ -449,7 +420,11 @@ export type Cena = {
   /** A emenda DESTA cena pra próxima. Ausente = a do vídeo. */
   transicao?: TransicaoId;
   /** Acabamento de cor DESTA cena. Ausente = o do vídeo. */
-  filtro?: FiltroId;
+  filtro?: IdFiltro;
+  /** Quanto do filtro da cena entra, 0 a 1. Só vale quando a cena tem filtro próprio. */
+  intensidade?: number;
+  /** Ajustes finos DESTA cena. Ausente = os do vídeo. */
+  ajustes?: Partial<AjustesCor>;
   /** Correção de luz, de -0.25 (escurece) a 0.25 (clareia). Ausente = 0. */
   luz?: number;
   /** Giro da imagem, no sentido do relógio: 0, 90, 180 ou 270. */
@@ -517,9 +492,23 @@ export function temVideoCorrendo(tipo: TipoCena): boolean {
   return tipo === "clipe" || tipo === "animada";
 }
 
-/** O acabamento que vale pra cena: o dela, ou o do vídeo. Mesma regra da transição. */
-export function filtroDaCena(c: Pick<Cena, "filtro">, doVideo: FiltroId | undefined): FiltroId {
-  return c.filtro ? ehFiltro(c.filtro) : ehFiltro(doVideo);
+/**
+ * A cor que vale pra cena: filtro e intensidade DELA ou do vídeo, e ajustes dela ou do
+ * vídeo. Mesma regra da transição -- a cena só sai da linha quando a pessoa quer.
+ *
+ * A `luz` antiga (−0,25 a +0,25, somava brilho) continua valendo como exposição, pra um
+ * vídeo feito antes dos Ajustes reabrir com a mesma luz.
+ */
+export function gradeDaCena(
+  c: Pick<Cena, "filtro" | "intensidade" | "ajustes" | "luz">,
+  e: Pick<EspecVideo, "filtro" | "intensidadeFiltro" | "ajustes">
+): GradeCor {
+  const daCena = !!c.filtro;
+  const filtro = filtroValido(daCena ? c.filtro : e.filtro);
+  const intensidade = Math.min(1, Math.max(0, (daCena ? c.intensidade : e.intensidadeFiltro) ?? 1));
+  const ajustes = { ...AJUSTES_NEUTROS, ...(c.ajustes ?? e.ajustes ?? {}) };
+  if (c.luz) ajustes.exposicao = Math.max(-1, Math.min(1, ajustes.exposicao + c.luz * 2));
+  return { filtro, intensidade, ajustes };
 }
 
 export type MusicaId =
@@ -743,7 +732,12 @@ export type EspecVideo = {
   efeitoSonoro?: EfeitoSonoroId;
   /** Você aparecendo por cima do vídeo. */
   apresentador?: Apresentador | null;
-  filtro?: FiltroId;
+  /** Filtro do vídeo inteiro. Uma cena pode ter o dela. */
+  filtro?: IdFiltro;
+  /** Quanto do filtro do vídeo entra, 0 a 1. Ausente = inteiro. */
+  intensidadeFiltro?: number;
+  /** Ajustes finos do vídeo inteiro (exposição, contraste, temperatura...). */
+  ajustes?: Partial<AjustesCor>;
   /** Capa com o nome e o preço escritos por cima. Ausente = sim, quando há o que escrever. */
   capaMontada?: boolean;
 };
@@ -851,6 +845,13 @@ export function duracaoEstimada(e: Pick<EspecVideo, "cenas" | "telaFinal" | "tra
 }
 
 const ehId = <T extends string>(lista: { id: T }[], v: unknown): v is T => typeof v === "string" && lista.some((x) => x.id === v);
+
+/** Número dentro da faixa, arredondado a centésimo. Fora, torto ou ausente: nada. */
+function numeroEntre(v: unknown, min: number, max: number): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(Math.min(max, Math.max(min, n)) * 100) / 100 : undefined;
+}
 
 function texto(v: unknown, max: number): string {
   return typeof v === "string" ? v.replace(/[\r\n\t]+/g, " ").trim().slice(0, max) : "";
@@ -1061,7 +1062,9 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       melhorar: tipo === "clipe" ? c.melhorar === true : undefined,
       // Ausente = herda o do vídeo. `natural` explícito na cena é uma escolha: "esta
       // cena NÃO leva o acabamento das outras".
-      filtro: c.filtro === undefined || c.filtro === null ? undefined : ehFiltro(c.filtro),
+      filtro: c.filtro === undefined || c.filtro === null || c.filtro === "" ? undefined : filtroValido(c.filtro),
+      intensidade: numeroEntre(c.intensidade, 0, 1),
+      ajustes: limparAjustes(c.ajustes),
       luz: Number.isFinite(luzNum) && Math.abs(luzNum) > 0.005 ? Math.min(LIMITES.luzMax, Math.max(-LIMITES.luzMax, Math.round(luzNum * 100) / 100)) : undefined,
       // 360 fica de fora do giro: a imagem é uma esfera aberta em retângulo, girar o
       // retângulo não gira a câmera -- deita o mundo. O movimento da câmera é o campo
@@ -1119,7 +1122,9 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       capa,
       legendas: limparLegendas(b.legendas),
       apresentador: limparApresentador(b.apresentador),
-      filtro: ehFiltro(b.filtro),
+      filtro: filtroValido(b.filtro),
+      intensidadeFiltro: numeroEntre(b.intensidadeFiltro, 0, 1),
+      ajustes: limparAjustes(b.ajustes),
       capaMontada: b.capaMontada !== false,
       efeitoSonoro: EFEITOS_SONOROS.some((e) => e.id === b.efeitoSonoro) ? (b.efeitoSonoro as EfeitoSonoroId) : "nenhum",
     },
