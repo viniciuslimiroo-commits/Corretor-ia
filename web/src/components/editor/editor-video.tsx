@@ -241,6 +241,15 @@ const ABAS = [
 
 type AbaId = (typeof ABAS)[number]["id"];
 
+/**
+ * O que cabe no caminho rápido da página de vídeo.
+ *
+ * A régua: entra o que TODO vídeo precisa (as fotos, o ritmo, o som, o formato) e o que
+ * mostra o que já foi feito. Fica de fora o que é ajuste fino -- e ajuste fino é o
+ * motivo de o Editor existir.
+ */
+const ABAS_RAPIDAS: AbaId[] = ["midia", "modelos", "audio", "legendas", "formato", "marca", "videos"];
+
 /** A proporção de cada formato, pro palco mostrar o quadro certo. */
 const PROPORCAO: Record<FormatoId, string> = { "9:16": "9 / 16", "16:9": "16 / 9", "1:1": "1 / 1", "4:5": "4 / 5" };
 
@@ -333,11 +342,16 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   /**
    * Se o painel desta aba aparece agora.
    *
-   * No Editor é um de cada vez, escolhido na trilha. Na página simples é TUDO, empilhado
-   * numa coluna -- que é exatamente o que a página de vídeo sempre foi. A mesma marcação
-   * serve às duas, então nenhum controle existe só numa.
+   * No Editor é um de cada vez, escolhido na trilha -- e são todos.
+   *
+   * Na página de vídeo é o CAMINHO RÁPIDO: escolher as fotos, pegar um modelo, o som, o
+   * formato, gerar. Só isso. Texto por cena, legenda, transição, apresentador, cor e kit
+   * de marca ficam no Editor, e a página oferece a porta pra lá.
+   *
+   * Empilhar as onze abas aqui seria transformar a página rápida no editor com outra
+   * roupa -- e aí não existiria mais caminho rápido, que é justamente o que ela é.
    */
-  const mostrarAba = (id: AbaId) => simples || aba === id;
+  const mostrarAba = (id: AbaId) => (simples ? ABAS_RAPIDAS.includes(id) : aba === id);
   /** Onde o cabeçote está, em segundos. É o que o palco mostra. */
   const [tempo, setTempo] = useState(0);
   const [tocando, setTocando] = useState(false);
@@ -1520,7 +1534,7 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
 
           {mostrarAba("audio") && (
           <Cartao>
-            <Rotulo>Música e transição</Rotulo>
+            <Rotulo>Música</Rotulo>
             <BibliotecaAudio
               escolhida={musica}
               aoEscolher={setMusica}
@@ -2581,7 +2595,12 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                      Etiquetas prontas e as PEÇAS do imóvel: ninguém abre um editor pra
                      digitar "Lançamento" nem pra escrever de novo um preço que já está
                      no cadastro. Três posições e três estilos, porque posição livre num
-                     vídeo de celular quase sempre sai torta. */}
+                     vídeo de celular quase sempre sai torta.
+
+                     Só no Editor: na página rápida, a legenda acima já resolve o caso
+                     comum, e três textos com estilo e animação por cena é exatamente o
+                     ajuste fino que faz a pessoa querer a bancada. */}
+                {!simples && (
                 <div className="rounded-lg bg-neutral-50 p-2.5">
                   <p className="text-xs font-medium text-neutral-600">Textos nesta cena</p>
 
@@ -2655,8 +2674,9 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                     <p className="mt-2 text-[11px] text-neutral-500">Três textos já é o limite desta cena.</p>
                   )}
                 </div>
+                )}
 
-                {indiceAtual < cenas.length - 1 && (
+                {!simples && indiceAtual < cenas.length - 1 && (
                   <div>
                     <p className="text-xs text-neutral-500">Emenda com a cena {indiceAtual + 2}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
@@ -2781,6 +2801,17 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
         </div>
       </div>
       {corpo}
+
+      {/* O que NÃO está aqui, e onde está. Dito uma vez, no fim, em vez de um "só no
+          Editor" repetido em cada controle que falta -- que seria propaganda dentro da
+          ferramenta. */}
+      <p className="mt-4 text-center text-xs text-neutral-500">
+        Quer mexer mais? Texto por cena, legenda, transição, você no vídeo, cor e kit de marca estão no{" "}
+        <Link href="/editor/video" className="text-marca-indigo underline">
+          Editor
+        </Link>
+        , com linha do tempo e as ferramentas de corte.
+      </p>
     </AppShell>
   );
 }
