@@ -486,6 +486,64 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M4 20l11-11M13 5l1 2M17 3l-1 2M19 9l2 1M17 11l2 2" />
         </svg>
       );
+    // ---- barra da linha do tempo ----
+    case "dividir": // tesoura sobre a linha do corte
+      return (
+        <svg {...p}>
+          <path d="M12 3v11" />
+          <circle cx="7" cy="18" r="2.4" />
+          <circle cx="17" cy="18" r="2.4" />
+          <path d="M8.6 16.2L15 8M15.4 16.2L9 8" />
+        </svg>
+      );
+    case "aparar_inicio": // corta o que vem antes
+      return (
+        <svg {...p}>
+          <path d="M4 5v14" />
+          <rect x="8" y="7" width="12" height="10" rx="1.5" />
+          <path d="M11 12h6M14 9.5l-3 2.5 3 2.5" />
+        </svg>
+      );
+    case "aparar_fim": // corta o que vem depois
+      return (
+        <svg {...p}>
+          <path d="M20 5v14" />
+          <rect x="4" y="7" width="12" height="10" rx="1.5" />
+          <path d="M13 12H7M10 9.5l3 2.5-3 2.5" />
+        </svg>
+      );
+    case "girar": // quadro com a seta dando a volta
+      return (
+        <svg {...p}>
+          <rect x="4" y="9" width="11" height="11" rx="1.5" />
+          <path d="M12 4h4a4 4 0 0 1 4 4v3" />
+          <path d="M10 6l2-2-2-2" />
+          <path d="M18 9l2 2 2-2" />
+        </svg>
+      );
+    case "espelhar": // dois lados iguais, eixo tracejado no meio
+      return (
+        <svg {...p}>
+          <path d="M12 3v18" strokeDasharray="2 3" />
+          <path d="M9 7L4 12l5 5z" />
+          <path d="M15 7l5 5-5 5z" />
+        </svg>
+      );
+    case "velocidade": // ponteiro de velocímetro
+      return (
+        <svg {...p}>
+          <path d="M4 18a8 8 0 1 1 16 0" />
+          <path d="M12 18l4.5-5" />
+          <circle cx="12" cy="18" r="1.2" />
+        </svg>
+      );
+    case "congelar": // floco: o quadro que parou
+      return (
+        <svg {...p}>
+          <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9" />
+          <path d="M9.6 4.8L12 7l2.4-2.2M9.6 19.2L12 17l2.4 2.2" />
+        </svg>
+      );
     default:
       return <svg {...p}><circle cx="12" cy="12" r="8" /></svg>;
   }

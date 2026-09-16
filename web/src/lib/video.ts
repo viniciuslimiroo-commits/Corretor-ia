@@ -9,6 +9,9 @@
 // 300s do plano Hobby e não exige servidor novo. Cena animada é o único pedaço que sai
 // pra IA (image-to-video no fal), e por isso é o único que custa crédito extra.
 
+
+import { MODELOS_ARTE } from "./texto-arte";
+
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
 export const BUCKET_UPLOADS = "resultados";
 
@@ -448,7 +451,38 @@ export type Cena = {
   filtro?: FiltroId;
   /** Correção de luz, de -0.25 (escurece) a 0.25 (clareia). Ausente = 0. */
   luz?: number;
+  /** Giro da imagem, no sentido do relógio: 0, 90, 180 ou 270. */
+  giro?: number;
+  /** Vira na horizontal. Serve pra foto que veio espelhada da câmera frontal. */
+  espelho?: boolean;
+  /** Só onde há vídeo: 0,5x a 2x. Ausente = 1. */
+  velocidade?: number;
+  /** Só onde há vídeo: para no quadro de `inicio` e a cena vira foto parada. */
+  congelar?: boolean;
 };
+
+/** Os giros que existem. Um quarto de volta por clique, como em qualquer editor. */
+export const GIROS = [0, 90, 180, 270] as const;
+
+/** Arredonda qualquer número pro giro mais próximo que o ffmpeg sabe fazer. */
+export function ehGiro(bruto: unknown): number {
+  const n = Number(bruto);
+  if (!Number.isFinite(n)) return 0;
+  return ((((Math.round(n / 90) * 90) % 360) + 360) % 360) as number;
+}
+
+/** As velocidades do botão. Fora disso vira slider, e slider de velocidade ninguém usa. */
+export const VELOCIDADES = [
+  { v: 0.5, rotulo: "0,5x", dica: "Metade da velocidade: detalhe que passou rápido demais" },
+  { v: 1, rotulo: "1x", dica: "Como foi filmado" },
+  { v: 1.5, rotulo: "1,5x", dica: "Um pouco mais ágil" },
+  { v: 2, rotulo: "2x", dica: "Dobro: caminhada pela casa sem enrolar" },
+] as const;
+
+/** Onde velocidade, congelar e aparar fazem sentido: só onde existe vídeo correndo. */
+export function temVideoCorrendo(tipo: TipoCena): boolean {
+  return tipo === "clipe" || tipo === "animada";
+}
 
 /** O acabamento que vale pra cena: o dela, ou o do vídeo. Mesma regra da transição. */
 export function filtroDaCena(c: Pick<Cena, "filtro">, doVideo: FiltroId | undefined): FiltroId {
@@ -723,6 +757,8 @@ export const LIMITES = {
   transicaoSegundos: 0.6,
   /** Correção de luz por cena. Acima disso a foto lava; abaixo, some. */
   luzMax: 0.25,
+  velocidadeMin: 0.5,
+  velocidadeMax: 2,
 };
 
 // Créditos: SÓ onde há IA de verdade.
@@ -778,9 +814,14 @@ function texto(v: unknown, max: number): string {
   return typeof v === "string" ? v.replace(/[\r\n\t]+/g, " ").trim().slice(0, max) : "";
 }
 
-/** Os textos de uma cena, limpos. Tudo que vier torto vira o padrão; vazio some. */
-/** Os ids de arte que existem. Preenchido pelo catálogo (texto-arte.ts) na carga. */
-const ARTES_VALIDAS = new Set(["adesivo", "contorno_duplo", "relevo", "brilho", "fita", "sublinhado", "colchetes", "degrade", "placa", "carimbo"]);
+/**
+ * Os ids de arte que existem, tirados do PRÓPRIO catálogo.
+ *
+ * Era uma lista copiada à mão. Lista copiada envelhece: um modelo novo em texto-arte.ts
+ * passaria a ser recusado aqui, sem erro, e o texto sairia do vídeo sem ninguém saber
+ * por quê. A volta do import é só de tipo, então não há ciclo em tempo de execução.
+ */
+const ARTES_VALIDAS = new Set(MODELOS_ARTE.map((m) => m.id));
 
 /** Cor hexa de 6 dígitos, sem "#". Qualquer outra coisa é descartada. */
 function corHex(v: unknown): string | undefined {
@@ -810,6 +851,12 @@ function limparTextos(bruto: unknown): TextoCena[] | undefined {
       posicao: POSICOES_TEXTO.some((p) => p.id === t.posicao) ? (t.posicao as PosicaoTexto) : "base",
       estilo: ESTILOS_TEXTO.some((e) => e.id === t.estilo) ? (t.estilo as EstiloTexto) : "faixa",
       animacao: ANIMACOES_TEXTO.some((a) => a.id === t.animacao) ? (t.animacao as AnimacaoTexto) : "nenhuma",
+      // A ARTE e o ACABAMENTO vinham sendo jogados fora aqui. O texto chegava ao
+      // servidor só com posição, estilo e animação, então TODO modelo de texto virava
+      // texto simples no vídeo -- sem erro, sem aviso, e sem aparecer em teste nenhum
+      // que não passasse por esta função.
+      ...(typeof t.arte === "string" && ARTES_VALIDAS.has(t.arte) ? { arte: t.arte } : {}),
+      ...(t.visual && typeof t.visual === "object" ? { visual: limparVisual(t.visual as Record<string, unknown>) } : {}),
     });
   }
   return lista.length ? lista : undefined;
@@ -907,6 +954,11 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
     const padrao = tipo === "tour360" ? 10 : LIMITES.duracaoPadrao;
     const inicioNum = Number(c.inicio);
     const luzNum = Number(c.luz);
+    const velNum = Number(c.velocidade);
+    // Velocidade, congelar e aparar só existem onde há vídeo correndo. Numa foto a
+    // "velocidade" seria a duração, que já tem campo -- dois jeitos de dizer a mesma
+    // coisa acabam em desacordo.
+    const comVideo = temVideoCorrendo(tipo);
     cenas.push({
       tipo,
       jobId,
@@ -924,6 +976,13 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       // cena NÃO leva o acabamento das outras".
       filtro: c.filtro === undefined || c.filtro === null ? undefined : ehFiltro(c.filtro),
       luz: Number.isFinite(luzNum) && Math.abs(luzNum) > 0.005 ? Math.min(LIMITES.luzMax, Math.max(-LIMITES.luzMax, Math.round(luzNum * 100) / 100)) : undefined,
+      // 360 fica de fora do giro: a imagem é uma esfera aberta em retângulo, girar o
+      // retângulo não gira a câmera -- deita o mundo. O movimento da câmera é o campo
+      // `movimento`, que é onde isso se resolve de verdade.
+      giro: tipo !== "tour360" && ehGiro(c.giro) ? ehGiro(c.giro) : undefined,
+      espelho: tipo !== "tour360" && c.espelho === true ? true : undefined,
+      velocidade: comVideo && Number.isFinite(velNum) && velNum !== 1 ? Math.min(LIMITES.velocidadeMax, Math.max(LIMITES.velocidadeMin, Math.round(velNum * 10) / 10)) : undefined,
+      congelar: comVideo && c.congelar === true ? true : undefined,
     });
   }
 

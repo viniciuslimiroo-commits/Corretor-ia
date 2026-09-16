@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { Icone } from "@/components/ui";
+import { LIMITES } from "@/lib/video";
 
 // A LINHA DO TEMPO de verdade: régua, blocos proporcionais e cabeçote.
 //
@@ -28,7 +29,49 @@ export type BlocoCena = {
   tipo: string;
   /** Rótulo curto da emenda desta cena pra próxima. */
   emenda: string;
+  /** Tem vídeo correndo por baixo. Velocidade, congelar e aparar só valem aqui. */
+  temVideo: boolean;
+  /** Estado das ferramentas, pra barra mostrar o que já está ligado. */
+  giro?: number;
+  espelho?: boolean;
+  velocidade?: number;
+  congelado?: boolean;
 };
+
+/**
+ * Um botão da barra de ferramentas.
+ *
+ * Só ícone, e o nome da ação vai no `title` e no `aria-label`: com dez ferramentas, texto
+ * ao lado de cada uma não cabe num celular de 375px -- e é no celular que ele edita.
+ */
+function Ferramenta({
+  icone,
+  dica,
+  ativo,
+  desligado,
+  aoClicar,
+}: {
+  icone: string;
+  dica: string;
+  ativo?: boolean;
+  desligado?: boolean;
+  aoClicar: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={aoClicar}
+      disabled={desligado}
+      title={dica}
+      aria-label={dica}
+      className={`shrink-0 rounded-lg p-1.5 transition disabled:opacity-25 ${
+        ativo ? "bg-marca-indigo/10 text-marca-indigo" : "text-neutral-600 hover:bg-neutral-100"
+      }`}
+    >
+      <Icone nome={icone} className="h-4 w-4" />
+    </button>
+  );
+}
 
 /** Marcações a cada 1, 2, 5, 10, 15, 30 ou 60s -- a primeira que der pelo menos 64px. */
 function passoDaRegua(pxPorSegundo: number): number {
@@ -62,6 +105,12 @@ export default function LinhaDoTempo({
   aoSoltarEm,
   aoDuplicar,
   aoApagar,
+  aoDividir,
+  aoAparar,
+  aoGirar,
+  aoEspelhar,
+  aoVelocidade,
+  aoCongelar,
 }: {
   blocos: BlocoCena[];
   selecionada: string | null;
@@ -81,6 +130,14 @@ export default function LinhaDoTempo({
   aoSoltarEm: (chave: string, ev: React.DragEvent) => void;
   aoDuplicar: (chave: string) => void;
   aoApagar: (chave: string) => void;
+  /** Parte a cena no cabeçote. */
+  aoDividir: (chave: string) => void;
+  /** Joga fora o pedaço da cena antes ("inicio") ou depois ("fim") do cabeçote. */
+  aoAparar: (chave: string, lado: "inicio" | "fim") => void;
+  aoGirar: (chave: string) => void;
+  aoEspelhar: (chave: string) => void;
+  aoVelocidade: (chave: string, velocidade: number) => void;
+  aoCongelar: (chave: string) => void;
 }) {
   const trilho = useRef<HTMLDivElement | null>(null);
 
@@ -132,7 +189,27 @@ export default function LinhaDoTempo({
   }
 
   const larguraTotal = Math.max(240, total * zoom);
-  const bloco = blocos.find((b) => b.chave === selecionada) ?? null;
+  const indiceDoBloco = blocos.findIndex((b) => b.chave === selecionada);
+  const bloco = indiceDoBloco >= 0 ? blocos[indiceDoBloco] : null;
+
+  /**
+   * Onde o cabeçote está DENTRO da cena escolhida, em segundos.
+   *
+   * É o que separa "dividir" de "duplicar". Dividir no meio é chute; dividir onde a
+   * pessoa parou o cabeçote é o corte que ela viu e quis. `null` quando o cabeçote está
+   * fora da cena, ou colado numa das pontas -- cortar a zero segundos do começo não
+   * produz duas cenas, produz uma cena e uma vazia.
+   */
+  const dentroDaCena = (() => {
+    if (!bloco) return null;
+    const d = tempo - inicios[indiceDoBloco];
+    return d > 0.15 && d < bloco.duracao - 0.15 ? d : null;
+  })();
+  // Duração de cena é inteira e tem mínimo: dividir uma cena de 4s daria duas de 3s, ou
+  // seja, o vídeo ficaria MAIS LONGO depois de um corte. Por isso o botão só acende
+  // quando as duas partes cabem.
+  const podeDividir =
+    !!bloco && !gerando && dentroDaCena !== null && blocos.length < LIMITES.cenasMax && bloco.duracao >= LIMITES.duracaoMin * 2;
 
   return (
     <div className="flex shrink-0 flex-col border-t border-neutral-200">
@@ -154,28 +231,88 @@ export default function LinhaDoTempo({
           {relogio(tempo)} <span className="text-neutral-400">/ {relogio(total)}</span>
         </span>
 
-        <span className="mx-1 h-4 w-px bg-neutral-200" />
+        <span className="mx-1 h-4 w-px shrink-0 bg-neutral-200" />
 
-        <button
-          type="button"
-          onClick={() => bloco && aoDuplicar(bloco.chave)}
-          disabled={!bloco || gerando}
-          title="Duplicar a cena escolhida"
-          className="rounded-lg p-1.5 text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-30"
-        >
-          <Icone nome="copiar" className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => bloco && aoApagar(bloco.chave)}
-          disabled={!bloco || gerando}
-          title="Tirar a cena escolhida"
-          className="rounded-lg p-1.5 text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-30"
-        >
-          <Icone nome="lixeira" className="h-4 w-4" />
-        </button>
+        {/* ---------- ferramentas da cena escolhida ----------
+             Todas trabalham sobre UMA cena e, as três primeiras, sobre o lugar do
+             cabeçote. É por isso que moram aqui e não num painel: o corte que se quer é
+             o que se está vendo.
 
-        <span className="min-w-0 flex-1 truncate px-2 text-[11px] text-neutral-400">
+             A faixa rola de lado no celular em vez de quebrar linha -- barra de
+             ferramenta que muda de altura empurra a linha do tempo pra fora da tela. */}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+          <Ferramenta
+            icone="dividir"
+            dica={
+              bloco && dentroDaCena === null
+                ? "Leve o cabeçote pra dentro da cena pra dividir ali"
+                : "Dividir em duas, no cabeçote"
+            }
+            desligado={!podeDividir}
+            aoClicar={() => bloco && aoDividir(bloco.chave)}
+          />
+          <Ferramenta
+            icone="aparar_inicio"
+            dica="Cortar fora o que vem antes do cabeçote"
+            desligado={!bloco || gerando || dentroDaCena === null}
+            aoClicar={() => bloco && aoAparar(bloco.chave, "inicio")}
+          />
+          <Ferramenta
+            icone="aparar_fim"
+            dica="Cortar fora o que vem depois do cabeçote"
+            desligado={!bloco || gerando || dentroDaCena === null}
+            aoClicar={() => bloco && aoAparar(bloco.chave, "fim")}
+          />
+
+          <span className="mx-1 h-4 w-px shrink-0 bg-neutral-200" />
+
+          <Ferramenta
+            icone="girar"
+            dica={bloco?.tipo === "tour360" ? "Foto 360 não gira: use o movimento da câmera" : `Girar um quarto de volta${bloco?.giro ? ` (está em ${bloco.giro}°)` : ""}`}
+            ativo={!!bloco?.giro}
+            desligado={!bloco || gerando || bloco.tipo === "tour360"}
+            aoClicar={() => bloco && aoGirar(bloco.chave)}
+          />
+          <Ferramenta
+            icone="espelhar"
+            dica={bloco?.tipo === "tour360" ? "Foto 360 não espelha" : "Virar na horizontal"}
+            ativo={!!bloco?.espelho}
+            desligado={!bloco || gerando || bloco.tipo === "tour360"}
+            aoClicar={() => bloco && aoEspelhar(bloco.chave)}
+          />
+          <Ferramenta
+            icone="congelar"
+            dica={bloco && !bloco.temVideo ? "Só vale onde há vídeo correndo" : "Parar no quadro do cabeçote"}
+            ativo={!!bloco?.congelado}
+            desligado={!bloco || gerando || !bloco.temVideo}
+            aoClicar={() => bloco && aoCongelar(bloco.chave)}
+          />
+
+          {/* Velocidade é escolha entre quatro, não botão que liga e desliga -- então é
+              lista, e lista nativa, que no celular abre a roda do sistema. */}
+          <label className="flex shrink-0 items-center gap-1 pl-1" title={bloco && !bloco.temVideo ? "Só vale onde há vídeo correndo" : "Velocidade do clipe"}>
+            <Icone nome="velocidade" className={`h-4 w-4 ${bloco?.velocidade && bloco.velocidade !== 1 ? "text-marca-indigo" : "text-neutral-600"}`} />
+            <select
+              value={bloco?.velocidade ?? 1}
+              onChange={(e) => bloco && aoVelocidade(bloco.chave, Number(e.target.value))}
+              disabled={!bloco || gerando || !bloco.temVideo}
+              aria-label="Velocidade do clipe"
+              className="rounded-lg border border-neutral-200 bg-transparent px-1 py-0.5 text-[11px] text-neutral-600 disabled:opacity-25"
+            >
+              <option value={0.5}>0,5x</option>
+              <option value={1}>1x</option>
+              <option value={1.5}>1,5x</option>
+              <option value={2}>2x</option>
+            </select>
+          </label>
+
+          <span className="mx-1 h-4 w-px shrink-0 bg-neutral-200" />
+
+          <Ferramenta icone="copiar" dica="Duplicar a cena escolhida" desligado={!bloco || gerando} aoClicar={() => bloco && aoDuplicar(bloco.chave)} />
+          <Ferramenta icone="lixeira" dica="Tirar a cena escolhida" desligado={!bloco || gerando} aoClicar={() => bloco && aoApagar(bloco.chave)} />
+        </div>
+
+        <span className="hidden min-w-0 max-w-[22rem] shrink truncate px-2 text-[11px] text-neutral-400 xl:block">
           {blocos.length === 0 ? "Escolha as fotos em Mídia, na trilha da esquerda." : "arraste pra trocar a ordem · arraste uma foto da biblioteca pra entrar no meio"}
         </span>
 

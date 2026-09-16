@@ -94,6 +94,26 @@ export function enquadrar(W: number, H: number, escala = 1): string {
   return `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
 }
 
+/**
+ * Giro e espelho -- e eles vêm ANTES do enquadramento, sempre.
+ *
+ * O `crop` é calculado no tamanho da imagem. Uma foto girada um quarto de volta tem a
+ * proporção trocada, então girar DEPOIS do corte recorta o pedaço errado: o vídeo sai
+ * com a sala de lado e cortada pela metade.
+ *
+ * `transpose=1` gira no sentido do relógio, `=2` no contrário; meia volta são dois
+ * quartos, que é mais barato que `rotate` (que interpola pixel).
+ */
+export function geometria(giro?: number, espelho?: boolean): string[] {
+  const f: string[] = [];
+  const g = ((((Math.round((giro ?? 0) / 90) * 90) % 360) + 360) % 360);
+  if (g === 90) f.push("transpose=1");
+  else if (g === 180) f.push("transpose=1", "transpose=1");
+  else if (g === 270) f.push("transpose=2");
+  if (espelho) f.push("hflip");
+  return f;
+}
+
 type OpcoesPill = {
   texto: string;
   W: number;
@@ -416,11 +436,13 @@ export function argsCenaFoto(o: {
   topoOcupado?: boolean;
   filtro?: FiltroId;
   luz?: number;
+  giro?: number;
+  espelho?: boolean;
   /** Artes de texto já rasterizadas pelo pipeline. Entram como IMAGEM, não como letra. */
   artes?: ArteNaCena[];
 }): string[] {
   const frames = Math.round(o.duracao * FPS);
-  const filtros = [enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
+  const filtros = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   // Só os textos SEM arte passam pelo drawtext; os com arte entram como sobreposição.
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
   const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
@@ -439,13 +461,13 @@ export function argsCenaFoto(o: {
  * Antes e depois: mostra a original, uma cortina passa da esquerda pra direita e fica
  * o resultado. As duas ficam paradas de propósito -- o movimento é a cortina.
  */
-export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; artes?: ArteNaCena[] }): string[] {
+export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; artes?: ArteNaCena[] }): string[] {
   const trans = 1.4;
   const cada = (o.duracao + trans) / 2;
   const offset = cada - trans;
   // O acabamento vale pras DUAS: comparar antes e depois com cores diferentes seria
   // vender a correção de cor como se fosse a reforma.
-  const base = [enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"].join(",");
+  const base = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"].join(",");
   const rotA = pill({ texto: "Antes", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0x111111" });
   const rotB = pill({ texto: "Depois", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0xf06b4f" });
   // Os textos entram DEPOIS da limpeza entre as duas fotos, senão o "Antes"/"Depois"
@@ -467,15 +489,22 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; artes?: ArteNaCena[] }): string[] {
-  const filtros = [`fps=${FPS}`, enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[] }): string[] {
+  // Velocidade é `setpts`, e vem ANTES do `fps`: primeiro os carimbos de tempo mudam,
+  // depois o ffmpeg reamostra pra taxa fixa. Na ordem inversa o vídeo fica aos trancos,
+  // porque a reamostragem acontece contra um relógio que ainda vai mudar.
+  const vel = Math.min(2, Math.max(0.5, o.velocidade ?? 1));
+  const filtros = [...(vel !== 1 ? [`setpts=PTS/${vel}`] : []), `fps=${FPS}`, ...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
   // O clipe entra CURTO de propósito e o `tpad` clona o último quadro até fechar a
   // duração: os últimos instantes ficam parados. Vale pro vídeo da pessoa e, sobretudo,
   // pro clipe da IA -- que termina onde o modelo parou, muitas vezes no meio do gesto.
-  const corte = Math.max(0.5, o.duracao - Math.min(SEGUNDOS_DE_POUSO, o.duracao * 0.25));
+  // A 2x, encher 4 segundos de cena consome 8 segundos de arquivo. Sem esta conta o
+  // clipe acelerado acaba na metade e o `tpad` congela o resto -- que é como "velocidade"
+  // vira "o vídeo travou".
+  const corte = Math.max(0.5, (o.duracao - Math.min(SEGUNDOS_DE_POUSO, o.duracao * 0.25)) * vel);
   // `-ss` ANTES do `-i`: o ffmpeg pula direto pro ponto em vez de decodificar tudo e
   // descartar. É o "aparar o começo" -- o pedaço em que a pessoa ainda estava acertando
   // o celular não entra no vídeo.

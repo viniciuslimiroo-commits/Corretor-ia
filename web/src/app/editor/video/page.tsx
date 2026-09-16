@@ -32,6 +32,7 @@ import {
   duracaoEstimada,
   ehTransicao,
   textosDaCena,
+  temVideoCorrendo,
   vozDeIA,
   type AnimacaoId,
   type AnimacaoTexto,
@@ -98,6 +99,13 @@ type CenaUI = {
   luz?: number;
   /** Clipe: de que segundo do arquivo esta cena começa. */
   inicio?: number;
+  /** Giro no sentido do relógio: 0, 90, 180 ou 270. */
+  giro?: number;
+  espelho?: boolean;
+  /** Só onde há vídeo: 0,5x a 2x. */
+  velocidade?: number;
+  /** Só onde há vídeo: para no quadro de `inicio`. */
+  congelar?: boolean;
   /** A emenda desta cena pra próxima. Ausente = a do vídeo. */
   transicao?: TransicaoId;
   /** Cena animada cujo clipe já existe no servidor: gerar de novo com o mesmo movimento
@@ -195,6 +203,10 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     filtro: c.filtro,
     luz: c.luz,
     inicio: c.inicio,
+    giro: c.giro,
+    espelho: c.espelho,
+    velocidade: c.velocidade,
+    congelar: c.congelar,
     // O espec vem cru do banco: vídeo antigo guarda "suave", que não está mais no
     // catálogo. Normalizar aqui é o que impede o chip de aparecer em branco.
     transicao: c.transicao ? ehTransicao(c.transicao) : undefined,
@@ -364,7 +376,7 @@ export default function PaginaVideo() {
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, luz: s.luz })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, luz: s.luz, giro: s.giro, espelho: s.espelho, velocidade: s.velocidade, congelar: s.congelar })),
       musica,
       musicaVolume,
       // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
@@ -816,27 +828,6 @@ export default function PaginaVideo() {
     });
   }
 
-  /**
-   * Divide a cena em duas, no meio.
-   *
-   * Pra foto é só repartir o tempo. Pra clipe é o que importa: a segunda metade começa
-   * no arquivo exatamente onde a primeira parou, senão as duas mostrariam o mesmo
-   * trecho -- que é o erro que faz "dividir" parecer "duplicar".
-   */
-  function dividir(k: string) {
-    setCenas((lista) => {
-      const i = lista.findIndex((s) => s.chave === k);
-      if (i < 0 || lista.length >= LIMITES.cenasMax) return lista;
-      const s = lista[i];
-      if (s.duracao < LIMITES.duracaoMin * 2) return lista;
-      const metade = Math.max(LIMITES.duracaoMin, Math.round(s.duracao / 2));
-      const resto = Math.max(LIMITES.duracaoMin, s.duracao - metade);
-      const primeira = { ...s, duracao: metade };
-      const segunda = { ...s, chave: chave(), duracao: resto, inicio: s.ehClipe ? (s.inicio ?? 0) + metade : s.inicio };
-      return [...lista.slice(0, i), primeira, segunda, ...lista.slice(i + 1)];
-    });
-  }
-
   // ---- textos da cena ----
   function adicionarTexto(k: string, novo: TextoCena) {
     setCenas((lista) =>
@@ -1077,6 +1068,11 @@ export default function PaginaVideo() {
         miniatura: s.miniatura,
         duracao: s.duracao,
         tipo: s.tipo,
+        temVideo: temVideoCorrendo(s.tipo),
+        giro: s.giro,
+        espelho: s.espelho,
+        velocidade: s.velocidade,
+        congelado: s.congelar,
         emenda: TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo ?? "",
       })),
     [cenas, transicao]
@@ -1095,6 +1091,91 @@ export default function PaginaVideo() {
   }, [cenas]);
 
   const duracaoDaLinha = cenas.reduce((t, s) => t + s.duracao, 0) + (telaFinal ? LIMITES.telaFinalSegundos : 0);
+
+  // ---------- ferramentas da barra da linha do tempo ----------
+  //
+  // Todas trabalham sobre o CABEÇOTE, não sobre um número digitado num campo. É a
+  // diferença entre "corta aos 3,4 segundos" e "corta aqui": a segunda é a que alguém
+  // consegue fazer olhando o vídeo.
+
+  /** Onde o cabeçote está dentro desta cena, em segundos. `null` se estiver fora. */
+  function cabecoteDentroDe(k: string): number | null {
+    const i = cenas.findIndex((s) => s.chave === k);
+    if (i < 0) return null;
+    const d = tempo - iniciosDasCenas[i];
+    return d > 0.15 && d < cenas[i].duracao - 0.15 ? d : null;
+  }
+
+  /**
+   * Parte a cena em duas, no cabeçote.
+   *
+   * Pra foto é repartir o tempo. Pra clipe é o que importa: a segunda parte começa no
+   * arquivo exatamente onde a primeira acabou, senão as duas mostram o mesmo trecho --
+   * que é o erro que faz "dividir" parecer "duplicar".
+   *
+   * A duração de cena é inteira e tem mínimo, então o corte é arredondado pro segundo
+   * mais próximo que ainda deixa as duas partes válidas.
+   */
+  function dividirNoCabecote(k: string) {
+    const ondeClicou = cabecoteDentroDe(k);
+    setCenas((lista) => {
+      const i = lista.findIndex((s) => s.chave === k);
+      if (i < 0 || lista.length >= LIMITES.cenasMax) return lista;
+      const s = lista[i];
+      if (s.duracao < LIMITES.duracaoMin * 2) return lista;
+      const bruto = Math.round(ondeClicou ?? s.duracao / 2);
+      const primeira = Math.min(s.duracao - LIMITES.duracaoMin, Math.max(LIMITES.duracaoMin, bruto));
+      const resto = s.duracao - primeira;
+      return [
+        ...lista.slice(0, i),
+        { ...s, duracao: primeira },
+        { ...s, chave: chave(), duracao: resto, inicio: temVideoCorrendo(s.tipo) ? (s.inicio ?? 0) + primeira : s.inicio },
+        ...lista.slice(i + 1),
+      ];
+    });
+  }
+
+  /**
+   * Corta fora o que vem antes ou depois do cabeçote.
+   *
+   * Aparar o começo avança o ponto de entrada no arquivo: a cena continua mostrando o
+   * mesmo trecho, só sem o pedaço em que a pessoa ainda estava acertando o celular.
+   */
+  function apararNoCabecote(k: string, lado: "inicio" | "fim") {
+    const ondeClicou = cabecoteDentroDe(k);
+    if (ondeClicou === null) return;
+    setCenas((lista) =>
+      lista.map((s) => {
+        if (s.chave !== k) return s;
+        const ponto = Math.round(ondeClicou);
+        if (lado === "fim") {
+          const nova = Math.max(LIMITES.duracaoMin, ponto);
+          return nova >= s.duracao ? s : { ...s, duracao: nova };
+        }
+        const nova = Math.max(LIMITES.duracaoMin, s.duracao - ponto);
+        if (nova >= s.duracao) return s;
+        const cortado = s.duracao - nova;
+        return { ...s, duracao: nova, inicio: temVideoCorrendo(s.tipo) ? Math.min(LIMITES.aparaMax, (s.inicio ?? 0) + cortado) : s.inicio };
+      })
+    );
+  }
+
+  function girarCena(k: string) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, giro: ((s.giro ?? 0) + 90) % 360 || undefined } : s)));
+  }
+  function espelharCena(k: string) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, espelho: s.espelho ? undefined : true } : s)));
+  }
+  function velocidadeDaCena(k: string, v: number) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, velocidade: v === 1 ? undefined : v } : s)));
+  }
+  /** Congelar usa o quadro do cabeçote: é o que a pessoa está vendo quando aperta. */
+  function congelarCena(k: string) {
+    const ondeClicou = cabecoteDentroDe(k);
+    setCenas((lista) =>
+      lista.map((s) => (s.chave === k ? { ...s, congelar: s.congelar ? undefined : true, inicio: s.congelar ? s.inicio : Math.round(((s.inicio ?? 0) + (ondeClicou ?? 0)) * 10) / 10 } : s))
+    );
+  }
 
   /**
    * A PRÉVIA que toca.
@@ -2099,7 +2180,7 @@ export default function PaginaVideo() {
                   <button onClick={() => mover(cenaAtual.chave, 1)} disabled={gerando || indiceAtual === cenas.length - 1} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Mover pra frente">
                     <Icone nome="cima" className="h-4 w-4 rotate-90" />
                   </button>
-                  <button onClick={() => dividir(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax || cenaAtual.duracao < LIMITES.duracaoMin * 2} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Dividir em duas">
+                  <button onClick={() => dividirNoCabecote(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax || cenaAtual.duracao < LIMITES.duracaoMin * 2} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Dividir em duas">
                     <Icone nome="corrigir_perspectiva" className="h-4 w-4" />
                   </button>
                   <button onClick={() => duplicar(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Duplicar">
@@ -2416,6 +2497,12 @@ export default function PaginaVideo() {
         aoSoltarEm={soltarEm}
         aoDuplicar={duplicar}
         aoApagar={remover}
+        aoDividir={dividirNoCabecote}
+        aoAparar={apararNoCabecote}
+        aoGirar={girarCena}
+        aoEspelhar={espelharCena}
+        aoVelocidade={velocidadeDaCena}
+        aoCongelar={congelarCena}
       />
     </div>
   );
