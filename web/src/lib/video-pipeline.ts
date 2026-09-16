@@ -10,7 +10,7 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, filtroDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, filtroDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -446,9 +446,19 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       let musica: string | undefined;
       const faixa = MUSICAS.find((m) => m.id === espec.musica);
       if (faixa?.arquivo) {
-        const candidato = path.join(process.cwd(), "assets", "musica", faixa.arquivo);
+        // As faixas moram em public/ e não em assets/ porque o NAVEGADOR também precisa
+        // delas: sem isso não dá pra ouvir a música antes de escolher, e escolher trilha
+        // pelo nome é escolher no escuro. O ffmpeg lê o mesmo arquivo do disco.
+        const candidato = path.join(process.cwd(), "public", "musica", faixa.arquivo);
         if (fs.existsSync(candidato)) musica = candidato;
         else p.avisos.push("A trilha escolhida não foi encontrada no servidor; o vídeo saiu sem música.");
+      }
+      let efeitoSonoro: string | undefined;
+      const somDaVirada = EFEITOS_SONOROS.find((e) => e.id === espec.efeitoSonoro);
+      if (somDaVirada?.arquivo) {
+        const caminho = path.join(process.cwd(), "public", "efeitos", somDaVirada.arquivo);
+        if (fs.existsSync(caminho)) efeitoSonoro = caminho;
+        else p.avisos.push("O efeito sonoro escolhido não foi encontrado no servidor; o vídeo saiu sem ele.");
       }
       let narracao: string | undefined;
       if (p.narracaoPath) {
@@ -497,6 +507,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           subtitulo: subtitulo || undefined,
           fimDoCarimbo,
           musicaVolume: espec.musicaVolume,
+          efeitoSonoro,
           vozVolume: espec.narracao?.volume,
           vozInicio: espec.narracao?.inicio,
           legendas: espec.legendas,

@@ -23,6 +23,7 @@ import {
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
+  EFEITOS_SONOROS,
   POSICOES_TEXTO,
   SELOS_IMOVEL,
   TRANSICOES,
@@ -44,6 +45,7 @@ import {
   type FormatoId,
   type Movimento360Id,
   type MusicaId,
+  type EfeitoSonoroId,
   type Narracao,
   type OrigemVoz,
   type PosicaoTexto,
@@ -56,6 +58,7 @@ import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imove
 import { useIdioma } from "@/i18n/cliente";
 import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
+import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
@@ -297,6 +300,8 @@ export default function PaginaVideo() {
   const tempoRef = useRef(0);
   /** Zoom da linha do tempo, em pixels por segundo. */
   const [zoomLinha, setZoomLinha] = useState(30);
+  /** Som curto em cada virada de cena. */
+  const [efeitoSonoro, setEfeitoSonoro] = useState<EfeitoSonoroId>("nenhum");
 
   /** Move o cabeçote. Guarda no ref junto, que é de onde o laço de tocar lê o início. */
   const moverTempo = useCallback((segundos: number) => {
@@ -379,8 +384,9 @@ export default function PaginaVideo() {
       apresentador,
       filtro,
       capaMontada,
+      efeitoSonoro,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, capaMontada]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, capaMontada, efeitoSonoro]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
@@ -1009,6 +1015,7 @@ export default function PaginaVideo() {
       setApresentador(e.apresentador ?? null);
       setFiltro(e.filtro ?? "natural");
       setCapaMontada(e.capaMontada !== false);
+      setEfeitoSonoro(e.efeitoSonoro ?? "nenhum");
       setApreUrl(dd.edicao?.apresentadorUrl ?? null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
@@ -1037,6 +1044,7 @@ export default function PaginaVideo() {
     setApresentador(null);
     setFiltro("natural");
     setCapaMontada(true);
+    setEfeitoSonoro("nenhum");
     setApreUrl(null);
     setChamada(CHAMADAS[0]);
     setTelaFinal(true);
@@ -1300,11 +1308,14 @@ export default function PaginaVideo() {
           {aba === "audio" && (
           <Cartao>
             <Rotulo>Música e transição</Rotulo>
-            <div className="flex flex-wrap gap-2">
-              {MUSICAS.map((m) => (
-                <Chip key={m.id} ativo={musica === m.id} onClick={() => setMusica(m.id)} title={m.descricao}>{m.rotulo}</Chip>
-              ))}
-            </div>
+            <BibliotecaAudio
+              escolhida={musica}
+              aoEscolher={setMusica}
+              efeito={efeitoSonoro}
+              aoEscolherEfeito={(id) => setEfeitoSonoro(id as EfeitoSonoroId)}
+              efeitos={EFEITOS_SONOROS.filter((e) => e.arquivo)}
+              desabilitado={gerando}
+            />
             {musica !== "nenhuma" && (
               <label className="mt-3 block text-xs text-neutral-600">
                 Volume da música · {Math.round(musicaVolume * 100)}%

@@ -192,8 +192,8 @@ export function ehTransicao(v: unknown): TransicaoId {
 // imóvel usa, e todas as combinações ficam boas.
 
 export type PosicaoTexto = "topo" | "centro" | "base";
-export type EstiloTexto = "faixa" | "destaque" | "etiqueta";
-export type AnimacaoTexto = "nenhuma" | "surgir" | "subir";
+export type EstiloTexto = "faixa" | "destaque" | "etiqueta" | "contorno" | "sombra" | "gigante" | "fino" | "selo";
+export type AnimacaoTexto = "nenhuma" | "surgir" | "subir" | "descer" | "entrar_esquerda" | "entrar_direita" | "piscar" | "no_fim";
 
 export type TextoCena = {
   texto: string;
@@ -208,19 +208,49 @@ export const POSICOES_TEXTO: { id: PosicaoTexto; rotulo: string }[] = [
   { id: "base", rotulo: "Embaixo" },
 ];
 
-export const ESTILOS_TEXTO: { id: EstiloTexto; rotulo: string; tamanho: number; cor: string; dica: string }[] = [
-  { id: "faixa", rotulo: "Faixa", tamanho: 0.03, cor: "0x0f2d5b", dica: "Branco sobre a cor da marca. É a legenda de sempre." },
-  { id: "destaque", rotulo: "Destaque", tamanho: 0.052, cor: "0x0f2d5b", dica: "Grande, pro preço e pros números." },
-  { id: "etiqueta", rotulo: "Etiqueta", tamanho: 0.026, cor: "0xf06b4f", dica: "Pequena e coral, pra “Lançamento”, “Vendido”." },
+/**
+ * Os acabamentos de texto.
+ *
+ * Oito, não oitenta. Cada um resolve um trabalho que aparece de verdade num anúncio de
+ * imóvel, e cada um já vem com tamanho, cor e peso resolvidos -- quem escolhe fonte e
+ * cor livre acaba com material que parece feito em casa, e é justamente isso que o
+ * corretor está pagando pra não acontecer.
+ *
+ * `fundo` diz COMO o texto se destaca da foto: caixa cheia atrás, contorno preto na
+ * letra, ou sombra. É a escolha que faz texto branco ser legível sobre parede branca --
+ * sem ela, metade dos textos some na foto.
+ */
+export const ESTILOS_TEXTO: { id: EstiloTexto; rotulo: string; tamanho: number; cor: string; fundo: "caixa" | "contorno" | "sombra"; dica: string }[] = [
+  { id: "faixa", rotulo: "Faixa", tamanho: 0.03, cor: "0x0f2d5b", fundo: "caixa", dica: "Branco sobre a cor da marca. É a legenda de sempre." },
+  { id: "destaque", rotulo: "Destaque", tamanho: 0.052, cor: "0x0f2d5b", fundo: "caixa", dica: "Grande, pro preço e pros números." },
+  { id: "etiqueta", rotulo: "Etiqueta", tamanho: 0.026, cor: "0xf06b4f", fundo: "caixa", dica: "Pequena e coral, pra “Lançamento”, “Vendido”." },
+  { id: "gigante", rotulo: "Gigante", tamanho: 0.075, cor: "0x0f2d5b", fundo: "caixa", dica: "Ocupa a tela. Pro preço na abertura do Reels." },
+  { id: "contorno", rotulo: "Contorno", tamanho: 0.042, cor: "0x000000", fundo: "contorno", dica: "Letra branca com borda preta, sem caixa. Não tapa a foto." },
+  { id: "sombra", rotulo: "Sombra", tamanho: 0.042, cor: "0x000000", fundo: "sombra", dica: "Letra branca com sombra. Mais leve que o contorno." },
+  { id: "fino", rotulo: "Discreto", tamanho: 0.022, cor: "0x000000", fundo: "sombra", dica: "Miúdo, pro que precisa estar escrito e não gritar." },
+  { id: "selo", rotulo: "Selo", tamanho: 0.034, cor: "0x2cb1a3", fundo: "caixa", dica: "Teal da marca. Pra “Exclusivo”, “Reservado”." },
 ];
 
 export const ESTILO_TEXTO_POR_ID = Object.fromEntries(ESTILOS_TEXTO.map((e) => [e.id, e])) as Record<EstiloTexto, (typeof ESTILOS_TEXTO)[number]>;
 
-export const ANIMACOES_TEXTO: { id: AnimacaoTexto; rotulo: string }[] = [
-  { id: "nenhuma", rotulo: "Parado" },
-  { id: "surgir", rotulo: "Surgir" },
-  { id: "subir", rotulo: "Subir" },
+/**
+ * Como o texto ENTRA na cena.
+ *
+ * Nenhuma mexe em transparência de propósito: no `drawtext` o alpha afeta a letra e não
+ * a caixa atrás dela, então "aparecer suave" deixaria a caixa piscando inteira antes do
+ * texto. O que funciona igual em todos os estilos é mexer em POSIÇÃO e em QUANDO.
+ */
+export const ANIMACOES_TEXTO: { id: AnimacaoTexto; rotulo: string; dica: string }[] = [
+  { id: "nenhuma", rotulo: "Parado", dica: "Aparece com a cena e fica." },
+  { id: "surgir", rotulo: "Surgir", dica: "A cena começa sem ele; ele entra depois de meio segundo." },
+  { id: "subir", rotulo: "Subir", dica: "Desliza de baixo pra cima até o lugar." },
+  { id: "descer", rotulo: "Descer", dica: "Desliza de cima pra baixo até o lugar." },
+  { id: "entrar_esquerda", rotulo: "Entrar ←", dica: "Vem da esquerda." },
+  { id: "entrar_direita", rotulo: "Entrar →", dica: "Vem da direita." },
+  { id: "piscar", rotulo: "Piscar", dica: "Aparece e some duas vezes. Pra “Vendido”." },
+  { id: "no_fim", rotulo: "Só no fim", dica: "Entra no último terço da cena. Bom pro preço." },
 ];
+
 
 /**
  * As etiquetas que o mercado imobiliário usa, prontas.
@@ -304,18 +334,81 @@ export function filtroDaCena(c: Pick<Cena, "filtro">, doVideo: FiltroId | undefi
   return c.filtro ? ehFiltro(c.filtro) : ehFiltro(doVideo);
 }
 
-export type MusicaId = "nenhuma" | "calma" | "elegante" | "moderna" | "alegre" | "cinematografica";
+export type MusicaId =
+  | "nenhuma"
+  | "calma" | "sereno" | "aconchego"
+  | "elegante" | "sofisticado" | "lounge"
+  | "moderna" | "urbano" | "minimal"
+  | "alegre" | "familia" | "verao"
+  | "cinematografica" | "epico" | "inspirador";
 
-// Faixas geradas uma vez (stable-audio-25 no fal, instrumentais, 45s) e guardadas em
-// assets/musica. Sem licença de terceiros pra se preocupar.
-export const MUSICAS: { id: MusicaId; rotulo: string; descricao: string; arquivo: string | null }[] = [
-  { id: "nenhuma", rotulo: "Sem música", descricao: "", arquivo: null },
-  { id: "calma", rotulo: "Calma", descricao: "Piano e cordas suaves", arquivo: "calma.m4a" },
-  { id: "elegante", rotulo: "Elegante", descricao: "Lounge leve, alto padrão", arquivo: "elegante.m4a" },
-  { id: "moderna", rotulo: "Moderna", descricao: "Eletrônica discreta", arquivo: "moderna.m4a" },
-  { id: "alegre", rotulo: "Alegre", descricao: "Violão e palmas, clima de família", arquivo: "alegre.m4a" },
-  { id: "cinematografica", rotulo: "Cinematográfica", descricao: "Orquestra crescente, lançamento", arquivo: "cinematografica.m4a" },
+export type CategoriaMusica = "calma" | "elegante" | "moderna" | "alegre" | "cinematografica";
+
+export const CATEGORIAS_MUSICA: { id: CategoriaMusica; rotulo: string; para: string }[] = [
+  { id: "calma", rotulo: "Calma", para: "Apartamento, alto padrão, tour sem pressa" },
+  { id: "elegante", rotulo: "Elegante", para: "Luxo, cobertura, lançamento fino" },
+  { id: "moderna", rotulo: "Moderna", para: "Reels, comercial, imóvel novo" },
+  { id: "alegre", rotulo: "Alegre", para: "Casa, família, aluguel" },
+  { id: "cinematografica", rotulo: "Cinematográfica", para: "Lançamento, abertura, alto impacto" },
 ];
+
+/**
+ * A biblioteca de trilhas.
+ *
+ * Todas GERADAS uma vez (stable-audio-25 no fal), instrumentais, 45s, guardadas em
+ * public/musica. Nenhuma faixa de terceiros: música protegida num anúncio é o corretor
+ * levando strike no Instagram, e o problema é dele, não da ferramenta.
+ *
+ * Moram em `public/` e não em `assets/` porque o NAVEGADOR precisa delas pra tocar a
+ * prévia. Escolher trilha pelo nome é escolher no escuro -- ninguém sabe o que é
+ * "Elegante" até ouvir.
+ */
+export const MUSICAS: { id: MusicaId; rotulo: string; descricao: string; arquivo: string | null; categoria?: CategoriaMusica }[] = [
+  { id: "nenhuma", rotulo: "Sem música", descricao: "Só a sua voz, ou silêncio", arquivo: null },
+
+  { id: "calma", rotulo: "Calma", descricao: "Piano e cordas suaves", arquivo: "calma.m4a", categoria: "calma" },
+  { id: "sereno", rotulo: "Sereno", descricao: "Piano solo, bem devagar", arquivo: "sereno.m4a", categoria: "calma" },
+  { id: "aconchego", rotulo: "Aconchego", descricao: "Violão dedilhado, morno", arquivo: "aconchego.m4a", categoria: "calma" },
+
+  { id: "elegante", rotulo: "Elegante", descricao: "Lounge leve, alto padrão", arquivo: "elegante.m4a", categoria: "elegante" },
+  { id: "sofisticado", rotulo: "Sofisticado", descricao: "Piano elétrico e contrabaixo", arquivo: "sofisticado.m4a", categoria: "elegante" },
+  { id: "lounge", rotulo: "Lounge", descricao: "Batida macia de hotel", arquivo: "lounge.m4a", categoria: "elegante" },
+
+  { id: "moderna", rotulo: "Moderna", descricao: "Eletrônica discreta", arquivo: "moderna.m4a", categoria: "moderna" },
+  { id: "urbano", rotulo: "Urbano", descricao: "Batida seca, ritmo de Reels", arquivo: "urbano.m4a", categoria: "moderna" },
+  { id: "minimal", rotulo: "Minimal", descricao: "Poucas notas, muito ar", arquivo: "minimal.m4a", categoria: "moderna" },
+
+  { id: "alegre", rotulo: "Alegre", descricao: "Violão e palmas, clima de família", arquivo: "alegre.m4a", categoria: "alegre" },
+  { id: "familia", rotulo: "Família", descricao: "Ukulele e assobio", arquivo: "familia.m4a", categoria: "alegre" },
+  { id: "verao", rotulo: "Verão", descricao: "Praia, leve e ensolarado", arquivo: "verao.m4a", categoria: "alegre" },
+
+  { id: "cinematografica", rotulo: "Cinematográfica", descricao: "Orquestra crescente, lançamento", arquivo: "cinematografica.m4a", categoria: "cinematografica" },
+  { id: "epico", rotulo: "Épico", descricao: "Tambores e cordas, impacto", arquivo: "epico.m4a", categoria: "cinematografica" },
+  { id: "inspirador", rotulo: "Inspirador", descricao: "Piano que abre em orquestra", arquivo: "inspirador.m4a", categoria: "cinematografica" },
+];
+
+/**
+ * Efeitos sonoros nas VIRADAS de cena.
+ *
+ * Um só pro vídeo inteiro, tocado em cada emenda -- não um bloco por posição na linha do
+ * tempo. É a diferença entre "dá pra pôr um whoosh" e "agora você administra doze blocos
+ * de áudio": o primeiro melhora o vídeo de qualquer corretor, o segundo só serve pra quem
+ * já edita, e esse já tem CapCut.
+ *
+ * Gerados por nós (scripts/gerar-efeitos-sonoros.mjs), pelo mesmo motivo das músicas.
+ */
+export type EfeitoSonoroId = "nenhum" | "passagem" | "clique" | "brilho";
+
+export const EFEITOS_SONOROS: { id: EfeitoSonoroId; rotulo: string; descricao: string; arquivo: string | null }[] = [
+  { id: "nenhum", rotulo: "Sem efeito", descricao: "Nenhum som nas viradas", arquivo: null },
+  { id: "passagem", rotulo: "Passagem", descricao: "Um sopro curto na troca de cena", arquivo: "passagem.m4a" },
+  { id: "clique", rotulo: "Clique", descricao: "Obturador de câmera", arquivo: "clique.m4a" },
+  { id: "brilho", rotulo: "Brilho", descricao: "Um tilintar, pra revelar ambiente", arquivo: "brilho.m4a" },
+];
+
+export const EFEITO_SONORO_POR_ID = Object.fromEntries(EFEITOS_SONOROS.map((e) => [e.id, e])) as Record<EfeitoSonoroId, (typeof EFEITOS_SONOROS)[number]>;
+
+export const MUSICA_POR_ID = Object.fromEntries(MUSICAS.map((m) => [m.id, m])) as Record<MusicaId, (typeof MUSICAS)[number]>;
 
 export type VozId = "laura" | "sarah" | "daniel" | "george";
 
@@ -455,6 +548,8 @@ export type EspecVideo = {
   capa?: number;
   /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
   legendas?: Legendas | null;
+  /** Som curto em cada virada de cena. Ausente = nenhum. */
+  efeitoSonoro?: EfeitoSonoroId;
   /** Você aparecendo por cima do vídeo. */
   apresentador?: Apresentador | null;
   filtro?: FiltroId;
@@ -740,6 +835,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       apresentador: limparApresentador(b.apresentador),
       filtro: ehFiltro(b.filtro),
       capaMontada: b.capaMontada !== false,
+      efeitoSonoro: EFEITOS_SONOROS.some((e) => e.id === b.efeitoSonoro) ? (b.efeitoSonoro as EfeitoSonoroId) : "nenhum",
     },
     erro: null,
   };

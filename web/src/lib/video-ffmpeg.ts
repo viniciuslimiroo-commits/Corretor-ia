@@ -116,7 +116,7 @@ type OpcoesPill = {
  * inteira antes da letra. Mexer em POSIÇÃO e em QUANDO aparece é o que funciona igual em
  * todos os estilos.
  */
-export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOcupado = false): string[] {
+export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOcupado = false, duracao = 4): string[] {
   const usadas: Record<string, number> = {};
   return textos.map((t) => {
     const posicao = t.posicao ?? "base";
@@ -130,26 +130,56 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
     // isso só aparece no arquivo final (apareceu: a etiqueta saiu sob o título).
     const alto = Math.round(H * (topoOcupado ? 0.19 : 0.08)) + nivel * passo;
     const baixo = Math.round(H * 0.09) + nivel * passo;
-    const parado = posicao === "topo" ? `${alto}` : posicao === "centro" ? `(h-text_h)/2+${nivel * passo}` : `h-text_h-${baixo}`;
+    const paradoY = posicao === "topo" ? `${alto}` : posicao === "centro" ? `(h-text_h)/2+${nivel * passo}` : `h-text_h-${baixo}`;
+    const paradoX = `(w-text_w)/2`;
 
-    // "subir": entra deslocado e chega no lugar em 0,5s. A vírgula do `min` é escapada
-    // porque, dentro de um filtro, vírgula separa filtros.
-    const desloc = Math.round(H * 0.035);
-    const y = t.animacao === "subir" ? `${parado}+(1-min(t/0.5\\,1))*${desloc}` : parado;
+    // ---- a ENTRADA ----
+    //
+    // Tudo em POSIÇÃO e em QUANDO, nunca em transparência: no drawtext o alpha afeta a
+    // letra e não a caixa atrás dela, então um "aparecer suave" deixa a caixa piscando
+    // inteira antes do texto. A vírgula dentro de `min` e `gte` vai escapada porque,
+    // dentro de um filtro, vírgula separa filtros.
+    const deslocY = Math.round(H * 0.035);
+    const deslocX = Math.round(W * 0.25);
+    const anim = t.animacao ?? "nenhuma";
+    const chegada = `(1-min(t/0.5\\,1))`;
+    let x = paradoX;
+    let y = paradoY;
+    let enable: string | undefined;
+    if (anim === "subir") y = `${paradoY}+${chegada}*${deslocY}`;
+    else if (anim === "descer") y = `${paradoY}-${chegada}*${deslocY}`;
+    else if (anim === "entrar_esquerda") x = `${paradoX}-${chegada}*${deslocX}`;
+    else if (anim === "entrar_direita") x = `${paradoX}+${chegada}*${deslocX}`;
+    else if (anim === "surgir") enable = `gte(t\\,0.5)`;
+    // "no fim": entra no último terço da cena, que é onde o preço fecha o argumento.
+    else if (anim === "no_fim") enable = `gte(t\\,${(duracao * 0.62).toFixed(2)})`;
+    // "piscar": dois pares de acende-apaga de 0,35s. Pra "Vendido", "Reservado".
+    else if (anim === "piscar") enable = `lt(mod(t\\,0.7)\\,0.35)`;
 
     const partes = [
       `fontfile='${caminhoParaFiltro(caminhoFonte())}'`,
       `text=${textoParaFiltro(t.texto)}`,
       `fontsize=${tamanho}`,
       `fontcolor=white`,
-      `x=(w-text_w)/2`,
+      `x=${x}`,
       `y=${y}`,
-      `box=1`,
-      `boxcolor=${est.cor}@0.85`,
-      `boxborderw=${Math.round(tamanho * 0.45)}`,
     ];
-    // "surgir": a cena começa sem ele e ele entra depois de meio segundo.
-    if (t.animacao === "surgir") partes.push(`enable='gte(t\\,0.5)'`);
+
+    // ---- o ACABAMENTO ----
+    //
+    // É o que faz letra branca ser lida sobre parede branca. Sem isso metade dos textos
+    // some na foto, e some justamente nos imóveis bem iluminados.
+    if (est.fundo === "caixa") {
+      partes.push(`box=1`, `boxcolor=${est.cor}@0.85`, `boxborderw=${Math.round(tamanho * 0.45)}`);
+    } else if (est.fundo === "contorno") {
+      partes.push(`borderw=${Math.max(2, Math.round(tamanho * 0.1))}`, `bordercolor=0x000000@0.92`);
+    } else {
+      // Sombra: deslocamento proporcional ao corpo da letra, pra não sumir no texto miúdo.
+      const d = Math.max(2, Math.round(tamanho * 0.07));
+      partes.push(`shadowcolor=0x000000@0.75`, `shadowx=${d}`, `shadowy=${d}`);
+    }
+
+    if (enable) partes.push(`enable='${enable}'`);
     return `drawtext=${partes.join(":")}`;
   });
 }
@@ -509,6 +539,8 @@ export function argsMontagem(o: {
   fimDoCarimbo?: number;
   /** 0 a 1, antes da redução automática. Padrão 0,8. */
   musicaVolume?: number;
+  /** Caminho local do efeito sonoro das viradas. */
+  efeitoSonoro?: string;
   /** 0,2 a 2. Padrão 1. */
   vozVolume?: number;
   /** Segundos até a voz começar. Padrão 0,7. */
@@ -534,6 +566,13 @@ export function argsMontagem(o: {
   if (o.narracao) {
     args.push("-i", o.narracao);
     idxNarracao = idx++;
+  }
+  // O efeito sonoro entra UMA vez como entrada e é copiado pra cada virada com asplit:
+  // abrir o mesmo arquivo doze vezes decodifica doze vezes o mesmo som.
+  let idxEfeito = -1;
+  if (o.efeitoSonoro) {
+    args.push("-i", o.efeitoSonoro);
+    idxEfeito = idx++;
   }
   // O apresentador entra APARADO no próprio arquivo (`-ss` antes do `-i`) e com a duração
   // que vai ficar na tela: o resto do clipe dele não precisa ser decodificado.
@@ -671,11 +710,38 @@ export function argsMontagem(o: {
     partes.push(`[nar]anull[aout]`);
   }
 
-  const temAudio = idxMusica >= 0 || temVoz;
+  // ---- efeito sonoro nas viradas ----
+  //
+  // Uma cópia por emenda, atrasada pro instante em que a virada acontece. O tempo da
+  // virada é a soma das durações até ali MENOS as emendas já gastas -- a mesma conta que
+  // posiciona o carimbo, porque a transição sobrepõe os dois clipes.
+  let saidaAudio = "aout";
+  const viradas: number[] = [];
+  if (idxEfeito >= 0 && n > 1) {
+    let acc = 0;
+    for (let i = 0; i < n - 1; i++) {
+      acc += o.duracoes[i];
+      const gasto = Array.from({ length: i + 1 }, (_, k) => emenda(k).segundos).reduce((x, y) => x + y, 0);
+      viradas.push(Math.max(0, acc - gasto));
+    }
+  }
+  if (viradas.length > 0) {
+    const rotulos = viradas.map((_, i) => `ef${i}`);
+    partes.push(`[${idxEfeito}:a]volume=0.8,asplit=${viradas.length}${rotulos.map((r) => `[${r}c]`).join("")}`);
+    viradas.forEach((t, i) => {
+      const ms = Math.round(t * 1000);
+      partes.push(`[${rotulos[i]}c]adelay=${ms}|${ms}[${rotulos[i]}]`);
+    });
+    const entradas = [...(idxMusica >= 0 || temVoz ? ["[aout]"] : []), ...rotulos.map((r) => `[${r}]`)];
+    partes.push(`${entradas.join("")}amix=inputs=${entradas.length}:duration=first:dropout_transition=0:normalize=0[afinal]`);
+    saidaAudio = "afinal";
+  }
+
+  const temAudio = idxMusica >= 0 || temVoz || viradas.length > 0;
   return [
     ...args,
     "-filter_complex", partes.join(";"),
-    "-map", `[${saidaVideo}]`, ...(temAudio ? ["-map", "[aout]"] : []),
+    "-map", `[${saidaVideo}]`, ...(temAudio ? ["-map", `[${saidaAudio}]`] : []),
     "-t", total.toFixed(2),
     ...CODEC_VIDEO,
     ...(temAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]),
