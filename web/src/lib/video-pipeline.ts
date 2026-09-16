@@ -234,7 +234,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       // Fica aqui em cima, fora do `if`, porque vale pra QUALQUER tipo de cena. Quando
       // estava dentro do ramo da foto, um modelo escolhido num clipe sumia sem aviso --
       // a arte não era desenhada e o drawtext já tinha desistido do texto.
-      const artes = await rasterizarArtes(textosDaCena(cena), H, dir, `c${i}`, !!espec.titulo).catch(() => []);
+      const artes = await rasterizarArtes(textosDaCena(cena), H, dir, `c${i}`, !!espec.titulo, W).catch(() => []);
       // Os elementos gráficos passam pelo mesmo caminho: SVG do catálogo -> PNG ->
       // sobreposição. A diferença é que cada um escolhe o canto, em vez de sair centrado.
       const pecas = await rasterizarElementos(cena.elementos, W, H, dir, `c${i}`, { topoOcupado: !!espec.titulo }).catch(() => []);

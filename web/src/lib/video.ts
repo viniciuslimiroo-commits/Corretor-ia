@@ -11,6 +11,7 @@
 
 
 import { MODELOS_ARTE } from "./texto-arte";
+import { IDS_EFEITOS_TEXTO } from "./efeitos-texto/lista";
 import { AJUSTES_NEUTROS, ehFiltro as filtroValido, limparAjustes, type Ajustes as AjustesCor, type FiltroId as IdFiltro, type Grade as GradeCor } from "./filtros";
 import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "./elementos";
 import { idDoAdesivo } from "./adesivos";
@@ -865,7 +866,7 @@ function texto(v: unknown, max: number): string {
  * passaria a ser recusado aqui, sem erro, e o texto sairia do vídeo sem ninguém saber
  * por quê. A volta do import é só de tipo, então não há ciclo em tempo de execução.
  */
-const ARTES_VALIDAS = new Set(MODELOS_ARTE.map((m) => m.id));
+const ARTES_VALIDAS = new Set([...MODELOS_ARTE.map((m) => m.id), ...IDS_EFEITOS_TEXTO]);
 
 /** Cor hexa de 6 dígitos, sem "#". Qualquer outra coisa é descartada. */
 function corHex(v: unknown): string | undefined {

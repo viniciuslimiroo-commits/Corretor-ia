@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { ARTE_POR_ID } from "./texto-arte";
+import { EFEITO_TEXTO_POR_ID, desenharEfeitoNoVideo } from "./efeitos-texto/catalogo";
 import { lugaresDoTexto } from "./video-ffmpeg";
 import type { TextoCena } from "./video";
 
@@ -26,14 +27,23 @@ export async function rasterizarArtes(
   H: number,
   pasta: string,
   prefixo: string,
-  topoOcupado = false
+  topoOcupado = false,
+  W = Math.round((H * 9) / 16)
 ): Promise<ArteRasterizada[]> {
-  const comArte = textos.map((t, i) => ({ t, i })).filter(({ t }) => t.arte && ARTE_POR_ID[t.arte]);
+  const comArte = textos.map((t, i) => ({ t, i })).filter(({ t }) => t.arte && (EFEITO_TEXTO_POR_ID[t.arte] || ARTE_POR_ID[t.arte]));
   if (!comArte.length) return [];
 
   // Primeiro desenha tudo, pra saber a altura de cada peça; só então se calcula ONDE cada
   // uma fica -- é a altura que decide o empilhamento quando duas ficam na mesma posição.
+  //
+  // Os EFEITOS novos (fonte de verdade em contorno) vêm primeiro; os modelos antigos em
+  // SVG com <text> continuam atendendo vídeo feito antes deles, pra reabrir igual.
   const desenhos = comArte.map(({ t }) => {
+    const efeito = EFEITO_TEXTO_POR_ID[t.arte as string];
+    if (efeito) {
+      const d = desenharEfeitoNoVideo(efeito, t.texto || efeito.amostra, W, H, { fracao: t.visual?.tamanho, prefixo });
+      return { svg: d.svg, largura: d.largura, altura: d.altura, texto: t };
+    }
     const modelo = ARTE_POR_ID[t.arte as string];
     const corpo = Math.max(16, Math.round(H * (t.visual?.tamanho ?? modelo.corpo)));
     return { ...modelo.desenhar(t.texto, corpo), texto: t };

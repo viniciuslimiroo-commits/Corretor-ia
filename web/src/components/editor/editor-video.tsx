@@ -66,6 +66,8 @@ import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
 import GaleriaElementos from "@/components/editor/galeria-elementos";
 import ElementosNoPalco from "@/components/editor/elementos-no-palco";
+import TextoComEfeito from "@/components/editor/texto-com-efeito";
+import { IDS_EFEITOS_TEXTO } from "@/lib/efeitos-texto/lista";
 import PainelFiltros, { type EscopoCor } from "@/components/editor/painel-filtros";
 import FotoComCor from "@/components/editor/foto-com-cor";
 import { AJUSTES_NEUTROS, type Ajustes } from "@/lib/filtros";
@@ -902,7 +904,12 @@ export default function EditorDeVideo() {
         if (s.chave !== k) return s;
         const atuais = s.textos ?? [];
         if (atuais.length >= LIMITES.textosPorCena) return s;
-        return { ...s, textos: [...atuais, novo] };
+        // Lugar já ocupado: vai pro primeiro livre. Dois efeitos no centro ficavam um EM
+        // CIMA do outro no palco ("À VENDA" atravessado pelo carimbo), e quem toca num
+        // segundo efeito quer ver os dois.
+        const ocupadas = new Set(atuais.map((t) => t.posicao ?? "base"));
+        const lugar = ocupadas.has(novo.posicao ?? "base") ? (["centro", "topo", "base"] as const).find((p) => !ocupadas.has(p)) : undefined;
+        return { ...s, textos: [...atuais, lugar ? { ...novo, posicao: lugar } : novo] };
       })
     );
   }
@@ -1464,7 +1471,7 @@ export default function EditorDeVideo() {
         </nav>
 
         {/* ---------- painel da aba ---------- */}
-        <div className="order-3 flex flex-col gap-3 overflow-y-auto border-neutral-200 p-3 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px]">
+        <div className="order-3 flex min-h-0 flex-col gap-3 overflow-y-auto border-neutral-200 p-3 max-md:flex-1 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px]">
           {mostrarAba("midia") && (
           <Cartao>
             <Rotulo>Mídia</Rotulo>
@@ -2286,7 +2293,11 @@ export default function EditorDeVideo() {
         </div>
 
         {/* ---------- palco e painel da cena ---------- */}
-        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:order-3">
+        {/* No celular o palco tem ALTURA PRÓPRIA (46vh) e o painel fica com o resto, rolando por
+            dentro. Antes os dois dividiam por conteúdo: com a galeria de Texto ou de Elementos
+            aberta (comprida), o painel levava tudo e o palco encolhia pra 24px -- a pessoa
+            escolhia um efeito e não via a foto. Visto em 375x812. */}
+        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 max-md:h-[46vh] max-md:flex-none md:order-3">
       {erro && (
         <div className="mx-auto w-full max-w-2xl text-sm">
           <Aviso tipo="erro">{erro}</Aviso>
@@ -2367,11 +2378,11 @@ export default function EditorDeVideo() {
                 Um vídeo 9:16 numa largura de 360 dá 640 de altura: sozinho, ele comia a
                 tela inteira do celular e empurrava a trilha de ferramentas e a linha do
                 tempo pra fora da vista. A pessoa abria o editor e via um retângulo preto.
-                Com altura fixa em 44vh e largura derivada da proporção, o quadro continua
+                Com altura fixa em 34vh (o palco inteiro tem 46vh) e largura derivada da proporção, o quadro continua
                 exato e sobra tela pro resto. No computador volta a ser a largura que manda. */}
             <div className="mx-auto w-full" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
               <div
-                className="relative mx-auto h-[44vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
+                className="relative mx-auto h-[34vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
                 style={{ aspectRatio: PROPORCAO[formato] }}
                 // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
                 // com a cena. Os textos por cima têm o menu DELES e param o evento aqui,
@@ -2442,12 +2453,25 @@ export default function EditorDeVideo() {
                     const ehLegenda = !!cenaAtual.legenda && i === 0;
                     const indice = ehLegenda ? -1 : i - (cenaAtual.legenda ? 1 : 0);
                     const emEdicao = editando?.chave === cenaAtual.chave && editando.indice === indice;
+                    // Texto com EFEITO novo (fonte de verdade em contorno) é desenhado pelo
+                    // servidor e ocupa no palco a mesma fração da largura que ocupa no vídeo.
+                    // Por isso o invólucro não tem margem lateral, e a altura segue a mesma
+                    // conta de `lugaresDoTexto` (8% em cima, 19% com título, 9% embaixo).
+                    const comEfeito = !!t.arte && IDS_EFEITOS_TEXTO.has(t.arte);
                     return (
                       <span
                         key={i}
                         className={
-                          "pointer-events-none absolute inset-x-0 flex justify-center px-3 " +
-                          (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]")
+                          "pointer-events-none absolute inset-x-0 flex justify-center " +
+                          (comEfeito
+                            ? pos === "topo"
+                              ? titulo
+                                ? "top-[19%]"
+                                : "top-[8%]"
+                              : pos === "centro"
+                                ? "top-1/2 -translate-y-1/2"
+                                : "bottom-[9%]"
+                            : "px-3 " + (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]"))
                         }
                       >
                         {emEdicao ? (
@@ -2463,6 +2487,18 @@ export default function EditorDeVideo() {
                             className="pointer-events-auto w-full max-w-[90%] rounded bg-marca-indigo px-2 py-1 text-center text-white outline-none ring-2 ring-white/70"
                             style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12 }}
                           />
+                        ) : comEfeito ? (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setEditando({ chave: cenaAtual.chave, indice })}
+                            onKeyDown={(e) => e.key === "Enter" && setEditando({ chave: cenaAtual.chave, indice })}
+                            {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
+                            title="Clique pra editar · botão direito pra mais"
+                            className="pointer-events-auto flex w-full cursor-pointer justify-center transition hover:drop-shadow-[0_0_2px_rgba(255,255,255,0.8)]"
+                          >
+                            <TextoComEfeito efeito={t.arte as string} texto={t.texto || "Texto"} formato={formato} n={i} />
+                          </span>
                         ) : (
                           <span
                             role="button"
