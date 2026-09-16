@@ -10,6 +10,7 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { rasterizarArtes } from "./texto-arte-servidor";
+import { rasterizarElementos } from "./elementos-servidor";
 import { creditar, marcaEfetiva } from "./cobranca";
 import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, filtroDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
@@ -233,6 +234,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       // estava dentro do ramo da foto, um modelo escolhido num clipe sumia sem aviso --
       // a arte não era desenhada e o drawtext já tinha desistido do texto.
       const artes = await rasterizarArtes(textosDaCena(cena), H, dir, `c${i}`, !!espec.titulo).catch(() => []);
+      // Os elementos gráficos passam pelo mesmo caminho: SVG do catálogo -> PNG ->
+      // sobreposição. A diferença é que cada um escolhe o canto, em vez de sair centrado.
+      const pecas = await rasterizarElementos(cena.elementos, W, H, dir, `c${i}`, { topoOcupado: !!espec.titulo }).catch(() => []);
       // Giro, espelho e velocidade vêm da barra da linha do tempo. Ficam aqui, num
       // objeto só, porque valem pra todo tipo de cena e repetir seis vezes é como um
       // deles some de um ramo sem ninguém ver.
@@ -253,10 +257,10 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           // detalhe -- a bancada, a vista -- sem precisar de outra imagem.
           const parado = local(`parado${i}.png`);
           await rodarFfmpeg(["-ss", Math.max(0, cena.inicio ?? 0).toFixed(2), "-i", clipe, "-frames:v", "1", parado]);
-          return rodarFfmpeg(argsCenaFoto({ foto: parado, saida, W, H, duracao: dur, efeito: "parado", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, ...forma }));
+          return rodarFfmpeg(argsCenaFoto({ foto: parado, saida, W, H, duracao: dur, efeito: "parado", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, ...forma , pecas }));
         }
         return rodarFfmpeg(
-          argsCenaClipe({ clipe, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, inicio: cena.inicio, artes, ...forma, velocidade: cena.velocidade, ...extras })
+          argsCenaClipe({ clipe, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, inicio: cena.inicio, artes, pecas, ...forma, velocidade: cena.velocidade, ...extras })
         );
       }
 
@@ -338,7 +342,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const foto = local(`foto${i}${extensaoDe(fontes[0])}`);
           await baixar(db, fontes[0], foto);
           const saida = local(nomeClipe);
-          const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, ...forma }));
+          const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, ...forma , pecas }));
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         }
         p.animada = null;
@@ -348,7 +352,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const depois = local("depois.jpg");
         await Promise.all([baixar(db, antesPath, antes), baixar(db, depoisPath, depois)]);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaAntesDepois({ antes, depois, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, ...forma }));
+        const r = await rodarFfmpeg(argsCenaAntesDepois({ antes, depois, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, ...forma , pecas }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       } else if (cena.tipo === "tour360") {
         // Pode ser foto 360 (equirretangular 2:1), panorâmica de celular (cilíndrica,
@@ -376,7 +380,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }
         const saida = local(nomeClipe);
         const r = await rodarFfmpeg(
-          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, projecao, entradaLargura: larguraEntrada, entradaAltura: alturaEntrada, artes }),
+          argsCena360({ entrada, ehVideo, saida, dirTrabalho: dir, W, H, duracao: dur, movimento: cena.movimento ?? "olhar_volta", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, projecao, entradaLargura: larguraEntrada, entradaAltura: alturaEntrada, artes, pecas }),
           280_000
         );
         if (projecao === "panoramica") p.avisos.push(`Cena ${i + 1}: tratei como panorâmica de celular (a imagem não tem a proporção 2:1 de câmera 360).`);
@@ -393,7 +397,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         const foto = local(`foto${i}${extensaoDe(fonte)}`);
         await baixar(db, fonte, foto);
         const saida = local(nomeClipe);
-        const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: cena.efeito ?? "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes }));
+        const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: cena.efeito ?? "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, filtro: filtroDaCena(cena, espec.filtro), luz: cena.luz, artes, pecas, ...forma }));
         await guardarClipe(saida, nomeClipe, dur, r.segundos);
       }
 

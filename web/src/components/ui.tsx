@@ -544,6 +544,15 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M9.6 4.8L12 7l2.4-2.2M9.6 19.2L12 17l2.4 2.2" />
         </svg>
       );
+    case "elementos": // formas soltas: e' o que uma prateleira de adesivo e'
+      return (
+        <svg {...p}>
+          <circle cx="7.5" cy="7.5" r="4" />
+          <rect x="13" y="3.5" width="8" height="8" rx="1.5" />
+          <path d="M7.5 13l4.5 7.5H3z" />
+          <path d="M14 20.5h7M17.5 17v7" />
+        </svg>
+      );
     default:
       return <svg {...p}><circle cx="12" cy="12" r="8" /></svg>;
   }

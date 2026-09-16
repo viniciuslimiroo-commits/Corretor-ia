@@ -11,6 +11,7 @@
 
 
 import { MODELOS_ARTE } from "./texto-arte";
+import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "./elementos";
 
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
 export const BUCKET_UPLOADS = "resultados";
@@ -459,6 +460,38 @@ export type Cena = {
   velocidade?: number;
   /** Só onde há vídeo: para no quadro de `inicio` e a cena vira foto parada. */
   congelar?: boolean;
+  /** Peças gráficas por cima da cena. Até `LIMITES.elementosPorCena`. */
+  elementos?: ElementoCena[];
+};
+
+/**
+ * Uma peça gráfica na cena.
+ *
+ * Os `itens` da ficha vêm PRONTOS do navegador, e não são buscados no banco na hora de
+ * montar: o servidor de vídeo não precisa saber ler um imóvel pra desenhar uma barra, e
+ * o que entra no vídeo fica sendo exatamente o que a pessoa viu no cartão. O preço de
+ * fazer diferente seria uma consulta a mais em cada cena e um vídeo que muda sozinho
+ * quando alguém edita o cadastro no meio.
+ */
+export type ElementoCena = {
+  /** Id do modelo (elementos.ts). */
+  id: string;
+  /** Texto livre, pros modelos que pedem. */
+  texto?: string;
+  /** Os dados da ficha, já em palavra. Só pros modelos que usam ficha. */
+  itens?: { icone: IconeFicha; texto: string }[];
+  ancora?: AncoraElemento;
+  /** Fração da altura do vídeo. Ausente = o tamanho próprio do modelo. */
+  tamanho?: number;
+  animacao?: AnimacaoTexto;
+  /**
+   * A cor da peça, em "#rrggbb". Vem do kit de marca, escolhida no navegador.
+   *
+   * Vem de lá e não é buscada aqui pelo mesmo motivo dos `itens`: desenhar uma peça não
+   * pode custar uma consulta ao banco por cena, e o vídeo não pode mudar de cor sozinho
+   * porque alguém mexeu na marca no meio da montagem.
+   */
+  cor?: string;
 };
 
 /** Os giros que existem. Um quarto de volta por clique, como em qualquer editor. */
@@ -749,6 +782,12 @@ export const LIMITES = {
   aparaMax: 60,
   /** Três já é muito numa tela de celular; a quarta linha vira poluição. */
   textosPorCena: 3,
+  /** Mesma conta dos textos: peça demais em cima do imóvel esconde o imóvel. */
+  elementosPorCena: 3,
+  /** Texto dentro de uma peça gráfica. Mais que isso não cabe no desenho. */
+  elementoTextoMax: 26,
+  /** Quantos dados da ficha cabem numa barra sem virar régua. */
+  itensDaFichaMax: 5,
   textoMax: 44,
   /** Um vídeo de 60s narrado dá ~25 trechos; 120 é teto de segurança, não de uso. */
   trechosMax: 120,
@@ -837,6 +876,50 @@ function limparVisual(b: Record<string, unknown>): VisualTexto {
     ...(b.sombra === true ? { sombra: true } : {}),
     ...(Number.isFinite(n) && n > 0.005 && n < 0.2 ? { tamanho: n } : {}),
   };
+}
+
+/**
+ * As peças gráficas de uma cena, limpas.
+ *
+ * O modelo tem que EXISTIR no catálogo, o texto tem teto, os itens da ficha só passam
+ * com um ícone conhecido, e o tamanho fica entre 2% e 100% da altura. O que vier torto
+ * some -- e o que vier de mais é cortado no limite, não recusa o vídeo inteiro.
+ */
+function limparElementos(bruto: unknown): ElementoCena[] | undefined {
+  if (!Array.isArray(bruto)) return undefined;
+  const lista: ElementoCena[] = [];
+  for (const b of bruto.slice(0, LIMITES.elementosPorCena)) {
+    const e = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
+    const modelo = typeof e.id === "string" ? ELEMENTO_POR_ID[e.id] : undefined;
+    if (!modelo) continue;
+    const conteudo = texto(e.texto, LIMITES.elementoTextoMax);
+    // Modelo que vive de texto e chegou sem texto não desenha nada: some aqui em vez de
+    // virar um retângulo vazio no meio do vídeo.
+    if (modelo.usa === "texto" && !conteudo) continue;
+    const itens: { icone: IconeFicha; texto: string }[] = [];
+    if (modelo.usa === "ficha" && Array.isArray(e.itens)) {
+      for (const bi of e.itens.slice(0, LIMITES.itensDaFichaMax)) {
+        const i = (bi && typeof bi === "object" ? bi : {}) as Record<string, unknown>;
+        const rotulo = texto(i.texto, LIMITES.elementoTextoMax);
+        if (!rotulo) continue;
+        if (i.icone === "quarto" || i.icone === "suite" || i.icone === "banheiro" || i.icone === "vaga" || i.icone === "area" || i.icone === "preco" || i.icone === "local") {
+          itens.push({ icone: i.icone, texto: rotulo });
+        }
+      }
+      if (!itens.length) continue;
+    }
+    const tam = Number(e.tamanho);
+    lista.push({
+      id: modelo.id,
+      ...(conteudo ? { texto: conteudo } : {}),
+      ...(itens.length ? { itens } : {}),
+      ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : modelo.ancora,
+      ...(Number.isFinite(tam) && tam >= 0.02 && tam <= 1 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
+      ...(typeof e.cor === "string" && /^#[0-9a-fA-F]{6}$/.test(e.cor) ? { cor: e.cor.toLowerCase() } : {}),
+      animacao: ANIMACOES_TEXTO.some((a) => a.id === e.animacao) ? (e.animacao as AnimacaoTexto) : "nenhuma",
+    });
+  }
+  return lista.length ? lista : undefined;
 }
 
 function limparTextos(bruto: unknown): TextoCena[] | undefined {
@@ -970,6 +1053,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       movimento: tipo === "tour360" ? (ehId(MOVIMENTOS_360, c.movimento) ? c.movimento : "olhar_volta") : undefined,
       legenda: texto(c.legenda, LIMITES.legendaMax) || undefined,
       textos: limparTextos(c.textos),
+      elementos: limparElementos(c.elementos),
       duracao: Number.isFinite(duracaoNum) ? Math.min(Math.max(Math.round(duracaoNum), LIMITES.duracaoMin), teto) : padrao,
       melhorar: tipo === "clipe" ? c.melhorar === true : undefined,
       // Ausente = herda o do vídeo. `natural` explícito na cena é uma escolha: "esta

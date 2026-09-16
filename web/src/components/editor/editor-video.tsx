@@ -47,6 +47,7 @@ import {
   type Movimento360Id,
   type MusicaId,
   type EfeitoSonoroId,
+  type ElementoCena,
   type Narracao,
   type OrigemVoz,
   type PosicaoTexto,
@@ -63,6 +64,8 @@ import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
+import GaleriaElementos from "@/components/editor/galeria-elementos";
+import { COR_ELEMENTO_PADRAO, type IconeFicha } from "@/lib/elementos";
 import { lerLegenda } from "@/lib/legenda-arquivo";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
@@ -95,6 +98,8 @@ type CenaUI = {
   melhorar: boolean;
   /** Textos por cima da cena, além da legenda. */
   textos?: TextoCena[];
+  /** Peças gráficas por cima da cena: ficha, selo, seta, moldura, contato. */
+  elementos?: ElementoCena[];
   /** Acabamento de cor desta cena. Ausente = o do vídeo. */
   filtro?: FiltroId;
   /** Correção de luz, de -0.25 a 0.25. */
@@ -200,6 +205,7 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     movimento: c.movimento ?? "olhar_volta",
     legenda: c.legenda ?? "",
     textos: c.textos,
+    elementos: c.elementos,
     duracao: c.duracao ?? LIMITES.duracaoPadrao,
     melhorar: c.melhorar ?? false,
     filtro: c.filtro,
@@ -230,6 +236,7 @@ const ABAS = [
   { id: "modelos", rotulo: "Modelos", icone: "lote", dica: "Um ponto de partida por tipo de imóvel" },
   { id: "audio", rotulo: "Áudio", icone: "som", dica: "Músicas e efeitos sonoros, com prévia" },
   { id: "texto", rotulo: "Texto", icone: "editar_prompt", dica: "Modelos de texto e efeitos de entrada" },
+  { id: "elementos", rotulo: "Elementos", icone: "elementos", dica: "Ficha do imóvel, selos, setas, molduras e contato" },
   { id: "legendas", rotulo: "Legendas", icone: "compartilhar", dica: "Narração e legenda automática" },
   { id: "transicoes", rotulo: "Transições", icone: "converter_hd", dica: "Como uma cena vira a outra" },
   { id: "voce", rotulo: "Você", icone: "equipe", dica: "Você no vídeo: aparecendo, ou só a sua voz" },
@@ -418,7 +425,7 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
-      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, luz: s.luz, giro: s.giro, espelho: s.espelho, velocidade: s.velocidade, congelar: s.congelar })),
+      cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, elementos: s.elementos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, luz: s.luz, giro: s.giro, espelho: s.espelho, velocidade: s.velocidade, congelar: s.congelar })),
       musica,
       musicaVolume,
       // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
@@ -450,6 +457,32 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
   const pecas = pecasDoImovel(ficha, marca, idioma);
+
+  /**
+   * Os dados do imóvel no formato que as peças gráficas desenham: ícone + palavra.
+   *
+   * O mapa é explícito, e não um `id as IconeFicha`: a ficha ganha campo novo de vez em
+   * quando, e um id desconhecido viraria um ícone que não existe -- que o librsvg
+   * desenha como nada, sem erro.
+   */
+  const itensDaFicha = useMemo(() => {
+    const mapa: Record<string, IconeFicha> = {
+      preco: "preco",
+      dormitorios: "quarto",
+      suites: "suite",
+      banheiros: "banheiro",
+      vagas: "vaga",
+      area: "area",
+      bairro: "local",
+      cidade: "local",
+    };
+    return pecas
+      .filter((p) => mapa[p.id])
+      .slice(0, LIMITES.itensDaFichaMax)
+      .map((p) => ({ icone: mapa[p.id], texto: p.texto }));
+  }, [pecas]);
+
+  const corDaMarca = /^#[0-9a-fA-F]{6}$/.test(marca?.cor ?? "") ? (marca?.cor as string) : COR_ELEMENTO_PADRAO;
 
   /**
    * O modelo aberto pra conferência. Clicar num modelo NÃO aplica: mostra o que vai
@@ -886,6 +919,24 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
   }
   function removerTexto(k: string, i: number) {
     setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, textos: (s.textos ?? []).filter((_, j) => j !== i) } : s)));
+  }
+
+  // ---- elementos da cena ----
+  function adicionarElemento(k: string, novo: ElementoCena) {
+    setCenas((lista) =>
+      lista.map((s) => {
+        if (s.chave !== k) return s;
+        const atuais = s.elementos ?? [];
+        if (atuais.length >= LIMITES.elementosPorCena) return s;
+        return { ...s, elementos: [...atuais, novo] };
+      })
+    );
+  }
+  function mudarElemento(k: string, i: number, mudanca: Partial<ElementoCena>) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, elementos: (s.elementos ?? []).map((e, j) => (j === i ? { ...e, ...mudanca } : e)) } : s)));
+  }
+  function removerElemento(k: string, i: number) {
+    setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, elementos: (s.elementos ?? []).filter((_, j) => j !== i) } : s)));
   }
 
   /**
@@ -1905,6 +1956,30 @@ export default function EditorDeVideo({ modo = "editor" }: { modo?: "simples" | 
                 </label>
               )}
             </div>
+          </Cartao>
+          )}
+
+          {/* ---------- elementos ----------
+               As peças gráficas que entram por cima da cena. A primeira categoria é a
+               FICHA DO IMÓVEL, e é por ela que a aba existe: adesivo bonito qualquer
+               editor tem; "3 quartos · 2 vagas · 120 m²" desenhado, certo e preenchido do
+               cadastro é o que um corretor não monta sozinho no celular. */}
+          {mostrarAba("elementos") && (
+          <Cartao>
+            <Rotulo>Elementos</Rotulo>
+            {/* A prateleira aparece SEMPRE, mesmo sem cena escolhida: quem abre a aba
+                quer ver o que existe. Sem cena, o que fica desligado é o clique -- e o
+                aviso diz por quê, em vez de a aba parecer vazia. */}
+            {!cenaAtual && <p className="mb-2 text-xs text-neutral-500">Escolha uma cena pra pôr uma peça nela.</p>}
+            <GaleriaElementos
+              elementos={cenaAtual?.elementos ?? []}
+              itensDaFicha={itensDaFicha}
+              cor={corDaMarca}
+              podeMais={!!cenaAtual && (cenaAtual.elementos?.length ?? 0) < LIMITES.elementosPorCena}
+              aoAdicionar={(e) => cenaAtual && adicionarElemento(cenaAtual.chave, e)}
+              aoMudar={(i, m) => cenaAtual && mudarElemento(cenaAtual.chave, i, m)}
+              aoTirar={(i) => cenaAtual && removerElemento(cenaAtual.chave, i)}
+            />
           </Cartao>
           )}
 

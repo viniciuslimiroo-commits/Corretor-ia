@@ -161,13 +161,23 @@ export function lugaresDoTexto(textos: TextoCena[], H: number, topoOcupado = fal
 }
 
 /**
- * Sobrepõe as ARTES de texto (PNGs já rasterizados) numa cena.
+ * Uma peça já rasterizada, pronta pra entrar por cima da cena.
  *
- * A arte é uma IMAGEM, não uma letra desenhada pelo ffmpeg -- é o que permite contorno
- * duplo, brilho e relevo. A entrada de cada PNG e o filtro de overlay saem daqui juntos,
- * porque o índice da entrada e o rótulo do filtro têm que combinar.
+ * É uma IMAGEM, não uma letra desenhada pelo ffmpeg -- é o que permite contorno duplo,
+ * brilho, relevo, ícone e moldura. Serve tanto pra arte de texto quanto pra elemento.
  */
 export type ArteNaCena = { arquivo: string; y: number; largura: number; altura: number; animacao?: string };
+
+/** O mesmo, com o canto escolhido: é o que um elemento tem a mais que uma arte. */
+export type PecaNaCena = ArteNaCena & { x: number };
+
+/** Junta arte (centrada) e elemento (ancorado) numa lista só, na ordem do desenho. */
+function pecasDaCena(W: number, duracao: number, artes?: ArteNaCena[], pecas?: PecaNaCena[]): (PecaNaCena & { duracao: number })[] {
+  return [
+    ...(artes ?? []).map((a) => ({ ...a, duracao, x: Math.round((W - a.largura) / 2) })),
+    ...(pecas ?? []).map((p) => ({ ...p, duracao })),
+  ];
+}
 
 /**
  * Os textos que o drawtext ainda desenha: os que NAO viraram arte.
@@ -185,13 +195,36 @@ export function sobreporArtes(
   idxPrimeiro: number,
   entrada = "v"
 ): { entradas: string[]; partes: string[]; saida: string } {
-  if (!artes.length) return { entradas: [], partes: [], saida: entrada };
+  // Arte de texto é sempre centrada na horizontal; a peça gráfica escolhe o canto. As
+  // duas viram a mesma coisa aqui: uma imagem com x e y.
+  return sobreporPecas(
+    artes.map((a) => ({ ...a, x: Math.round((W - a.largura) / 2) })),
+    W,
+    idxPrimeiro,
+    entrada
+  );
+}
+
+/**
+ * Sobrepõe PNGs já prontos numa cena, cada um no seu lugar.
+ *
+ * Um `-i` por peça e um `overlay` por peça, saindo juntos daqui: o índice da entrada e o
+ * rótulo do filtro têm que combinar, e separar as duas coisas é como se acrescenta a
+ * entrada sem acrescentar o filtro (ou o contrário) e o vídeo sai sem a peça, sem erro.
+ */
+export function sobreporPecas(
+  pecas: (ArteNaCena & { duracao: number; x: number })[],
+  W: number,
+  idxPrimeiro: number,
+  entrada = "v"
+): { entradas: string[]; partes: string[]; saida: string } {
+  if (!pecas.length) return { entradas: [], partes: [], saida: entrada };
   const entradas: string[] = [];
   const partes: string[] = [];
   let atual = entrada;
-  artes.forEach((a, i) => {
+  pecas.forEach((a, i) => {
     entradas.push("-i", a.arquivo);
-    const x = Math.round((W - a.largura) / 2);
+    const x = a.x;
     const chegada = "(1-min(t/0.5" + ESC + ",1))";
     const desloc = Math.round(W * 0.25);
     let ex = String(x);
@@ -440,12 +473,14 @@ export function argsCenaFoto(o: {
   espelho?: boolean;
   /** Artes de texto já rasterizadas pelo pipeline. Entram como IMAGEM, não como letra. */
   artes?: ArteNaCena[];
+  /** Elementos gráficos já rasterizados, cada um com o canto dele. */
+  pecas?: PecaNaCena[];
 }): string[] {
   const frames = Math.round(o.duracao * FPS);
   const filtros = [...geometria(o.giro, o.espelho), enquadrar(o.W, o.H, ESCALA_ZOOM), zoompan(o.efeito, frames, o.W, o.H), ...filtrosDeImagem(o.filtro, o.luz), "format=yuv420p"];
   // Só os textos SEM arte passam pelo drawtext; os com arte entram como sobreposição.
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
-  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
+  const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 1);
   return [
     "-i", o.foto,
     ...arte.entradas,
@@ -461,7 +496,7 @@ export function argsCenaFoto(o: {
  * Antes e depois: mostra a original, uma cortina passa da esquerda pra direita e fica
  * o resultado. As duas ficam paradas de propósito -- o movimento é a cortina.
  */
-export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; artes?: ArteNaCena[] }): string[] {
+export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
   const trans = 1.4;
   const cada = (o.duracao + trans) / 2;
   const offset = cada - trans;
@@ -474,8 +509,8 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
   // passaria por cima deles na virada.
   const texto = filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado).join(",");
   const filtro = `[0:v]${base},${rotA}[a];[1:v]${base},${rotB}[b];[a][b]xfade=transition=wipeleft:duration=${trans}:offset=${offset.toFixed(2)}${texto ? "[ab];[ab]" + texto : ""}[v]`;
-  // As duas fotos ja ocupam as entradas 0 e 1; a arte comeca na 2.
-  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 2);
+  // As duas fotos ja ocupam as entradas 0 e 1; a peca comeca na 2.
+  const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 2);
   return [
     "-loop", "1", "-framerate", String(FPS), "-t", cada.toFixed(2), "-i", o.antes,
     "-loop", "1", "-framerate", String(FPS), "-t", cada.toFixed(2), "-i", o.depois,
@@ -489,7 +524,7 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[] }): string[] {
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; filtro?: FiltroId; luz?: number; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
   // Velocidade é `setpts`, e vem ANTES do `fps`: primeiro os carimbos de tempo mudam,
   // depois o ffmpeg reamostra pra taxa fixa. Na ordem inversa o vídeo fica aos trancos,
   // porque a reamostragem acontece contra um relógio que ainda vai mudar.
@@ -509,7 +544,7 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   // descartar. É o "aparar o começo" -- o pedaço em que a pessoa ainda estava acertando
   // o celular não entra no vídeo.
   const inicio = Math.max(0, o.inicio ?? 0);
-  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
+  const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 1);
   return ["-ss", inicio.toFixed(2), "-t", corte.toFixed(2), "-i", o.clipe, ...arte.entradas, "-an", "-filter_complex", [`[0:v]${filtros.join(",")}[v]`, ...arte.partes].join(";"), "-map", `[${arte.saida}]`, "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
 
@@ -547,6 +582,7 @@ export function argsCena360(o: {
   entradaLargura?: number;
   entradaAltura?: number;
   artes?: ArteNaCena[];
+  pecas?: PecaNaCena[];
 }): string[] {
   const projecao = o.projecao ?? "equirect";
   const presetBase = MOVIMENTOS_360.find((m) => m.id === o.movimento) ?? MOVIMENTOS_360[0];
@@ -612,7 +648,7 @@ export function argsCena360(o: {
     "format=yuv420p",
   ];
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
-  const arte = sobreporArtes((o.artes ?? []).map((a) => ({ ...a, duracao: o.duracao })), o.W, 1);
+  const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 1);
 
   const entrada = o.ehVideo
     ? ["-t", o.duracao.toFixed(2), "-i", o.entrada]
