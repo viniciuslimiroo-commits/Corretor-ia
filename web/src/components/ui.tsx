@@ -392,6 +392,16 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M7 5l12 7-12 7z" />
         </svg>
       );
+    // Nota musical: a aba de áudio do editor. Uma haste e uma cabeça, sem bandeirola --
+    // em 20px a bandeirola vira um borrão.
+    case "som":
+      return (
+        <svg {...p}>
+          <path d="M9 18V6l10-2v12" />
+          <circle cx="6.5" cy="18" r="2.5" />
+          <circle cx="16.5" cy="16" r="2.5" />
+        </svg>
+      );
     case "cima":
       return (
         <svg {...p}>

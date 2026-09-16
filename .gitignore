@@ -33,3 +33,6 @@ docs/testes-reais/*.jpg
 
 # Pacote gerado pra analise externa: regeravel, nao versionar.
 projeto-para-analise.zip
+
+# Config local do preview do Claude Code, nao do produto.
+web/.claude/
