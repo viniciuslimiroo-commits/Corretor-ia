@@ -179,6 +179,48 @@ for (const modelo of MODELOS_ELEMENTO) {
   conferir(foraDoCirculo < 40, "o selo redondo não pinta fora do próprio círculo", `${foraDoCirculo} pixels fora`);
 }
 
+// ---------- 1c. nenhuma peça fechada corta a própria letra ----------
+//
+// Texto que não cabe não dá erro: o quadro do SVG simplesmente não desenha o pedaço de
+// fora. Olhar a borda por tinta é frágil -- um "1" cortado deixa uma lasca de 2 pixels.
+//
+// A medida robusta é a TINTA QUE SUMIU. Rasteriza a peça duas vezes: como ela é, e com a
+// janela do SVG alargada pros dois lados (mesma escala, nada cortado). Se a versão larga
+// tem mais tinta da cor da letra, essa diferença é exatamente a letra que estava sendo
+// jogada fora. Anel e fundo não mudam entre as duas, então não entram na conta.
+async function tintaDaLetra(svg: string, ehLetra: (r: number, g: number, b: number) => boolean) {
+  const { data, info } = await sharp(Buffer.from(svg)).png().raw().toBuffer({ resolveWithObject: true });
+  let n = 0;
+  for (let i = 0; i < data.length; i += info.channels) if (data[i + 3] > 160 && ehLetra(data[i], data[i + 1], data[i + 2])) n++;
+  return n;
+}
+
+function alargar(svg: string, margem: number): string {
+  return svg.replace(/<svg ([^>]*?)width="(\d+)" height="(\d+)" viewBox="0 0 (\d+) (\d+)">/, (_t, pre, w, h, vw, vh) => {
+    const L = Number(w) + margem * 2;
+    return `<svg ${pre}width="${L}" height="${h}" viewBox="${-margem} 0 ${Number(vw) + margem * 2} ${vh}">`;
+  });
+}
+
+{
+  const casos: { id: string; ehLetra: (r: number, g: number, b: number) => boolean }[] = [
+    // metragem: letra índigo sobre branco
+    { id: "metragem", ehLetra: (r, g, b) => r < 60 && g < 90 && b < 130 && b > r },
+    // selo: letra branca sobre coral (o anel branco fica inteiro dentro e se cancela)
+    { id: "selo_redondo", ehLetra: (r, g, b) => r > 235 && g > 235 && b > 235 },
+  ];
+  for (const { id, ehLetra } of casos) {
+    const modelo = ELEMENTO_POR_ID[id];
+    for (const texto of [modelo.exemplo ?? "", "1.250 m²", "EXCLUSIVO"]) {
+      const d = modelo.desenhar({ texto, itens: [], cor: COR }, { alt: Math.round(H * modelo.corpo), W, H });
+      const normal = await tintaDaLetra(d.svg, ehLetra);
+      const largo = await tintaDaLetra(alargar(d.svg, d.largura), ehLetra);
+      const perdida = largo - normal;
+      conferir(perdida < 6, `${id} "${texto}" não corta a própria letra`, `${perdida} pixels de letra fora da peça`);
+    }
+  }
+}
+
 // ---------- 2. duas peças na mesma âncora não se cobrem ----------
 const mesmaAncora: ElementoCena[] = [
   { id: "selo_redondo", texto: "À VENDA", ancora: "topo_dir", cor: COR },

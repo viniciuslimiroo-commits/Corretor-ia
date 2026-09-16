@@ -219,7 +219,11 @@ export const MODELOS_ELEMENTO: ModeloElemento[] = [
     ancora: "topo_dir",
     desenhar: (d, m) => {
       const lado = m.alt;
-      const corpo = lado * 0.3;
+      // O corpo sai da LARGURA disponível, não só da altura. "120 m²" num corpo de 30%
+      // do lado ocupa ~105% da largura: o "1" ficava do lado de fora do quadrado --
+      // visto no celular, na galeria. Mesmo defeito do selo redondo, mesma cura.
+      const util = lado * 0.78;
+      const corpo = Math.min(lado * 0.3, util / (Math.max(3, d.texto.length) * 0.6));
       return {
         largura: Math.ceil(lado),
         altura: Math.ceil(lado),
