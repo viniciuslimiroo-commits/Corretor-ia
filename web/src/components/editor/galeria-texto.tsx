@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { ANIMACOES_TEXTO, MODELOS_TEXTO, type TextoCena } from "@/lib/video";
-import { LISTA_EFEITOS_TEXTO, urlDoCartaoDeEfeito } from "@/lib/efeitos-texto/lista";
+import { IDS_EFEITOS_TEXTO, LISTA_EFEITOS_TEXTO, urlDoCartaoDeEfeito } from "@/lib/efeitos-texto/lista";
+import TextoComEfeito from "@/components/editor/texto-com-efeito";
 import type { CategoriaEfeito } from "@/lib/efeitos-texto/nucleo";
 import { MOVIMENTOS, type MovimentoId } from "@/lib/movimentos";
 
@@ -29,6 +30,29 @@ const CATEGORIAS: { id: CategoriaEfeito; rotulo: string }[] = [
 
 /** Quantos cartões uma prateleira mostra antes do "Ver todos". Duas linhas de três. */
 const NA_PRATELEIRA = 6;
+
+/**
+ * TEXTO ANIMADO pronto: efeito + movimento em laço, o equivalente dos textos-GIF do CapCut
+ * ("hi", "I LOVE YOU"). Fica AQUI, com os textos -- na primeira versão estava na aba de
+ * GIFs dos Elementos, e ele corrigiu: "isso deveria estar junto com textos". Entra como
+ * texto normal da cena, então dá pra reescrever no palco.
+ */
+const TEXTOS_ANIMADOS = (
+  [
+    { efeito: "gibi_pop", texto: "UAU!", movimento: "tremer" },
+    { efeito: "pop_vermelho", texto: "VENDIDO!", movimento: "pulsar" },
+    { efeito: "faixa_oferta", texto: "BAIXOU!", movimento: "balancar" },
+    { efeito: "adesivo_recortado", texto: "Oi!", movimento: "quicar" },
+    { efeito: "neon_rosa", texto: "Amei", movimento: "pulsar" },
+    { efeito: "extrudado_3d", texto: "TOP!", movimento: "quicar" },
+    { efeito: "tinta_escorrendo", texto: "Corre!", movimento: "tremer" },
+    { efeito: "estrelinhas", texto: "É hoje", movimento: "flutuar" },
+    { efeito: "carimbo_vendido", texto: "Vendido", movimento: "tremer" },
+    { efeito: "doce_bolinhas", texto: "Kkkkk", movimento: "quicar" },
+    { efeito: "placa_imovel", texto: "Link na bio", movimento: "balancar" },
+    { efeito: "etiqueta_preco", texto: "Oferta", movimento: "balancar" },
+  ] as { efeito: string; texto: string; movimento: MovimentoId }[]
+).filter((t) => IDS_EFEITOS_TEXTO.has(t.efeito));
 
 export default function GaleriaTexto({
   pecas,
@@ -134,6 +158,30 @@ export default function GaleriaTexto({
               </div>
             </div>
           )}
+
+          {/* ---------- texto animado ----------
+               Antes das prateleiras de efeito parado: é o que mais se parece com os
+               textos-GIF que ele mostrou do CapCut. */}
+          <div>
+            <div className="mb-1.5 flex items-baseline justify-between">
+              <p className="text-xs font-semibold text-neutral-700">Texto animado</p>
+              <span className="text-[10px] text-neutral-500">se mexe sem parar, como GIF</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {TEXTOS_ANIMADOS.map((t) => (
+                <button
+                  key={`${t.efeito}-${t.texto}`}
+                  type="button"
+                  disabled={bloqueado}
+                  onClick={() => aoAdicionar({ texto: t.texto, arte: t.efeito, posicao: "centro", animacao: "surgir", movimento: t.movimento })}
+                  aria-label={`Pôr texto animado ${t.texto}`}
+                  className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900 p-2 transition hover:border-marca-coral disabled:opacity-40"
+                >
+                  <TextoComEfeito efeito={t.efeito} texto={t.texto} formato="9:16" n={0} movimento={t.movimento} caber />
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="-mx-1 flex gap-1 overflow-x-auto px-1">
             {([{ id: "todos", rotulo: "Todos" }, ...presentes] as { id: CategoriaEfeito | "todos"; rotulo: string }[]).map((c) => (

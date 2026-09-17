@@ -1969,8 +1969,6 @@ export default function EditorDeVideo() {
               cor={corDaMarca}
               podeMais={!!cenaAtual && (cenaAtual.elementos?.length ?? 0) < LIMITES.elementosPorCena}
               aoAdicionar={(e) => cenaAtual && adicionarElemento(cenaAtual.chave, e)}
-              aoAdicionarTexto={(t) => cenaAtual && adicionarTexto(cenaAtual.chave, t)}
-              textosCheios={!cenaAtual || (cenaAtual.textos ?? []).length >= LIMITES.textosPorCena}
               aoMudar={(i, m) => cenaAtual && mudarElemento(cenaAtual.chave, i, m)}
               aoTirar={(i) => cenaAtual && removerElemento(cenaAtual.chave, i)}
             />
