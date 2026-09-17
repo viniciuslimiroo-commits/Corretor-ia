@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { prepararLogo } from "@/lib/logo-upload";
+import { marcaEfetiva } from "@/lib/cobranca";
 
 // Marca do corretor (a Pedra chama de Branding): o logo que ele pode carimbar nas fotos
 // exportadas, no canto oposto ao selo de "imagem ilustrativa". O arquivo vai pro bucket
@@ -37,7 +38,12 @@ export async function GET(req: NextRequest) {
   const { db, userId, erro } = await usuarioDoToken(req);
   if (erro || !db || !userId) return erro!;
   const { data } = await db.from("users").select(CAMPOS).eq("id", userId).single();
-  return resposta(db, data as Perfil | null);
+  const r = await resposta(db, data as Perfil | null);
+  // Se o vídeo vai ter tela final: a montagem só a faz com nome, WhatsApp ou logo -- da
+  // pessoa OU da imobiliária. O editor usa isto pra linha do tempo durar o que o vídeo dura.
+  const efetiva = await marcaEfetiva(db, userId).catch(() => null);
+  const corpo = await r.json();
+  return NextResponse.json({ ...corpo, telaFinalPossivel: efetiva ? !!(efetiva.nome || efetiva.whatsapp || efetiva.logo_path) : true });
 }
 
 export async function POST(req: NextRequest) {

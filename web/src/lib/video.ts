@@ -854,11 +854,102 @@ export function duracaoDaCena(c: Cena): number {
 }
 
 export function duracaoEstimada(e: Pick<EspecVideo, "cenas" | "telaFinal" | "transicao">): number {
-  const cenas = e.cenas.reduce((s, c) => s + duracaoDaCena(c), 0) + (e.telaFinal ? LIMITES.telaFinalSegundos : 0);
-  // Cada emenda come o tempo da sobreposição: duas cenas de 4s com 0,6s de dissolver
-  // dão 7,4s de vídeo, não 8.
-  const transicoes = emendasDoVideo(e).reduce((s, t) => s + t.segundos, 0);
-  return Math.max(0, cenas - transicoes);
+  return relogioDoEspec(e).total;
+}
+
+// ---------- O RELÓGIO DO VÍDEO ----------
+//
+// Fase 1 da linha do tempo com faixas (docs/planos/linha-do-tempo-faixas.md). Antes a
+// linha do tempo somava as durações das cenas e a montagem descontava as emendas: numa
+// sequência de 5 cenas com dissolver, a régua passava 2,4s do vídeo pronto e cada bloco
+// aparecia fora do lugar. Agora régua, cabeçote, palco e montagem leem o MESMO relógio.
+
+/** Quadros por segundo da montagem: o mesmo `-framerate` do ffmpeg. */
+export const FPS = 24;
+
+export type RelogioDoVideo = {
+  /**
+   * Cenas e, se entrar, a tela final. `inicio[k]` é onde o xfade põe o quadro 0 do clipe
+   * k: o offset que o ffmpeg recebe (Σ(d−e), com 2 casas) arredondado PRA CIMA ao
+   * quadro -- medido no 6.1.1, com offsets fracionários e exatos. `fim` = inicio + duração,
+   * limitado ao total.
+   */
+  clipes: { inicio: number; fim: number }[];
+  /** Sobreposição de cada emenda: de = início do clipe seguinte, ate = fim do anterior. */
+  emendas: { transicao: TransicaoId; xfade: string; segundos: number; de: number; ate: number; linear: boolean }[];
+  /** Fim da última CENA (a tela final não recebe texto nem peça). */
+  fimDasCenas: number;
+  /** Σd − Σe: o `-t` da montagem. */
+  total: number;
+};
+
+/** Um relógio a partir das durações e das emendas, na ordem. */
+export function relogioDoVideo(duracoes: number[], emendas: { xfade: string; segundos: number; id?: TransicaoId }[], cenas = duracoes.length): RelogioDoVideo {
+  const n = duracoes.length;
+  const somaDuracoes = duracoes.reduce((s, d) => s + d, 0);
+  const somaEmendas = emendas.slice(0, Math.max(0, n - 1)).reduce((s, t) => s + t.segundos, 0);
+  // Mesma conta, na mesma ordem, que a `duracaoEstimada` antiga e o `-t` da montagem:
+  // mudar a ordem da soma muda o último centésimo, e o total é conferido contra o antigo.
+  const total = Math.max(0, somaDuracoes - somaEmendas);
+  const clipes: RelogioDoVideo["clipes"] = [];
+  let acumulado = 0;
+  for (let k = 0; k < n; k++) {
+    if (k > 0) acumulado += duracoes[k - 1] - (emendas[k - 1]?.segundos ?? 0);
+    const offset = Number(acumulado.toFixed(2));
+    const inicio = k === 0 ? 0 : Math.ceil(offset * FPS - 1e-6) / FPS;
+    clipes.push({ inicio, fim: Math.min(total, inicio + duracoes[k]) });
+  }
+  const lista: RelogioDoVideo["emendas"] = [];
+  for (let k = 0; k < n - 1; k++) {
+    const t = emendas[k];
+    const transicao = t?.id ?? "dissolver";
+    lista.push({
+      transicao,
+      xfade: t?.xfade ?? "dissolve",
+      segundos: t?.segundos ?? LIMITES.transicaoSegundos,
+      de: clipes[k + 1].inicio,
+      ate: clipes[k].fim,
+      linear: transicao === "corte" || transicao === "dissolver",
+    });
+  }
+  const ultimaCena = Math.min(cenas, n) - 1;
+  return { clipes, emendas: lista, fimDasCenas: ultimaCena >= 0 ? clipes[ultimaCena].fim : 0, total };
+}
+
+/** O relógio de um vídeo: cenas (com a duração que o servidor usa) e a tela final. */
+export function relogioDoEspec(e: Pick<EspecVideo, "cenas" | "telaFinal" | "transicao">, telaFinalEntra = !!e.telaFinal): RelogioDoVideo {
+  const duracoes = [...e.cenas.map(duracaoDaCena), ...(telaFinalEntra ? [LIMITES.telaFinalSegundos] : [])];
+  return relogioDoVideo(duracoes, emendasDoVideo({ cenas: e.cenas, transicao: e.transicao, telaFinal: telaFinalEntra }), e.cenas.length);
+}
+
+/**
+ * O vídeo tem coisa que só o EDITOR sabe mostrar e salvar.
+ *
+ * A página rápida (/videos) monta o espec de novo a partir do que ELA conhece; ao
+ * "Editar" um vídeo feito no editor, ela salvava por cima sem textos, peças, legendas,
+ * Você, filtros e ferramentas de corte -- apagava trabalho sem avisar. Com isto, a
+ * página rápida manda esse vídeo pro editor.
+ */
+export function precisaDoEditor(e: Partial<EspecVideo> & { versao?: number; visuais?: unknown; audios?: unknown }): boolean {
+  if (e.versao === 2 || e.visuais || e.audios || e.legendas || e.apresentador) return true;
+  if (e.efeitoSonoro && e.efeitoSonoro !== "nenhum") return true;
+  // A página rápida não manda o campo, e o saneador o liga de novo.
+  if (e.capaMontada === false) return true;
+  if ((e.filtro && e.filtro !== "natural") || (e.ajustes && Object.keys(e.ajustes).length > 0)) return true;
+  return (e.cenas ?? []).some(
+    (c) =>
+      (c.textos && c.textos.length > 0) ||
+      (c.elementos && c.elementos.length > 0) ||
+      !!c.transicao ||
+      !!c.giro ||
+      !!c.espelho ||
+      (c.velocidade !== undefined && c.velocidade !== 1) ||
+      !!c.congelar ||
+      !!c.inicio ||
+      !!c.filtro ||
+      (c.ajustes && Object.keys(c.ajustes).length > 0) ||
+      !!c.luz
+  );
 }
 
 const ehId = <T extends string>(lista: { id: T }[], v: unknown): v is T => typeof v === "string" && lista.some((x) => x.id === v);

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
 import { anguloDaVinheta } from "./filtros";
-import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
+import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -12,7 +12,9 @@ import { ESTILO_TEXTO_POR_ID, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type Efe
 // Convenções: toda cena sai em WxH, `fps` quadros/s, yuv420p, sem áudio, H.264
 // "veryfast" CRF 23 -- o mesmo perfil pra montagem poder emendar sem surpresa.
 
-export const FPS = 24;
+// O relógio do vídeo (video.ts) e a montagem usam o MESMO número de quadros por segundo:
+// ele mora lá e é reexportado aqui pra quem já importava daqui.
+export { FPS };
 
 /** A barra que escapa vírgula dentro de um filtro. Numa string comum ela vai sozinha. */
 const ESC = "\\";
@@ -552,7 +554,8 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
   const rotB = pill({ texto: "Depois", W: o.W, H: o.H, tamanho: 0.028, posicao: "alto", cor: "0xf06b4f" });
   // Os textos entram DEPOIS da limpeza entre as duas fotos, senão o "Antes"/"Depois"
   // passaria por cima deles na virada.
-  const texto = filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado).join(",");
+  // Com a duração da cena: sem ela o "só no fim" entrava aos 62% de 4s fixos, em qualquer cena.
+  const texto = filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao).join(",");
   const filtro = `[0:v]${base},${rotA}[a];[1:v]${base},${rotB}[b];[a][b]xfade=transition=wipeleft:duration=${trans}:offset=${offset.toFixed(2)}${texto ? "[ab];[ab]" + texto : ""}[v]`;
   // As duas fotos ja ocupam as entradas 0 e 1; a peca comeca na 2.
   const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 2);
@@ -577,7 +580,7 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   const filtros = [...(vel !== 1 ? [`setpts=PTS/${vel}`] : []), `fps=${FPS}`, ...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.cor), "format=yuv420p"];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
-  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
+  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
   // O clipe entra CURTO de propósito e o `tpad` clona o último quadro até fechar a
   // duração: os últimos instantes ficam parados. Vale pro vídeo da pessoa e, sobretudo,
   // pro clipe da IA -- que termina onde o modelo parou, muitas vezes no meio do gesto.
@@ -691,7 +694,7 @@ export function argsCena360(o: {
     ...filtrosDeImagem(o.cor),
     "format=yuv420p",
   ];
-  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado));
+  filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
   const arte = sobreporPecas(pecasDaCena(o.W, o.duracao, o.artes, o.pecas), o.W, 1);
 
   const entrada = o.ehVideo
@@ -859,10 +862,15 @@ export function argsMontagem(o: {
     const margem = Math.round(o.W * 0.04);
     const fim = apreEntra + apreDuracao;
     const janela = `enable='between(t\\,${apreEntra.toFixed(2)}\\,${fim.toFixed(2)})'`;
+    // O clipe dele COMEÇA em `entra` no tempo do vídeo. Sem somar `entra` ao carimbo, o
+    // overlay consumia os quadros dele desde o segundo 0 -- quando a janela abria, o clipe
+    // já tinha passado e ele aparecia congelado no último quadro. `eof_action=pass` faz o
+    // vídeo seguir sem ele quando o clipe acaba, em vez de repetir o último quadro.
+    const carimboApre = `setpts=PTS-STARTPTS+${apreEntra.toFixed(2)}/TB`;
     if (apre.formato === "rodape") {
       const altura = Math.round(o.H * 0.3);
-      partes.push(`[${idxApre}:v]scale=${o.W}:${altura}:force_original_aspect_ratio=increase,crop=${o.W}:${altura},setpts=PTS-STARTPTS[pv]`);
-      partes.push(`[vout][pv]overlay=0:main_h-overlay_h:${janela}[vfinal]`);
+      partes.push(`[${idxApre}:v]scale=${o.W}:${altura}:force_original_aspect_ratio=increase,crop=${o.W}:${altura},${carimboApre}[pv]`);
+      partes.push(`[vout][pv]overlay=0:main_h-overlay_h:eof_action=pass:${janela}[vfinal]`);
     } else {
       const lado = Math.round(o.W * (TAMANHOS_APRESENTADOR.find((t) => t.id === (apre.tamanho ?? "medio"))?.fracao ?? 0.34));
       const canto = apre.canto ?? "inferior_direito";
@@ -875,13 +883,13 @@ export function argsMontagem(o: {
         // do `if` e do `hypot` vão escapadas: dentro de um filtro, vírgula separa filtros.
         const r = Math.round(lado / 2);
         partes.push(
-          `[${idxApre}:v]scale=${lado}:${lado}:force_original_aspect_ratio=increase,crop=${lado}:${lado},setpts=PTS-STARTPTS,format=rgba,` +
+          `[${idxApre}:v]scale=${lado}:${lado}:force_original_aspect_ratio=increase,crop=${lado}:${lado},${carimboApre},format=rgba,` +
             `geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='if(lte(hypot(X-${r}\\,Y-${r})\\,${r - 2})\\,255\\,0)'[pv]`
         );
       } else {
-        partes.push(`[${idxApre}:v]scale=${lado}:-2,setpts=PTS-STARTPTS[pv]`);
+        partes.push(`[${idxApre}:v]scale=${lado}:-2,${carimboApre}[pv]`);
       }
-      partes.push(`[vout][pv]overlay=${x}:${y}:${janela}[vfinal]`);
+      partes.push(`[vout][pv]overlay=${x}:${y}:eof_action=pass:${janela}[vfinal]`);
     }
     saidaVideo = "vfinal";
   }
@@ -960,7 +968,11 @@ export function argsMontagem(o: {
       const ms = Math.round(t * 1000);
       partes.push(`[${rotulos[i]}c]adelay=${ms}|${ms}[${rotulos[i]}]`);
     });
-    const entradas = [...(idxMusica >= 0 || temVoz ? ["[aout]"] : []), ...rotulos.map((r) => `[${r}]`)];
+    // Sem música e sem voz, a PRIMEIRA entrada do amix era o primeiro clique, e
+    // `duration=first` encerrava a mistura quando ele acabava: só a primeira virada tinha
+    // som. Um silêncio do tamanho do vídeo na frente segura a mistura até o fim.
+    if (!(idxMusica >= 0 || temVoz)) partes.push(`anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(2)}[silencio]`);
+    const entradas = [idxMusica >= 0 || temVoz ? "[aout]" : "[silencio]", ...rotulos.map((r) => `[${r}]`)];
     partes.push(`${entradas.join("")}amix=inputs=${entradas.length}:duration=first:dropout_transition=0:normalize=0[afinal]`);
     saidaAudio = "afinal";
   }

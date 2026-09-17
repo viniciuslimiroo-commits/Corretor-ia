@@ -29,8 +29,8 @@ import {
   TRANSICOES,
   VOZES,
   custoDoVideo,
-  duracaoEstimada,
   ehTransicao,
+  relogioDoEspec,
   textosDaCena,
   gradeDaCena,
   temVideoCorrendo,
@@ -315,7 +315,7 @@ export default function EditorDeVideo() {
   const [fichaResumo, setFichaResumo] = useState("");
   /** A ficha crua e a marca: viram as PEÇAS que o editor oferece pra virar texto. */
   const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
-  const [marca, setMarca] = useState<{ nome?: string | null; creci?: string | null; whatsapp?: string | null; cor?: string | null; logo?: string | null; instagram?: string | null } | null>(null);
+  const [marca, setMarca] = useState<{ nome?: string | null; creci?: string | null; whatsapp?: string | null; cor?: string | null; logo?: string | null; instagram?: string | null; telaFinalPossivel?: boolean } | null>(null);
   const [narrar, setNarrar] = useState(false);
   /** De onde vem a voz: IA, gravada aqui, ou um arquivo que a pessoa já tinha. */
   const [origemVoz, setOrigemVoz] = useState<OrigemVoz>("ia");
@@ -524,7 +524,19 @@ export default function EditorDeVideo() {
   const animadasGratis = cenas.filter((s) => s.tipo === "animada" && s.animacaoGuardada && s.animacaoGuardada.animacao === s.animacao && s.animacaoGuardada.duracao === s.duracao).length;
   const custo = Math.max(0, custoDoVideo(espec) - animadasGratis * CREDITOS.animada);
   const esperaTotal = esperaEmSegundos(espec.cenas.map((c) => ({ tipo: c.tipo, duracao: c.duracao ?? 4 })));
-  const duracao = duracaoEstimada(espec);
+  /**
+   * O RELÓGIO do vídeo: onde cada clipe começa e quanto o vídeo dura, com as emendas.
+   *
+   * É a mesma conta da montagem (video.ts, `relogioDoVideo`). Antes a linha do tempo
+   * somava as durações e ignorava que cada emenda sobrepõe duas cenas: com 8 cenas e
+   * Dissolver, a régua dizia 4s a mais que o vídeo pronto.
+   *
+   * A tela final só conta se vai sair: sem nome, WhatsApp nem logo (da pessoa ou da
+   * imobiliária) a montagem pula, e o vídeo fica 3,4s mais curto do que a régua dizia.
+   */
+  const telaFinalEntra = telaFinal && marca?.telaFinalPossivel !== false;
+  const relogioDaLinha = useMemo(() => relogioDoEspec(espec, telaFinalEntra), [espec, telaFinalEntra]);
+  const duracao = relogioDaLinha.total;
 
   const carregarVideos = useCallback(async () => {
     const t = await token();
@@ -546,7 +558,7 @@ export default function EditorDeVideo() {
     token()
       .then((t) => fetch("/api/marca", { headers: { Authorization: `Bearer ${t}` } }))
       .then((r) => r.json())
-      .then((d) => setMarca({ nome: d.nome, creci: d.creci, whatsapp: d.whatsapp, cor: d.cor_marca ?? d.cor, logo: d.logoUrl ?? d.logo_url ?? null, instagram: d.instagram }))
+      .then((d) => setMarca({ nome: d.nome, creci: d.creci, whatsapp: d.whatsapp, cor: d.cor_marca ?? d.cor, logo: d.logoUrl ?? d.logo_url ?? null, instagram: d.instagram, telaFinalPossivel: d.telaFinalPossivel !== false }))
       .catch(() => {});
   }, [user, token]);
 
@@ -800,7 +812,15 @@ export default function EditorDeVideo() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Não consegui transcrever.");
-      setLegendas(d.legendas ?? null);
+      // A transcrição vem no tempo do ARQUIVO de voz; a legenda é queimada no tempo do
+      // VÍDEO, e a voz só começa em `vozInicio`. Sem somar, toda legenda saía adiantada.
+      // Só as novas: as já salvas foram ajustadas à mão contra o que se via.
+      const novas = d.legendas as Legendas | null;
+      setLegendas(
+        novas
+          ? { ...novas, trechos: novas.trechos.map((t) => ({ ...t, inicio: Math.round((t.inicio + vozInicio) * 100) / 100, fim: Math.round((t.fim + vozInicio) * 100) / 100 })) }
+          : null
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao gerar as legendas.");
     } finally {
@@ -1206,18 +1226,15 @@ export default function EditorDeVideo() {
   );
 
   /** Em que segundo cada cena começa. Serve pro cabeçote saber quem está no ar. */
-  const iniciosDasCenas = useMemo(() => {
-    // Acumulador local do laço, não um `let` capturado por closure de `map`: o
-    // compilador do React recusa o segundo, e com razão.
-    const lista: number[] = [];
-    for (let i = 0, acc = 0; i < cenas.length; i++) {
-      lista.push(acc);
-      acc += cenas[i].duracao;
-    }
-    return lista;
-  }, [cenas]);
-
-  const duracaoDaLinha = cenas.reduce((t, s) => t + s.duracao, 0) + (telaFinal ? LIMITES.telaFinalSegundos : 0);
+  const iniciosDasCenas = useMemo(() => relogioDaLinha.clipes.slice(0, cenas.length).map((c) => c.inicio), [relogioDaLinha, cenas.length]);
+  /** Inícios de todos os blocos da linha, com a tela final quando ela entra. */
+  const iniciosDaLinha = useMemo(() => relogioDaLinha.clipes.map((c) => c.inicio), [relogioDaLinha]);
+  const duracaoDaLinha = relogioDaLinha.total;
+  /** A duração pro laço da prévia ler sem reiniciar quando a pessoa mexe numa cena. */
+  const duracaoDaLinhaRef = useRef(duracaoDaLinha);
+  useEffect(() => {
+    duracaoDaLinhaRef.current = duracaoDaLinha;
+  }, [duracaoDaLinha]);
 
   // ---------- ferramentas da barra da linha do tempo ----------
   //
@@ -1230,7 +1247,10 @@ export default function EditorDeVideo() {
     const i = cenas.findIndex((s) => s.chave === k);
     if (i < 0) return null;
     const d = tempo - iniciosDasCenas[i];
-    return d > 0.15 && d < cenas[i].duracao - 0.15 ? d : null;
+    // Até onde o BLOCO dela vai na linha (o começo da próxima), não a duração: na emenda
+    // o que se vê já é a cena seguinte, e cortar ali cortaria a cena errada.
+    const fimVisivel = (iniciosDaLinha[i + 1] ?? duracaoDaLinha) - iniciosDasCenas[i];
+    return d > 0.15 && d < fimVisivel - 0.15 ? d : null;
   }
 
   /**
@@ -1249,7 +1269,8 @@ export default function EditorDeVideo() {
       const i = lista.findIndex((s) => s.chave === k);
       if (i < 0 || lista.length >= LIMITES.cenasMax) return lista;
       const s = lista[i];
-      if (s.duracao < LIMITES.duracaoMin * 2) return lista;
+      // Cena animada não divide: cada metade seria um pedido novo ao modelo, e cobrado.
+      if (s.duracao < LIMITES.duracaoMin * 2 || s.tipo === "animada") return lista;
       const bruto = Math.round(ondeClicou ?? s.duracao / 2);
       const primeira = Math.min(s.duracao - LIMITES.duracaoMin, Math.max(LIMITES.duracaoMin, bruto));
       const resto = s.duracao - primeira;
@@ -1270,7 +1291,8 @@ export default function EditorDeVideo() {
    */
   function apararNoCabecote(k: string, lado: "inicio" | "fim") {
     const ondeClicou = cabecoteDentroDe(k);
-    if (ondeClicou === null) return;
+    // Cena animada não apara: a duração nova é outro pedido ao modelo, e cobrado.
+    if (ondeClicou === null || cenas.find((s) => s.chave === k)?.tipo === "animada") return;
     setCenas((lista) =>
       lista.map((s) => {
         if (s.chave !== k) return s;
@@ -1364,7 +1386,8 @@ export default function EditorDeVideo() {
       {
         rotulo: "Dividir no cabeçote",
         icone: "dividir",
-        desligado: gerando || cenas.length >= LIMITES.cenasMax || cena.duracao < LIMITES.duracaoMin * 2,
+        dica: cena.tipo === "animada" ? "Cena animada não se divide" : undefined,
+        desligado: gerando || cena.tipo === "animada" || cenas.length >= LIMITES.cenasMax || cena.duracao < LIMITES.duracaoMin * 2,
         aoEscolher: () => dividirNoCabecote(cena.chave),
       },
       { rotulo: "Girar um quarto de volta", icone: "girar", desligado: gerando || cena.tipo === "tour360", aoEscolher: () => girarCena(cena.chave) },
@@ -1404,20 +1427,29 @@ export default function EditorDeVideo() {
     // Intervalo com DELTA REAL, não requestAnimationFrame: o rAF para quando a aba não
     // está à frente, e aí a prévia congela sem ninguém entender por quê. O delta vem do
     // relógio, então o cabeçote anda no tempo certo mesmo se um quadro atrasar.
-    const inicio = performance.now();
-    const daquiAPouco = tempoRef.current;
+    //
+    // O ref anda JUNTO com o estado a cada tique. Antes só o estado andava: pausar e tocar
+    // de novo recomeçava do ponto em que o play foi apertado da primeira vez.
+    //
+    // Soma o delta desde o ÚLTIMO tique a partir do ref, e não desde o play: tocar na régua
+    // com a prévia rodando move o ref, e a conta desde o play puxava o cabeçote de volta.
+    let ultimo = performance.now();
     const id = setInterval(() => {
-      const decorrido = (performance.now() - inicio) / 1000;
-      const novo = daquiAPouco + decorrido;
-      if (novo >= duracaoDaLinha) {
-        setTempo(duracaoDaLinha);
+      const agora = performance.now();
+      const novo = tempoRef.current + (agora - ultimo) / 1000;
+      ultimo = agora;
+      const fim = duracaoDaLinhaRef.current;
+      if (novo >= fim) {
+        tempoRef.current = fim;
+        setTempo(fim);
         setTocando(false);
       } else {
+        tempoRef.current = novo;
         setTempo(novo);
       }
     }, 50);
     return () => clearInterval(id);
-  }, [tocando, duracaoDaLinha, moverTempo]);
+  }, [tocando]);
 
   /**
    * Que cena está no ar no segundo do cabeçote.
@@ -2631,7 +2663,7 @@ export default function EditorDeVideo() {
                   <button onClick={() => mover(cenaAtual.chave, 1)} disabled={gerando || indiceAtual === cenas.length - 1} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Mover pra frente">
                     <Icone nome="cima" className="h-4 w-4 rotate-90" />
                   </button>
-                  <button onClick={() => dividirNoCabecote(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax || cenaAtual.duracao < LIMITES.duracaoMin * 2} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Dividir em duas">
+                  <button onClick={() => dividirNoCabecote(cenaAtual.chave)} disabled={gerando || cenaAtual.tipo === "animada" || cenas.length >= LIMITES.cenasMax || cenaAtual.duracao < LIMITES.duracaoMin * 2} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title={cenaAtual.tipo === "animada" ? "Cena animada não se divide" : "Dividir em duas"}>
                     <Icone nome="corrigir_perspectiva" className="h-4 w-4" />
                   </button>
                   <button onClick={() => duplicar(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Duplicar">
@@ -2723,9 +2755,14 @@ export default function EditorDeVideo() {
                   <label className="flex items-center gap-1.5 text-xs text-neutral-600">
                     Duração
                     <select value={cenaAtual.duracao} onChange={(e) => mudarCena(cenaAtual.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm">
-                      {DURACOES_CENA[cenaAtual.tipo === "tour360" ? "tour360" : cenaAtual.tipo === "animada" ? "animada" : "foto"].map((d) => (
-                        <option key={d} value={d}>{d} s</option>
-                      ))}
+                      {/* Dividir e aparar deixam durações fora da lista (7s, 2s...). Sem a
+                          opção, o seletor mostrava a primeira da lista e mentia. */}
+                      {(() => {
+                        const lista = DURACOES_CENA[cenaAtual.tipo === "tour360" ? "tour360" : cenaAtual.tipo === "animada" ? "animada" : "foto"];
+                        return (lista.includes(cenaAtual.duracao) ? lista : [...lista, cenaAtual.duracao].sort((a, b) => a - b)).map((d) => (
+                          <option key={d} value={d}>{d} s</option>
+                        ));
+                      })()}
                     </select>
                   </label>
                   {/* Acabamento DESTA cena. "Igual ao vídeo" é o estado normal: o
@@ -2935,8 +2972,9 @@ export default function EditorDeVideo() {
         blocos={blocosDaLinha}
         selecionada={cenaAtual?.chave ?? null}
         capa={capa ?? cenas[0]?.chave ?? null}
-        telaFinal={telaFinal}
-        segundosDaTelaFinal={LIMITES.telaFinalSegundos}
+        telaFinal={telaFinalEntra}
+        inicios={iniciosDaLinha}
+        total={duracaoDaLinha}
         tempo={tempo}
         tocando={tocando}
         zoom={zoomLinha}

@@ -12,7 +12,9 @@ import { rotuloDoTipo } from "@/lib/acoes";
 // Sem a trava, a tela consultando a cada 3s dispararia a mesma etapa várias vezes.
 export const maxDuration = 300;
 
-const MINUTOS_DE_TRAVA = 4;
+// Maior que o teto da função (300s): uma trava que vence no meio da montagem deixa uma
+// segunda chamada rodar a mesma montagem junto.
+const MINUTOS_DE_TRAVA = 6;
 const MINUTOS_ATE_DESISTIR = 25;
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -105,28 +107,38 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const contaDoVideo = video.org_id ? { tipo: "org" as const, id: video.org_id as string } : { tipo: "user" as const, id: userId };
 
   async function falhar(mensagem: string) {
+    // Só quem ainda está "gerando" vira falha: se outra chamada acabou de gravar o vídeo
+    // como pronto, ele não é estornado nem tem o arquivo apagado.
+    const { data: marcado } = await db.from("videos").update({ status: "falhou", erro: mensagem, lock_ate: null }).eq("id", id).eq("status", "gerando").select("id");
+    if (!marcado || marcado.length === 0) {
+      return NextResponse.json({ videoId: id, status: "gerando", mensagem: "Conferindo o vídeo…", trabalhando: true });
+    }
     if (video!.creditos_cobrados > 0) await creditar(db, contaDoVideo, userId, video!.creditos_cobrados, "estorno_video", id).catch(() => null);
-    await db.from("videos").update({ status: "falhou", erro: mensagem, lock_ate: null }).eq("id", id);
     await limparTemporarios(db, pipeline);
     return NextResponse.json({ videoId: id, status: "falhou", error: mensagem }, { status: 502 });
   }
 
-  const minutos = (Date.now() - new Date(video.criado_em).getTime()) / 60000;
-  if (minutos > MINUTOS_ATE_DESISTIR) {
-    return falhar(`O vídeo passou de ${MINUTOS_ATE_DESISTIR} minutos sem terminar e foi cancelado. Seus créditos voltaram.`);
-  }
-
   // ---- trava ----
+  // ANTES do corte por tempo: sem ela, uma consulta de outra aba cancelava (e apagava) o
+  // vídeo enquanto a chamada que tem a trava ainda estava terminando.
   const agora = new Date();
+  const minhaTrava = new Date(agora.getTime() + MINUTOS_DE_TRAVA * 60000).toISOString();
   const { data: travado } = await db
     .from("videos")
-    .update({ lock_ate: new Date(agora.getTime() + MINUTOS_DE_TRAVA * 60000).toISOString() })
+    .update({ lock_ate: minhaTrava })
     .eq("id", id)
     .or(`lock_ate.is.null,lock_ate.lt.${agora.toISOString()}`)
     .select("id");
   if (!travado || travado.length === 0) {
     const prog = pipeline ? progressoDe(espec, pipeline) : { etapa: "cena", feitas: 0, total: 1, mensagem: "Preparando…" };
     return NextResponse.json({ videoId: id, status: "gerando", ...prog, trabalhando: true });
+  }
+
+  const minutos = (Date.now() - new Date(video.criado_em).getTime()) / 60000;
+  // Em `finalizar` o vídeo já está montado e guardado: falta capa e marcar como pronto.
+  // Cancelar ali estornaria e apagaria um vídeo feito -- então termina, mesmo atrasado.
+  if (minutos > MINUTOS_ATE_DESISTIR && pipeline?.etapa !== "finalizar") {
+    return falhar(`O vídeo passou de ${MINUTOS_ATE_DESISTIR} minutos sem terminar e foi cancelado. Seus créditos voltaram.`);
   }
 
   try {
@@ -140,7 +152,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   } catch (e) {
     return falhar(`A montagem falhou: ${e instanceof Error ? e.message.slice(0, 300) : "erro"}. Seus créditos voltaram.`);
   } finally {
-    await db.from("videos").update({ lock_ate: null }).eq("id", id);
+    // Solta só a PRÓPRIA trava: se esta chamada passou do tempo e outra já pegou a vez,
+    // soltar a dela deixaria uma terceira entrar junto.
+    await db.from("videos").update({ lock_ate: null }).eq("id", id).eq("lock_ate", minhaTrava);
   }
 }
 

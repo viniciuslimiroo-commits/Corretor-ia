@@ -80,10 +80,12 @@ function passoDaRegua(pxPorSegundo: number): number {
 }
 
 export function relogio(segundos: number): string {
-  const s = Math.max(0, segundos);
-  const m = Math.floor(s / 60);
-  const r = Math.floor(s % 60);
-  const d = Math.floor((s - Math.floor(s)) * 10);
+  // Em décimos inteiros, com folga de arredondamento: 14,2 guardado como 14,1999… saía
+  // "00:14.1" -- e o relógio embaixo discordava do vídeo pronto por um décimo.
+  const decimos = Math.floor(Math.max(0, segundos) * 10 + 1e-6);
+  const m = Math.floor(decimos / 600);
+  const r = Math.floor(decimos / 10) % 60;
+  const d = decimos % 10;
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}.${d}`;
 }
 
@@ -92,7 +94,8 @@ export default function LinhaDoTempo({
   selecionada,
   capa,
   telaFinal,
-  segundosDaTelaFinal,
+  inicios,
+  total,
   tempo,
   tocando,
   zoom,
@@ -116,7 +119,11 @@ export default function LinhaDoTempo({
   selecionada: string | null;
   capa: string | null;
   telaFinal: boolean;
-  segundosDaTelaFinal: number;
+  /** Onde cada bloco começa no vídeo, em segundos (o relógio, com as emendas): um por
+   *  cena e, com tela final, mais um no fim. */
+  inicios: number[];
+  /** Duração do vídeo pronto. */
+  total: number;
   tempo: number;
   tocando: boolean;
   /** Pixels por segundo. É o zoom da linha do tempo. */
@@ -141,26 +148,18 @@ export default function LinhaDoTempo({
 }) {
   const trilho = useRef<HTMLDivElement | null>(null);
 
-  const total = useMemo(
-    () => blocos.reduce((s, b) => s + b.duracao, 0) + (telaFinal ? segundosDaTelaFinal : 0),
-    [blocos, telaFinal, segundosDaTelaFinal]
-  );
-
   /**
-   * Onde cada bloco começa, em segundos.
+   * Quanto cada bloco ocupa na trilha: do começo dele ao começo do próximo.
    *
-   * Laço com acumulador LOCAL, não um `let` capturado por uma closure de `map`: o
-   * compilador do React recusa variável reatribuída dentro de callback, e com razão --
-   * é a forma de um valor vazar entre renders.
+   * Não é a duração da cena. A emenda sobrepõe duas cenas, e a sobreposição fica com a
+   * que entra: só assim os blocos encostam uns nos outros e a régua em cima deles diz o
+   * segundo do vídeo pronto. Sem largura mínima pelo mesmo motivo -- um bloco esticado
+   * empurra todos os seguintes pra fora do tempo deles.
    */
-  const inicios = useMemo(() => {
-    const lista: number[] = [];
-    for (let i = 0, acc = 0; i < blocos.length; i++) {
-      lista.push(acc);
-      acc += blocos[i].duracao;
-    }
-    return lista;
-  }, [blocos]);
+  const larguras = useMemo(() => {
+    const n = blocos.length + (telaFinal ? 1 : 0);
+    return Array.from({ length: n }, (_, k) => Math.max(0, (k + 1 < n ? (inicios[k + 1] ?? total) : total) - (inicios[k] ?? 0)));
+  }, [blocos.length, telaFinal, inicios, total]);
 
   const passo = passoDaRegua(zoom);
   const marcas = useMemo(() => {
@@ -184,7 +183,8 @@ export default function LinhaDoTempo({
     const el = trilho.current;
     if (!el) return;
     const caixa = el.getBoundingClientRect();
-    const x = ev.clientX - caixa.left + el.scrollLeft;
+    // Menos os 12px do `px-3` da trilha: a régua começa depois deles.
+    const x = ev.clientX - caixa.left + el.scrollLeft - 12;
     aoMoverTempo(Math.max(0, Math.min(total, x / zoom)));
   }
 
@@ -203,13 +203,15 @@ export default function LinhaDoTempo({
   const dentroDaCena = (() => {
     if (!bloco) return null;
     const d = tempo - inicios[indiceDoBloco];
-    return d > 0.15 && d < bloco.duracao - 0.15 ? d : null;
+    // O fim VISÍVEL do bloco (começo do próximo), não a duração da cena: na emenda já se
+    // vê a cena seguinte.
+    return d > 0.15 && d < (larguras[indiceDoBloco] ?? bloco.duracao) - 0.15 ? d : null;
   })();
   // Duração de cena é inteira e tem mínimo: dividir uma cena de 4s daria duas de 3s, ou
   // seja, o vídeo ficaria MAIS LONGO depois de um corte. Por isso o botão só acende
   // quando as duas partes cabem.
   const podeDividir =
-    !!bloco && !gerando && dentroDaCena !== null && blocos.length < LIMITES.cenasMax && bloco.duracao >= LIMITES.duracaoMin * 2;
+    !!bloco && !gerando && bloco.tipo !== "animada" && dentroDaCena !== null && blocos.length < LIMITES.cenasMax && bloco.duracao >= LIMITES.duracaoMin * 2;
 
   return (
     <div className="flex shrink-0 flex-col border-t border-neutral-200">
@@ -244,23 +246,25 @@ export default function LinhaDoTempo({
           <Ferramenta
             icone="dividir"
             dica={
-              bloco && dentroDaCena === null
-                ? "Leve o cabeçote pra dentro da cena pra dividir ali"
-                : "Dividir em duas, no cabeçote"
+              bloco?.tipo === "animada"
+                ? "Cena animada não se divide: cada parte seria animada de novo"
+                : bloco && dentroDaCena === null
+                  ? "Leve o cabeçote pra dentro da cena pra dividir ali"
+                  : "Dividir em duas, no cabeçote"
             }
             desligado={!podeDividir}
             aoClicar={() => bloco && aoDividir(bloco.chave)}
           />
           <Ferramenta
             icone="aparar_inicio"
-            dica="Cortar fora o que vem antes do cabeçote"
-            desligado={!bloco || gerando || dentroDaCena === null}
+            dica={bloco?.tipo === "animada" ? "Cena animada não se corta: mude a duração no painel" : "Cortar fora o que vem antes do cabeçote"}
+            desligado={!bloco || gerando || bloco.tipo === "animada" || dentroDaCena === null}
             aoClicar={() => bloco && aoAparar(bloco.chave, "inicio")}
           />
           <Ferramenta
             icone="aparar_fim"
-            dica="Cortar fora o que vem depois do cabeçote"
-            desligado={!bloco || gerando || dentroDaCena === null}
+            dica={bloco?.tipo === "animada" ? "Cena animada não se corta: mude a duração no painel" : "Cortar fora o que vem depois do cabeçote"}
+            desligado={!bloco || gerando || bloco.tipo === "animada" || dentroDaCena === null}
             aoClicar={() => bloco && aoAparar(bloco.chave, "fim")}
           />
 
@@ -348,7 +352,7 @@ export default function LinhaDoTempo({
           <ul className="relative flex items-stretch" onClick={irPara}>
             {blocos.map((b, i) => {
               const ativa = selecionada === b.chave;
-              const largura = Math.max(34, b.duracao * zoom);
+              const largura = larguras[i] * zoom;
               return (
                 <li key={b.chave} className="relative shrink-0" style={{ width: largura }}>
                   <button
@@ -397,7 +401,7 @@ export default function LinhaDoTempo({
             })}
 
             {telaFinal && (
-              <li className="shrink-0" style={{ width: Math.max(34, segundosDaTelaFinal * zoom) }}>
+              <li className="shrink-0" style={{ width: (larguras[blocos.length] ?? 0) * zoom }}>
                 <span
                   className="grid h-16 w-full place-items-center rounded-md border-2 border-dashed border-neutral-200 text-center text-[9px] leading-tight text-neutral-500"
                   title="Tela final com nome, CRECI, WhatsApp e logo da sua marca"

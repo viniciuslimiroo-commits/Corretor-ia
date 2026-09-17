@@ -14,7 +14,7 @@ import { rasterizarElementos } from "./elementos-servidor";
 import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
-import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -31,7 +31,8 @@ import {
 
 // O ACOMPANHANTE do vídeo, no mesmo desenho de /api/job: cada chamada avança UMA etapa e
 // volta. Etapas: cena (uma por foto/clipe; a animada tem despacho e espera), marca (tela
-// final), narracao (TTS), montar (emenda tudo, música, carimbos), concluido.
+// final), narracao (TTS), montar (emenda tudo, música, carimbos), finalizar (capa,
+// miniatura, grava como pronto), concluido.
 //
 // Entre uma chamada e outra nada sobrevive no disco da função, então cada clipe pronto
 // sobe pro bucket em tmp/videos/{user}/{id}/ e a montagem baixa todos de volta. É mais
@@ -40,7 +41,11 @@ import {
 export const MODELO_ANIMACAO = "fal-ai/wan/v2.2-5b/image-to-video";
 export const MODELO_NARRACAO = "fal-ai/elevenlabs/tts/multilingual-v2";
 
-export type Etapa = "cena" | "marca" | "narracao" | "montar" | "concluido";
+export type Etapa = "cena" | "marca" | "narracao" | "montar" | "finalizar" | "concluido";
+
+/** Até quantos segundos de chamada a montagem ainda emenda o `finalizar` (capa até 40s,
+ *  miniatura até 30s, uploads): abaixo de 300 com sobra. */
+const SEGUNDOS_PRA_EMENDAR_FINALIZAR = 200;
 
 export type PipelineVideo = {
   etapa: Etapa;
@@ -58,6 +63,15 @@ export type PipelineVideo = {
   /** Índices das cenas animadas que NÃO foram cobradas porque o clipe já existia (ver
    *  `animacoesGuardadas`). Decidido na criação do vídeo, junto com a cobrança. */
   animadasGratis?: number[];
+  /** Segundos gastos em cada etapa, somados entre chamadas. É o que mostra quanto falta
+   *  pro teto de 300s da função -- a montagem já passou perto dele. */
+  tempos?: Partial<Record<Etapa, number>>;
+  /** Núcleos da máquina que rodou a última etapa: o mesmo comando leva o dobro com 1. */
+  nucleos?: number;
+  /** Onde o vídeo pronto já subiu, entre `montar` e `finalizar`. */
+  saida?: string | null;
+  /** Duração do vídeo pronto, medida na montagem. */
+  duracaoFinal?: number | null;
 };
 
 export type LinhaVideo = {
@@ -125,8 +139,9 @@ export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
   const n = espec.cenas.length;
   const tf = espec.telaFinal ? 1 : 0;
   const nar = espec.narracao ? 1 : 0;
-  const total = n + tf + nar + 1;
-  const feitas = p.etapa === "cena" ? p.cenaAtual : p.etapa === "marca" ? n : p.etapa === "narracao" ? n + tf : p.etapa === "montar" ? n + tf + nar : total;
+  const total = n + tf + nar + 2;
+  const feitas =
+    p.etapa === "cena" ? p.cenaAtual : p.etapa === "marca" ? n : p.etapa === "narracao" ? n + tf : p.etapa === "montar" ? n + tf + nar : p.etapa === "finalizar" ? n + tf + nar + 1 : total;
   const mensagem =
     p.etapa === "cena"
       ? p.animada
@@ -138,7 +153,9 @@ export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
           ? "Gravando a narração…"
           : p.etapa === "montar"
             ? "Juntando tudo com a música…"
-            : "Pronto.";
+            : p.etapa === "finalizar"
+              ? "Preparando a capa…"
+              : "Pronto.";
   return { etapa: p.etapa, feitas, total, mensagem };
 }
 
@@ -198,11 +215,6 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
   const local = (nome: string) => path.join(dir, nome);
   const tmp = (nome: string) => caminhoTemporario(userId, video.id, nome);
 
-  async function salvar(extra: Partial<PipelineVideo> = {}) {
-    Object.assign(p, extra);
-    await db.from("videos").update({ pipeline: p }).eq("id", video.id);
-  }
-
   async function guardarClipe(arquivoLocal: string, nome: string, duracao: number, segundos: number) {
     const destino = tmp(nome);
     await subir(db, arquivoLocal, destino, "video/mp4");
@@ -216,6 +228,26 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
     if (espec.telaFinal) return "marca";
     if (espec.narracao) return "narracao";
     return "montar";
+  }
+
+  // Cronômetro: soma o trecho na etapa que está rodando (a montagem pode emendar o
+  // `finalizar` na mesma chamada, e aí o relógio troca de etapa junto).
+  let etapaDaChamada = p.etapa;
+  // Soma só o trecho desde a última gravação: uma chamada que salva duas vezes não conta dobrado.
+  const inicioDaChamada = Date.now();
+  let marco = inicioDaChamada;
+  function cronometrar() {
+    const agora = Date.now();
+    p.tempos = { ...(p.tempos ?? {}) };
+    p.tempos[etapaDaChamada] = Number(((p.tempos[etapaDaChamada] ?? 0) + (agora - marco) / 1000).toFixed(1));
+    marco = agora;
+    p.nucleos = typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
+  }
+
+  async function salvar(extra: Partial<PipelineVideo> = {}) {
+    Object.assign(p, extra);
+    cronometrar();
+    await db.from("videos").update({ pipeline: p }).eq("id", video.id);
   }
 
   try {
@@ -576,6 +608,25 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }),
         280_000
       );
+      const sonda = await sondarMidia(saida);
+      const caminhoFinal = caminhoVideoFinal(userId, video.id);
+      await subir(db, saida, caminhoFinal, "video/mp4");
+      p.segundosDeRender = (p.segundosDeRender ?? 0) + r.segundos;
+      // A capa, a miniatura e a gravação como pronto são outra etapa: o ffmpeg da montagem
+      // já passou perto do teto de 300s, e a capa montada leva até 40s a mais.
+      await salvar({ etapa: "finalizar", saida: caminhoFinal, duracaoFinal: sonda.duracao ?? total });
+      // Mas, com folga, emenda aqui mesmo. Nada faz o vídeo andar além de alguém consultar:
+      // quem fecha a aba durante a montagem deixaria o vídeo parado em "finalizar" até o
+      // corte de 25 minutos -- que estorna e apaga um vídeo que já estava pronto.
+      if (Date.now() - inicioDaChamada > SEGUNDOS_PRA_EMENDAR_FINALIZAR * 1000) return progressoDe(espec, p);
+      etapaDaChamada = "finalizar";
+    }
+
+    // ---------- capa, miniatura e pronto ----------
+    if (p.etapa === "finalizar") {
+      if (!p.saida) throw new Error("A montagem terminou sem o vídeo final.");
+      const emendas = emendasDoVideo(espec).slice(0, Math.max(0, p.clipes.length - 1));
+      const saida = local("video.mp4");
       // A miniatura sai da cena escolhida como capa: o começo dela na linha do tempo (cada
       // emenda sobrepõe o tempo dela) mais um pouco, pra não pegar o quadro em que a
       // transição ainda está terminando.
@@ -626,31 +677,36 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }
       }
       // Sem capa montada, ou se ela falhou: o quadro cru, que é o que sempre houve.
-      if (!feita) await rodarFfmpeg(argsMiniatura(saida, thumb, segundoDaCapa), 30_000).catch(() => null);
-      const sonda = await sondarMidia(saida);
+      if (!feita) {
+        // O quadro cru sai do vídeo pronto, que já está no bucket: baixa só quando precisa.
+        // (Se a montagem emendou nesta mesma chamada, o arquivo ainda está no disco.)
+        await (fs.existsSync(saida) ? Promise.resolve() : baixar(db, p.saida, saida))
+          .then(() => rodarFfmpeg(argsMiniatura(saida, thumb, segundoDaCapa), 30_000))
+          .catch(() => null);
+      }
 
-      const caminhoFinal = caminhoVideoFinal(userId, video.id);
       const caminhoThumb = caminhoMiniatura(userId, video.id);
-      await subir(db, saida, caminhoFinal, "video/mp4");
-      if (fs.existsSync(thumb)) await subir(db, thumb, caminhoThumb, "image/jpeg");
+      // Capa é acessório: uma falha ao subir o jpg não pode derrubar um vídeo pronto.
+      const capaSubiu = fs.existsSync(thumb) && (await subir(db, thumb, caminhoThumb, "image/jpeg").then(() => true, () => false));
 
       const saldoDepois = await saldoFal(falKey);
       const custo = p.saldoAntes != null && saldoDepois != null ? Math.max(0, Number((p.saldoAntes - saldoDepois).toFixed(4))) : null;
-      p.segundosDeRender = (p.segundosDeRender ?? 0) + r.segundos;
       p.etapa = "concluido";
       p.saldoDepois = saldoDepois;
+      cronometrar();
       await db
         .from("videos")
         .update({
           status: "concluido",
-          output_path: caminhoFinal,
-          thumb_path: fs.existsSync(thumb) ? caminhoThumb : null,
-          duracao_segundos: sonda.duracao ?? total,
+          output_path: p.saida,
+          thumb_path: capaSubiu ? caminhoThumb : null,
+          duracao_segundos: p.duracaoFinal ?? relogioDoEspec(espec, !!p.telaFinalRenderizada).total,
           custo_real: custo,
           concluido_em: new Date().toISOString(),
           pipeline: p,
         })
-        .eq("id", video.id);
+        .eq("id", video.id)
+        .eq("status", "gerando");
       await apagarEntradas(db, p.temporarios);
       return progressoDe(espec, p);
     }
@@ -663,5 +719,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
 /** Limpa os temporários de um vídeo que falhou ou foi apagado. */
 export async function limparTemporarios(db: Db, p: PipelineVideo | null) {
-  if (p?.temporarios?.length) await apagarEntradas(db, p.temporarios);
+  // O mp4 que subiu na montagem e não chegou a ser gravado como pronto também é sobra.
+  const sobras = [...(p?.temporarios ?? []), ...(p?.saida && p.etapa !== "concluido" ? [p.saida] : [])];
+  if (sobras.length) await apagarEntradas(db, sobras);
 }

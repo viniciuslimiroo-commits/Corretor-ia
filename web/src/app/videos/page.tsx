@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import {
@@ -32,6 +33,7 @@ import {
   VOZES,
   custoDoVideo,
   duracaoEstimada,
+  precisaDoEditor,
   vozDeIA,
   ehTransicao,
   type TransicaoId,
@@ -179,6 +181,7 @@ function dataCurta(iso: string) {
 
 export default function PaginaVideo() {
   const c = useConta();
+  const router = useRouter();
   const { user, token } = c;
 
   const [imovelId, setImovelId] = useState<string | null>(null);
@@ -637,6 +640,12 @@ export default function PaginaVideo() {
       const dd = await rr.json();
       if (!rr.ok || dd.status !== "concluido" || !dd.espec) throw new Error(dd.error ?? "Esse vídeo ainda não pode ser editado.");
       const e = dd.espec as EspecVideo;
+      // Vídeo com coisa que esta página não conhece (textos, peças, legendas, Você, cor,
+      // cortes): abre no EDITOR. Reabrir aqui e gerar de novo apagava tudo isso calado.
+      if (precisaDoEditor(e)) {
+        router.replace(`/editor/video?editar=${encodeURIComponent(id)}`);
+        return;
+      }
       const novas = cenasDoEspec(e, (dd.edicao?.cenas ?? []) as EdicaoCena[]);
       setImovelId(dd.edicao?.imovelId ?? null);
       setCenas(novas);
