@@ -29,7 +29,8 @@ for (const linha of fs.readFileSync(path.join(RAIZ, ".env.local"), "utf8").split
 process.env.FFMPEG_PATH ??= ffmpegStatic as unknown as string;
 
 const { limparEspec } = await import("../src/lib/video.ts");
-const { buscarClipesPexels, prepararClipePexels, temChavePexels } = await import("../src/lib/pexels-servidor.ts");
+const { prepararClipePexels } = await import("../src/lib/pexels-servidor.ts");
+const { buscarClipesPexels, temChavePexels } = await import("../src/lib/pexels-busca.ts");
 const { rasterizarElementos } = await import("../src/lib/elementos-servidor.ts");
 const { argsCenaFoto } = await import("../src/lib/video-ffmpeg.ts");
 const { LOOP_CLIPE_S } = await import("../src/lib/pexels.ts");

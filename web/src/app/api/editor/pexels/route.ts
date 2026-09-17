@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { buscarClipesPexels, temChavePexels } from "@/lib/pexels-servidor";
+import { buscarClipesPexels, temChavePexels } from "@/lib/pexels-busca";
 
 // Busca de clipes de reação no Pexels, pra aba GIFs do editor.
 //

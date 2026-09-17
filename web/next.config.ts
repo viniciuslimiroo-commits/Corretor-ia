@@ -7,13 +7,20 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     // `public/adesivos` e `assets/fontes` são lidos do DISCO pela montagem do vídeo: sem
     // entrar aqui, funcionam local e somem na Vercel, onde a função só leva o que é listado.
-    "/api/video/**": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/**", "./public/musica/**", "./public/efeitos/**"],
-    "/api/editor/**": ["./assets/fontes/**"],
+    //
+    // A chave é a ROTA, e só a que RENDERIZA leva esse peso. Com `/api/video/**` as cinco
+    // rotas de vídeo (criar, upload, legendas, roteiro e esta) levavam ffmpeg + músicas +
+    // adesivos, uns 110 MB CADA, guardados por deploy: foi o que estourou o armazenamento
+    // de funções da Vercel (50,85 GB de 10 GB em 17/09/2026). Criar o vídeo e assinar
+    // upload não abrem o ffmpeg -- quem monta é `/api/video/[id]`.
+    "/api/video/\\[id\\]": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/**", "./public/musica/**", "./public/efeitos/**"],
+    // O efeito de texto desenha com as fontes do disco; as outras rotas do editor, não.
+    "/api/editor/efeito-texto": ["./assets/fontes/**"],
   },
   // As miniaturas dos GIFs são só da galeria (o navegador baixa do CDN); o vídeo usa o GIF
   // grande. Fora do pacote da função, que já leva o ffmpeg.
   outputFileTracingExcludes: {
-    "/api/video/**": ["./public/adesivos/mini/**"],
+    "/api/video/\\[id\\]": ["./public/adesivos/mini/**"],
   },
   serverExternalPackages: ["ffmpeg-static"],
 
