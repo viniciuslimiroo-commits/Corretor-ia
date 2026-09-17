@@ -63,7 +63,7 @@ export function useIdioma(): Contexto {
  * SVG nosso. Simplificadas de propósito: a 20px, o brasão da Espanha e as 50 estrelas dos
  * EUA viram borrão -- o que identifica são as cores e as formas grandes.
  */
-function Bandeira({ id, className = "h-3.5 w-5" }: { id: Idioma; className?: string }) {
+export function Bandeira({ id, className = "h-3.5 w-5" }: { id: Idioma; className?: string }) {
   const comum = { viewBox: "0 0 24 16", className, "aria-hidden": true as const, xmlns: "http://www.w3.org/2000/svg" };
   if (id === "pt") {
     return (
