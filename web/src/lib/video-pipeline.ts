@@ -15,7 +15,10 @@ import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import type { ResumoEdicao } from "./resumo-edicao";
-import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { resolverAudiosDaMontagem } from "./audio-montagem";
+import { estornoDaNarracao } from "./pedido-video";
+import type { AudioNaMontagem } from "./video-ffmpeg";
 import {
   argsCena360,
   argsCenaAntesDepois,
@@ -499,11 +502,17 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
     // ---------- narração ----------
     if (p.etapa === "narracao") {
-      // Voz da pessoa (gravada no navegador ou enviada): o arquivo já está no bucket, já
-      // foi conferido como dela em /api/video, e não passa por modelo nenhum. Nada de TTS,
-      // nada de crédito -- e NÃO entra em `temporarios`, senão a faxina do fim apagaria um
-      // arquivo que é dela e que outros vídeos podem reusar.
-      if (espec.narracao && !vozDeIA(espec.narracao) && espec.narracao.arquivo) {
+      // Voz que JÁ EXISTE no bucket: gravada no navegador, enviada, ou a de IA que este
+      // vídeo (ou o anterior) já mandou gravar e volta reaproveitada. Em qualquer um dos
+      // três o arquivo já foi conferido como dela em /api/video (dono, formato e
+      // existência, lib/pedido-video.ts), não passa por modelo nenhum e não custa crédito
+      // -- e NÃO entra em `temporarios`, senão a faxina do fim apagaria um arquivo que é
+      // dela e que outros vídeos podem reusar.
+      //
+      // É aqui que a conta de `custoDoVideo` (0 crédito com `arquivo`) e o que o servidor
+      // EXECUTA se encontram: sem esta linha, um pedido com `arquivo` pagaria 0 e o TTS
+      // rodaria assim mesmo.
+      if (espec.narracao?.arquivo) {
         p.narracaoPath = espec.narracao.arquivo;
         await salvar({ etapa: "montar" });
         return progressoDe(espec, p);
@@ -529,8 +538,16 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           await subir(db, arquivo, destino, "audio/mpeg");
           p.narracaoPath = destino;
         } catch (e) {
-          p.avisos.push(`A narração não pôde ser gravada (${e instanceof Error ? e.message.slice(0, 80) : "erro"}); o crédito dela voltou.`);
-          await creditar(db, contaDoVideo, userId, CREDITOS.narracao, "estorno_narracao", video.id).catch(() => null);
+          // O estorno devolve o que foi COBRADO, não um valor de tabela (lib/pedido-video.ts).
+          const motivo = e instanceof Error ? e.message.slice(0, 80) : "erro";
+          const volta = estornoDaNarracao(espec.narracao, p.narracaoEstornada);
+          if (volta > 0) {
+            p.avisos.push(`A narração não pôde ser gravada (${motivo}); o crédito dela voltou.`);
+            await creditar(db, contaDoVideo, userId, volta, "estorno_narracao", video.id).catch(() => null);
+            p.narracaoEstornada = true;
+          } else {
+            p.avisos.push(`A narração não pôde ser gravada (${motivo}); o vídeo saiu sem voz.`);
+          }
           p.narracaoPath = null;
         }
       }
@@ -547,8 +564,11 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         await baixar(db, p.clipes[i], l);
         locais.push(l);
       }
+      // Com a linha do tempo (`espec.audios`) a música não é mais UMA faixa do vídeo
+      // inteiro: cada trecho traz a sua, e quem acha o arquivo é o resolvedor, lá embaixo.
+      const trechosDeVoz = (espec.audios ?? []).filter((a) => a.fonte.tipo === "voz").length;
       let musica: string | undefined;
-      const faixa = MUSICAS.find((m) => m.id === espec.musica);
+      const faixa = espec.audios ? undefined : MUSICAS.find((m) => m.id === espec.musica);
       if (faixa?.arquivo) {
         // As faixas moram em public/ e não em assets/ porque o NAVEGADOR também precisa
         // delas: sem isso não dá pra ouvir a música antes de escolher, e escolher trilha
@@ -565,7 +585,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         else p.avisos.push("O efeito sonoro escolhido não foi encontrado no servidor; o vídeo saiu sem ele.");
       }
       let narracao: string | undefined;
-      if (p.narracaoPath) {
+      // Com a linha do tempo, a voz só é baixada se algum trecho a usa: narração ligada e
+      // todos os trechos de voz apagados não precisa do arquivo.
+      if (p.narracaoPath && (!espec.audios || trechosDeVoz > 0)) {
         // A extensão importa: o ffmpeg abre webm/opus (gravação do navegador) e m4a pelo
         // container, e um .mp3 que não é mp3 confunde o detector.
         narracao = local(`narracao${extensaoDe(p.narracaoPath)}`);
@@ -593,6 +615,41 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           apresentador = null;
         }
       }
+      // ---- trechos de áudio da linha do tempo ----
+      //
+      // Conferidos contra a duração REAL (`total`), que pode ser menor que a estimada pelo
+      // saneador -- a tela final não sai quando o perfil não tem marca. O que não cabe mais
+      // sai com aviso.
+      let audios: AudioNaMontagem[] | undefined;
+      if (espec.audios) {
+        const resolvido = resolverAudiosDaMontagem({
+          itens: espec.audios,
+          total,
+          caminhoDaMusica: (id) => {
+            const arquivo = MUSICA_POR_ID[id]?.arquivo;
+            if (!arquivo) return null;
+            const candidato = path.join(process.cwd(), "public", "musica", arquivo);
+            return fs.existsSync(candidato) ? candidato : null;
+          },
+          caminhoDaVoz: narracao ?? null,
+        });
+        audios = resolvido.audios;
+        for (const aviso of resolvido.avisos) p.avisos.push(aviso);
+        // A voz foi COBRADA e não sobrou nenhum trecho dela no vídeo: devolve o que foi
+        // cobrado. Só quando o TTS de fato gravou (`narracaoPath`) e só uma vez -- a etapa
+        // pode ser repetida. `estornoDaNarracao` é 0 pra voz gravada, enviada ou de IA
+        // reaproveitada: elas não custaram nada, e devolver aí seria emitir saldo.
+        const volta = p.narracaoPath && resolvido.vozDescartada ? estornoDaNarracao(espec.narracao, p.narracaoEstornada) : 0;
+        if (volta > 0) {
+          const voltou = await creditar(db, contaDoVideo, userId, volta, "estorno_narracao", video.id).then(
+            () => true,
+            () => false
+          );
+          p.narracaoEstornada = voltou;
+          p.avisos.push(voltou ? "A voz ficou toda depois do fim do vídeo; o crédito da narração voltou." : "A voz ficou toda depois do fim do vídeo; o crédito da narração não voltou agora e será devolvido no suporte.");
+        }
+      }
+
       const ultimaEmenda = emendas[emendas.length - 1]?.segundos ?? 0;
       const fimDoCarimbo = p.telaFinalRenderizada ? total - LIMITES.telaFinalSegundos + ultimaEmenda : undefined;
       const subtitulo = [espec.preco, espec.local].filter(Boolean).join(" · ");
@@ -606,14 +663,15 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           H,
           emendas,
           musica,
-          narracao,
+          narracao: espec.audios ? undefined : narracao,
           titulo: espec.titulo || undefined,
           subtitulo: subtitulo || undefined,
           fimDoCarimbo,
-          musicaVolume: espec.musicaVolume,
+          musicaVolume: espec.audios ? undefined : espec.musicaVolume,
           efeitoSonoro,
-          vozVolume: espec.narracao?.volume,
-          vozInicio: espec.narracao?.inicio,
+          vozVolume: espec.audios ? undefined : espec.narracao?.volume,
+          vozInicio: espec.audios ? undefined : espec.narracao?.inicio,
+          audios,
           legendas: espec.legendas,
           apresentador,
         }),

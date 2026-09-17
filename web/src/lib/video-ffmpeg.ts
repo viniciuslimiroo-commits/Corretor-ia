@@ -749,6 +749,62 @@ function formatarWhatsapp(d: string): string {
   return d;
 }
 
+// ---- um trecho de áudio na linha do tempo ----
+//
+// Cada trecho é uma ENTRADA inteira do ffmpeg (nada de `-ss`/`-t`/`-stream_loop` antes do
+// `-i`) e um caminho de filtros que o põe no instante certo do vídeo. A receita saiu de
+// medição, e cada peça dela está aí por um defeito medido:
+//
+//   - `-ss`/`-t` na ENTRADA com início > 0 devolvia o áudio no segundo 0 (é o defeito do
+//     Você que o conserto B3 desfaz), e `-stream_loop` com corte emendava conteúdo errado;
+//   - `atrim` ANTES de `adelay` faz o atraso virar só carimbo de tempo: o corte já
+//     enfileirou um quadro quando o atraso liga, e a mistura seguinte ignora carimbo.
+//     Por isso o deslocamento é SEMPRE `adelay` quando o trecho entra depois de onde
+//     corta, e `atrim`+`asetpts` só no caso contrário (o arquivo entra adiantado);
+//   - `aresample`/`aformat`, base de silêncio e normalização de canais mudam o que o
+//     compressor lateral (ducking) enxerga -- 2,3 dB de diferença medidos. Nada disso aqui.
+//
+// O `afade` de 1 ms nas bordas sem fade existe pra não estalar quando o trecho começa no
+// meio do arquivo ou termina antes do fim do vídeo.
+export type AudioNaMontagem = {
+  /** Caminho local do arquivo. Vários trechos podem apontar pro mesmo. */
+  arquivo: string;
+  tipo: "musica" | "voz";
+  /** Segundo do VÍDEO em que o trecho entra. */
+  noVideo: number;
+  /** Segundo do ARQUIVO de onde ele parte. */
+  corte: number;
+  /** Quanto dura, já resolvido (nunca ausente aqui). */
+  dur: number;
+  volume: number;
+  fadeEntrada: number;
+  fadeSaida: number;
+  /** Repetir o arquivo até cobrir o trecho. Só música, e só quando faz falta. */
+  laco: boolean;
+};
+
+/** O caminho de filtros de UM trecho: de `[entrada]` até `[saida]`, no tempo do vídeo. */
+export function cadeiaDeAudio(entrada: string, a: Omit<AudioNaMontagem, "arquivo" | "tipo">, total: number, saida: string): string {
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const N = r2(a.noVideo), C = r2(a.corte), D = r2(a.dur), T = r2(total);
+  const f: string[] = [];
+  if (a.laco) f.push("aloop=loop=-1:size=2147483647");
+  // Onde o arquivo começa no tempo do vídeo. Positivo: atrasa. Negativo: o trecho pega o
+  // arquivo mais adiante do que ele cabe, e aí sim corta o começo.
+  const S = r2(N - C);
+  if (S > 0) f.push(`adelay=${Math.round(S * 1000)}:all=1`);
+  else if (S < 0) f.push(`atrim=start=${(-S).toFixed(2)}`, "asetpts=PTS-STARTPTS");
+  if (a.fadeEntrada > 0) f.push(`afade=t=in:st=${N.toFixed(2)}:d=${a.fadeEntrada.toFixed(2)}`);
+  else if (C > 0) f.push(`afade=t=in:st=${N.toFixed(2)}:d=0.001`);
+  const fim = r2(N + D);
+  if (a.fadeSaida > 0) f.push(`afade=t=out:st=${(fim - a.fadeSaida).toFixed(2)}:d=${a.fadeSaida.toFixed(2)}`);
+  else if (fim < T) f.push(`afade=t=out:st=${(fim - 0.001).toFixed(3)}:d=0.001`);
+  if (a.volume !== 1) f.push(`volume=${a.volume.toFixed(2)}`);
+  // `apad` antes do `atrim`: trecho curto num vídeo longo encerrava a mistura cedo.
+  f.push("apad", `atrim=0:${T.toFixed(2)}`);
+  return `[${entrada}]${f.join(",")}[${saida}]`;
+}
+
 /**
  * Montagem: emenda os clipes (transição suave = xfade, corte = concat), mixa música e
  * narração, carimba título/preço/local no topo enquanto as cenas passam. Sai o mp4
@@ -779,6 +835,12 @@ export function argsMontagem(o: {
   legendas?: Legendas | null;
   /** O corretor por cima do vídeo. `arquivo` é o caminho local já baixado. */
   apresentador?: (Apresentador & { arquivoLocal: string; temAudio: boolean; duracaoClipe: number }) | null;
+  /**
+   * Os TRECHOS de áudio da linha do tempo, já resolvidos (lib/audio-montagem.ts). Quando
+   * vem, é ele quem manda: `musica`, `narracao`, `musicaVolume`, `vozVolume` e `vozInicio`
+   * são ignorados. O `efeitoSonoro` continua igual.
+   */
+  audios?: AudioNaMontagem[];
 }): string[] {
   const n = o.clipes.length;
   // Uma emenda por par, cada uma com a sua duração: a cena escolhe a transição.
@@ -790,11 +852,13 @@ export function argsMontagem(o: {
   let idx = n;
   let idxMusica = -1;
   let idxNarracao = -1;
-  if (o.musica) {
+  // Sem `audios`, a música e a narração entram como sempre -- é o caminho do vídeo que
+  // nunca passou pela linha do tempo, e ele sai byte a byte igual ao de antes.
+  if (!o.audios && o.musica) {
     args.push("-stream_loop", "-1", "-i", o.musica);
     idxMusica = idx++;
   }
-  if (o.narracao) {
+  if (!o.audios && o.narracao) {
     args.push("-i", o.narracao);
     idxNarracao = idx++;
   }
@@ -814,6 +878,28 @@ export function argsMontagem(o: {
   if (apre && apreDuracao > 0.2) {
     args.push("-ss", (apre.inicio ?? 0).toFixed(2), "-t", apreDuracao.toFixed(2), "-i", apre.arquivoLocal);
     idxApre = idx++;
+  }
+  // A VOZ do vídeo pode vir de dois lugares: a narração e o apresentador falando. Os dois
+  // juntos viram uma faixa só -- e é essa faixa que faz a música abaixar. Tratar o
+  // apresentador como "outro som" deixaria a música por cima da fala dele.
+  const volApre = Math.min(2, Math.max(0, apre?.volume ?? 1));
+  const temVozApre = idxApre >= 0 && !!apre?.temAudio && volApre > 0;
+
+  // Um trecho por item da linha do tempo, na ordem. Entrada INTEIRA: quem corta é o grafo.
+  const idxItens: number[] = [];
+  if (o.audios) {
+    for (const a of o.audios) {
+      args.push("-i", a.arquivo);
+      idxItens.push(idx++);
+    }
+  }
+  // O áudio do apresentador entra SEPARADO (sem `-ss`/`-t`) quando o clipe dele começa
+  // depois do próprio início: medido, a entrada aparada devolve o som no segundo 0 em vez
+  // do instante em que ele entra. Com `inicio` 0 nada muda, e o comando sai igual ao de antes.
+  let idxApreAudio = -1;
+  if (temVozApre && (o.audios || (apre!.inicio ?? 0) > 0)) {
+    args.push("-i", apre!.arquivoLocal);
+    idxApreAudio = idx++;
   }
 
   const partes: string[] = [];
@@ -904,46 +990,80 @@ export function argsMontagem(o: {
   // A voz é dividida em duas (`asplit`): uma cópia vai pro mix e a outra serve só de
   // GATILHO do compressor. Sem isso não dá pra ouvir a voz e usá-la como controle ao mesmo
   // tempo -- o sidechaincompress consome a entrada que recebe.
-  const fadeOut = Math.max(0, total - 2).toFixed(2);
-  const volMusica = Math.min(1, Math.max(0, o.musicaVolume ?? 0.8));
-  const volVoz = Math.min(2, Math.max(0.2, o.vozVolume ?? 1));
-  const msInicio = Math.round(Math.min(10, Math.max(0, o.vozInicio ?? 0.7)) * 1000);
-  const musicaBase = `[${idxMusica}:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=${volMusica.toFixed(2)}`;
-
-  // A VOZ do vídeo pode vir de dois lugares: a narração e o apresentador falando. Os dois
-  // juntos viram uma faixa só -- e é essa faixa que faz a música abaixar. Tratar o
-  // apresentador como "outro som" deixaria a música por cima da fala dele.
-  const volApre = Math.min(2, Math.max(0, apre?.volume ?? 1));
-  const temVozApre = idxApre >= 0 && !!apre?.temAudio && volApre > 0;
-  const fontesDeVoz: string[] = [];
-  if (idxNarracao >= 0) {
-    // `apad` antes do atrim: voz curta num vídeo longo terminava o amix cedo.
-    partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[voz0]`);
-    fontesDeVoz.push("voz0");
-  }
-  if (temVozApre) {
-    const msApre = Math.round(apreEntra * 1000);
-    partes.push(`[${idxApre}:a]adelay=${msApre}|${msApre},volume=${volApre.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[voz1]`);
-    fontesDeVoz.push("voz1");
-  }
-  if (fontesDeVoz.length === 2) {
-    partes.push(`[voz0][voz1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[nar]`);
-  } else if (fontesDeVoz.length === 1) {
-    partes.push(`[${fontesDeVoz[0]}]anull[nar]`);
-  }
-  const temVoz = fontesDeVoz.length > 0;
-
-  if (idxMusica >= 0 && temVoz) {
-    partes.push(`${musicaBase}[m]`);
+  // O ducking (`sidechaincompress`) é o mesmo nos dois caminhos: o que muda é de onde saem
+  // as faixas `[m]` (música) e `[nar]` (voz). No caminho da linha do tempo cada trecho vira
+  // uma cadeia e os trechos de cada tipo entram num `amix` -- o barramento.
+  const juntar = (fontes: string[], nome: string) => {
+    if (fontes.length === 1) partes.push(`[${fontes[0]}]anull[${nome}]`);
+    else partes.push(`${fontes.map((f) => `[${f}]`).join("")}amix=inputs=${fontes.length}:duration=first:dropout_transition=0:normalize=0[${nome}]`);
+  };
+  const duck = () => {
     partes.push(`[nar]asplit=2[nar1][gatilho]`);
     // threshold em amplitude (0-1), não em dB. ratio 8 e release 350ms: a música volta
     // entre as frases sem "bombear" a cada sílaba.
     partes.push(`[m][gatilho]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=350:makeup=1[mduck]`);
     partes.push(`[mduck][nar1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
-  } else if (idxMusica >= 0) {
-    partes.push(`${musicaBase}[aout]`);
-  } else if (temVoz) {
-    partes.push(`[nar]anull[aout]`);
+  };
+  let temBase: boolean;
+  if (o.audios) {
+    const musicas: string[] = [];
+    const vozes: string[] = [];
+    o.audios.forEach((a, j) => {
+      partes.push(cadeiaDeAudio(`${idxItens[j]}:a`, a, total, `ai${j}`));
+      (a.tipo === "musica" ? musicas : vozes).push(`ai${j}`);
+    });
+    // A fala do Você entra pelo MESMO caminho dos trechos: é voz, abaixa a música igual, e
+    // o corte dentro do arquivo dele é o `inicio`.
+    if (temVozApre) {
+      partes.push(cadeiaDeAudio(`${idxApreAudio}:a`, { noVideo: apreEntra, corte: apre!.inicio ?? 0, dur: apreDuracao, volume: volApre, fadeEntrada: 0, fadeSaida: 0, laco: false }, total, "aapre"));
+      vozes.push("aapre");
+    }
+    if (musicas.length > 0) juntar(musicas, "m");
+    if (vozes.length > 0) juntar(vozes, "nar");
+    if (musicas.length > 0 && vozes.length > 0) duck();
+    else if (musicas.length > 0) partes.push(`[m]anull[aout]`);
+    else if (vozes.length > 0) partes.push(`[nar]anull[aout]`);
+    temBase = musicas.length + vozes.length > 0;
+  } else {
+    const fadeOut = Math.max(0, total - 2).toFixed(2);
+    const volMusica = Math.min(1, Math.max(0, o.musicaVolume ?? 0.8));
+    const volVoz = Math.min(2, Math.max(0.2, o.vozVolume ?? 1));
+    const msInicio = Math.round(Math.min(10, Math.max(0, o.vozInicio ?? 0.7)) * 1000);
+    const musicaBase = `[${idxMusica}:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=${volMusica.toFixed(2)}`;
+
+    const fontesDeVoz: string[] = [];
+    if (idxNarracao >= 0) {
+      // `apad` antes do atrim: voz curta num vídeo longo terminava o amix cedo.
+      partes.push(`[${idxNarracao}:a]adelay=${msInicio}|${msInicio},volume=${volVoz.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[voz0]`);
+      fontesDeVoz.push("voz0");
+    }
+    if (temVozApre) {
+      if ((apre!.inicio ?? 0) > 0) {
+        // CONSERTO (B3): com o clipe do Você aparado na entrada, o som dele saía no
+        // segundo 0. Pela entrada inteira e a mesma cadeia dos trechos, ele entra em `entra`.
+        partes.push(cadeiaDeAudio(`${idxApreAudio}:a`, { noVideo: apreEntra, corte: apre!.inicio ?? 0, dur: apreDuracao, volume: volApre, fadeEntrada: 0, fadeSaida: 0, laco: false }, total, "voz1"));
+      } else {
+        const msApre = Math.round(apreEntra * 1000);
+        partes.push(`[${idxApre}:a]adelay=${msApre}|${msApre},volume=${volApre.toFixed(2)},apad,atrim=0:${total.toFixed(2)}[voz1]`);
+      }
+      fontesDeVoz.push("voz1");
+    }
+    if (fontesDeVoz.length === 2) {
+      partes.push(`[voz0][voz1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[nar]`);
+    } else if (fontesDeVoz.length === 1) {
+      partes.push(`[${fontesDeVoz[0]}]anull[nar]`);
+    }
+    const temVoz = fontesDeVoz.length > 0;
+
+    if (idxMusica >= 0 && temVoz) {
+      partes.push(`${musicaBase}[m]`);
+      duck();
+    } else if (idxMusica >= 0) {
+      partes.push(`${musicaBase}[aout]`);
+    } else if (temVoz) {
+      partes.push(`[nar]anull[aout]`);
+    }
+    temBase = idxMusica >= 0 || temVoz;
   }
 
   // ---- efeito sonoro nas viradas ----
@@ -971,13 +1091,13 @@ export function argsMontagem(o: {
     // Sem música e sem voz, a PRIMEIRA entrada do amix era o primeiro clique, e
     // `duration=first` encerrava a mistura quando ele acabava: só a primeira virada tinha
     // som. Um silêncio do tamanho do vídeo na frente segura a mistura até o fim.
-    if (!(idxMusica >= 0 || temVoz)) partes.push(`anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(2)}[silencio]`);
-    const entradas = [idxMusica >= 0 || temVoz ? "[aout]" : "[silencio]", ...rotulos.map((r) => `[${r}]`)];
+    if (!temBase) partes.push(`anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(2)}[silencio]`);
+    const entradas = [temBase ? "[aout]" : "[silencio]", ...rotulos.map((r) => `[${r}]`)];
     partes.push(`${entradas.join("")}amix=inputs=${entradas.length}:duration=first:dropout_transition=0:normalize=0[afinal]`);
     saidaAudio = "afinal";
   }
 
-  const temAudio = idxMusica >= 0 || temVoz || viradas.length > 0;
+  const temAudio = temBase || viradas.length > 0;
   return [
     ...args,
     "-filter_complex", partes.join(";"),

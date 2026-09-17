@@ -1,0 +1,5 @@
+2026-09-17T20:14:35.363Z
+ffmpeg maior 6 · 8 núcleos na máquina · medida: tempo de CPU (-benchmark)
+12 cenas de 4s em 360x640, música do catálogo + voz real
+1 linha(s): antigo 42.95s de CPU (relógio 71.5s) · novo 42.09s (relógio 51.1s) · -2.0%
+2 linha(s): antigo 45.20s de CPU (relógio 41.4s) · novo 45.52s (relógio 51.8s) · +0.7%

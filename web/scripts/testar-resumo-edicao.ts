@@ -174,9 +174,14 @@ const com = (mudanca: Record<string, unknown>) => ({ ...bom, ...mudanca });
 // ---------- 4. a ligação ----------
 {
   const rota = fs.readFileSync(path.join(RAIZ, "src", "app", "api", "video", "route.ts"), "utf8");
-  conferir(/limparResumoEdicao\(corpo\?\.resumo, new Date\(\)\)/.test(rota), "a rota lê corpo.resumo pelo saneador, com a hora do servidor");
-  conferir(/pipelineInicial\(saldoAntes, animadasGratis, \{ resumoEdicao \}\)/.test(rota), "a rota põe o resumo no pipeline");
-  conferir(!/espec[^\n]*resumo/.test(rota.replace(/\/\/.*$/gm, "")), "o resumo não entra no espec");
+  // A leitura do `resumo` mudou de casa no P2: o arquivo de rota passou a exportar só os
+  // handlers, e sanear o pedido (espec, dono, voz reaproveitada e resumo) virou
+  // lib/pedido-video.ts, onde dá pra testar sem banco. A garantia é a mesma; o endereço, não.
+  const pedido = fs.readFileSync(path.join(RAIZ, "src", "lib", "pedido-video.ts"), "utf8");
+  conferir(/limparResumoEdicao\(c\.resumo, new Date\(\)\)/.test(pedido), "o preparo do pedido lê corpo.resumo pelo saneador, com a hora do servidor");
+  conferir(/pipelineInicial\(saldoAntes, animadasGratis, \{ avisos, resumoEdicao: resumo \}\)/.test(rota), "a rota põe o resumo (e os avisos) no pipeline");
+  const semComentarios = (t: string) => t.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  conferir(!/espec\s*[.[]\s*resumo/.test(semComentarios(rota) + semComentarios(pedido)), "o resumo não entra no espec");
   const exportados = [...rota.matchAll(/^export\s+(?:async\s+)?(?:function|const)\s+(\w+)/gm)].map((m) => m[1]);
   conferir(exportados.every((n) => ["GET", "POST", "maxDuration", "runtime", "dynamic"].includes(n)), "a rota só exporta handlers e configuração", exportados.join(","));
   const editor = fs.readFileSync(path.join(RAIZ, "src", "components", "editor", "editor-video.tsx"), "utf8");

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar } from "@/lib/armazenamento";
 import { saldoFal } from "@/lib/custo";
-import { CREDITOS, custoDoVideo, duracaoEstimada, limparEspec } from "@/lib/video";
+import { CREDITOS, custoDoVideo, duracaoEstimada } from "@/lib/video";
 import { animacoesGuardadas, pipelineInicial } from "@/lib/video-pipeline";
 import { contaDe, debitar } from "@/lib/cobranca";
-import { limparResumoEdicao } from "@/lib/resumo-edicao";
+import { prepararPedidoDeVideo } from "@/lib/pedido-video";
+import { BUCKET_RESULTADOS } from "@/lib/supabase-server";
 
 // Vídeo (Fase C). POST cria o pedido: valida o espec, confere que cada foto é da pessoa,
 // debita os créditos de uma vez (atômico, migration 09) e grava o vídeo com o pipeline
@@ -50,8 +51,20 @@ export async function POST(req: NextRequest) {
   if (!falKey) return NextResponse.json({ error: "FAL_KEY não configurada." }, { status: 500 });
 
   const corpo = await req.json().catch(() => ({}));
-  const { espec, erro } = limparEspec(corpo?.espec);
-  if (erro || !espec) return NextResponse.json({ error: erro ?? "Pedido inválido." }, { status: 400 });
+  // Sanear, conferir dono de tudo e conferir a voz de IA reaproveitada: lib/pedido-video.ts,
+  // onde dá pra testar sem banco. Aqui só o que precisa do banco de verdade.
+  const pedido = await prepararPedidoDeVideo(corpo, userId, {
+    jobsDoUsuario: async (ids) => {
+      const { data } = await db.from("jobs").select("id, status, input_path, output_path").in("id", ids).eq("user_id", userId);
+      return data ?? [];
+    },
+    existeNoBucket: async (pasta, nome) => {
+      const { data } = await db.storage.from(BUCKET_RESULTADOS).list(pasta, { limit: 1, search: nome });
+      return !!data?.some((f) => f.name === nome);
+    },
+  });
+  if (!pedido.ok) return NextResponse.json({ error: pedido.error, ...(pedido.codigo ? { codigo: pedido.codigo } : {}) }, { status: pedido.status });
+  const { espec, avisos, resumo } = pedido;
 
   let imovelId: string | null = null;
   if (typeof corpo?.imovelId === "string" && corpo.imovelId) {
@@ -59,30 +72,6 @@ export async function POST(req: NextRequest) {
     if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 400 });
     imovelId = imovel.id;
     if (!espec.titulo) espec.titulo = (imovel.titulo ?? "").slice(0, 50);
-  }
-
-  // Cada foto tem que ser da pessoa e estar pronta. Conferido AQUI, antes de debitar:
-  // ninguém paga por um vídeo que não tinha como ser montado.
-  const jobIds = [...new Set(espec.cenas.map((c) => c.jobId).filter((x): x is string => !!x))];
-  if (jobIds.length) {
-    const { data: jobs } = await db.from("jobs").select("id, status, input_path, output_path").in("id", jobIds).eq("user_id", userId);
-    const porId = new Map((jobs ?? []).map((j) => [j.id, j]));
-    for (const c of espec.cenas) {
-      if (!c.jobId) continue;
-      const j = porId.get(c.jobId);
-      if (!j || j.status !== "concluido" || !j.output_path) return NextResponse.json({ error: "Uma das fotos escolhidas não está pronta ou não é sua." }, { status: 400 });
-      if (c.tipo === "antes_depois" && !j.input_path) return NextResponse.json({ error: "Uma das fotos não tem a original guardada pra fazer antes e depois." }, { status: 400 });
-    }
-  }
-  for (const c of espec.cenas) {
-    if (c.arquivo && !c.arquivo.startsWith(`uploads/${userId}/`)) return NextResponse.json({ error: "Arquivo enviado não reconhecido." }, { status: 400 });
-  }
-  // A voz própria é um arquivo do bucket como qualquer outro: tem que ser DELA.
-  if (espec.narracao?.arquivo && !espec.narracao.arquivo.startsWith(`uploads/${userId}/`)) {
-    return NextResponse.json({ error: "Áudio de narração não reconhecido." }, { status: 400 });
-  }
-  if (espec.apresentador?.arquivo && !espec.apresentador.arquivo.startsWith(`uploads/${userId}/`)) {
-    return NextResponse.json({ error: "Vídeo do apresentador não reconhecido." }, { status: 400 });
   }
 
   // Cena animada cujo clipe já existe (o vídeo está sendo editado e essa cena não mudou)
@@ -93,9 +82,6 @@ export async function POST(req: NextRequest) {
   const custo = Math.max(0, custoDoVideo(espec) - animadasGratis.length * CREDITOS.animada);
   const saldoAntes = await saldoFal(falKey);
   const conta = await contaDe(db, userId);
-  // O resumo da edição (só o editor completo manda) vai pro pipeline, nunca pro espec.
-  // Torto, velho ou ausente vira null e não entra: o vídeo não depende dele.
-  const resumoEdicao = limparResumoEdicao(corpo?.resumo, new Date());
 
   const { data: video, error: erroInsert } = await db
     .from("videos")
@@ -107,7 +93,7 @@ export async function POST(req: NextRequest) {
       formato: espec.formato,
       status: "gerando",
       espec,
-      pipeline: pipelineInicial(saldoAntes, animadasGratis, { resumoEdicao }),
+      pipeline: pipelineInicial(saldoAntes, animadasGratis, { avisos, resumoEdicao: resumo }),
       creditos_cobrados: custo,
     })
     .select("id")
@@ -130,5 +116,7 @@ export async function POST(req: NextRequest) {
   }
   if (imovelId) await db.from("properties").update({ atualizado_em: new Date().toISOString() }).eq("id", imovelId);
 
-  return NextResponse.json({ videoId: video.id, custo, creditosRestantes: saldo, duracaoEstimada: duracaoEstimada(espec) });
+  // `avisos`: o que o saneamento tirou do pedido (trecho de áudio fora do vídeo, voz sem
+  // trecho na linha do tempo). A tela mostra como recado; o vídeo sai do mesmo jeito.
+  return NextResponse.json({ videoId: video.id, custo, creditosRestantes: saldo, duracaoEstimada: duracaoEstimada(espec), avisos });
 }

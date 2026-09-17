@@ -1,0 +1,9 @@
+ffmpeg-static 6.1.1 (maior 6)
+entra 6,8s · inicio 1s · duracao 4s · total 10.8s
+novo:    antes de 6,8s max -120.0 dB · fala 0.57 dB fora
+antigo:  antes de 6,8s max -120.0 dB · fala 0.57 dB fora
+controle negativo (sem atraso e sem portao): antes de 6,8s max -20.7 dB · fala 3.74 dB fora
+
+O defeito descrito na spec (som em 0,00-5,20s com a entrada aparada) NAO reproduziu neste
+binario com este arquivo. O conserto B3 fica: ele nao depende do defeito reproduzir, e o
+guarda de byte-identidade cobre a mudanca de comando.

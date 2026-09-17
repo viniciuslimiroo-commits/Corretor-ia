@@ -93,7 +93,22 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
       continue;
     }
     // Conserto: tira do DEPOIS exatamente o que o conserto põe; tem que sobrar o ANTES.
-    let desfeito = JSON.stringify(d);
+    //
+    // Fase 2 (áudio do Você que entra com `inicio` > 0, spec B3): o som dele passou a vir
+    // de uma entrada SEPARADA, sem `-ss`, e por outra cadeia. Desfazer = tirar do depois a
+    // entrada repetida e apagar dos dois lados o trecho `[N:a]…[voz1]` inteiro.
+    let arrA = a;
+    let arrD = d;
+    {
+      const i = arrD.lastIndexOf("-i");
+      if (i >= 0 && i + 1 < arrD.length && arrD.slice(0, i).includes(arrD[i + 1])) {
+        arrD = [...arrD.slice(0, i), ...arrD.slice(i + 2)];
+        const semVoz1 = (args: string[]) => args.map((x) => x.replace(/;\[\d+:a\][^;]*\[voz1\]/, ""));
+        arrA = semVoz1(arrA);
+        arrD = semVoz1(arrD);
+      }
+    }
+    let desfeito = JSON.stringify(arrD);
     if (nome.startsWith("montagem_voce")) {
       desfeito = desfeito.replace(/setpts=PTS-STARTPTS\+[\d.]+\/TB/g, "setpts=PTS-STARTPTS").replace(/overlay=([^"]*?):eof_action=pass:/g, "overlay=$1:");
     }
@@ -105,8 +120,8 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
       const dur = nome === "cena_antes_depois_textos" ? 6 : 8;
       desfeito = desfeito.split(`gte(t\\\\,${(dur * 0.62).toFixed(2)})`).join(`gte(t\\\\,${(4 * 0.62).toFixed(2)})`);
     }
-    const igual = desfeito === JSON.stringify(a);
-    conferir(igual && JSON.stringify(d) !== JSON.stringify(a), `conserto só onde devia: ${nome}`, igual ? "" : primeiraDiferenca(JSON.stringify(a), desfeito));
+    const igual = desfeito === JSON.stringify(arrA);
+    conferir(igual && JSON.stringify(d) !== JSON.stringify(a), `conserto só onde devia: ${nome}`, igual ? "" : primeiraDiferenca(JSON.stringify(arrA), desfeito));
   }
 }
 
