@@ -1871,6 +1871,9 @@ export default function EditorDeVideo() {
               aoAdicionar={(t) => adicionarTexto(cenaAtual.chave, t)}
               aoTrocarAnimacao={(id) => mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { animacao: id as AnimacaoTexto })}
               animacaoAtual={(cenaAtual.textos ?? []).at(-1)?.animacao ?? null}
+              aoTrocarMovimento={(id) => mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { movimento: id })}
+              movimentoAtual={(cenaAtual.textos ?? []).at(-1)?.movimento ?? "nenhum"}
+              ultimoTemEfeito={!!(cenaAtual.textos ?? []).at(-1)?.arte && IDS_EFEITOS_TEXTO.has((cenaAtual.textos ?? []).at(-1)?.arte as string)}
               temTextoSelecionado={(cenaAtual.textos ?? []).length > 0}
               cheio={(cenaAtual.textos ?? []).length >= LIMITES.textosPorCena}
               desabilitado={gerando}
@@ -1966,6 +1969,8 @@ export default function EditorDeVideo() {
               cor={corDaMarca}
               podeMais={!!cenaAtual && (cenaAtual.elementos?.length ?? 0) < LIMITES.elementosPorCena}
               aoAdicionar={(e) => cenaAtual && adicionarElemento(cenaAtual.chave, e)}
+              aoAdicionarTexto={(t) => cenaAtual && adicionarTexto(cenaAtual.chave, t)}
+              textosCheios={!cenaAtual || (cenaAtual.textos ?? []).length >= LIMITES.textosPorCena}
               aoMudar={(i, m) => cenaAtual && mudarElemento(cenaAtual.chave, i, m)}
               aoTirar={(i) => cenaAtual && removerElemento(cenaAtual.chave, i)}
             />
@@ -2496,7 +2501,7 @@ export default function EditorDeVideo() {
                             title="Clique pra editar · botão direito pra mais"
                             className="pointer-events-auto flex w-full cursor-pointer justify-center transition hover:drop-shadow-[0_0_2px_rgba(255,255,255,0.8)]"
                           >
-                            <TextoComEfeito efeito={t.arte as string} texto={t.texto || "Texto"} formato={formato} n={i} />
+                            <TextoComEfeito efeito={t.arte as string} texto={t.texto || "Texto"} formato={formato} n={i} movimento={t.movimento} />
                           </span>
                         ) : (
                           <span

@@ -1,3 +1,4 @@
+import type { ArteNaCena } from "./video-ffmpeg";
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -14,7 +15,8 @@ import type { TextoCena } from "./video";
 // O `librsvg` que o sharp usa entende degradê, filtro de desfoque e traçado duplo, que é
 // justamente o que o drawtext não faz e o que separa "modelo de texto" de "cor trocada".
 
-export type ArteRasterizada = { arquivo: string; y: number; largura: number; altura: number; animacao?: string };
+/** O mesmo formato que a montagem sobrepõe (inclui `movimento`, que vira `sequencia` depois). */
+export type ArteRasterizada = ArteNaCena;
 
 /**
  * Desenha cada texto que tem `arte` e devolve o que a montagem precisa pra sobrepor.
@@ -62,7 +64,7 @@ export async function rasterizarArtes(
     const arquivo = path.join(pasta, `${prefixo}-arte-${k}.png`);
     await sharp(Buffer.from(d.svg)).png().toFile(arquivo);
     if (!fs.existsSync(arquivo)) continue;
-    saida.push({ arquivo, y: lugares[i].y, largura: d.largura, altura: d.altura, animacao: t.animacao });
+    saida.push({ arquivo, y: lugares[i].y, largura: d.largura, altura: d.altura, animacao: t.animacao, movimento: t.movimento });
   }
   return saida;
 }

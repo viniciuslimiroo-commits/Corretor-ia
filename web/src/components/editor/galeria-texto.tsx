@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ANIMACOES_TEXTO, MODELOS_TEXTO, type TextoCena } from "@/lib/video";
 import { LISTA_EFEITOS_TEXTO, urlDoCartaoDeEfeito } from "@/lib/efeitos-texto/lista";
 import type { CategoriaEfeito } from "@/lib/efeitos-texto/nucleo";
+import { MOVIMENTOS, type MovimentoId } from "@/lib/movimentos";
 
 // A GALERIA DE TEXTO, na lógica do CapCut: "Básico" em cima, prateleiras de efeito embaixo.
 //
@@ -34,6 +35,9 @@ export default function GaleriaTexto({
   aoAdicionar,
   aoTrocarAnimacao,
   animacaoAtual,
+  aoTrocarMovimento,
+  movimentoAtual,
+  ultimoTemEfeito,
   temTextoSelecionado,
   cheio,
   desabilitado,
@@ -44,6 +48,11 @@ export default function GaleriaTexto({
   /** Aplica uma entrada ao último texto da cena. */
   aoTrocarAnimacao: (id: string) => void;
   animacaoAtual: string | null;
+  /** Aplica um movimento em laço ao último texto da cena. */
+  aoTrocarMovimento: (id: MovimentoId) => void;
+  movimentoAtual: MovimentoId;
+  /** O último texto tem efeito (é imagem): só assim ele pode girar e crescer. */
+  ultimoTemEfeito: boolean;
   temTextoSelecionado: boolean;
   /** A cena já tem o número máximo de textos. */
   cheio: boolean;
@@ -73,7 +82,7 @@ export default function GaleriaTexto({
               (aba === a ? "border-marca-coral font-medium text-marca-indigo" : "border-transparent text-neutral-500 hover:text-neutral-700")
             }
           >
-            {a === "efeitos" ? "Efeitos de texto" : "Animação de entrada"}
+            {a === "efeitos" ? "Efeitos de texto" : "Animação"}
           </button>
         ))}
       </div>
@@ -212,8 +221,9 @@ export default function GaleriaTexto({
       ) : (
         <>
           <p className="text-[11px] text-neutral-500">
-            Como o texto ENTRA na cena. {temTextoSelecionado ? "Vale pro último texto posto nesta cena." : "Ponha um texto na cena primeiro."}
+            {temTextoSelecionado ? "Vale pro último texto posto nesta cena." : "Ponha um texto na cena primeiro."}
           </p>
+          <p className="text-xs font-semibold text-neutral-700">Entrada</p>
           <div className="grid grid-cols-2 gap-1.5">
             {ANIMACOES_TEXTO.map((a) => (
               <button
@@ -229,6 +239,32 @@ export default function GaleriaTexto({
               >
                 <span className="block font-medium">{a.rotulo}</span>
                 <span className="block text-[10px] leading-tight text-neutral-500">{a.dica}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* ---------- em laço ----------
+               Depois de entrar, fica se mexendo: é o que faz o texto parecer GIF. Só pra
+               texto com efeito, que entra no vídeo como imagem -- o texto simples é
+               desenhado letra por letra pelo ffmpeg, que não gira nem cresce. */}
+          <p className="mt-1 text-xs font-semibold text-neutral-700">Em laço, como GIF</p>
+          {temTextoSelecionado && !ultimoTemEfeito && (
+            <p className="-mt-1 text-[11px] text-neutral-500">Escolha um efeito de texto pra ele poder se mexer.</p>
+          )}
+          <div className="grid grid-cols-3 gap-1.5">
+            {MOVIMENTOS.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                disabled={!temTextoSelecionado || !ultimoTemEfeito || desabilitado}
+                onClick={() => aoTrocarMovimento(m.id)}
+                title={m.dica}
+                className={
+                  "rounded-lg border px-2 py-2 text-center text-xs transition disabled:opacity-40 " +
+                  (movimentoAtual === m.id ? "border-marca-indigo bg-marca-indigo/10 font-medium text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
+                }
+              >
+                {m.rotulo}
               </button>
             ))}
           </div>

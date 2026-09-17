@@ -14,7 +14,8 @@ import { MODELOS_ARTE } from "./texto-arte";
 import { IDS_EFEITOS_TEXTO } from "./efeitos-texto/lista";
 import { AJUSTES_NEUTROS, ehFiltro as filtroValido, limparAjustes, type Ajustes as AjustesCor, type FiltroId as IdFiltro, type Grade as GradeCor } from "./filtros";
 import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "./elementos";
-import { idDoAdesivo } from "./adesivos";
+import { ADESIVO_POR_ID, idDoAdesivo } from "./adesivos";
+import { ehMovimento, type MovimentoId } from "./movimentos";
 
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
 export const BUCKET_UPLOADS = "resultados";
@@ -234,6 +235,12 @@ export type TextoCena = {
   posicao?: PosicaoTexto;
   estilo?: EstiloTexto;
   animacao?: AnimacaoTexto;
+  /**
+   * Movimento em LAÇO depois de entrar (pulsar, balançar, tremer...): é o que faz o texto
+   * parecer GIF. Só vale pra texto com efeito (`arte`), que entra como imagem; o drawtext
+   * não gira nem cresce.
+   */
+  movimento?: MovimentoId;
 };
 
 export const POSICOES_TEXTO: { id: PosicaoTexto; rotulo: string }[] = [
@@ -461,6 +468,8 @@ export type ElementoCena = {
   /** Fração da altura do vídeo. Ausente = o tamanho próprio do modelo. */
   tamanho?: number;
   animacao?: AnimacaoTexto;
+  /** Movimento em laço (movimentos.ts). Não vale pra GIF, que já se mexe sozinho. */
+  movimento?: MovimentoId;
   /**
    * A cor da peça, em "#rrggbb". Vem do kit de marca, escolhida no navegador.
    *
@@ -909,6 +918,7 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
         ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : "topo_dir",
         ...(Number.isFinite(tam) && tam >= 0.04 && tam <= 0.5 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
         animacao,
+        ...(ehMovimento(e.movimento) && e.movimento !== "nenhum" && !ADESIVO_POR_ID[adesivo].animado ? { movimento: e.movimento } : {}),
       });
       continue;
     }
@@ -939,6 +949,8 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
       ...(Number.isFinite(tam) && tam >= 0.02 && tam <= 1 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
       ...(typeof e.cor === "string" && /^#[0-9a-fA-F]{6}$/.test(e.cor) ? { cor: e.cor.toLowerCase() } : {}),
       animacao,
+      // Moldura ocupa o quadro inteiro: balançar a moldura é balançar o vídeo.
+      ...(ehMovimento(e.movimento) && e.movimento !== "nenhum" && !modelo.quadroInteiro ? { movimento: e.movimento } : {}),
     });
   }
   return lista.length ? lista : undefined;
@@ -961,6 +973,9 @@ function limparTextos(bruto: unknown): TextoCena[] | undefined {
       // texto simples no vídeo -- sem erro, sem aviso, e sem aparecer em teste nenhum
       // que não passasse por esta função.
       ...(typeof t.arte === "string" && ARTES_VALIDAS.has(t.arte) ? { arte: t.arte } : {}),
+      // O MOVIMENTO passa pelo mesmo lugar em que a arte já foi perdida uma vez: sem esta
+      // linha o texto balança no palco e sai parado no vídeo.
+      ...(typeof t.arte === "string" && ARTES_VALIDAS.has(t.arte) && ehMovimento(t.movimento) && t.movimento !== "nenhum" ? { movimento: t.movimento } : {}),
       ...(t.visual && typeof t.visual === "object" ? { visual: limparVisual(t.visual as Record<string, unknown>) } : {}),
     });
   }

@@ -47,7 +47,7 @@ export async function rasterizarElementos(
   const corPadrao = corValida(opcoes.cor) ?? COR_ELEMENTO_PADRAO;
   // Primeiro desenha tudo (o tamanho de cada peça só existe depois de desenhada); depois
   // posiciona todas de uma vez, com a MESMA função que o palco da tela usa.
-  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; animacao?: string; animado?: boolean }[] = [];
+  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; animacao?: string; animado?: boolean; movimento?: string }[] = [];
 
   for (let k = 0; k < lista.length; k++) {
     const e = lista[k];
@@ -90,9 +90,10 @@ export async function rasterizarElementos(
       quadroInteiro: modelo?.quadroInteiro,
       animacao: e.animacao,
       animado,
+      movimento: e.movimento,
     });
   }
 
   const lugares = posicionarPecas(desenhadas, W, H, opcoes.topoOcupado);
-  return desenhadas.map((d, k) => ({ arquivo: d.arquivo, x: lugares[k].x, y: lugares[k].y, largura: d.largura, altura: d.altura, animacao: d.animacao, animado: d.animado }));
+  return desenhadas.map((d, k) => ({ arquivo: d.arquivo, x: lugares[k].x, y: lugares[k].y, largura: d.largura, altura: d.altura, animacao: d.animacao, animado: d.animado, movimento: d.movimento }));
 }

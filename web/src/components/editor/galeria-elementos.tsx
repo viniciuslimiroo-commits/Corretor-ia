@@ -21,7 +21,10 @@ import {
   type CategoriaAdesivo,
   type CategoriaGif,
 } from "@/lib/adesivos";
-import { ANIMACOES_TEXTO, LIMITES, type AnimacaoTexto, type ElementoCena } from "@/lib/video";
+import { ANIMACOES_TEXTO, LIMITES, type AnimacaoTexto, type ElementoCena, type TextoCena } from "@/lib/video";
+import { MOVIMENTOS, type MovimentoId } from "@/lib/movimentos";
+import { IDS_EFEITOS_TEXTO } from "@/lib/efeitos-texto/lista";
+import TextoComEfeito from "@/components/editor/texto-com-efeito";
 import { Chip, Icone } from "@/components/ui";
 
 // A GALERIA DE ELEMENTOS, na lógica do CapCut: busca em cima, prateleiras embaixo.
@@ -41,6 +44,26 @@ import { Chip, Icone } from "@/components/ui";
 
 /** Tamanho máximo de um GIF: o arquivo tem 224px, e 20% de 1920 (384px) já amplia 1,7x. */
 const TAMANHO_MAX_GIF = 0.2;
+
+/**
+ * TEXTO ANIMADO pronto: efeito de texto + movimento em laço, o equivalente legal dos GIFs
+ * de texto do CapCut ("hi", "I LOVE YOU"). Entra como TEXTO da cena -- dá pra reescrever
+ * no palco -- e não como peça.
+ */
+const TEXTOS_ANIMADOS: { efeito: string; texto: string; movimento: MovimentoId }[] = [
+  { efeito: "gibi_pop", texto: "UAU!", movimento: "tremer" },
+  { efeito: "pop_vermelho", texto: "VENDIDO!", movimento: "pulsar" },
+  { efeito: "faixa_oferta", texto: "BAIXOU!", movimento: "balancar" },
+  { efeito: "adesivo_recortado", texto: "Oi!", movimento: "quicar" },
+  { efeito: "neon_rosa", texto: "Amei", movimento: "pulsar" },
+  { efeito: "extrudado_3d", texto: "TOP!", movimento: "quicar" },
+  { efeito: "tinta_escorrendo", texto: "Corre!", movimento: "tremer" },
+  { efeito: "estrelinhas", texto: "É hoje", movimento: "flutuar" },
+  { efeito: "carimbo_vendido", texto: "Vendido", movimento: "tremer" },
+  { efeito: "doce_bolinhas", texto: "Kkkkk", movimento: "quicar" },
+  { efeito: "placa_imovel", texto: "Link na bio", movimento: "balancar" },
+  { efeito: "etiqueta_preco", texto: "Oferta", movimento: "balancar" },
+].filter((t) => IDS_EFEITOS_TEXTO.has(t.efeito)) as { efeito: string; texto: string; movimento: MovimentoId }[];
 
 const CATEGORIAS_DESENHADAS = ["ficha", "contato", "moldura"] as const;
 const ROTULO_DESENHADA: Record<(typeof CATEGORIAS_DESENHADAS)[number], string> = {
@@ -96,6 +119,8 @@ export default function GaleriaElementos({
   cor,
   podeMais,
   aoAdicionar,
+  aoAdicionarTexto,
+  textosCheios,
   aoMudar,
   aoTirar,
 }: {
@@ -105,6 +130,10 @@ export default function GaleriaElementos({
   cor: string;
   podeMais: boolean;
   aoAdicionar: (e: ElementoCena) => void;
+  /** O texto animado entra como TEXTO da cena (reescrevível), não como peça. */
+  aoAdicionarTexto: (t: TextoCena) => void;
+  /** A cena já tem o máximo de textos. */
+  textosCheios: boolean;
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
 }) {
@@ -230,6 +259,22 @@ export default function GaleriaElementos({
                   </div>
                 )}
 
+                {/* GIF já se mexe; moldura é o quadro inteiro. O resto pode balançar. */}
+                {!modelo?.quadroInteiro && !(adesivo && ADESIVO_POR_ID[adesivo].animado) && (
+                  <select
+                    value={e.movimento ?? "nenhum"}
+                    onChange={(ev) => aoMudar(i, { movimento: ev.target.value as MovimentoId })}
+                    className="mt-1.5 w-full rounded-lg border border-neutral-200 px-1.5 py-1 text-[11px] focus:border-marca-indigo focus:outline-none"
+                    aria-label="Movimento em laço"
+                  >
+                    {MOVIMENTOS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id === "nenhum" ? "Sem movimento" : `Em laço: ${m.rotulo}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 {adesivo && (
                   <label className="mt-1.5 block text-[11px] text-neutral-500">
                     Tamanho
@@ -250,9 +295,32 @@ export default function GaleriaElementos({
         </div>
       )}
 
+      {/* ---------- texto animado (só na aba GIFs, sem busca) ---------- */}
+      {gifs && !buscando && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-neutral-700">Texto animado</p>
+          <p className="mb-1.5 text-[11px] text-neutral-500">Entra como texto da cena: toque nele no palco pra trocar as palavras.</p>
+          {textosCheios && <p className="mb-1.5 text-[11px] text-neutral-500">Três textos já é o limite desta cena.</p>}
+          <div className="grid grid-cols-3 gap-1.5">
+            {TEXTOS_ANIMADOS.map((t) => (
+              <button
+                key={`${t.efeito}-${t.texto}`}
+                type="button"
+                disabled={textosCheios}
+                onClick={() => aoAdicionarTexto({ texto: t.texto, arte: t.efeito, posicao: "centro", animacao: "surgir", movimento: t.movimento })}
+                aria-label={`Pôr texto animado ${t.texto}`}
+                className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900 p-2 transition hover:border-marca-coral disabled:opacity-40"
+              >
+                <TextoComEfeito efeito={t.efeito} texto={t.texto} formato="9:16" n={0} movimento={t.movimento} caber />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ---------- adesivos 3D / GIFs ---------- */}
       <div className="mb-1 flex items-baseline justify-between">
-        <p className="text-xs font-semibold text-neutral-700">{(gifs ? "GIFs" : "Adesivos") + (buscando ? ` · ${adesivos.length}` : "")}</p>
+        <p className="text-xs font-semibold text-neutral-700">{(gifs ? "Emojis animados" : "Adesivos") + (buscando ? ` · ${adesivos.length}` : "")}</p>
       </div>
       {!buscando && (
         <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">

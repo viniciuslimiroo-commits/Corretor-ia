@@ -175,6 +175,10 @@ export type ArteNaCena = {
   animacao?: string;
   /** GIF animado: entra em laço e é redimensionado aqui pra largura×altura (o PNG já vem no tamanho). */
   animado?: boolean;
+  /** Movimento em laço pedido (movimentos.ts). Vira `sequencia` em movimento-servidor.ts. */
+  movimento?: string;
+  /** `arquivo` é um padrão de quadros (`...-%03d.png`) de UM período, repetido em laço. */
+  sequencia?: { quadros: number; fps: number };
 };
 
 /** O mesmo, com o canto escolhido: é o que um elemento tem a mais que uma arte. */
@@ -235,6 +239,9 @@ export function sobreporPecas(
     // GIF: `-ignore_loop 0` faz o laço do próprio arquivo valer (o padrão do ffmpeg é tocar
     // UMA vez e congelar no último quadro -- a risada parava no primeiro segundo).
     if (a.animado) entradas.push("-ignore_loop", "0", "-i", a.arquivo);
+    // Sequência de quadros de um período: `-loop 1` repete a sequência inteira. Sem ele o
+    // movimento acontece UMA vez e a peça congela no último quadro.
+    else if (a.sequencia) entradas.push("-loop", "1", "-framerate", String(a.sequencia.fps), "-i", a.arquivo);
     else entradas.push("-i", a.arquivo);
     const x = a.x;
     const chegada = "(1-min(t/0.5" + ESC + ",1))";
@@ -258,6 +265,8 @@ export function sobreporPecas(
       // Entrada em laço não acaba nunca. Hoje toda cena já corta com `-t` na saída (medido:
       // sem `shortest` a cena de foto termina igual); o `shortest` é a segunda trava, pra
       // cena nova que esquecer o `-t` não ficar gerando quadro até estourar a função.
+      fim = ":shortest=1";
+    } else if (a.sequencia) {
       fim = ":shortest=1";
     }
     partes.push("[" + atual + "]" + peca + "overlay=" + ex + ":" + ey + enable + fim + "[" + proximo + "]");

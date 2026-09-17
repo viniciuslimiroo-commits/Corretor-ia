@@ -4,6 +4,8 @@ import { ELEMENTO_POR_ID, FICHA_EXEMPLO, ANCORAS, posicionarPecas, type AncoraEl
 import { ADESIVO_POR_ID, idDoAdesivo, urlDoAdesivo } from "@/lib/adesivos";
 import type { ElementoCena } from "@/lib/video";
 import type { ItemMenu, useMenuContexto } from "@/components/editor/menu-contexto";
+import { useRef, type ReactNode } from "react";
+import { useMovimento } from "@/components/editor/com-movimento";
 
 // AS PEÇAS NO PALCO, no lugar em que vão sair no vídeo.
 //
@@ -13,6 +15,17 @@ import type { ItemMenu, useMenuContexto } from "@/components/editor/menu-context
 // num quadro de referência de 1000 de altura convertido em porcentagem.
 //
 // Botão direito (ou dedo segurado) numa peça: tirar, maior, menor, trocar de canto.
+
+/** O conteúdo da peça, balançando com os números do vídeo. A caixa de clique fica parada. */
+function ComMovimento({ movimento, aspecto, children }: { movimento?: string; aspecto: number; children: ReactNode }) {
+  const alvo = useRef<HTMLSpanElement | null>(null);
+  useMovimento(alvo, movimento, aspecto);
+  return (
+    <span ref={alvo} className="block h-full w-full">
+      {children}
+    </span>
+  );
+}
 
 const H_REF = 1000;
 const TAMANHO_ADESIVO = 0.12;
@@ -103,16 +116,18 @@ export default function ElementosNoPalco({
             }
             style={estilo}
           >
-            {p.adesivo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={urlDoAdesivo(p.adesivo)} alt="" className="h-full w-full" draggable={false} />
-            ) : (
-              <span
-                className="block h-full w-full"
-                // SVG do catálogo do próprio produto; o texto do corretor passa por `escaparSvg`.
-                dangerouslySetInnerHTML={{ __html: (p.svg ?? "").replace("<svg ", `<svg style="width:100%;height:100%" `) }}
-              />
-            )}
+            <ComMovimento movimento={p.e.movimento} aspecto={p.largura / Math.max(1, p.altura)}>
+              {p.adesivo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={urlDoAdesivo(p.adesivo)} alt="" className="h-full w-full" draggable={false} />
+              ) : (
+                <span
+                  className="block h-full w-full"
+                  // SVG do catálogo do próprio produto; o texto do corretor passa por `escaparSvg`.
+                  dangerouslySetInnerHTML={{ __html: (p.svg ?? "").replace("<svg ", `<svg style="width:100%;height:100%" `) }}
+                />
+              )}
+            </ComMovimento>
           </span>
         );
       })}

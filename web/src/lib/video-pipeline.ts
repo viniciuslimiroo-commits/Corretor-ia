@@ -11,6 +11,7 @@ import { saldoFal } from "./custo";
 import sharp from "sharp";
 import { rasterizarArtes } from "./texto-arte-servidor";
 import { rasterizarElementos } from "./elementos-servidor";
+import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
@@ -234,10 +235,16 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       // Fica aqui em cima, fora do `if`, porque vale pra QUALQUER tipo de cena. Quando
       // estava dentro do ramo da foto, um modelo escolhido num clipe sumia sem aviso --
       // a arte não era desenhada e o drawtext já tinha desistido do texto.
-      const artes = await rasterizarArtes(textosDaCena(cena), H, dir, `c${i}`, !!espec.titulo, W).catch(() => []);
+      // Movimento em laço (pulsar, balançar...) vira sequência de quadros DEPOIS de
+      // rasterizar e posicionar: a folga do movimento não pode empurrar o empilhamento.
+      const artes = await rasterizarArtes(textosDaCena(cena), H, dir, `c${i}`, !!espec.titulo, W)
+        .then((l) => animarPecas(l, dir, `c${i}-arte`))
+        .catch(() => []);
       // Os elementos gráficos passam pelo mesmo caminho: SVG do catálogo -> PNG ->
       // sobreposição. A diferença é que cada um escolhe o canto, em vez de sair centrado.
-      const pecas = await rasterizarElementos(cena.elementos, W, H, dir, `c${i}`, { topoOcupado: !!espec.titulo }).catch(() => []);
+      const pecas = await rasterizarElementos(cena.elementos, W, H, dir, `c${i}`, { topoOcupado: !!espec.titulo })
+        .then((l) => animarPecas(l, dir, `c${i}-peca`))
+        .catch(() => []);
       // Giro, espelho e velocidade vêm da barra da linha do tempo. Ficam aqui, num
       // objeto só, porque valem pra todo tipo de cena e repetir seis vezes é como um
       // deles some de um ramo sem ninguém ver.
