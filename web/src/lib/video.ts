@@ -16,6 +16,7 @@ import { AJUSTES_NEUTROS, ehFiltro as filtroValido, limparAjustes, type Ajustes 
 import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "./elementos";
 import { ADESIVO_POR_ID, idDoAdesivo } from "./adesivos";
 import { ehMovimento, type MovimentoId } from "./movimentos";
+import { TAMANHO_CLIPE_MAX, TAMANHO_CLIPE_MIN, ehUrlDoPexels, idDoPexels, type ClipeNaCena } from "./pexels";
 
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
 export const BUCKET_UPLOADS = "resultados";
@@ -471,6 +472,11 @@ export type ElementoCena = {
   /** Movimento em laço (movimentos.ts). Não vale pra GIF, que já se mexe sozinho. */
   movimento?: MovimentoId;
   /**
+   * Clipe de reação do Pexels (`id` = "pexels:<n>"): só o que o PALCO precisa pra tocar a
+   * prévia e dar o crédito. A montagem ignora a `previa` e busca o arquivo pelo id.
+   */
+  clipe?: ClipeNaCena;
+  /**
    * A cor da peça, em "#rrggbb". Vem do kit de marca, escolhida no navegador.
    *
    * Vem de lá e não é buscada aqui pelo mesmo motivo dos `itens`: desenhar uma peça não
@@ -919,6 +925,25 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
         ...(Number.isFinite(tam) && tam >= 0.04 && tam <= 0.5 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
         animacao,
         ...(ehMovimento(e.movimento) && e.movimento !== "nenhum" && !ADESIVO_POR_ID[adesivo].animado ? { movimento: e.movimento } : {}),
+      });
+      continue;
+    }
+
+    // Clipe do Pexels: o id é o que vale (a montagem busca o arquivo pela API). A prévia só
+    // passa se for endereço do Pexels -- o palco não toca URL qualquer vinda do navegador.
+    const pexels = typeof e.id === "string" ? idDoPexels(e.id) : null;
+    if (pexels) {
+      const c = (e.clipe && typeof e.clipe === "object" ? e.clipe : {}) as Record<string, unknown>;
+      const cl = Number(c.largura);
+      const ca = Number(c.altura);
+      lista.push({
+        id: `pexels:${pexels}`,
+        ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : "base_dir",
+        ...(Number.isFinite(tam) && tam >= TAMANHO_CLIPE_MIN && tam <= TAMANHO_CLIPE_MAX ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
+        animacao,
+        ...(ehUrlDoPexels(c.previa) && cl > 0 && cl < 10000 && ca > 0 && ca < 10000
+          ? { clipe: { previa: c.previa, largura: Math.round(cl), altura: Math.round(ca), autor: texto(c.autor, 80) ?? "", autorUrl: ehUrlDoPexels(c.autorUrl) ? c.autorUrl : "" } }
+          : {}),
       });
       continue;
     }

@@ -2,6 +2,7 @@
 
 import { ELEMENTO_POR_ID, FICHA_EXEMPLO, ANCORAS, posicionarPecas, type AncoraElemento, type IconeFicha } from "@/lib/elementos";
 import { ADESIVO_POR_ID, idDoAdesivo, urlDoAdesivo } from "@/lib/adesivos";
+import { LOOP_CLIPE_S, TAMANHO_CLIPE, TAMANHO_CLIPE_MAX, TAMANHO_CLIPE_MIN, idDoPexels } from "@/lib/pexels";
 import type { ElementoCena } from "@/lib/video";
 import type { ItemMenu, useMenuContexto } from "@/components/editor/menu-contexto";
 import { useRef, type ReactNode } from "react";
@@ -57,6 +58,14 @@ export default function ElementosNoPalco({
 
   // Desenha cada peça no quadro de referência pra saber o tamanho, igual ao servidor.
   const pecas = elementos.map((e) => {
+    // Clipe do Pexels: a altura sai do tamanho, a largura da proporção do vídeo -- a mesma
+    // conta de `prepararClipePexels`, que corta o clipe nessa altura.
+    if (idDoPexels(e.id)) {
+      if (!e.clipe) return null;
+      const alt = Math.round(H_REF * (e.tamanho ?? TAMANHO_CLIPE));
+      const larg = Math.round((alt * e.clipe.largura) / e.clipe.altura);
+      return { e, adesivo: null, svg: null as string | null, largura: larg, altura: alt, ancora: (e.ancora ?? "base_dir") as AncoraElemento, quadroInteiro: false };
+    }
     const adesivo = idDoAdesivo(e.id);
     if (adesivo) {
       const lado = Math.round(H_REF * (e.tamanho ?? TAMANHO_ADESIVO));
@@ -76,18 +85,20 @@ export default function ElementosNoPalco({
     <>
       {validas.map((p, k) => {
         const { x, y } = lugares[k];
-        const rotulo = p.adesivo ? ADESIVO_POR_ID[p.adesivo].rotulo : ELEMENTO_POR_ID[p.e.id]?.rotulo ?? "peça";
-        const tamanhoAtual = p.e.tamanho ?? (p.adesivo ? TAMANHO_ADESIVO : ELEMENTO_POR_ID[p.e.id]?.corpo ?? 0.1);
+        const ehClipe = !!p.e.clipe && !!idDoPexels(p.e.id);
+        const rotulo = ehClipe ? "clipe" : p.adesivo ? ADESIVO_POR_ID[p.adesivo].rotulo : ELEMENTO_POR_ID[p.e.id]?.rotulo ?? "peça";
+        const tamanhoAtual = p.e.tamanho ?? (ehClipe ? TAMANHO_CLIPE : p.adesivo ? TAMANHO_ADESIVO : ELEMENTO_POR_ID[p.e.id]?.corpo ?? 0.1);
         const cantoAtual = GIRO_DE_CANTOS.indexOf(p.ancora);
         // GIF tem 224px: acima de 20% da altura o vídeo amplia e borra.
-        const maximo = p.adesivo && ADESIVO_POR_ID[p.adesivo].animado ? 0.2 : 0.3;
+        const maximo = ehClipe ? TAMANHO_CLIPE_MAX : p.adesivo && ADESIVO_POR_ID[p.adesivo].animado ? 0.2 : 0.3;
+        const minimo = ehClipe ? TAMANHO_CLIPE_MIN : 0.05;
         const itens: ItemMenu[] = [
           { rotulo: `Tirar ${rotulo.toLowerCase()}`, icone: "lixeira", perigo: true, aoEscolher: () => aoTirar(p.i) },
           ...(p.quadroInteiro
             ? []
             : [
                 { rotulo: "Maior", icone: "mais", desligado: tamanhoAtual >= maximo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.min(maximo, Math.round((tamanhoAtual * 1.25) * 1000) / 1000) }) },
-                { rotulo: "Menor", icone: "baixo", desligado: tamanhoAtual <= 0.05, aoEscolher: () => aoMudar(p.i, { tamanho: Math.max(0.05, Math.round((tamanhoAtual / 1.25) * 1000) / 1000) }) },
+                { rotulo: "Menor", icone: "baixo", desligado: tamanhoAtual <= minimo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.max(minimo, Math.round((tamanhoAtual / 1.25) * 1000) / 1000) }) },
                 {
                   rotulo: "Trocar de canto",
                   icone: "girar",
@@ -117,7 +128,21 @@ export default function ElementosNoPalco({
             style={estilo}
           >
             <ComMovimento movimento={p.e.movimento} aspecto={p.largura / Math.max(1, p.altura)}>
-              {p.adesivo ? (
+              {ehClipe && p.e.clipe ? (
+                // Laço curto como no vídeo: volta pro começo aos LOOP_CLIPE_S segundos.
+                <video
+                  src={p.e.clipe.previa}
+                  muted
+                  autoPlay
+                  playsInline
+                  loop
+                  preload="auto"
+                  onTimeUpdate={(ev) => {
+                    if (ev.currentTarget.currentTime >= LOOP_CLIPE_S) ev.currentTarget.currentTime = 0;
+                  }}
+                  className="h-full w-full border-[2px] border-white object-cover"
+                />
+              ) : p.adesivo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={urlDoAdesivo(p.adesivo)} alt="" className="h-full w-full" draggable={false} />
               ) : (

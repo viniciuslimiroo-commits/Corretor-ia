@@ -179,6 +179,8 @@ export type ArteNaCena = {
   movimento?: string;
   /** `arquivo` é um padrão de quadros (`...-%03d.png`) de UM período, repetido em laço. */
   sequencia?: { quadros: number; fps: number };
+  /** `arquivo` é um MP4 curto já no tamanho (clipe do Pexels), repetido em laço. */
+  video?: boolean;
 };
 
 /** O mesmo, com o canto escolhido: é o que um elemento tem a mais que uma arte. */
@@ -242,6 +244,8 @@ export function sobreporPecas(
     // Sequência de quadros de um período: `-loop 1` repete a sequência inteira. Sem ele o
     // movimento acontece UMA vez e a peça congela no último quadro.
     else if (a.sequencia) entradas.push("-loop", "1", "-framerate", String(a.sequencia.fps), "-i", a.arquivo);
+    // Clipe de vídeo: `-stream_loop -1` repete o arquivo inteiro (o laço de 3s já cortado).
+    else if (a.video) entradas.push("-stream_loop", "-1", "-i", a.arquivo);
     else entradas.push("-i", a.arquivo);
     const x = a.x;
     const chegada = "(1-min(t/0.5" + ESC + ",1))";
@@ -266,7 +270,7 @@ export function sobreporPecas(
       // sem `shortest` a cena de foto termina igual); o `shortest` é a segunda trava, pra
       // cena nova que esquecer o `-t` não ficar gerando quadro até estourar a função.
       fim = ":shortest=1";
-    } else if (a.sequencia) {
+    } else if (a.sequencia || a.video) {
       fim = ":shortest=1";
     }
     partes.push("[" + atual + "]" + peca + "overlay=" + ex + ":" + ey + enable + fim + "[" + proximo + "]");

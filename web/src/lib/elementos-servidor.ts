@@ -3,6 +3,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { ELEMENTO_POR_ID, COR_ELEMENTO_PADRAO, posicionarPecas, type AncoraElemento } from "./elementos";
 import { ADESIVO_POR_ID, arquivoDeAdesivo, idDoAdesivo } from "./adesivos";
+import { TAMANHO_CLIPE, idDoPexels } from "./pexels";
+import { prepararClipePexels } from "./pexels-servidor";
 import type { PecaNaCena } from "./video-ffmpeg";
 import type { ElementoCena } from "./video";
 
@@ -38,7 +40,7 @@ export async function rasterizarElementos(
   prefixo: string,
   opcoes: { cor?: string | null; topoOcupado?: boolean } = {}
 ): Promise<PecaNaCena[]> {
-  const lista = (elementos ?? []).filter((e) => ELEMENTO_POR_ID[e.id] || idDoAdesivo(e.id));
+  const lista = (elementos ?? []).filter((e) => ELEMENTO_POR_ID[e.id] || idDoAdesivo(e.id) || idDoPexels(e.id));
   if (!lista.length) return [];
 
   // A cor da peça é a dela, senão a da conta, senão a da casa. Em cascata, e não com um
@@ -47,13 +49,24 @@ export async function rasterizarElementos(
   const corPadrao = corValida(opcoes.cor) ?? COR_ELEMENTO_PADRAO;
   // Primeiro desenha tudo (o tamanho de cada peça só existe depois de desenhada); depois
   // posiciona todas de uma vez, com a MESMA função que o palco da tela usa.
-  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; animacao?: string; animado?: boolean; movimento?: string }[] = [];
+  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; animacao?: string; animado?: boolean; movimento?: string; video?: boolean }[] = [];
 
   for (let k = 0; k < lista.length; k++) {
     const e = lista[k];
     let arquivo = path.join(pasta, `${prefixo}-el-${k}.png`);
     const adesivo = idDoAdesivo(e.id);
-    const modelo = adesivo ? null : ELEMENTO_POR_ID[e.id];
+    const pexels = idDoPexels(e.id);
+    const modelo = adesivo || pexels ? null : ELEMENTO_POR_ID[e.id];
+
+    if (pexels) {
+      // O clipe é baixado AQUI, só o escolhido, e cortado no laço curto já na altura da
+      // cena. Sem chave, sem rede ou com o vídeo removido do Pexels, a peça some -- o resto
+      // do vídeo sai.
+      const clipe = await prepararClipePexels(pexels, Math.round(H * (e.tamanho ?? TAMANHO_CLIPE)), pasta, `${prefixo}-el-${k}`).catch(() => null);
+      if (!clipe) continue;
+      desenhadas.push({ arquivo: clipe.arquivo, largura: clipe.largura, altura: clipe.altura, ancora: (e.ancora ?? "base_dir") as AncoraElemento, animacao: e.animacao, video: true });
+      continue;
+    }
     const animado = !!(adesivo && ADESIVO_POR_ID[adesivo].animado);
     let d: { largura: number; altura: number };
 
@@ -95,5 +108,5 @@ export async function rasterizarElementos(
   }
 
   const lugares = posicionarPecas(desenhadas, W, H, opcoes.topoOcupado);
-  return desenhadas.map((d, k) => ({ arquivo: d.arquivo, x: lugares[k].x, y: lugares[k].y, largura: d.largura, altura: d.altura, animacao: d.animacao, animado: d.animado, movimento: d.movimento }));
+  return desenhadas.map((d, k) => ({ arquivo: d.arquivo, x: lugares[k].x, y: lugares[k].y, largura: d.largura, altura: d.altura, animacao: d.animacao, animado: d.animado, movimento: d.movimento, video: d.video }));
 }

@@ -64,7 +64,7 @@ import SeletorImovel from "@/components/seletor-imovel";
 import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
-import GaleriaElementos from "@/components/editor/galeria-elementos";
+import GaleriaElementos, { type RespostaClipes } from "@/components/editor/galeria-elementos";
 import ElementosNoPalco from "@/components/editor/elementos-no-palco";
 import TextoComEfeito from "@/components/editor/texto-com-efeito";
 import { IDS_EFEITOS_TEXTO } from "@/lib/efeitos-texto/lista";
@@ -921,6 +921,19 @@ export default function EditorDeVideo() {
   }
 
   // ---- elementos da cena ----
+  // Clipes de reação do Pexels, pelo servidor (a chave fica lá). Estável entre renders: a
+  // galeria refaz a busca quando esta função muda.
+  const buscarClipes = useCallback(
+    async (termo: string, pagina: number): Promise<RespostaClipes> => {
+      const t = await token();
+      const r = await fetch(`/api/editor/pexels?q=${encodeURIComponent(termo)}&pagina=${pagina}`, { headers: { Authorization: `Bearer ${t}` } });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { clipes: [], temMais: false, erro: d.error ?? "falhou" };
+      return { clipes: d.clipes ?? [], temMais: !!d.temMais };
+    },
+    [token]
+  );
+
   function adicionarElemento(k: string, novo: ElementoCena) {
     setCenas((lista) =>
       lista.map((s) => {
@@ -1969,6 +1982,7 @@ export default function EditorDeVideo() {
               cor={corDaMarca}
               podeMais={!!cenaAtual && (cenaAtual.elementos?.length ?? 0) < LIMITES.elementosPorCena}
               aoAdicionar={(e) => cenaAtual && adicionarElemento(cenaAtual.chave, e)}
+              buscarClipes={buscarClipes}
               aoMudar={(i, m) => cenaAtual && mudarElemento(cenaAtual.chave, i, m)}
               aoTirar={(i) => cenaAtual && removerElemento(cenaAtual.chave, i)}
             />

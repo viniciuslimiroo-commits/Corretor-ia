@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ANCORAS,
   ELEMENTO_POR_ID,
@@ -23,6 +23,46 @@ import {
 } from "@/lib/adesivos";
 import { ANIMACOES_TEXTO, LIMITES, type AnimacaoTexto, type ElementoCena } from "@/lib/video";
 import { MOVIMENTOS, type MovimentoId } from "@/lib/movimentos";
+import { AVISO_PEXELS, CATEGORIAS_REACAO, CREDITO_PEXELS, LOOP_CLIPE_S, TAMANHO_CLIPE, TAMANHO_CLIPE_MAX, TAMANHO_CLIPE_MIN, idDoPexels, type ClipePexels } from "@/lib/pexels";
+
+/** O que a busca de clipes devolve pra galeria. `erro: "sem_chave"` = Pexels não configurado. */
+export type RespostaClipes = { clipes: ClipePexels[]; temMais: boolean; erro?: string };
+
+/** Cartão de um clipe: capa parada, e a prévia só toca quando o dedo/mouse está em cima. */
+function CartaoClipe({ clipe, desligado, aoEscolher }: { clipe: ClipePexels; desligado: boolean; aoEscolher: () => void }) {
+  const [tocando, setTocando] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={aoEscolher}
+      onMouseEnter={() => setTocando(true)}
+      onMouseLeave={() => setTocando(false)}
+      onTouchStart={() => setTocando(true)}
+      disabled={desligado}
+      title={clipe.autor ? `por ${clipe.autor} no Pexels` : "Pexels"}
+      aria-label={`Pôr clipe ${clipe.autor ? "de " + clipe.autor : ""}`}
+      className="relative aspect-square overflow-hidden rounded-lg bg-neutral-800 transition hover:ring-2 hover:ring-marca-coral disabled:opacity-40"
+    >
+      {tocando ? (
+        <video
+          src={clipe.previa}
+          muted
+          autoPlay
+          playsInline
+          loop
+          onTimeUpdate={(ev) => {
+            if (ev.currentTarget.currentTime >= LOOP_CLIPE_S) ev.currentTarget.currentTime = 0;
+          }}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={clipe.capa} alt="" loading="lazy" className="h-full w-full object-cover" draggable={false} />
+      )}
+      {clipe.autor && <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 text-left text-[9px] text-white/90">{clipe.autor}</span>}
+    </button>
+  );
+}
 import { Chip, Icone } from "@/components/ui";
 
 // A GALERIA DE ELEMENTOS, na lógica do CapCut: busca em cima, prateleiras embaixo.
@@ -98,6 +138,7 @@ export default function GaleriaElementos({
   cor,
   podeMais,
   aoAdicionar,
+  buscarClipes,
   aoMudar,
   aoTirar,
 }: {
@@ -107,6 +148,8 @@ export default function GaleriaElementos({
   cor: string;
   podeMais: boolean;
   aoAdicionar: (e: ElementoCena) => void;
+  /** Busca clipes de reação no Pexels (pelo servidor, com a sessão). */
+  buscarClipes: (termo: string, pagina: number) => Promise<RespostaClipes>;
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
 }) {
@@ -121,6 +164,46 @@ export default function GaleriaElementos({
     return buscando || categoria === "todos" ? achados : achados.filter((a) => a.categoria === categoria);
   }, [busca, buscando, categoria, gifs]);
   const categorias = gifs ? CATEGORIAS_GIF : CATEGORIAS_ADESIVO;
+
+  // ---------- clipes de reação (Pexels) ----------
+  // A busca da caixa de pesquisa vale pros emojis E pros clipes; sem texto, vale a
+  // prateleira escolhida. Espera a pessoa parar de digitar (600ms) pra não gastar cota.
+  const [reacao, setReacao] = useState(CATEGORIAS_REACAO[0].id);
+  const [clipes, setClipes] = useState<{ chave: string; r: RespostaClipes } | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const termoClipes = busca.trim() || CATEGORIAS_REACAO.find((c) => c.id === reacao)!.busca;
+  const chaveClipes = `${termoClipes}|${pagina}`;
+  useEffect(() => {
+    if (!gifs) return;
+    let vivo = true;
+    const t = setTimeout(
+      () => {
+        buscarClipes(termoClipes, pagina)
+          .then((r) => {
+            if (!vivo) return;
+            setClipes((antes) => (pagina > 1 && antes && antes.chave.startsWith(`${termoClipes}|`) ? { chave: chaveClipes, r: { ...r, clipes: [...antes.r.clipes, ...r.clipes] } } : { chave: chaveClipes, r }));
+          })
+          .catch(() => vivo && setClipes({ chave: chaveClipes, r: { clipes: [], temMais: false, erro: "falhou" } }));
+      },
+      busca.trim() ? 600 : 0
+    );
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [gifs, termoClipes, pagina, chaveClipes, busca, buscarClipes]);
+  const carregandoClipes = gifs && (!clipes || clipes.chave !== chaveClipes);
+
+  function porClipe(c: ClipePexels) {
+    if (!podeMais) return;
+    aoAdicionar({
+      id: `pexels:${c.id}`,
+      ancora: "base_dir",
+      tamanho: TAMANHO_CLIPE,
+      animacao: "surgir",
+      clipe: { previa: c.previa, largura: c.largura, altura: c.altura, autor: c.autor, autorUrl: c.autorUrl },
+    });
+  }
 
   function porAdesivo(id: string) {
     if (!podeMais) return;
@@ -161,7 +244,7 @@ export default function GaleriaElementos({
           type="search"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder={gifs ? "Pesquisar GIFs: rir, uau, palmas, festa…" : "Pesquisar elementos: chave, piscina, rindo…"}
+          placeholder={gifs ? "Pesquisar GIFs: rindo, palmas, surpresa…" : "Pesquisar elementos: chave, piscina, rindo…"}
           className="min-w-0 flex-1 bg-transparent text-sm outline-none"
         />
       </label>
@@ -176,9 +259,10 @@ export default function GaleriaElementos({
           <p className="text-xs font-medium text-neutral-600">Nesta cena</p>
           {elementos.map((e, i) => {
             const adesivo = idDoAdesivo(e.id);
-            const modelo = adesivo ? null : ELEMENTO_POR_ID[e.id];
-            if (!adesivo && !modelo) return null;
-            const rotulo = adesivo ? ADESIVO_POR_ID[adesivo].rotulo : modelo!.rotulo;
+            const clipe = idDoPexels(e.id) ? e.clipe : undefined;
+            const modelo = adesivo || clipe ? null : ELEMENTO_POR_ID[e.id];
+            if (!adesivo && !modelo && !clipe) return null;
+            const rotulo = clipe ? `Clipe${clipe.autor ? " de " + clipe.autor : ""} (Pexels)` : adesivo ? ADESIVO_POR_ID[adesivo].rotulo : modelo!.rotulo;
             return (
               <div key={i} className="mt-2 rounded-lg border border-neutral-200 bg-white p-2">
                 <div className="flex items-center gap-2">
@@ -232,8 +316,23 @@ export default function GaleriaElementos({
                   </div>
                 )}
 
-                {/* GIF já se mexe; moldura é o quadro inteiro. O resto pode balançar. */}
-                {!modelo?.quadroInteiro && !(adesivo && ADESIVO_POR_ID[adesivo].animado) && (
+                {clipe && (
+                  <label className="mt-1.5 block text-[11px] text-neutral-500">
+                    Tamanho
+                    <input
+                      type="range"
+                      min={TAMANHO_CLIPE_MIN}
+                      max={TAMANHO_CLIPE_MAX}
+                      step={0.01}
+                      value={e.tamanho ?? TAMANHO_CLIPE}
+                      onChange={(ev) => aoMudar(i, { tamanho: Number(ev.target.value) })}
+                      className="mt-0.5 w-full accent-marca-coral"
+                    />
+                  </label>
+                )}
+
+                {/* GIF e clipe já se mexem; moldura é o quadro inteiro. O resto pode balançar. */}
+                {!modelo?.quadroInteiro && !clipe && !(adesivo && ADESIVO_POR_ID[adesivo].animado) && (
                   <select
                     value={e.movimento ?? "nenhum"}
                     onChange={(ev) => aoMudar(i, { movimento: ev.target.value as MovimentoId })}
@@ -265,6 +364,55 @@ export default function GaleriaElementos({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ---------- gente reagindo (Pexels) ---------- */}
+      {gifs && (
+        <div className="mb-4">
+          <div className="mb-1 flex items-baseline justify-between">
+            <p className="text-xs font-semibold text-neutral-700">Gente reagindo</p>
+            <a href="https://www.pexels.com" target="_blank" rel="noreferrer" className="text-[10px] text-neutral-500 underline">
+              {CREDITO_PEXELS}
+            </a>
+          </div>
+          {!buscando && (
+            <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+              {CATEGORIAS_REACAO.map((c) => (
+                <Chip
+                  key={c.id}
+                  ativo={reacao === c.id}
+                  onClick={() => {
+                    setReacao(c.id);
+                    setPagina(1);
+                  }}
+                >
+                  {c.rotulo}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {clipes?.r.erro === "sem_chave" ? (
+            <p className="text-[11px] text-neutral-500">Os clipes do Pexels ainda não foram ligados neste servidor.</p>
+          ) : clipes?.r.erro ? (
+            <p className="text-[11px] text-neutral-500">{clipes.r.erro === "limite" ? "Muitas buscas nesta hora. Tente de novo daqui a pouco." : "Não consegui buscar os clipes agora."}</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(clipes?.r.clipes ?? []).map((c) => (
+                  <CartaoClipe key={c.id} clipe={c} desligado={!podeMais} aoEscolher={() => porClipe(c)} />
+                ))}
+                {carregandoClipes && Array.from({ length: 6 }, (_, k) => <span key={`c${k}`} className="aspect-square animate-pulse rounded-lg bg-neutral-800/60" />)}
+              </div>
+              {!carregandoClipes && clipes?.r.clipes.length === 0 && <p className="text-[11px] text-neutral-500">Nenhum clipe com “{termoClipes}”. Tente em inglês: laughing, clapping.</p>}
+              {!carregandoClipes && clipes?.r.temMais && (
+                <button type="button" onClick={() => setPagina((n) => n + 1)} className="mt-2 w-full rounded-lg border border-neutral-200 py-1.5 text-xs text-neutral-600 hover:border-neutral-400">
+                  Mais clipes
+                </button>
+              )}
+              <p className="mt-1.5 text-[10px] leading-snug text-neutral-400">{AVISO_PEXELS} Toque pra pôr; no computador, passe o mouse pra ver.</p>
+            </>
+          )}
         </div>
       )}
 
