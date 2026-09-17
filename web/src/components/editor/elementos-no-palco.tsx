@@ -66,12 +66,14 @@ export default function ElementosNoPalco({
         const rotulo = p.adesivo ? ADESIVO_POR_ID[p.adesivo].rotulo : ELEMENTO_POR_ID[p.e.id]?.rotulo ?? "peça";
         const tamanhoAtual = p.e.tamanho ?? (p.adesivo ? TAMANHO_ADESIVO : ELEMENTO_POR_ID[p.e.id]?.corpo ?? 0.1);
         const cantoAtual = GIRO_DE_CANTOS.indexOf(p.ancora);
+        // GIF tem 224px: acima de 20% da altura o vídeo amplia e borra.
+        const maximo = p.adesivo && ADESIVO_POR_ID[p.adesivo].animado ? 0.2 : 0.3;
         const itens: ItemMenu[] = [
           { rotulo: `Tirar ${rotulo.toLowerCase()}`, icone: "lixeira", perigo: true, aoEscolher: () => aoTirar(p.i) },
           ...(p.quadroInteiro
             ? []
             : [
-                { rotulo: "Maior", icone: "mais", desligado: tamanhoAtual >= 0.3, aoEscolher: () => aoMudar(p.i, { tamanho: Math.min(0.3, Math.round((tamanhoAtual * 1.25) * 1000) / 1000) }) },
+                { rotulo: "Maior", icone: "mais", desligado: tamanhoAtual >= maximo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.min(maximo, Math.round((tamanhoAtual * 1.25) * 1000) / 1000) }) },
                 { rotulo: "Menor", icone: "baixo", desligado: tamanhoAtual <= 0.05, aoEscolher: () => aoMudar(p.i, { tamanho: Math.max(0.05, Math.round((tamanhoAtual / 1.25) * 1000) / 1000) }) },
                 {
                   rotulo: "Trocar de canto",

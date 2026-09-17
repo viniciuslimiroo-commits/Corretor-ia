@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     "/api/video/**": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/**", "./public/musica/**", "./public/efeitos/**"],
     "/api/editor/**": ["./assets/fontes/**"],
   },
+  // As miniaturas dos GIFs são só da galeria (o navegador baixa do CDN); o vídeo usa o GIF
+  // grande. Fora do pacote da função, que já leva o ffmpeg.
+  outputFileTracingExcludes: {
+    "/api/video/**": ["./public/adesivos/mini/**"],
+  },
   serverExternalPackages: ["ffmpeg-static"],
 
   // /biblioteca virou /materiais no mesmo dia em que nasceu. O redirect fica porque o

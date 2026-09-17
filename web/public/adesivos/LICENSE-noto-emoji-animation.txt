@@ -1,0 +1,11 @@
+GIFs animados (arquivos gif_*.gif e mini/gif_*.webp)
+
+Noto Emoji Animation, (c) Google LLC
+https://googlefonts.github.io/noto-emoji-animation/
+
+Licenca: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Alteracoes feitas pela Encena: reduzidos de 512px para 224px, de 33 para 12 quadros
+por segundo e para 64 cores (scripts/baixar-humor.mjs); miniaturas em WebP de 96px.
+O credito aparece na aba de GIFs do editor.

@@ -167,7 +167,15 @@ export function lugaresDoTexto(textos: TextoCena[], H: number, topoOcupado = fal
  * É uma IMAGEM, não uma letra desenhada pelo ffmpeg -- é o que permite contorno duplo,
  * brilho, relevo, ícone e moldura. Serve tanto pra arte de texto quanto pra elemento.
  */
-export type ArteNaCena = { arquivo: string; y: number; largura: number; altura: number; animacao?: string };
+export type ArteNaCena = {
+  arquivo: string;
+  y: number;
+  largura: number;
+  altura: number;
+  animacao?: string;
+  /** GIF animado: entra em laço e é redimensionado aqui pra largura×altura (o PNG já vem no tamanho). */
+  animado?: boolean;
+};
 
 /** O mesmo, com o canto escolhido: é o que um elemento tem a mais que uma arte. */
 export type PecaNaCena = ArteNaCena & { x: number };
@@ -224,7 +232,10 @@ export function sobreporPecas(
   const partes: string[] = [];
   let atual = entrada;
   pecas.forEach((a, i) => {
-    entradas.push("-i", a.arquivo);
+    // GIF: `-ignore_loop 0` faz o laço do próprio arquivo valer (o padrão do ffmpeg é tocar
+    // UMA vez e congelar no último quadro -- a risada parava no primeiro segundo).
+    if (a.animado) entradas.push("-ignore_loop", "0", "-i", a.arquivo);
+    else entradas.push("-i", a.arquivo);
     const x = a.x;
     const chegada = "(1-min(t/0.5" + ESC + ",1))";
     const desloc = Math.round(W * 0.25);
@@ -239,7 +250,17 @@ export function sobreporPecas(
     else if (a.animacao === "no_fim") enable = ":enable='gte(t" + ESC + "," + (a.duracao * 0.62).toFixed(2) + ")'";
     else if (a.animacao === "piscar") enable = ":enable='lt(mod(t" + ESC + ",0.7)" + ESC + ",0.35)'";
     const proximo = "va" + i;
-    partes.push("[" + atual + "][" + (idxPrimeiro + i) + ":v]overlay=" + ex + ":" + ey + enable + "[" + proximo + "]");
+    let peca = "[" + (idxPrimeiro + i) + ":v]";
+    let fim = "";
+    if (a.animado) {
+      partes.push(peca + "scale=" + a.largura + ":" + a.altura + ":flags=lanczos,format=rgba[ga" + i + "]");
+      peca = "[ga" + i + "]";
+      // Entrada em laço não acaba nunca. Hoje toda cena já corta com `-t` na saída (medido:
+      // sem `shortest` a cena de foto termina igual); o `shortest` é a segunda trava, pra
+      // cena nova que esquecer o `-t` não ficar gerando quadro até estourar a função.
+      fim = ":shortest=1";
+    }
+    partes.push("[" + atual + "]" + peca + "overlay=" + ex + ":" + ey + enable + fim + "[" + proximo + "]");
     atual = proximo;
   });
   return { entradas, partes, saida: atual };

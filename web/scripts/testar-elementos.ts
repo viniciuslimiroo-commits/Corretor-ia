@@ -26,7 +26,7 @@ import { argsCenaFoto } from "../src/lib/video-ffmpeg.ts";
 import { rasterizarElementos } from "../src/lib/elementos-servidor.ts";
 import { MODELOS_ELEMENTO, FICHA_EXEMPLO, ELEMENTO_POR_ID } from "../src/lib/elementos.ts";
 import { limparEspec, type ElementoCena } from "../src/lib/video.ts";
-import { ADESIVOS, buscarAdesivos } from "../src/lib/adesivos.ts";
+import { ADESIVOS, arquivoDeAdesivo, buscarAdesivos } from "../src/lib/adesivos.ts";
 
 const ffmpeg = ffmpegStatic as unknown as string;
 const RAIZ = path.resolve(import.meta.dirname, "..");
@@ -53,9 +53,9 @@ function rodar(args: string[]) {
 
 type Quadro = { data: Buffer; largura: number; altura: number };
 
-async function quadro(video: string, nome: string): Promise<Quadro> {
+async function quadro(video: string, nome: string, em = "1.50"): Promise<Quadro> {
   const png = path.join(tmp, `${nome}.png`);
-  rodar(["-ss", "1.50", "-i", video, "-frames:v", "1", png]);
+  rodar(["-ss", em, "-i", video, "-frames:v", "1", png]);
   const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   return { data, largura: info.width, altura: info.height };
 }
@@ -297,12 +297,24 @@ conferir((demais.espec?.cenas[0].elementos?.length ?? 9) === 3, "o limite de pe�
 // pelo CAMINHO inteiro -- saneador, rasterização, ffmpeg -- e aparece no quadro.
 {
   const pasta = path.join(RAIZ, "public", "adesivos");
-  const noDisco = new Set(fs.readdirSync(pasta).filter((f) => f.endsWith(".png")).map((f) => f.replace(/\.png$/, "")));
-  const semArquivo = ADESIVOS.filter((a) => !noDisco.has(a.id)).map((a) => a.id);
-  const sobrando = [...noDisco].filter((id) => !ADESIVOS.some((a) => a.id === id));
-  conferir(semArquivo.length === 0, "todo adesivo do catálogo tem arquivo", semArquivo.join(", "));
+  // O nome do arquivo com extensão: GIF animado é .gif, o resto .png. Um GIF salvo como
+  // .png (ou o contrário) passaria num teste só de id e sumiria no vídeo.
+  const noDisco = new Set(fs.readdirSync(pasta).filter((f) => /\.(png|gif)$/.test(f)));
+  const esperados = new Set(ADESIVOS.map((a) => arquivoDeAdesivo(a.id)));
+  const semArquivo = [...esperados].filter((f) => !noDisco.has(f));
+  const sobrando = [...noDisco].filter((f) => !esperados.has(f));
+  conferir(semArquivo.length === 0, "todo adesivo e GIF do catálogo tem arquivo, com a extensão certa", semArquivo.join(", "));
   conferir(sobrando.length === 0, "nenhum arquivo de adesivo fora do catálogo", sobrando.join(", "));
   conferir(fs.existsSync(path.join(pasta, "LICENSE-fluent-emoji.txt")), "a licença MIT da biblioteca está junto dos arquivos");
+  const animados = ADESIVOS.filter((a) => a.animado);
+  const semMini = animados.filter((a) => !fs.existsSync(path.join(pasta, "mini", `${a.id}.webp`))).map((a) => a.id);
+  conferir(animados.length >= 40, "a aba de GIFs tem GIFs de verdade", `${animados.length}`);
+  conferir(semMini.length === 0, "todo GIF tem miniatura leve pra galeria", semMini.join(", "));
+  conferir(fs.existsSync(path.join(pasta, "LICENSE-noto-emoji-animation.txt")), "o crédito CC BY dos GIFs está junto dos arquivos");
+  const pesados = animados.filter((a) => fs.statSync(path.join(pasta, `${a.id}.gif`)).size > 900 * 1024).map((a) => a.id);
+  conferir(pesados.length === 0, "nenhum GIF passa de 900 KB", pesados.join(", "));
+  conferir(buscarAdesivos("rir", true).length >= 3 && buscarAdesivos("rir", true).every((a) => a.animado), "busca na aba de GIFs só acha GIF", `${buscarAdesivos("rir", true).length}`);
+  conferir(buscarAdesivos("rindo", false).every((a) => !a.animado), "busca na aba de adesivos não mistura GIF");
 
   // A busca é o jeito de achar no celular: sem acento, e cada palavra tem que aparecer.
   conferir(buscarAdesivos("camera").some((a) => a.id === "camera"), "busca sem acento acha \"Câmera\"");
@@ -344,6 +356,40 @@ conferir((demais.espec?.cenas[0].elementos?.length ?? 9) === 3, "o limite de pe�
       `pintado ${(d.parteDentro * 100).toFixed(1)}% · fora ${(d.parteFora * 100).toFixed(3)}% · (${peca.x},${peca.y})`
     );
     conferir(peca.x + peca.largura > W * 0.9 && peca.y < H * 0.1, "e está mesmo no canto de cima à direita", `x ${peca.x} y ${peca.y}`);
+  }
+
+  // GIF: três jeitos de sumir calado. (1) O sharp guarda só o 1º quadro e o GIF sai parado.
+  // (2) Sem `-ignore_loop 0` ele toca uma vez e congela. (3) Entrada em laço nunca acaba:
+  // sem `shortest`, o ffmpeg não termina a cena. Então: termina no tempo, aparece desde o
+  // começo, e MEXE (o miolo da peça muda entre dois instantes).
+  const gifEls = limparEspec({
+    formato: "9:16",
+    cenas: [{ tipo: "foto", jobId: "00000000-0000-0000-0000-000000000000", duracao: 4, elementos: [{ id: "adesivo:gif_chorando_de_rir", ancora: "topo_esq", tamanho: 0.2, animacao: "nenhuma" }] }],
+  }).espec?.cenas[0].elementos ?? [];
+  conferir(gifEls.length === 1, "saneador: GIF que existe passa", gifEls.map((e) => e.id).join(", "));
+  const pecasGif = await rasterizarElementos(gifEls, W, H, tmp, "gif", {});
+  conferir(pecasGif.length === 1 && !!pecasGif[0].animado && pecasGif[0].arquivo.endsWith(".gif"), "o GIF entra inteiro na montagem (não vira PNG parado)", pecasGif[0]?.arquivo.slice(-30) ?? "sem peça");
+  if (pecasGif.length === 1) {
+    const peca = pecasGif[0];
+    const saida = path.join(tmp, "gif.mp4");
+    const t0 = Date.now();
+    const r = spawnSync(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...argsCenaFoto({ foto, saida, W, H, duracao: DUR, efeito: "parado", textos: [], pecas: pecasGif })], { encoding: "utf8", timeout: 90_000 });
+    const segundos = (Date.now() - t0) / 1000;
+    conferir(r.status === 0, "a cena com GIF termina (o laço não prende o ffmpeg)", r.status === 0 ? `${segundos.toFixed(1)}s` : `status ${r.status} ${r.error ?? ""} ${(r.stderr ?? "").slice(0, 160)}`);
+    if (r.status === 0) {
+      const info = spawnSync(ffmpeg, ["-hide_banner", "-i", saida], { encoding: "utf8" }).stderr ?? "";
+      const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(info);
+      const dur = m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : -1;
+      conferir(Math.abs(dur - DUR) < 0.2, "e dura o que a cena dura", `${dur.toFixed(2)}s de ${DUR}s`);
+      const cedo = await quadro(saida, "gif-cedo", "0.20");
+      const a = await quadro(saida, "gif-a", "1.00");
+      const b = await quadro(saida, "gif-b", "1.50");
+      const dCedo = diferenca(controle, cedo, peca);
+      const dA = diferenca(controle, a, peca);
+      conferir(dCedo.parteDentro > 0.1 && dA.parteFora < 0.001, "o GIF aparece desde o começo, no canto dele", `0,2s: ${(dCedo.parteDentro * 100).toFixed(1)}% · fora ${(dA.parteFora * 100).toFixed(3)}% · (${peca.x},${peca.y})`);
+      const mexe = diferenca(a, b, peca);
+      conferir(mexe.parteDentro > 0.02 && mexe.parteFora < 0.001, "e MEXE: o miolo muda entre 1,0s e 1,5s", `mudou ${(mexe.parteDentro * 100).toFixed(1)}% da peça`);
+    }
   }
 }
 
