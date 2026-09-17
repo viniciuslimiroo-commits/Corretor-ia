@@ -100,7 +100,7 @@ export default function Planos() {
       {c.erro && <div className="mb-4"><Aviso tipo="erro">{c.erro}</Aviso></div>}
 
       <h1 className="text-2xl font-semibold">Planos e créditos</h1>
-      <p className="mt-1 text-sm text-neutral-500">1 crédito = 1 foto editada ou 1 vídeo montado. Toda conta começa com 5 grátis, sem cartão.</p>
+      <p className="mt-1 text-sm text-neutral-500">1 crédito = 1 foto editada. Montar vídeo não gasta crédito: só a cena animada (2) e a narração de IA (1). Toda conta começa com 5 créditos grátis, sem cartão.</p>
       {c.conta && (
         <p className="mt-2 text-sm text-neutral-700">
           {org ? `${org.nome}: ` : "Você tem "}
