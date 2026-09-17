@@ -67,6 +67,8 @@ import GaleriaTexto from "@/components/editor/galeria-texto";
 import GaleriaElementos, { type RespostaClipes } from "@/components/editor/galeria-elementos";
 import ElementosNoPalco from "@/components/editor/elementos-no-palco";
 import TextoComEfeito from "@/components/editor/texto-com-efeito";
+import ApresentadorNoPalco from "@/components/editor/apresentador-no-palco";
+import LembreteGravar from "@/components/editor/lembrete-gravar";
 import { IDS_EFEITOS_TEXTO } from "@/lib/efeitos-texto/lista";
 import PainelFiltros, { type EscopoCor } from "@/components/editor/painel-filtros";
 import FotoComCor from "@/components/editor/foto-com-cor";
@@ -867,7 +869,8 @@ export default function EditorDeVideo() {
       const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, arquivo, { contentType: tipo });
       if (error) throw new Error(error.message);
       setApreUrl(URL.createObjectURL(arquivo));
-      setApresentador({ arquivo: d.caminho, formato: "canto", canto: "inferior_direito", tamanho: "medio", entra: 0, inicio: 0, volume: 1, fundo: "manter" });
+      // Círculo no canto de baixo: é como a proposta aprovada por ele mostra a gravação chegando.
+      setApresentador({ arquivo: d.caminho, formato: "circulo", canto: "inferior_direito", tamanho: "medio", entra: 0, inicio: 0, volume: 1, fundo: "manter" });
       void nome;
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui enviar o vídeo.");
@@ -2428,7 +2431,18 @@ export default function EditorDeVideo() {
                A cena escolhida no tamanho e na proporção em que ela vai sair, com o
                título e a legenda por cima. Não é o vídeo tocando -- é o quadro. Ver o
                enquadramento antes de gastar crédito é metade do trabalho do editor. */}
-          <Cartao className="p-3 sm:p-4">
+          <Cartao className="relative p-3 sm:p-4">
+            {/* Lembrete de que dá pra se gravar (opção B, escolhida por ele), no espaço vazio
+                ao lado do celular. Só onde esse espaço existe: vídeo em pé e tela de 1400px ou
+                mais (medido: em 1280 o lembrete encostava no celular, 1px de folga; em 1440
+                sobram 81px). Some quando já há gravação ou voz. */}
+            {!apresentador && !vozArquivo && (formato === "9:16" || formato === "4:5") && (
+              <div className="pointer-events-none absolute inset-y-0 left-5 z-10 hidden items-center min-[1400px]:flex">
+                <div className="pointer-events-auto">
+                  <LembreteGravar aoGravar={() => setAba("voce")} />
+                </div>
+              </div>
+            )}
             {/* O palco tem TETO DE ALTURA nas telas pequenas.
                 Um vídeo 9:16 numa largura de 360 dá 640 de altura: sozinho, ele comia a
                 tela inteira do celular e empurrava a trilha de ferramentas e a linha do
@@ -2589,6 +2603,8 @@ export default function EditorDeVideo() {
                     aoTirar={(i) => removerElemento(cenaAtual.chave, i)}
                   />
                 )}
+                {/* Você por cima da foto, no lugar e no tamanho em que sai no vídeo. */}
+                {apresentador && apreUrl && <ApresentadorNoPalco apresentador={apresentador} url={apreUrl} proporcao={PROPORCAO_NUM[formato]} aoMudar={setApresentador} />}
               </div>
               <p className="mt-2 truncate text-center text-xs text-neutral-500">
                 {cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}
