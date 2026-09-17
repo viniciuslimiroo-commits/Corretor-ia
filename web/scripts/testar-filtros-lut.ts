@@ -223,6 +223,29 @@ for (const m of MODELOS_FILTRO.filter((f) => f.id !== "natural")) {
   conferir(nova.ok && !velha.ok, "vinheta: a conta com o piso do YUV passa, a de RGB puro é reprovada", `nova ${nova.texto} | antiga ${velha.texto}`);
 }
 
+// ---------- miniaturas da aba Filtros ----------
+// Cartão que falta vira quadrado escuro na galeria; cartão velho mostra um filtro que já
+// mudou. Todo filtro tem o seu, nenhum sobra, e o cartão de um filtro não é o do natural.
+{
+  const pasta = path.join(RAIZ, "public", "filtros");
+  const ids = MODELOS_FILTRO.map((f) => f.id);
+  const noDisco = fs.existsSync(pasta) ? fs.readdirSync(pasta).filter((f) => f.endsWith(".jpg")).map((f) => f.replace(/\.jpg$/, "")) : [];
+  const faltam = ids.filter((id) => !noDisco.includes(id));
+  const sobram = noDisco.filter((id) => !ids.includes(id));
+  conferir(faltam.length === 0 && sobram.length === 0, "todo filtro tem miniatura pronta, e nenhuma sobra", [...faltam.map((i) => "falta " + i), ...sobram.map((i) => "sobra " + i)].join(", ") || `${ids.length}`);
+  if (!faltam.length) {
+    const natural = await sharp(path.join(pasta, "natural.jpg")).raw().toBuffer();
+    const iguais: string[] = [];
+    for (const id of ids.filter((i) => i !== "natural")) {
+      const m = await sharp(path.join(pasta, `${id}.jpg`)).raw().toBuffer();
+      let soma = 0;
+      for (let i = 0; i < m.length; i++) soma += Math.abs(m[i] - natural[i]);
+      if (soma / m.length < 4) iguais.push(id);
+    }
+    conferir(iguais.length === 0, "cada miniatura mostra o seu filtro (não é cópia do natural)", iguais.join(", "));
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(falhas ? `\n${falhas} falha(s)` : "\ntudo certo");
 process.exit(falhas ? 1 : 0);

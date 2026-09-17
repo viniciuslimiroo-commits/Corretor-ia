@@ -1,21 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import {
-  AJUSTES_NEUTROS,
-  CATEGORIAS_FILTRO,
-  CONTROLES_AJUSTE,
-  MODELOS_FILTRO,
-  type Ajustes,
-  type CategoriaFiltro,
-  type Grade,
-} from "@/lib/filtros";
+import { CATEGORIAS_FILTRO, CONTROLES_AJUSTE, MODELOS_FILTRO, type Ajustes, type CategoriaFiltro } from "@/lib/filtros";
 import { Chip } from "@/components/ui";
-import FotoComCor from "@/components/editor/foto-com-cor";
 
 // A ABA FILTROS: duas gavetas, como em qualquer editor de foto.
 //
-//   Filtros -- o resultado com nome, escolhido VENDO a própria foto da cena.
+//   Filtros -- o resultado com nome. O cartão é uma FOTO GENÉRICA já pronta
+//              (public/filtros, scripts/gerar-miniaturas-filtros.ts, mesma conta de cor
+//              do vídeo): desenhar vinte e um cartões na foto da cena deixava todos pretos
+//              por um ou dois segundos. A foto da cena com o filtro aparece no palco.
 //   Ajustes -- os controles soltos, pra quem sabe o que quer mexer.
 //
 // E um interruptor em cima: vale pro vídeo inteiro, ou só pra esta cena. É a mesma regra
@@ -25,7 +19,6 @@ import FotoComCor from "@/components/editor/foto-com-cor";
 export type EscopoCor = "video" | "cena";
 
 export default function PainelFiltros({
-  foto,
   escopo,
   temCena,
   cenaTemCorPropria,
@@ -40,8 +33,6 @@ export default function PainelFiltros({
   aoZerar,
   aoVoltarProVideo,
 }: {
-  /** A foto da cena aberta. Sem ela as miniaturas não têm o que mostrar. */
-  foto: string | null;
   escopo: EscopoCor;
   temCena: boolean;
   /** A cena aberta já saiu da linha do vídeo (tem filtro ou ajustes próprios). */
@@ -116,14 +107,9 @@ export default function PainelFiltros({
             ))}
           </div>
 
-          {!foto && <p className="mb-2 text-xs text-neutral-500">Escolha uma cena com foto pra ver cada filtro nela.</p>}
-
           <div className="grid grid-cols-3 gap-1.5">
             {lista.map((f) => {
               const escolhido = filtro === f.id;
-              // A miniatura mostra o filtro INTEIRO, sem os ajustes: é a cara do filtro
-              // que está sendo escolhida, não a soma com o que já foi mexido.
-              const grade: Grade = { filtro: f.id, intensidade: 1, ajustes: AJUSTES_NEUTROS };
               return (
                 <button
                   key={f.id}
@@ -137,7 +123,9 @@ export default function PainelFiltros({
                   }
                 >
                   <span className="block aspect-[4/5] overflow-hidden bg-neutral-800">
-                    {foto ? <FotoComCor src={foto} grade={grade} proporcao={4 / 5} lado={150} pontos={17} className="h-full w-full" /> : null}
+                    {/* O filtro INTEIRO, sem os ajustes: é a cara do filtro que se escolhe. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/filtros/${f.id}.jpg`} alt="" className="h-full w-full object-cover" draggable={false} />
                   </span>
                   <span className={"block truncate px-1 py-1 text-[11px] " + (escolhido ? "font-medium text-marca-indigo" : "text-neutral-600")}>{f.rotulo}</span>
                 </button>

@@ -2138,7 +2138,6 @@ export default function EditorDeVideo() {
               const ajustesAtuais: Ajustes = { ...AJUSTES_NEUTROS, ...(naCena ? cenaAtual!.ajustes ?? ajustesVideo : ajustesVideo) };
               return (
                 <PainelFiltros
-                  foto={cenaAtual?.miniatura ?? null}
                   escopo={escopoCor}
                   temCena={!!cenaAtual}
                   cenaTemCorPropria={cenaTemCor}
