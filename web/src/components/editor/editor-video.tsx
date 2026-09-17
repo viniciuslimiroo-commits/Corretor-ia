@@ -344,6 +344,10 @@ export default function EditorDeVideo() {
   const [enviando, setEnviando] = useState(0);
   /** Aba aberta na trilha de ferramentas. Uma de cada vez, como em qualquer editor. */
   const [aba, setAba] = useState<AbaId>("midia");
+  // Texto escolhido na aba Texto ANTES de existir foto. Ele pediu que as opções de texto
+  // aparecessem "independente de ter imagem": a galeria fica sempre à vista, e o texto
+  // tocado sem cena espera aqui e entra na primeira cena que aparecer.
+  const [textoPendente, setTextoPendente] = useState<TextoCena | null>(null);
   // Mexer na coisa, EM CIMA da coisa: botão direito (ou dedo segurado) no palco.
   const menu = useMenuContexto();
   /** Qual texto do palco está aberto pra digitar. `null` = nenhum; `-1` = a legenda. */
@@ -584,6 +588,17 @@ export default function EditorDeVideo() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- editarVideo muda a cada render; o ref garante uma vez por id
   }, [user, token]);
+
+  // Chegou a primeira cena com um texto esperando: ele entra nela.
+  useEffect(() => {
+    if (!textoPendente || cenas.length === 0) return;
+    const alvo = cenas[Math.max(0, cenas.findIndex((s) => s.chave === selecionada))] ?? cenas[0];
+    const t = textoPendente;
+    Promise.resolve().then(() => {
+      setTextoPendente(null);
+      adicionarTexto(alvo.chave, t);
+    });
+  }, [textoPendente, cenas, selecionada]);
 
   // Trocou de imóvel: carrega as gerações dele e sugere título/local.
   useEffect(() => {
@@ -1488,6 +1503,16 @@ export default function EditorDeVideo() {
           {mostrarAba("midia") && (
           <Cartao>
             <Rotulo>Mídia</Rotulo>
+            {textoPendente && (
+              <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-marca-coral/40 bg-marca-coral/10 px-2.5 py-2 text-xs text-neutral-700">
+                <span>
+                  Escolha a foto: o texto <strong>“{textoPendente.texto}”</strong> entra nela.
+                </span>
+                <button type="button" onClick={() => setTextoPendente(null)} className="shrink-0 text-[11px] text-neutral-500 underline">
+                  Cancelar
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-3">
               <SeletorImovel token={token} valor={imovelId} onChange={setImovelId} disabled={gerando} />
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400">
@@ -1876,19 +1901,33 @@ export default function EditorDeVideo() {
 
           {/* A galeria vem ANTES dos campos de marca: o que a pessoa abre a aba Texto
               pra fazer é por uma frase na cena, não preencher título do vídeo. */}
-          {mostrarAba("texto") && cenaAtual && (
+          {/* A galeria aparece SEMPRE, com ou sem foto (pedido dele). Sem cena, tocar num
+              texto guarda a escolha e leva pra Mídia: a primeira foto escolhida já sai com ele. */}
+          {mostrarAba("texto") && (
           <Cartao>
-            <Rotulo>Texto na cena {indiceAtual + 1}</Rotulo>
+            <Rotulo>{cenaAtual ? `Texto na cena ${indiceAtual + 1}` : "Texto"}</Rotulo>
+            {!cenaAtual && (
+              <p className="mb-2 rounded-lg bg-neutral-100 px-2.5 py-2 text-[11px] text-neutral-600">
+                Ainda não tem foto no vídeo. Toque num texto: você escolhe a foto em seguida e ele já entra nela.
+              </p>
+            )}
             <GaleriaTexto
               pecas={pecas}
-              aoAdicionar={(t) => adicionarTexto(cenaAtual.chave, t)}
-              aoTrocarAnimacao={(id) => mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { animacao: id as AnimacaoTexto })}
-              animacaoAtual={(cenaAtual.textos ?? []).at(-1)?.animacao ?? null}
-              aoTrocarMovimento={(id) => mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { movimento: id })}
-              movimentoAtual={(cenaAtual.textos ?? []).at(-1)?.movimento ?? "nenhum"}
-              ultimoTemEfeito={!!(cenaAtual.textos ?? []).at(-1)?.arte && IDS_EFEITOS_TEXTO.has((cenaAtual.textos ?? []).at(-1)?.arte as string)}
-              temTextoSelecionado={(cenaAtual.textos ?? []).length > 0}
-              cheio={(cenaAtual.textos ?? []).length >= LIMITES.textosPorCena}
+              aoAdicionar={(t) => {
+                if (cenaAtual) {
+                  adicionarTexto(cenaAtual.chave, t);
+                  return;
+                }
+                setTextoPendente(t);
+                setAba("midia");
+              }}
+              aoTrocarAnimacao={(id) => cenaAtual && mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { animacao: id as AnimacaoTexto })}
+              animacaoAtual={cenaAtual ? ((cenaAtual.textos ?? []).at(-1)?.animacao ?? null) : null}
+              aoTrocarMovimento={(id) => cenaAtual && mudarTexto(cenaAtual.chave, (cenaAtual.textos ?? []).length - 1, { movimento: id })}
+              movimentoAtual={(cenaAtual?.textos ?? []).at(-1)?.movimento ?? "nenhum"}
+              ultimoTemEfeito={!!(cenaAtual?.textos ?? []).at(-1)?.arte && IDS_EFEITOS_TEXTO.has((cenaAtual?.textos ?? []).at(-1)?.arte as string)}
+              temTextoSelecionado={(cenaAtual?.textos ?? []).length > 0}
+              cheio={(cenaAtual?.textos ?? []).length >= LIMITES.textosPorCena}
               desabilitado={gerando}
             />
           </Cartao>
