@@ -6,6 +6,7 @@ import { OFERTAS, formatarReais } from "@/lib/planos";
 import Comparador from "./comparador";
 import { Icone } from "./ui";
 import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
+import { Marca } from "./marca";
 
 // Página inicial de quem ainda não entrou. É a peça de venda: antes e depois reais
 // (resultados dos testes, com o selo de imagem ilustrativa que o produto sempre coloca),
@@ -43,7 +44,7 @@ export default function Landing() {
           <Link href="/" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={32} height={32} className="h-8 w-8" />
-            <span className="whitespace-nowrap text-xl font-bold tracking-tight text-marca-indigo">Encena</span>
+            <Marca className="text-xl" />
           </Link>
           <nav className="ml-auto hidden items-center gap-5 text-sm text-neutral-600 sm:flex">
             <a href="#como" className="hover:text-marca-indigo">{t("landing.nav.como")}</a>
@@ -255,7 +256,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-5 text-xs text-neutral-500">
           <span className="flex items-center gap-1.5 font-semibold text-marca-indigo">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/marca-encena.svg" alt="" width={16} height={16} className="h-4 w-4" /> Encena
+            <img src="/marca-encena.svg" alt="" width={16} height={16} className="h-4 w-4" /> <Marca className="text-sm" />
           </span>
           <span className="text-neutral-400">encena.app.br</span>
           <Link href="/termos" className="hover:text-marca-indigo">{t("landing.rodape.termos")}</Link>

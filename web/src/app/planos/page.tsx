@@ -7,6 +7,7 @@ import { useConta } from "@/lib/use-conta";
 import { OFERTAS, formatarReais, rotuloDoPlano, type Oferta, type OfertaId } from "@/lib/planos";
 import AppShell from "@/components/app-shell";
 import { Aviso, Botao, Icone } from "@/components/ui";
+import { Marca } from "@/components/marca";
 
 // Planos: dois tamanhos de conta -- UMA pessoa e MAIS DE UMA -- cada um com mensal e
 // anual, e os
@@ -170,7 +171,7 @@ export default function Planos() {
             <Link href="/" className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/marca-encena.svg" alt="" width={30} height={30} className="h-[30px] w-[30px]" />
-              <span className="text-lg font-bold tracking-tight text-marca-indigo">Encena</span>
+              <Marca className="text-lg" />
             </Link>
             <Link href="/login" className="ml-auto text-sm text-marca-indigo underline">Entrar</Link>
           </div>

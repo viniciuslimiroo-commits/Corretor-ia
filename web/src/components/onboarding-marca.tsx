@@ -5,6 +5,7 @@ import type { Conta } from "./app-shell";
 import { coresDaLogo } from "@/lib/cores-da-logo";
 import { LOGO_MAX_BYTES } from "@/lib/logo-upload-limites";
 import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
+import { Marca } from "./marca";
 
 // A primeira tela depois do primeiro login. Não é cadastro: é a pessoa ver a própria logo
 // dentro da Encena em poucos segundos e entender, sem ler nada, que os materiais vão sair
@@ -149,7 +150,7 @@ export default function OnboardingMarca({ conta, token, aoSair }: Props) {
       <div className="flex items-center gap-2.5">
         {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático */}
         <img src="/marca-encena.svg" alt="" width={30} height={30} className="h-[30px] w-[30px]" />
-        <span className="text-xl font-bold tracking-tight text-marca-indigo">Encena</span>
+        <Marca className="text-xl" />
       </div>
 
       <div className="mt-7 flex items-start justify-between gap-3">

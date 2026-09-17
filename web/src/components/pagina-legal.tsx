@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import AvisoIdiomaLegal from "./aviso-idioma-legal";
+import { Marca } from "./marca";
 
 // Moldura das páginas de texto legal (termos, privacidade). Fora do AppShell de
 // propósito: quem lê isso pode não estar logado, e a página precisa abrir e imprimir
@@ -25,7 +26,7 @@ export default function PaginaLegal({ titulo, atualizado, children }: { titulo: 
           <Link href="/" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={28} height={28} className="h-7 w-7" />
-            <span className="text-lg font-bold tracking-tight text-marca-indigo">Encena</span>
+            <Marca className="text-lg" />
           </Link>
           <Link href="/login" className="ml-auto text-sm text-marca-indigo underline">Entrar</Link>
         </div>

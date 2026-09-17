@@ -7,6 +7,7 @@ import { rotuloDoPlano } from "@/lib/planos";
 import { Botao, Icone } from "./ui";
 import { Bandeira, useIdioma } from "@/i18n/cliente";
 import { IDIOMAS } from "@/i18n/idiomas";
+import { Marca } from "./marca";
 
 // Moldura comum das telas logadas: marca, navegação, créditos e conta. O conteúdo da
 // página entra no meio. Manter isto num lugar só é o que faz Editor, Vídeo, Imóveis,
@@ -234,7 +235,7 @@ export default function AppShell({
           <Link href="/" aria-label="Encena" className="flex shrink-0 items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marca-encena.svg" alt="" width={30} height={30} className="h-[30px] w-[30px]" />
-            <span className="whitespace-nowrap text-lg font-bold tracking-tight text-marca-indigo lg:hidden xl:inline">Encena</span>
+            <Marca className="text-lg lg:hidden xl:inline" />
           </Link>
 
           {/* Menu de trabalho, a partir de 1024. SEM `min-w-0`: com ele, faltar espaço virava

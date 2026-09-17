@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
+import { Marca } from "@/components/marca";
 
 // Definir senha.
 //
@@ -50,7 +51,7 @@ export default function Senha() {
       <Link href="/" className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático */}
         <img src="/marca-encena.svg" alt="" width={44} height={44} className="h-11 w-11" />
-        <span className="text-3xl font-bold tracking-tight text-marca-indigo">Encena</span>
+        <Marca className="text-3xl" />
       </Link>
 
       {checando ? (

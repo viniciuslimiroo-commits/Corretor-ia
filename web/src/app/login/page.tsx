@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
+import { Marca } from "@/components/marca";
 
 // Entrar. Três jeitos, porque público de imobiliária é misto: quem vive no WhatsApp
 // prefere o link por e-mail (sem senha pra esquecer); quem tem conta Google entra com
@@ -115,7 +116,7 @@ export default function Login() {
       <Link href="/" className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático */}
         <img src="/marca-encena.svg" alt="" width={44} height={44} className="h-11 w-11" />
-        <span className="text-3xl font-bold tracking-tight text-marca-indigo">Encena</span>
+        <Marca className="text-3xl" />
       </Link>
       {/* A mesma frase da landing, de propósito. "Fotos que vendem melhor" ficou aqui
           parada quando o produto passou a entregar vídeo, book, planta e terreno --
