@@ -1,11 +1,13 @@
 // Mede os arquivos da biblioteca de áudio e grava o que a linha do tempo precisa saber
 // deles SEM baixar nada no navegador (docs/planos/linha-do-tempo-spec.md, A1 e P4).
 //
-// Hoje grava uma coisa só:
+// Grava duas coisas:
 //
 //   src/lib/segundos-do-catalogo.ts   SEGUNDOS_MUSICA e SEGUNDOS_EFEITO, a duração exata
 //                                     de cada arquivo de public/musica e public/efeitos,
 //                                     pelo id do catálogo (MUSICAS e EFEITOS_SONOROS).
+//   public/musica/picos.json          a forma de onda de cada faixa, um pico por 50 ms
+//                                     (lib/picos-audio.ts explica o formato e o porquê).
 //
 // A duração sai da CONTAGEM de amostras decodificadas (bytes de PCM ÷ 2 ÷ taxa), não do
 // "Duration:" do cabeçalho: o cabeçalho arredonda a centésimo e conta o atraso do
@@ -13,10 +15,11 @@
 // linha do tempo. A taxa é a do próprio arquivo (sem reamostrar): reamostrar acrescenta ou
 // come amostras na borda, e aí a conta deixa de ser exata.
 //
-// Estrutura pensada pra crescer (P4): `decodificar` devolve as amostras; cada SAÍDA é uma
-// função que recebe as medidas e escreve um arquivo. Os picos da forma de onda
-// (public/musica/picos.json, decodificados a 48 kHz em estéreo) entram como mais uma
-// saída, sem mexer na medição.
+// Os PICOS são a única medida que reamostra, e de propósito: são decodificados a 48 kHz em
+// estéreo, a taxa em que o navegador vai tocar. A 8 kHz o som agudo e curto (sino, brilho)
+// perde altura no reamostrador e a onda desenha um arquivo que não é o que se ouve. A
+// contagem de amostras continua vindo da decodificação sem reamostrar -- as duas medidas
+// são feitas em passagens separadas justamente pra uma não estragar a outra.
 //
 //   node --import ./scripts/ts-direto.mjs scripts/gerar-picos-audio.ts
 //
@@ -30,6 +33,9 @@ import ffmpegStatic from "ffmpeg-static";
 const ffmpeg = ffmpegStatic as unknown as string;
 const RAIZ = path.resolve(import.meta.dirname, "..");
 const ARQUIVO_SEGUNDOS = path.join(RAIZ, "src", "lib", "segundos-do-catalogo.ts");
+const ARQUIVO_PICOS = path.join(RAIZ, "public", "musica", "picos.json");
+/** A taxa em que o navegador toca. Medir a onda noutra taxa é desenhar outro arquivo. */
+const TAXA_DOS_PICOS = 48000;
 
 // video.ts importa o arquivo gerado. Numa cópia sem ele, o import do catálogo quebraria
 // antes de a medição começar: um arquivo vazio basta pra carregar, e é sobrescrito no fim.
@@ -37,6 +43,7 @@ if (!fs.existsSync(ARQUIVO_SEGUNDOS)) {
   fs.writeFileSync(ARQUIVO_SEGUNDOS, "export const SEGUNDOS_MUSICA = {};\nexport const SEGUNDOS_EFEITO = {};\n");
 }
 const { MUSICAS, EFEITOS_SONOROS } = await import("../src/lib/video.ts");
+const { PICOS_POR_SEGUNDO, base64DePicos, picosDoBuffer } = await import("../src/lib/picos-audio.ts");
 
 type Decodificado = { amostras: Buffer; taxa: number; canais: 1 | 2; quadros: number };
 
@@ -59,6 +66,35 @@ function decodificar(arquivo: string, o: { taxa?: number; canais: 1 | 2 }): Deco
 }
 
 type Medida = { id: string; arquivo: string; taxa: number; quadros: number; segundos: number };
+/** As medidas de uma rodada, tudo que as saídas podem escrever. */
+type Medidas = { musicas: Medida[]; efeitos: Medida[]; picos: Map<string, Uint8Array> };
+
+/** Canais em ponto flutuante (−1 a 1), do jeito que `AudioBuffer.getChannelData` entrega. */
+function canaisDoPcm(d: Decodificado): Float32Array[] {
+  const canais = Array.from({ length: d.canais }, () => new Float32Array(d.quadros));
+  for (let q = 0; q < d.quadros; q++) {
+    for (let c = 0; c < d.canais; c++) canais[c][q] = d.amostras.readInt16LE((q * d.canais + c) * 2) / 32768;
+  }
+  return canais;
+}
+
+/**
+ * A onda de cada faixa, decodificada a 48 kHz em estéreo.
+ *
+ * Passagem separada da contagem de amostras de propósito: aqui reamostrar é o certo (é a
+ * taxa do navegador), lá seria erro. Uma decodificação só pras duas medidas faria uma das
+ * duas mentir.
+ */
+function medirPicos(pasta: string, medidas: Medida[]): Map<string, Uint8Array> {
+  const dir = path.join(RAIZ, "public", pasta);
+  const mapa = new Map<string, Uint8Array>();
+  for (const m of medidas) {
+    const d = decodificar(path.join(dir, m.arquivo), { taxa: TAXA_DOS_PICOS, canais: 2 });
+    if (d.taxa !== TAXA_DOS_PICOS) throw new Error(`${m.arquivo}: pedi ${TAXA_DOS_PICOS} Hz e o ffmpeg entregou ${d.taxa} Hz`);
+    mapa.set(m.id, picosDoBuffer(canaisDoPcm(d), d.taxa, PICOS_POR_SEGUNDO));
+  }
+  return mapa;
+}
 
 /** Cada arquivo do catálogo, na ordem do catálogo, conferido contra a pasta. */
 function medirPasta(pasta: string, catalogo: { id: string; arquivo: string | null }[]): Medida[] {
@@ -80,7 +116,7 @@ function medirPasta(pasta: string, catalogo: { id: string; arquivo: string | nul
 
 // ---------- saídas ----------
 
-function gravarSegundos(musicas: Medida[], efeitos: Medida[]) {
+function gravarSegundos({ musicas, efeitos }: Medidas) {
   const mapa = (l: Medida[]) => l.map((m) => `  ${m.id}: ${m.segundos},`).join("\n");
   const conteudo = `// GERADO por scripts/gerar-picos-audio.ts -- não editar à mão; rode o script de novo.
 //
@@ -101,8 +137,28 @@ ${mapa(efeitos)}
   fs.writeFileSync(ARQUIVO_SEGUNDOS, conteudo);
 }
 
-const SAIDAS: { nome: string; gravar: (musicas: Medida[], efeitos: Medida[]) => void }[] = [
+/**
+ * public/musica/picos.json: a onda de cada faixa, um byte por 50 ms, em base64.
+ *
+ * Uma linha por faixa (e não o JSON indentado inteiro numa linha só) porque o arquivo é
+ * gerado e versionado: o diff de uma faixa remedida tem que ser uma linha, não 15.
+ */
+function gravarPicos({ musicas, picos }: Medidas) {
+  const linhas = musicas.map((m) => {
+    const p = picos.get(m.id);
+    if (!p || p.length === 0) throw new Error(`faixa sem picos: ${m.id}`);
+    const esperado = Math.ceil((m.quadros / m.taxa) * PICOS_POR_SEGUNDO);
+    // Duas contagens por caminhos diferentes (amostras na taxa do arquivo × picos a 48 kHz):
+    // se elas divergirem, alguma das duas decodificações leu outro arquivo.
+    if (Math.abs(p.length - esperado) > 1) throw new Error(`${m.id}: ${p.length} picos, mas a duração pede ${esperado}`);
+    return `    "${m.id}": { "segundos": ${m.segundos}, "max": ${Math.max(...p)}, "picos": "${base64DePicos(p)}" }`;
+  });
+  fs.writeFileSync(ARQUIVO_PICOS, `{\n  "v": 1,\n  "porSeg": ${PICOS_POR_SEGUNDO},\n  "faixas": {\n${linhas.join(",\n")}\n  }\n}\n`);
+}
+
+const SAIDAS: { nome: string; gravar: (medidas: Medidas) => void }[] = [
   { nome: path.relative(RAIZ, ARQUIVO_SEGUNDOS).replace(/\\/g, "/"), gravar: gravarSegundos },
+  { nome: path.relative(RAIZ, ARQUIVO_PICOS).replace(/\\/g, "/"), gravar: gravarPicos },
 ];
 
 // ---------- execução ----------
@@ -113,7 +169,13 @@ for (const m of [...musicas, ...efeitos]) {
   console.log(`${m.arquivo.padEnd(22)} ${String(m.taxa).padStart(6)} Hz · ${String(m.quadros).padStart(8)} quadros · ${m.segundos.toFixed(3)} s`);
 }
 if (musicas.length === 0 || efeitos.length === 0) throw new Error("nenhum arquivo medido: a pasta ou o catálogo vieram vazios");
+const picos = medirPicos("musica", musicas);
+for (const m of musicas) {
+  const p = picos.get(m.id);
+  console.log(`${m.arquivo.padEnd(22)} ${String(p?.length ?? 0).padStart(5)} picos · max ${String(p ? Math.max(...p) : 0).padStart(3)}`);
+}
+const medidas: Medidas = { musicas, efeitos, picos };
 for (const s of SAIDAS) {
-  s.gravar(musicas, efeitos);
+  s.gravar(medidas);
   console.log(`gravado ${s.nome}`);
 }

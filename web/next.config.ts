@@ -19,8 +19,13 @@ const nextConfig: NextConfig = {
   },
   // As miniaturas dos GIFs são só da galeria (o navegador baixa do CDN); o vídeo usa o GIF
   // grande. Fora do pacote da função, que já leva o ffmpeg.
+  //
+  // `musica/previa` e `efeitos/previa` (48 kHz, scripts/preparar-previa-catalogo.mjs) são
+  // do NAVEGADOR: quem monta o vídeo usa os arquivos de 96 kHz que estão um nível acima.
+  // Sem esta linha eles entram no pacote da função pelo `./public/musica/**` de cima e
+  // custam ~11 MB de função pra nada.
   outputFileTracingExcludes: {
-    "/api/video/\\[id\\]": ["./public/adesivos/mini/**"],
+    "/api/video/\\[id\\]": ["./public/adesivos/mini/**", "./public/musica/previa/**", "./public/efeitos/previa/**"],
   },
   serverExternalPackages: ["ffmpeg-static"],
 

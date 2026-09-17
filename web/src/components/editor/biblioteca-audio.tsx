@@ -13,6 +13,13 @@ import { CATEGORIAS_MUSICA, MUSICAS, type CategoriaMusica, type MusicaId } from 
 // Um TOCADOR só, num ref, e não um <audio> por linha. Com um por linha, duas faixas tocam
 // juntas no segundo clique, e a memória guarda quinze arquivos de 700 KB à toa.
 //
+// O mesmo problema existe ENTRE telas: a prévia da linha do tempo é outro tocador, noutro
+// componente, e ninguém dos dois conhece o outro. A vez é pedida por evento no `window`
+// (docs/planos/linha-do-tempo-spec.md, D8): ouvir uma faixa aqui manda
+// `encena:parar-previa`, e a prévia tocando manda `encena:parar-audio`, que para esta.
+// Evento e não prop porque quem toca não é filho de quem para -- e uma prop obrigaria todo
+// tocador futuro a passar pelo editor.
+//
 // As faixas são nossas, geradas uma vez (scripts/gerar-musicas.mjs). Isso não é detalhe
 // técnico: música protegida num anúncio é o corretor levando strike, e o problema vira
 // dele. Aqui não existe essa conta pra pagar.
@@ -97,6 +104,16 @@ export default function BibliotecaAudio({
     };
   }, []);
 
+  // A prévia da linha do tempo começou: esta para, e o botão volta a mostrar "ouvir".
+  useEffect(() => {
+    const parar = () => {
+      tocador.current?.pause();
+      setTocando(null);
+    };
+    window.addEventListener("encena:parar-audio", parar);
+    return () => window.removeEventListener("encena:parar-audio", parar);
+  }, []);
+
   function ouvir(item: Item, pasta: string) {
     if (!item.arquivo) return;
     if (tocando === item.id) {
@@ -104,6 +121,8 @@ export default function BibliotecaAudio({
       setTocando(null);
       return;
     }
+    // A vez é desta: a prévia da linha do tempo para antes de a faixa começar.
+    window.dispatchEvent(new Event("encena:parar-previa"));
     tocador.current?.pause();
     const a = new Audio(`/${pasta}/${item.arquivo}`);
     a.volume = 0.7;
