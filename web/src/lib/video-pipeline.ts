@@ -14,6 +14,7 @@ import { rasterizarElementos } from "./elementos-servidor";
 import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
+import type { ResumoEdicao } from "./resumo-edicao";
 import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, vozDeIA, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import {
   argsCena360,
@@ -72,6 +73,11 @@ export type PipelineVideo = {
   saida?: string | null;
   /** Duração do vídeo pronto, medida na montagem. */
   duracaoFinal?: number | null;
+  /** O que a pessoa fez no editor até pedir este vídeo (lib/resumo-edicao.ts). Mora aqui e
+   *  não no espec: o saneador do espec não o conhece e o vídeo sai igual sem ele. */
+  resumoEdicao?: ResumoEdicao | null;
+  /** O crédito da narração já voltou uma vez. Guarda pra etapa repetida não estornar de novo. */
+  narracaoEstornada?: boolean;
 };
 
 export type LinhaVideo = {
@@ -85,8 +91,13 @@ export type LinhaVideo = {
 
 export type Progresso = { etapa: Etapa; feitas: number; total: number; mensagem: string };
 
-export function pipelineInicial(saldoAntes: number | null, animadasGratis: number[] = []): PipelineVideo {
-  return { etapa: "cena", cenaAtual: 0, clipes: [], duracoes: [], temporarios: [], avisos: [], animada: null, narracaoPath: null, saldoAntes, segundosDeRender: 0, animadasGratis };
+/**
+ * O pipeline de um vídeo recém-pedido. `extra` traz o que o pedido já sabe: avisos do
+ * saneamento e o resumo da edição. Sem `extra` (ou com resumo nulo) o objeto sai idêntico
+ * ao de antes -- a página rápida não manda resumo, e a linha dela não ganha chave nova.
+ */
+export function pipelineInicial(saldoAntes: number | null, animadasGratis: number[] = [], extra: { avisos?: string[]; resumoEdicao?: ResumoEdicao | null } = {}): PipelineVideo {
+  return { etapa: "cena", cenaAtual: 0, clipes: [], duracoes: [], temporarios: [], avisos: [...(extra.avisos ?? [])], animada: null, narracaoPath: null, saldoAntes, segundosDeRender: 0, animadasGratis, ...(extra.resumoEdicao ? { resumoEdicao: extra.resumoEdicao } : {}) };
 }
 
 // ---- clipes animados guardados ----

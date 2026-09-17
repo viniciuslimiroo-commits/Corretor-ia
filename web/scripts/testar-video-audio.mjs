@@ -18,10 +18,12 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import ffmpeg from "ffmpeg-static";
 import { argsMontagem } from "../src/lib/video-ffmpeg.ts";
-import { LIMITES, custoDoVideo, limparEspec, vozDeIA } from "../src/lib/video.ts";
+import { LIMITES, MUSICAS, custoDoVideo, limparEspec, vozDeIA } from "../src/lib/video.ts";
 
 const RAIZ = path.resolve(import.meta.dirname, "..");
-const MUSICA = path.join(RAIZ, "assets", "musica", "calma.m4a");
+// Pelo CATÁLOGO e pela pasta que o servidor usa (video-pipeline.ts): o caminho copiado à mão
+// ("assets/musica") apodreceu calado quando as músicas foram pra public/musica.
+const MUSICA = path.join(RAIZ, "public", "musica", MUSICAS.find((m) => m.id === "calma").arquivo);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "encena-audio-"));
 
 let falhas = 0;

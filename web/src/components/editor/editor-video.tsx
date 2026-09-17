@@ -77,6 +77,7 @@ import { COR_ELEMENTO_PADRAO, type IconeFicha } from "@/lib/elementos";
 import { lerLegenda } from "@/lib/legenda-arquivo";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { useResumoEdicao } from "@/components/editor/usar-resumo-edicao";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -1041,6 +1042,14 @@ export default function EditorDeVideo() {
     }
   }
 
+  // O resumo da edição vai junto com o pedido (lib/resumo-edicao.ts). Celular = layout max-md.
+  const [celular, setCelular] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(max-width: 767.98px)").matches;
+    Promise.resolve().then(() => setCelular(m));
+  }, []);
+  const resumoEdicao = useResumoEdicao(celular);
+
   /**
    * Gera o vídeo. `sobrepor` troca alguns campos do espec SEM mexer no editor -- é o que
    * faz "fazer também em quadrado" ser um clique: as mesmas cenas, os mesmos textos, o
@@ -1059,10 +1068,11 @@ export default function EditorDeVideo() {
       const r = await fetch("/api/video", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-        body: JSON.stringify({ imovelId, espec: sobrepor ? { ...espec, ...sobrepor } : espec }),
+        body: JSON.stringify({ imovelId, espec: sobrepor ? { ...espec, ...sobrepor } : espec, resumo: resumoEdicao.resumo() }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Não consegui iniciar o vídeo.");
+      resumoEdicao.aposGerar();
       c.recarregar();
       const id: string = d.videoId;
       const inicio = Date.now();

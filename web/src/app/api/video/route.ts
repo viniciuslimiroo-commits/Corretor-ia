@@ -5,6 +5,7 @@ import { saldoFal } from "@/lib/custo";
 import { CREDITOS, custoDoVideo, duracaoEstimada, limparEspec } from "@/lib/video";
 import { animacoesGuardadas, pipelineInicial } from "@/lib/video-pipeline";
 import { contaDe, debitar } from "@/lib/cobranca";
+import { limparResumoEdicao } from "@/lib/resumo-edicao";
 
 // Vídeo (Fase C). POST cria o pedido: valida o espec, confere que cada foto é da pessoa,
 // debita os créditos de uma vez (atômico, migration 09) e grava o vídeo com o pipeline
@@ -92,6 +93,9 @@ export async function POST(req: NextRequest) {
   const custo = Math.max(0, custoDoVideo(espec) - animadasGratis.length * CREDITOS.animada);
   const saldoAntes = await saldoFal(falKey);
   const conta = await contaDe(db, userId);
+  // O resumo da edição (só o editor completo manda) vai pro pipeline, nunca pro espec.
+  // Torto, velho ou ausente vira null e não entra: o vídeo não depende dele.
+  const resumoEdicao = limparResumoEdicao(corpo?.resumo, new Date());
 
   const { data: video, error: erroInsert } = await db
     .from("videos")
@@ -103,7 +107,7 @@ export async function POST(req: NextRequest) {
       formato: espec.formato,
       status: "gerando",
       espec,
-      pipeline: pipelineInicial(saldoAntes, animadasGratis),
+      pipeline: pipelineInicial(saldoAntes, animadasGratis, { resumoEdicao }),
       creditos_cobrados: custo,
     })
     .select("id")
