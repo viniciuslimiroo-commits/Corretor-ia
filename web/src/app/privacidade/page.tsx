@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PaginaLegal, { Secao } from "@/components/pagina-legal";
+import { EMAIL_SUPORTE } from "@/lib/contato";
 
 // Política de Privacidade (LGPD, Lei 13.709/2018). Escrita a partir do que o sistema
 // REALMENTE faz -- cada item aqui corresponde a código: e-mail no Supabase Auth, fotos
@@ -24,7 +25,7 @@ export default function Privacidade() {
       <Secao n="1" titulo="Quem é o responsável">
         <p>
           O controlador dos dados é Vinicius Cardoso Lima, em Goiânia (GO), que também responde como encarregado (DPO). Para
-          qualquer pedido sobre seus dados, escreva para <strong>contato@encena.app.br</strong>. Respondemos em até 15 dias.
+          qualquer pedido sobre seus dados, escreva para <strong>{EMAIL_SUPORTE}</strong>. Respondemos em até 15 dias.
         </p>
       </Secao>
 
@@ -99,7 +100,7 @@ export default function Privacidade() {
         <p>
           <strong>Decisão automatizada que existe aqui:</strong> quando você reporta um resultado ruim, uma inteligência artificial
           compara a foto original com o resultado e opina se houve falha. Essa opinião pode negar a devolução automática do
-          crédito acima do limite diário de cortesia. Você pode pedir revisão humana respondendo para contato@encena.app.br.
+          crédito acima do limite diário de cortesia. Você pode pedir revisão humana respondendo para {EMAIL_SUPORTE}.
         </p>
       </Secao>
 

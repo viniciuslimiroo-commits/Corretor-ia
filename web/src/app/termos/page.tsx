@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PaginaLegal, { Secao } from "@/components/pagina-legal";
+import { EMAIL_SUPORTE } from "@/lib/contato";
 
 // Termos de uso. Escritos em português claro, sem jargão que ninguém lê. Dois pontos
 // existem por causa do negócio, não de modelo pronto: a imagem é ILUSTRATIVA (e sai
@@ -22,7 +23,7 @@ export default function Termos() {
           recebe uma versão editada. Ao usar o serviço, você concorda com estes termos.
         </p>
         <p>
-          O serviço é operado por Vinicius Cardoso Lima, em Goiânia (GO). Contato: <strong>contato@encena.app.br</strong>.
+          O serviço é operado por Vinicius Cardoso Lima, em Goiânia (GO). Contato: <strong>{EMAIL_SUPORTE}</strong>.
         </p>
       </Secao>
 
@@ -73,7 +74,7 @@ export default function Termos() {
         <p>
           <strong>Arrependimento:</strong> pelo artigo 49 do Código de Defesa do Consumidor, você pode desistir da compra em até 7
           dias corridos, contados do pagamento, e receber o valor de volta. Se já tiver usado créditos nesse período, devolvemos o
-          proporcional ao que não foi usado. Basta escrever para contato@encena.app.br.
+          proporcional ao que não foi usado. Basta escrever para {EMAIL_SUPORTE}.
         </p>
       </Secao>
 

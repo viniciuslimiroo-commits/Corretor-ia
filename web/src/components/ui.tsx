@@ -319,6 +319,13 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" />
         </svg>
       );
+    case "email":
+      return (
+        <svg {...p}>
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M3.5 7l8.5 6 8.5-6" />
+        </svg>
+      );
     case "whatsapp":
       return (
         <svg {...p}>

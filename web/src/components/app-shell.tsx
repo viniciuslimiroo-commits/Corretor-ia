@@ -8,6 +8,7 @@ import { Botao, Icone } from "./ui";
 import { Bandeira, useIdioma } from "@/i18n/cliente";
 import { IDIOMAS } from "@/i18n/idiomas";
 import { Marca } from "./marca";
+import { linkDeSuporte } from "@/lib/contato";
 
 // Moldura comum das telas logadas: marca, navegação, créditos e conta. O conteúdo da
 // página entra no meio. Manter isto num lugar só é o que faz Editor, Vídeo, Imóveis,
@@ -341,6 +342,14 @@ export default function AppShell({
                       </p>
                     </div>
                     <div className="border-t border-neutral-100 py-1">
+                      <a
+                        href={linkDeSuporte(`Suporte Encena.ai · ${conta.email ?? ""}`.trim())}
+                        onClick={() => setMenu(null)}
+                        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                      >
+                        <Icone nome="email" className="h-4 w-4 shrink-0" />
+                        <span className="flex-1">{t("comum.suporte")}</span>
+                      </a>
                       {daConta.map((l) => (
                         <Link
                           key={l.href}

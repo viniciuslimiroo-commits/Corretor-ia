@@ -7,6 +7,7 @@ import Comparador from "./comparador";
 import { Icone } from "./ui";
 import { SeletorIdioma, useIdioma } from "@/i18n/cliente";
 import { Marca } from "./marca";
+import { linkDeSuporte } from "@/lib/contato";
 
 // Página inicial de quem ainda não entrou. É a peça de venda: antes e depois reais
 // (resultados dos testes, com o selo de imagem ilustrativa que o produto sempre coloca),
@@ -262,6 +263,7 @@ export default function Landing() {
           <Link href="/termos" className="hover:text-marca-indigo">{t("landing.rodape.termos")}</Link>
           <Link href="/privacidade" className="hover:text-marca-indigo">{t("landing.rodape.privacidade")}</Link>
           <Link href="/planos" className="hover:text-marca-indigo">{t("landing.rodape.planos")}</Link>
+          <a href={linkDeSuporte("Dúvida sobre o Encena.ai")} className="hover:text-marca-indigo">{t("comum.suporte")}</a>
           <SeletorIdioma paraCima />
           <span className="ml-auto">{t("landing.rodape.aviso")}</span>
         </div>

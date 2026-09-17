@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import AvisoIdiomaLegal from "./aviso-idioma-legal";
 import { Marca } from "./marca";
+import { EMAIL_SUPORTE, linkDeSuporte } from "@/lib/contato";
 
 // Moldura das páginas de texto legal (termos, privacidade). Fora do AppShell de
 // propósito: quem lê isso pode não estar logado, e a página precisa abrir e imprimir
@@ -42,7 +43,7 @@ export default function PaginaLegal({ titulo, atualizado, children }: { titulo: 
           <Link href="/termos" className="hover:text-marca-indigo">Termos de uso</Link>
           <Link href="/privacidade" className="hover:text-marca-indigo">Privacidade</Link>
           <Link href="/planos" className="hover:text-marca-indigo">Planos</Link>
-          <span className="ml-auto">contato@encena.app.br</span>
+          <a href={linkDeSuporte()} className="ml-auto hover:text-marca-indigo">{EMAIL_SUPORTE}</a>
         </footer>
       </article>
     </main>
