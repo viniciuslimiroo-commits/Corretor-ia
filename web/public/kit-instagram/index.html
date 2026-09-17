@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Kit Instagram Encena</title>
+<link rel="icon" href="/marca-encena.svg" type="image/svg+xml">
+<style>
+  :root {
+    --fundo: #fff8f3;
+    --superficie: #ffffff;
+    --texto: #0f2d5b;
+    --suave: #55657f;
+    --linha: #efdfd5;
+    --coral: #f06b4f;
+    --coral-escuro: #c4462c;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --fundo: #0a1a31; --superficie: #10264a; --texto: #f4eee9; --suave: #a8b5c9; --linha: #1f3760; --coral-escuro: #ff8c73; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fundo); color: var(--texto); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 26px; }
+  header { display: flex; align-items: center; gap: 12px; }
+  header img { width: 40px; height: 40px; }
+  h1 { margin: 0; font-size: 1.3rem; line-height: 1.2; }
+  header p { margin: 2px 0 0; color: var(--suave); font-size: .9rem; }
+  h2 { margin: 0 0 10px; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); font-weight: 600; }
+  .item { background: var(--superficie); border: 1px solid var(--linha); border-radius: 14px; padding: 12px; display: flex; gap: 14px; align-items: center; }
+  .item a { flex: none; display: block; }
+  .item img { flex: none; display: block; border-radius: 10px; }
+  .perfil img { width: 96px; height: 96px; border-radius: 50%; }
+  .capa img { width: 60px; height: 107px; object-fit: cover; }
+  .info { display: grid; gap: 8px; min-width: 0; flex: 1; }
+  .info b { font-size: 1rem; }
+  .medida { color: var(--suave); font-size: .8rem; font-family: ui-monospace, "Roboto Mono", monospace; }
+  .baixar { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; line-height: 1; background: var(--coral); color: #fff; font-weight: 700; text-decoration: none; width: fit-content; }
+  .baixar:focus-visible { outline: 3px solid var(--texto); outline-offset: 2px; }
+  .lista { display: grid; gap: 12px; }
+  ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+  ol li::marker { color: var(--coral-escuro); font-weight: 700; }
+  .nota { color: var(--suave); font-size: .9rem; margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/marca-encena.svg" alt="">
+    <div>
+      <h1>Kit do Instagram do Encena</h1>
+      <p>Toque em <b>Baixar</b>. A imagem vai para a pasta Downloads do celular.</p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Foto de perfil</h2>
+    <div class="item perfil">
+      <a href="encena-perfil.png" aria-label="Abrir a imagem"><img src="encena-perfil.png" alt="Logo do Encena: E branco com a barra do meio em coral, fundo azul" width="1080" height="1080"></a>
+      <div class="info">
+        <b>Foto de perfil</b>
+        <span class="medida">1080 × 1080</span>
+        <a class="baixar" href="encena-perfil.png" download="encena-perfil.png">Baixar</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Capas dos Destaques</h2>
+    <div class="lista">
+      <div class="item capa">
+        <a href="destaque-videos.png" aria-label="Abrir a imagem"><img src="destaque-videos.png" alt="Capa Vídeos" width="1080" height="1920" loading="lazy"></a>
+        <div class="info"><b>Vídeos</b><span class="medida">1080 × 1920</span><a class="baixar" href="destaque-videos.png" download="encena-destaque-videos.png">Baixar</a></div>
+      </div>
+      <div class="item capa">
+        <a href="destaque-antes-depois.png" aria-label="Abrir a imagem"><img src="destaque-antes-depois.png" alt="Capa Antes e depois" width="1080" height="1920" loading="lazy"></a>
+        <div class="info"><b>Antes e depois</b><span class="medida">1080 × 1920</span><a class="baixar" href="destaque-antes-depois.png" download="encena-destaque-antes-depois.png">Baixar</a></div>
+      </div>
+      <div class="item capa">
+        <a href="destaque-decoracao.png" aria-label="Abrir a imagem"><img src="destaque-decoracao.png" alt="Capa Decoração" width="1080" height="1920" loading="lazy"></a>
+        <div class="info"><b>Decoração</b><span class="medida">1080 × 1920</span><a class="baixar" href="destaque-decoracao.png" download="encena-destaque-decoracao.png">Baixar</a></div>
+      </div>
+      <div class="item capa">
+        <a href="destaque-book.png" aria-label="Abrir a imagem"><img src="destaque-book.png" alt="Capa Book" width="1080" height="1920" loading="lazy"></a>
+        <div class="info"><b>Book</b><span class="medida">1080 × 1920</span><a class="baixar" href="destaque-book.png" download="encena-destaque-book.png">Baixar</a></div>
+      </div>
+      <div class="item capa">
+        <a href="destaque-planta.png" aria-label="Abrir a imagem"><img src="destaque-planta.png" alt="Capa Planta" width="1080" height="1920" loading="lazy"></a>
+        <div class="info"><b>Planta</b><span class="medida">1080 × 1920</span><a class="baixar" href="destaque-planta.png" download="encena-destaque-planta.png">Baixar</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Onde colocar</h2>
+    <ol>
+      <li>Foto de perfil: <b>Editar perfil</b> → <b>Alterar foto</b> → escolha na pasta <b>Download</b>.</li>
+      <li>Capa do destaque: abra o destaque → <b>⋯</b> → <b>Editar destaque</b> → <b>Editar capa</b>.</li>
+    </ol>
+    <p class="nota">Se o botão não baixar, toque na imagem para abri-la sozinha e use o menu ⋮ do Chrome → ícone de baixar.</p>
+  </section>
+</main>
+</body>
+</html>
