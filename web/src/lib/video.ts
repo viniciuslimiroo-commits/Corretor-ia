@@ -17,6 +17,7 @@ import { ANCORAS, ELEMENTO_POR_ID, type AncoraElemento, type IconeFicha } from "
 import { ADESIVO_POR_ID, idDoAdesivo } from "./adesivos";
 import { ehMovimento, type MovimentoId } from "./movimentos";
 import { TAMANHO_CLIPE_MAX, TAMANHO_CLIPE_MIN, ehUrlDoPexels, idDoPexels, type ClipeNaCena } from "./pexels";
+import { SEGUNDOS_EFEITO, SEGUNDOS_MUSICA } from "./segundos-do-catalogo";
 
 /** Bucket privado onde os uploads do vídeo entram por URL assinada (mesmo dos resultados). */
 export const BUCKET_UPLOADS = "resultados";
@@ -242,6 +243,13 @@ export type TextoCena = {
    * não gira nem cresce.
    */
   movimento?: MovimentoId;
+  /**
+   * Release 2 (docs/planos/linha-do-tempo-spec.md, A6): segundo do CLIPE DA CENA em que o
+   * texto aparece. Ausente = 0. Declarado agora; o saneador ainda não lê nem guarda.
+   */
+  de?: number;
+  /** Release 2: segundo do clipe da cena em que o texto some. Ausente = a duração da cena. */
+  ate?: number;
 };
 
 export const POSICOES_TEXTO: { id: PosicaoTexto; rotulo: string }[] = [
@@ -484,6 +492,13 @@ export type ElementoCena = {
    * porque alguém mexeu na marca no meio da montagem.
    */
   cor?: string;
+  /**
+   * Release 2 (docs/planos/linha-do-tempo-spec.md, A6): segundo do CLIPE DA CENA em que a
+   * peça aparece. Ausente = 0. Declarado agora; o saneador ainda não lê nem guarda.
+   */
+  de?: number;
+  /** Release 2: segundo do clipe da cena em que a peça some. Ausente = a duração da cena. */
+  ate?: number;
 };
 
 /** Os giros que existem. Um quarto de volta por clique, como em qualquer editor. */
@@ -556,8 +571,12 @@ export const CATEGORIAS_MUSICA: { id: CategoriaMusica; rotulo: string; para: str
  * Moram em `public/` e não em `assets/` porque o NAVEGADOR precisa delas pra tocar a
  * prévia. Escolher trilha pelo nome é escolher no escuro -- ninguém sabe o que é
  * "Elegante" até ouvir.
+ *
+ * `segundos` é a duração exata do arquivo (segundos-do-catalogo.ts, gerado por
+ * scripts/gerar-picos-audio.ts da contagem de amostras): a linha do tempo precisa dela pra
+ * saber onde a música sem laço acaba, sem baixar o arquivo. Sem arquivo = null.
  */
-export const MUSICAS: { id: MusicaId; rotulo: string; descricao: string; arquivo: string | null; categoria?: CategoriaMusica }[] = [
+export const MUSICAS = comSegundos<{ id: MusicaId; rotulo: string; descricao: string; arquivo: string | null; categoria?: CategoriaMusica }>(SEGUNDOS_MUSICA, [
   { id: "nenhuma", rotulo: "Sem música", descricao: "Só a sua voz, ou silêncio", arquivo: null },
 
   { id: "calma", rotulo: "Calma", descricao: "Piano e cordas suaves", arquivo: "calma.m4a", categoria: "calma" },
@@ -579,7 +598,12 @@ export const MUSICAS: { id: MusicaId; rotulo: string; descricao: string; arquivo
   { id: "cinematografica", rotulo: "Cinematográfica", descricao: "Orquestra crescente, lançamento", arquivo: "cinematografica.m4a", categoria: "cinematografica" },
   { id: "epico", rotulo: "Épico", descricao: "Tambores e cordas, impacto", arquivo: "epico.m4a", categoria: "cinematografica" },
   { id: "inspirador", rotulo: "Inspirador", descricao: "Piano que abre em orquestra", arquivo: "inspirador.m4a", categoria: "cinematografica" },
-];
+]);
+
+/** A entrada do catálogo com a duração medida do arquivo. Sem arquivo, ou não medido: null. */
+function comSegundos<T extends { id: string; arquivo: string | null }>(segundos: Readonly<Record<string, number | undefined>>, lista: T[]): (T & { segundos: number | null })[] {
+  return lista.map((x) => ({ ...x, segundos: x.arquivo ? (segundos[x.id] ?? null) : null }));
+}
 
 /**
  * Efeitos sonoros nas VIRADAS de cena.
@@ -593,7 +617,7 @@ export const MUSICAS: { id: MusicaId; rotulo: string; descricao: string; arquivo
  */
 export type EfeitoSonoroId = "nenhum" | "passagem" | "clique" | "brilho" | "impacto" | "sino" | "toque";
 
-export const EFEITOS_SONOROS: { id: EfeitoSonoroId; rotulo: string; descricao: string; arquivo: string | null }[] = [
+export const EFEITOS_SONOROS = comSegundos<{ id: EfeitoSonoroId; rotulo: string; descricao: string; arquivo: string | null }>(SEGUNDOS_EFEITO, [
   { id: "nenhum", rotulo: "Sem efeito", descricao: "Nenhum som nas viradas", arquivo: null },
   { id: "passagem", rotulo: "Passagem", descricao: "Um sopro curto na troca de cena", arquivo: "passagem.m4a" },
   { id: "clique", rotulo: "Clique", descricao: "Obturador de câmera", arquivo: "clique.m4a" },
@@ -601,7 +625,7 @@ export const EFEITOS_SONOROS: { id: EfeitoSonoroId; rotulo: string; descricao: s
   { id: "impacto", rotulo: "Impacto", descricao: "Uma batida seca, pra lançamento", arquivo: "impacto.m4a" },
   { id: "sino", rotulo: "Sino", descricao: "Um toque claro, pra marcar o preço", arquivo: "sino.m4a" },
   { id: "toque", rotulo: "Toque", descricao: "Um pop macio, discreto", arquivo: "toque.m4a" },
-];
+]);
 
 export const EFEITO_SONORO_POR_ID = Object.fromEntries(EFEITOS_SONOROS.map((e) => [e.id, e])) as Record<EfeitoSonoroId, (typeof EFEITOS_SONOROS)[number]>;
 
@@ -637,11 +661,17 @@ export type Narracao = {
   /** Só "ia". */
   roteiro?: string;
   voz?: VozId;
-  /** "gravada" e "enviada": caminho no bucket privado. */
+  /**
+   * "gravada" e "enviada": caminho no bucket privado.
+   *
+   * "ia": a voz que o TTS JÁ gravou (`uploads/<usuário>/voz-<uuid>.mp3`, VP:517), pra
+   * reaproveitar sem gravar de novo e sem cobrar. Só esse formato passa pelo saneador, e
+   * o pedido confere dono e existência no bucket antes de cobrar (lib/pedido-video.ts).
+   */
   arquivo?: string;
-  /** 0,2 a 2. 1 = como veio. */
+  /** 0,2 a 2. 1 = como veio. Ausente na versao 2: o volume mora no trecho de voz. */
   volume?: number;
-  /** Segundos de silêncio antes de a voz começar. */
+  /** Segundos de silêncio antes de a voz começar. Ausente na versao 2: é o `noVideo` do trecho. */
   inicio?: number;
 };
 
@@ -649,6 +679,39 @@ export type Narracao = {
 export function vozDeIA(n: Narracao | null | undefined): boolean {
   return !!n && (n.origem ?? "ia") === "ia";
 }
+
+// ---- áudio em trechos (linha do tempo) ----
+//
+// Música e voz viram TRECHOS numa lista (`audios`), cada um com onde entra no vídeo, de
+// que segundo do arquivo parte, quanto dura, volume e fades. É o que deixa cortar, dividir
+// e deslizar a música na linha do tempo. O vídeo que não mexeu em nada disso continua
+// no formato antigo (`musica`, `narracao.inicio`), byte a byte: ver `canonizarAudio`.
+
+/** De onde vem o som de um trecho. A voz é o arquivo de `espec.narracao`, seja qual for a origem. */
+export type FonteAudio =
+  | { tipo: "musica"; id: Exclude<MusicaId, "nenhuma"> }
+  | { tipo: "voz" };
+
+export type ItemAudio = {
+  /** 8 letras minúsculas ou dígitos, estável. Trechos vindos de espec antigo: "musica00", "voz00000". */
+  id: string;
+  fonte: FonteAudio;
+  /** Segundo do VÍDEO em que o trecho entra: 0 a total − audioMin, em centésimos. */
+  noVideo: number;
+  /** Segundo do ARQUIVO de onde o trecho parte: 0 a corteAudioMax. */
+  corteArquivo: number;
+  /**
+   * Quanto o trecho dura. AUSENTE = até o fim: música em laço, até o fim do vídeo; música
+   * sem laço e voz, até o fim do arquivo. Presente: audioMin a corteAudioMax.
+   */
+  duracao?: number;
+  /** Música 0 a 1; voz 0 a 2. */
+  volume: number;
+  fadeEntrada: number;
+  fadeSaida: number;
+  /** Só música, e sempre presente nela depois do saneador. */
+  laco?: boolean;
+};
 
 // ---- legendas ----
 //
@@ -757,6 +820,14 @@ export type EspecVideo = {
   ajustes?: Partial<AjustesCor>;
   /** Capa com o nome e o preço escritos por cima. Ausente = sim, quando há o que escrever. */
   capaMontada?: boolean;
+  /** Presente exatamente quando `audios` está presente. */
+  versao?: 2;
+  /**
+   * Os trechos de música e voz da linha do tempo. Quando existe, TODO o tempo de música e
+   * voz mora aqui: `musica` é "nenhuma", `musicaVolume` é o padrão e `narracao` vem sem
+   * `inicio` nem `volume`. O `efeitoSonoro` não muda.
+   */
+  audios?: ItemAudio[];
 };
 
 /**
@@ -812,6 +883,17 @@ export const LIMITES = {
   luzMax: 0.25,
   velocidadeMin: 0.5,
   velocidadeMax: 2,
+  /** Trechos de áudio na linha do tempo, somando música e voz. */
+  audiosMax: 16,
+  musicaPedacosMax: 8,
+  vozPedacosMax: 8,
+  /** Trecho de áudio mais curto que isso não se ouve nem se pega com o dedo. */
+  audioMin: 0.3,
+  fadeMax: 5,
+  /** Até que segundo do arquivo dá pra cortar (voz gravada vai a 180s; folga pra arquivo enviado). */
+  corteAudioMax: 600,
+  /** Release 2: janela mínima de um texto ou peça dentro da cena. */
+  janelaMin: 0.5,
 };
 
 // Créditos: SÓ onde há IA de verdade.
@@ -825,8 +907,11 @@ export const CREDITOS = { base: 0, animada: 2, narracao: 1 };
 
 export function custoDoVideo(e: Pick<EspecVideo, "cenas" | "narracao">): number {
   const animadas = e.cenas.filter((c) => c.tipo === "animada").length;
-  // A voz da pessoa (gravada ou enviada) não passa por modelo nenhum: não cobra.
-  return CREDITOS.base + animadas * CREDITOS.animada + (vozDeIA(e.narracao) ? CREDITOS.narracao : 0);
+  // A voz da pessoa (gravada ou enviada) não passa por modelo nenhum: não cobra. A de IA que
+  // já foi gravada e volta com o `arquivo` também não: o TTS não roda de novo. O saneador só
+  // aceita esse `arquivo` no formato que o pipeline grava, e o pedido confere que ele é do
+  // usuário e existe no bucket ANTES desta conta (lib/pedido-video.ts).
+  return CREDITOS.base + animadas * CREDITOS.animada + (vozDeIA(e.narracao) && !e.narracao?.arquivo ? CREDITOS.narracao : 0);
 }
 
 /**
@@ -1162,13 +1247,216 @@ export function textosDaCena(c: Pick<Cena, "legenda" | "textos">): TextoCena[] {
   return [...daLegenda, ...(c.textos ?? [])].slice(0, LIMITES.textosPorCena + 1);
 }
 
+/** Id de trecho de áudio: 8 letras minúsculas ou dígitos. */
+const ID_AUDIO = /^[a-z0-9]{8}$/;
+
+/**
+ * A voz de IA que o pipeline já gravou (VP:517). É o único `arquivo` aceito numa narração
+ * de IA: qualquer outro caminho seria o navegador escolhendo um arquivo pra não pagar a voz.
+ */
+const ARQUIVO_VOZ_IA = /^uploads\/[0-9a-f-]{36}\/voz-[0-9a-f-]{36}\.mp3$/;
+
+/** Pelo segundo no vídeo, música antes de voz, e o id desempata. */
+function ordemDosAudios(a: ItemAudio, b: ItemAudio): number {
+  if (a.noVideo !== b.noVideo) return a.noVideo - b.noVideo;
+  if (a.fonte.tipo !== b.fonte.tipo) return a.fonte.tipo === "musica" ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** Centésimos inteiros: compara somas de valores com 2 casas sem o ruído do ponto flutuante. */
+const centesimos = (v: number) => Math.round(v * 100);
+
+/**
+ * Os trechos de áudio da linha do tempo, limpos e em ordem.
+ *
+ * Trecho torto some com aviso, e não derruba o vídeo: tipo desconhecido, voz num vídeo sem
+ * narração, trecho que começa depois do fim. Trecho DEMAIS derruba, com erro -- cortar
+ * calado o nono pedaço de música seria entregar outro vídeo.
+ *
+ * Os ids são dados depois da limpeza: um id válido nunca é trocado, e um gerado nunca
+ * toma o lugar de um válido que vem mais adiante na lista.
+ */
+export function limparAudios(bruto: unknown, total: number, temNarracao: boolean): { audios: ItemAudio[]; avisos: string[]; erro: string | null } {
+  if (!Array.isArray(bruto)) return { audios: [], avisos: [], erro: null };
+  const avisos: string[] = [];
+  // Um aviso por motivo, não por trecho: mil trechos tortos não viram mil linhas guardadas.
+  const avisar = (m: string) => {
+    if (!avisos.includes(m)) avisos.push(m);
+  };
+  // O fim do vídeo em centésimos: `total − audioMin` direto dá 14,899999… e derrubaria o
+  // trecho posto exatamente no último lugar permitido.
+  const ultimoInicio = Math.round((total - LIMITES.audioMin) * 100) / 100;
+  const limpos: { indice: number; idBruto: unknown; item: Omit<ItemAudio, "id"> }[] = [];
+  for (let i = 0; i < bruto.length; i++) {
+    const b = (bruto[i] && typeof bruto[i] === "object" ? bruto[i] : {}) as Record<string, unknown>;
+    const f = (b.fonte && typeof b.fonte === "object" ? b.fonte : {}) as Record<string, unknown>;
+    let fonte: FonteAudio;
+    if (f.tipo === "musica" && ehId(MUSICAS, f.id) && MUSICA_POR_ID[f.id].arquivo) fonte = { tipo: "musica", id: f.id as Exclude<MusicaId, "nenhuma"> };
+    else if (f.tipo === "voz") fonte = { tipo: "voz" };
+    else {
+      avisar("Um trecho de áudio de tipo desconhecido foi ignorado.");
+      continue;
+    }
+    if (fonte.tipo === "voz" && !temNarracao) {
+      avisar("Um trecho de voz foi ignorado: o vídeo não tem narração.");
+      continue;
+    }
+    const noVideo = numeroEntre(b.noVideo, 0, total) ?? 0;
+    if (noVideo > ultimoInicio) {
+      avisar("Um trecho de áudio começava depois do fim do vídeo e ficou de fora.");
+      continue;
+    }
+    const corteArquivo = numeroEntre(b.corteArquivo, 0, LIMITES.corteAudioMax) ?? 0;
+    const duracao = b.duracao === null || b.duracao === undefined ? undefined : numeroEntre(b.duracao, LIMITES.audioMin, LIMITES.corteAudioMax);
+    const volume = fonte.tipo === "musica" ? (numeroEntre(b.volume, 0, 1) ?? LIMITES.musicaVolumePadrao) : (numeroEntre(b.volume, 0, 2) ?? 1);
+    let fadeEntrada = numeroEntre(b.fadeEntrada, 0, LIMITES.fadeMax) ?? 0;
+    let fadeSaida = numeroEntre(b.fadeSaida, 0, LIMITES.fadeMax) ?? 0;
+    // Fades que não cabem no trecho encolhem na mesma proporção, arredondados PRA BAIXO (o
+    // épsilon só impede 0,29·100 = 28,999… de virar 0,28).
+    if (duracao !== undefined && centesimos(fadeEntrada + fadeSaida) > centesimos(duracao)) {
+      const k = duracao / (fadeEntrada + fadeSaida);
+      fadeEntrada = Math.floor(fadeEntrada * k * 100 + 1e-6) / 100;
+      fadeSaida = Math.floor(fadeSaida * k * 100 + 1e-6) / 100;
+    }
+    limpos.push({
+      indice: i,
+      idBruto: b.id,
+      item: {
+        fonte,
+        noVideo,
+        corteArquivo,
+        ...(duracao !== undefined ? { duracao } : {}),
+        volume,
+        fadeEntrada,
+        fadeSaida,
+        ...(fonte.tipo === "musica" ? { laco: b.laco !== false } : {}),
+      },
+    });
+  }
+
+  const musicas = limpos.filter((l) => l.item.fonte.tipo === "musica").length;
+  const vozes = limpos.length - musicas;
+  if (musicas > LIMITES.musicaPedacosMax) return { audios: [], avisos, erro: `No máximo ${LIMITES.musicaPedacosMax} trechos de música.` };
+  if (vozes > LIMITES.vozPedacosMax) return { audios: [], avisos, erro: `No máximo ${LIMITES.vozPedacosMax} trechos de voz.` };
+  if (limpos.length > LIMITES.audiosMax) return { audios: [], avisos, erro: `No máximo ${LIMITES.audiosMax} trechos de áudio.` };
+
+  const usados = new Set<string>();
+  const validos = limpos.map((l) => {
+    if (typeof l.idBruto !== "string" || !ID_AUDIO.test(l.idBruto) || usados.has(l.idBruto)) return null;
+    usados.add(l.idBruto);
+    return l.idBruto;
+  });
+  const audios: ItemAudio[] = limpos.map((l, k) => {
+    let id = validos[k];
+    if (id === null) {
+      // "a" + a posição na lista que chegou, subindo até achar um livre.
+      let n = l.indice;
+      do id = "a" + String(n++).padStart(7, "0");
+      while (usados.has(id));
+      usados.add(id);
+    }
+    return { id, ...l.item };
+  });
+  audios.sort(ordemDosAudios);
+  return { audios, avisos, erro: null };
+}
+
+/**
+ * Os trechos de áudio de QUALQUER espec: a lista, quando existe; senão, o que o formato
+ * antigo quer dizer, com os números da montagem antiga (FF:794, FF:907-921) -- música do
+ * 0 com fade 1s/2s em laço, voz em `inicio` (0,7 quando ausente).
+ */
+export function itensDeAudioDoEspec(e: Pick<EspecVideo, "audios" | "musica" | "musicaVolume" | "narracao">): ItemAudio[] {
+  if (e.audios) return e.audios.map((a) => ({ ...a, fonte: { ...a.fonte } }));
+  const itens: ItemAudio[] = [];
+  if (e.musica !== "nenhuma" && MUSICA_POR_ID[e.musica]?.arquivo) {
+    itens.push({ id: "musica00", fonte: { tipo: "musica", id: e.musica }, noVideo: 0, corteArquivo: 0, volume: e.musicaVolume ?? LIMITES.musicaVolumePadrao, fadeEntrada: 1, fadeSaida: 2, laco: true });
+  }
+  if (e.narracao) {
+    itens.push({ id: "voz00000", fonte: { tipo: "voz" }, noVideo: e.narracao.inicio ?? 0.7, corteArquivo: 0, volume: e.narracao.volume ?? 1, fadeEntrada: 0, fadeSaida: 0 });
+  }
+  return itens;
+}
+
+/** O trecho de voz que uma narração nova ganha: o mesmo lugar da voz no formato antigo. Copie antes de mudar. */
+export const VOZ_PADRAO: ItemAudio = Object.freeze({ id: "voz00000", fonte: Object.freeze({ tipo: "voz" as const }), noVideo: 0.7, corteArquivo: 0, volume: 1, fadeEntrada: 0, fadeSaida: 0 });
+
+/**
+ * Os trechos cabem no formato antigo sem perder nada?
+ *
+ * No máximo uma música, do 0, sem corte, até o fim, em laço, fade 1s/2s e volume 0 a 1; no
+ * máximo uma voz, sem corte, até o fim, sem fade, começando entre 0 e 10s em décimos e com
+ * volume 0,2 a 2. São exatamente os valores que o saneador antigo guarda sem mexer -- por
+ * isso o vídeo que volta ao formato antigo sai do saneador igual de novo.
+ */
+export function ehAudioLegado(itens: ItemAudio[]): boolean {
+  const musicas = itens.filter((x) => x.fonte.tipo === "musica");
+  const vozes = itens.filter((x) => x.fonte.tipo === "voz");
+  if (musicas.length > 1 || vozes.length > 1) return false;
+  const m = musicas[0];
+  if (m && !(m.noVideo === 0 && m.corteArquivo === 0 && m.duracao === undefined && m.laco !== false && m.fadeEntrada === 1 && m.fadeSaida === 2 && m.volume >= 0 && m.volume <= 1)) return false;
+  const z = vozes[0];
+  if (
+    z &&
+    !(z.corteArquivo === 0 && z.duracao === undefined && z.fadeEntrada === 0 && z.fadeSaida === 0 && z.noVideo >= 0 && z.noVideo <= LIMITES.vozInicioMax && Math.round(z.noVideo * 10) / 10 === z.noVideo && z.volume >= 0.2 && z.volume <= 2)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** A narração sem o tempo: IA `{origem, roteiro, voz, arquivo?}`; gravada ou enviada `{origem, arquivo}` (a ordem de V:1245/1249). */
+function narracaoSemTempo(n: Narracao): Narracao {
+  return vozDeIA(n) ? { origem: "ia", roteiro: n.roteiro, voz: n.voz, ...(n.arquivo ? { arquivo: n.arquivo } : {}) } : { origem: n.origem, arquivo: n.arquivo };
+}
+
+/**
+ * A forma CANÔNICA do áudio, a mesma no saneador e no editor.
+ *
+ * O que cabe no formato antigo volta pra ele (`musica`, `narracao.inicio`/`volume`, sem
+ * `audios`): abrir um vídeo antigo e salvar sem mexer no áudio devolve o espec de antes,
+ * byte a byte, e a montagem antiga continua valendo pra ele. O resto vira versao 2.
+ */
+export function canonizarAudio(o: { itens: ItemAudio[]; narracao: Narracao | null; musicaVolume: number }): {
+  musica: MusicaId;
+  musicaVolume: number;
+  narracao: Narracao | null;
+  audios?: ItemAudio[];
+  versao?: 2;
+} {
+  const musicas = o.itens.filter((x) => x.fonte.tipo === "musica");
+  // Sem narração, trecho de voz não tem de onde tocar. Narração sem trecho de voz é caminho
+  // só de defesa: o editor apaga a narração junto com a última voz.
+  let n = o.narracao;
+  const vozes = n ? o.itens.filter((x) => x.fonte.tipo === "voz") : [];
+  if (n && vozes.length === 0) n = null;
+  if (ehAudioLegado([...musicas, ...vozes])) {
+    const m = musicas[0];
+    return {
+      musica: m && m.fonte.tipo === "musica" ? m.fonte.id : "nenhuma",
+      musicaVolume: m?.volume ?? o.musicaVolume,
+      narracao: n && { ...narracaoSemTempo(n), volume: vozes[0].volume, inicio: vozes[0].noVideo },
+    };
+  }
+  return {
+    musica: "nenhuma",
+    musicaVolume: LIMITES.musicaVolumePadrao,
+    narracao: n && narracaoSemTempo(n),
+    audios: [...musicas, ...vozes].sort(ordemDosAudios),
+    versao: 2,
+  };
+}
+
 /**
  * Valida e limpa o pedido vindo do navegador. Devolve o espec pronto ou uma mensagem
  * de erro em português. Nunca confia no que veio: os textos vão pro drawtext e o
  * roteiro vai pro TTS.
+ *
+ * `avisos` diz o que foi descartado sem derrubar o vídeo (hoje, só nos trechos de áudio).
  */
-export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } | { espec: null; erro: string } {
+export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null; avisos: string[] } | { espec: null; erro: string; avisos?: undefined } {
   const b = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
+  const avisos: string[] = [];
   if (!ehId(FORMATOS, b.formato)) return { espec: null, erro: "Escolha o formato do vídeo." };
   const cenasBrutas = Array.isArray(b.cenas) ? b.cenas : [];
   if (cenasBrutas.length === 0) return { espec: null, erro: "Adicione pelo menos uma foto." };
@@ -1225,9 +1513,9 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
     });
   }
 
-  const musica: MusicaId = ehId(MUSICAS, b.musica) ? b.musica : "nenhuma";
+  let musica: MusicaId = ehId(MUSICAS, b.musica) ? b.musica : "nenhuma";
   const volumeMusica = Number(b.musicaVolume);
-  const musicaVolume = Number.isFinite(volumeMusica) ? Math.min(1, Math.max(0, volumeMusica)) : LIMITES.musicaVolumePadrao;
+  let musicaVolume = Number.isFinite(volumeMusica) ? Math.min(1, Math.max(0, volumeMusica)) : LIMITES.musicaVolumePadrao;
 
   let narracao: EspecVideo["narracao"] = null;
   if (b.narracao && typeof b.narracao === "object") {
@@ -1242,12 +1530,34 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
     };
     if (origem === "ia") {
       const roteiro = texto(n.roteiro, LIMITES.roteiroMax);
-      if (roteiro.length >= 10) narracao = { origem, roteiro, voz: ehId(VOZES, n.voz) ? n.voz : "laura", ...comum };
+      // Voz de IA já gravada, pra reaproveitar: só no formato que o pipeline grava. Linha
+      // antiga nunca traz `arquivo` numa narração de IA, então ela sai daqui igual.
+      const arquivo = typeof n.arquivo === "string" && ARQUIVO_VOZ_IA.test(n.arquivo) ? n.arquivo : undefined;
+      if (roteiro.length >= 10) narracao = { origem, roteiro, voz: ehId(VOZES, n.voz) ? n.voz : "laura", ...(arquivo ? { arquivo } : {}), ...comum };
     } else {
       // Mesma regra dos arquivos de cena: só caminho do bucket, sem subir de pasta.
       const arquivo = typeof n.arquivo === "string" && /^[\w./-]{1,200}$/.test(n.arquivo) && !n.arquivo.includes("..") ? n.arquivo : undefined;
       if (arquivo) narracao = { origem, arquivo, ...comum };
     }
+  }
+
+  // Áudio em trechos, SÓ quando o pedido traz a lista. Sem ela nada daqui roda e o espec
+  // sai byte a byte igual ao de antes (scripts/testar-saneador-linha.ts, I4). `b.versao`
+  // nunca é lido: a versão sai do que os trechos são, não do que o navegador diz.
+  let c: ReturnType<typeof canonizarAudio> | undefined;
+  if (Array.isArray(b.audios)) {
+    const relogio = relogioDoEspec({ cenas, transicao: ehTransicao(b.transicao), telaFinal: b.telaFinal !== false });
+    const trechos = limparAudios(b.audios, relogio.total, !!narracao);
+    if (trechos.erro) return { espec: null, erro: trechos.erro };
+    avisos.push(...trechos.avisos);
+    if (narracao && !trechos.audios.some((a) => a.fonte.tipo === "voz")) {
+      narracao = null;
+      avisos.push("A narração estava ligada, mas sem trecho de voz na linha do tempo: o vídeo sai sem voz.");
+    }
+    c = canonizarAudio({ itens: trechos.audios, narracao, musicaVolume });
+    musica = c.musica;
+    musicaVolume = c.musicaVolume;
+    narracao = c.narracao;
   }
 
   // Capa fora da lista (cena removida depois de escolhida) volta pra primeira, sem erro:
@@ -1276,7 +1586,9 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null } |
       ajustes: limparAjustes(b.ajustes),
       capaMontada: b.capaMontada !== false,
       efeitoSonoro: EFEITOS_SONOROS.some((e) => e.id === b.efeitoSonoro) ? (b.efeitoSonoro as EfeitoSonoroId) : "nenhum",
+      ...(c?.audios ? { audios: c.audios, versao: 2 as const } : {}),
     },
     erro: null,
+    avisos,
   };
 }
