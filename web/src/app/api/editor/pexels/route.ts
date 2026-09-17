@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
   const pagina = Math.min(20, Math.max(1, Number(req.nextUrl.searchParams.get("pagina")) || 1));
   if (!q) return NextResponse.json({ error: "Busca vazia." }, { status: 400 });
   try {
-    const r = await buscarClipesPexels(q, pagina);
+    // `livre=1`: o que a pessoa digitou, em português. Sem ele, é a busca da prateleira.
+    const r = await buscarClipesPexels(q, pagina, req.nextUrl.searchParams.get("livre") === "1");
     return NextResponse.json(r, { headers: { "Cache-Control": "private, max-age=3600" } });
   } catch (e) {
     const msg = String(e instanceof Error ? e.message : e);

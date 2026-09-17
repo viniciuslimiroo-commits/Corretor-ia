@@ -924,9 +924,9 @@ export default function EditorDeVideo() {
   // Clipes de reação do Pexels, pelo servidor (a chave fica lá). Estável entre renders: a
   // galeria refaz a busca quando esta função muda.
   const buscarClipes = useCallback(
-    async (termo: string, pagina: number): Promise<RespostaClipes> => {
+    async (termo: string, pagina: number, livre: boolean): Promise<RespostaClipes> => {
       const t = await token();
-      const r = await fetch(`/api/editor/pexels?q=${encodeURIComponent(termo)}&pagina=${pagina}`, { headers: { Authorization: `Bearer ${t}` } });
+      const r = await fetch(`/api/editor/pexels?q=${encodeURIComponent(termo)}&pagina=${pagina}${livre ? "&livre=1" : ""}`, { headers: { Authorization: `Bearer ${t}` } });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) return { clipes: [], temMais: false, erro: d.error ?? "falhou" };
       return { clipes: d.clipes ?? [], temMais: !!d.temMais };

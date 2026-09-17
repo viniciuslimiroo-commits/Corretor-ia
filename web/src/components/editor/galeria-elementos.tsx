@@ -149,7 +149,7 @@ export default function GaleriaElementos({
   podeMais: boolean;
   aoAdicionar: (e: ElementoCena) => void;
   /** Busca clipes de reação no Pexels (pelo servidor, com a sessão). */
-  buscarClipes: (termo: string, pagina: number) => Promise<RespostaClipes>;
+  buscarClipes: (termo: string, pagina: number, livre: boolean) => Promise<RespostaClipes>;
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
 }) {
@@ -178,7 +178,7 @@ export default function GaleriaElementos({
     let vivo = true;
     const t = setTimeout(
       () => {
-        buscarClipes(termoClipes, pagina)
+        buscarClipes(termoClipes, pagina, !!busca.trim())
           .then((r) => {
             if (!vivo) return;
             setClipes((antes) => (pagina > 1 && antes && antes.chave.startsWith(`${termoClipes}|`) ? { chave: chaveClipes, r: { ...r, clipes: [...antes.r.clipes, ...r.clipes] } } : { chave: chaveClipes, r }));
@@ -376,8 +376,10 @@ export default function GaleriaElementos({
               {CREDITO_PEXELS}
             </a>
           </div>
+          {/* Quebrando linha, e não rolando pro lado: numa fileira que rola, o celular só
+               mostrava a primeira categoria e ele achou que só havia "palmas". */}
           {!buscando && (
-            <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+            <div className="mb-2 flex flex-wrap gap-1.5">
               {CATEGORIAS_REACAO.map((c) => (
                 <Chip
                   key={c.id}
@@ -404,7 +406,7 @@ export default function GaleriaElementos({
                 ))}
                 {carregandoClipes && Array.from({ length: 6 }, (_, k) => <span key={`c${k}`} className="aspect-square animate-pulse rounded-lg bg-neutral-800/60" />)}
               </div>
-              {!carregandoClipes && clipes?.r.clipes.length === 0 && <p className="text-[11px] text-neutral-500">Nenhum clipe com “{termoClipes}”. Tente em inglês: laughing, clapping.</p>}
+              {!carregandoClipes && clipes?.r.clipes.length === 0 && <p className="text-[11px] text-neutral-500">Nenhum clipe com “{termoClipes}”. Tente outra palavra: rindo, aplaudindo, cachorro.</p>}
               {!carregandoClipes && clipes?.r.temMais && (
                 <button type="button" onClick={() => setPagina((n) => n + 1)} className="mt-2 w-full rounded-lg border border-neutral-200 py-1.5 text-xs text-neutral-600 hover:border-neutral-400">
                   Mais clipes

@@ -69,14 +69,14 @@ function paraClipe(v: VideoApi): ClipePexels | null {
 
 const buscas = new Map<string, { em: number; valor: { clipes: ClipePexels[]; temMais: boolean } }>();
 
-export async function buscarClipesPexels(termo: string, pagina: number): Promise<{ clipes: ClipePexels[]; temMais: boolean }> {
+export async function buscarClipesPexels(termo: string, pagina: number, emPortugues = false): Promise<{ clipes: ClipePexels[]; temMais: boolean }> {
   const q = termo.trim().slice(0, 80);
-  const chave = `${q.toLowerCase()}|${pagina}`;
+  const chave = `${q.toLowerCase()}|${pagina}|${emPortugues ? "pt" : "en"}`;
   const guardada = buscas.get(chave);
   if (guardada && Date.now() - guardada.em < CACHE_MS) return guardada.valor;
   // Clipe CURTO: um de 2 minutos serve igual, mas a prévia pesa à toa.
   const dados = await chamar<{ videos: VideoApi[]; next_page?: string }>(
-    `/videos/search?query=${encodeURIComponent(q)}&per_page=18&page=${pagina}&size=small&max_duration=30`
+    `/videos/search?query=${encodeURIComponent(q)}&per_page=18&page=${pagina}&size=small&max_duration=30${emPortugues ? "&locale=pt-BR" : ""}`
   );
   const valor = { clipes: dados.videos.map(paraClipe).filter((c): c is ClipePexels => !!c), temMais: !!dados.next_page };
   if (buscas.size > 300) buscas.clear();

@@ -60,8 +60,9 @@ export const TAMANHO_CLIPE_MIN = 0.1;
 export const TAMANHO_CLIPE_MAX = 0.45;
 
 /**
- * As prateleiras. A busca vai em INGLÊS pra API (o acervo é etiquetado em inglês e a busca
- * em português acha bem menos); o rótulo é o que a pessoa lê.
+ * As prateleiras. A busca da prateleira vai em INGLÊS (medido: é a etiqueta principal do
+ * acervo). O que a pessoa DIGITA vai em português com `locale=pt-BR`, que a API entende --
+ * medido em 17/09: "pessoa rindo" e "cachorro engraçado" trazem o que se espera.
  */
 export const CATEGORIAS_REACAO: { id: string; rotulo: string; busca: string }[] = [
   { id: "rindo", rotulo: "Rindo", busca: "person laughing" },
@@ -73,7 +74,11 @@ export const CATEGORIAS_REACAO: { id: string; rotulo: string; busca: string }[] 
   { id: "dancando", rotulo: "Dançando", busca: "happy dance" },
   { id: "chaves", rotulo: "Chaves na mão", busca: "house keys hand" },
   { id: "mudanca", rotulo: "Casa nova", busca: "moving into new home happy couple" },
-  { id: "pet", rotulo: "Bichos", busca: "funny dog" },
+  { id: "oi", rotulo: "Oi / tchau", busca: "person waving hello" },
+  { id: "nao_acredito", rotulo: "Não acredito", busca: "facepalm disappointed" },
+  { id: "pet", rotulo: "Cachorros", busca: "funny dog" },
+  { id: "gatos", rotulo: "Gatos", busca: "funny cat" },
+  { id: "bebes", rotulo: "Bebês", busca: "baby laughing" },
 ];
 
 export const CREDITO_PEXELS = "Vídeos do Pexels";
