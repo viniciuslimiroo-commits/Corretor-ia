@@ -139,7 +139,6 @@ if (!temChavePexels()) {
         const [a, b, c] = [await quadro(saida, 3.5), await quadro(saida, 4.0), await quadro(saida, 4.5)];
         const mexe = Math.max(mudanca(a, b, caixa).dentro, mudanca(b, c, caixa).dentro, mudanca(a, c, caixa).dentro);
         conferir(mexe > 0.01, "e continua se mexendo depois do primeiro laço", `mudou até ${(mexe * 100).toFixed(1)}% entre 3,5s e 4,5s`);
-        fs.copyFileSync(saida, path.join(RAIZ, "..", "docs", "testes-reais", "editor", "clipe-pexels-na-cena.mp4"));
       }
     }
   }
