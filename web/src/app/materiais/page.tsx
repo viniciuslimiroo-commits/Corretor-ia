@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
@@ -81,7 +81,10 @@ export default function Books() {
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [precisaMigracao, setPrecisaMigracao] = useState(false);
-  const [criando, setCriando] = useState(false);
+  const [criando, setCriando] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("novo") === "1";
+  });
   // `?imovel=` vem da página do imóvel. Lido no ESTADO INICIAL e não num efeito: chamar
   // setState dentro de efeito de montagem dispara um render em cascata, e o compilador do
   // React reprova com razão -- o valor já se sabe antes do primeiro desenho.
@@ -90,25 +93,45 @@ export default function Books() {
   );
   const [tipoEscolhido, setTipoEscolhido] = useState<TipoBook>("book");
   const [imagens, setImagens] = useState<ItemBiblioteca[] | null>(null);
-  const [marcadas, setMarcadas] = useState<string[]>([]);
+  const [marcadas, setMarcadas] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    if (new URLSearchParams(window.location.search).get("novo") === "1") {
+      const vindas = lerSelecao();
+      if (vindas.length > 0) {
+        limparSelecao();
+        return vindas;
+      }
+    }
+    return [];
+  });
   const [montando, setMontando] = useState(false);
-  const [modo, setModo] = useState<"auto" | "manual">("auto");
+  const [modo, setModo] = useState<"auto" | "manual">(() => {
+    if (typeof window === "undefined") return "auto";
+    if (new URLSearchParams(window.location.search).get("novo") === "1") {
+      const vindas = lerSelecao();
+      if (vindas.length > 0) return "manual";
+    }
+    return "auto";
+  });
   /** Só o catálogo usa: os outros tipos falam de um imóvel só. */
   const [imoveisDoCatalogo, setImoveisDoCatalogo] = useState<string[]>([]);
   const [recado, setRecado] = useState(0);
   const [outrosAbertos, setOutrosAbertos] = useState(false);
   /** Quantas imagens vieram marcadas da Galeria. Zero = a pessoa começou aqui. */
-  const [veioDaGaleria, setVeioDaGaleria] = useState(0);
-  // Indireção pra chamar abrirCriacao de um efeito sem o React Compiler reclamar de
-  // função declarada depois do uso.
-  const abrirCriacaoRef = useRef<(() => void) | null>(null);
+  const [veioDaGaleria, setVeioDaGaleria] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    if (new URLSearchParams(window.location.search).get("novo") === "1") {
+      const vindas = lerSelecao();
+      return vindas.length;
+    }
+    return 0;
+  });
   const { user, token } = c;
 
   // Montar automaticamente leva de 10 a 40 segundos: a IA olha cada foto. Barra de
   // progresso mentiria (não dá pra saber a fração); dizer o que está acontecendo, não.
   useEffect(() => {
     if (!montando || modo !== "auto") return;
-    setRecado(0);
     const t = setInterval(() => setRecado((r) => Math.min(r + 1, PASSOS.length - 1)), 5000);
     return () => clearInterval(t);
   }, [montando, modo]);
@@ -122,24 +145,6 @@ export default function Books() {
     if (!rb.ok) throw Object.assign(new Error(db.error), { migracao: !!db.migracao });
     return { books: db.books as Book[], imoveis: (di.imoveis ?? []) as Imovel[] };
   }, [token]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("novo") === "1") abrirCriacaoRef.current?.();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    buscar()
-      .then((d) => {
-        setBooks(d.books);
-        setImoveis(d.imoveis);
-      })
-      .catch((e: Error & { migracao?: boolean }) => {
-        setErro(e.message);
-        setPrecisaMigracao(!!e.migracao);
-        setBooks([]);
-      });
-  }, [user, buscar]);
 
   const carregarImagens = useCallback(
     async (imovel: string) => {
@@ -174,28 +179,39 @@ export default function Books() {
     [carregarImagens]
   );
 
-  function abrirCriacao() {
+  const abrirCriacao = useCallback(() => {
     setCriando(true);
-    const primeiro = comFotos[0] ?? null;
-    if (primeiro) escolherImovel(primeiro.id);
-    else setImovelEscolhido(null);
-  }
-
-  /**
-   * Quem chega da Galeria com fotos marcadas cai no modo manual, com a seleção já feita.
-   *
-   * É a porta única: a Galeria escolhe O QUE entra, esta tela escolhe O QUE VIRA. Antes
-   * havia um segundo montador só pra isso, com outro motor e outro resultado.
-   */
-  useEffect(() => {
-    if (!user || !criando) return;
     const vindas = lerSelecao();
-    if (vindas.length === 0) return;
-    limparSelecao();
-    setModo("manual");
-    setMarcadas(vindas);
-    setVeioDaGaleria(vindas.length);
-  }, [user, criando]);
+    if (vindas.length > 0) {
+      limparSelecao();
+      setModo("manual");
+      setMarcadas(vindas);
+      setVeioDaGaleria(vindas.length);
+      setImovelEscolhido(null);
+    } else {
+      const primeiro = comFotos[0] ?? null;
+      if (primeiro) escolherImovel(primeiro.id);
+      else setImovelEscolhido(null);
+    }
+  }, [comFotos, escolherImovel]);
+
+  useEffect(() => {
+    if (!user) return;
+    buscar()
+      .then((d) => {
+        setBooks(d.books);
+        setImoveis(d.imoveis);
+        if (criando && !imovelEscolhido && marcadas.length === 0) {
+          const comF = d.imoveis.filter((i) => i.fotos > 0);
+          if (comF[0]) escolherImovel(comF[0].id);
+        }
+      })
+      .catch((e: Error & { migracao?: boolean }) => {
+        setErro(e.message);
+        setPrecisaMigracao(!!e.migracao);
+        setBooks([]);
+      });
+  }, [user, buscar, criando, imovelEscolhido, marcadas.length, escolherImovel]);
 
   // Quem manda é a definição do tipo, não o id: catálogo E portfólio falam de vários
   // imóveis, e comparar com "catalogo" deixava o portfólio preso na escolha de um só.
@@ -204,8 +220,6 @@ export default function Books() {
   function alternarImovelDoCatalogo(id: string) {
     setImoveisDoCatalogo((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
   }
-
-  abrirCriacaoRef.current = abrirCriacao;
 
   function alternar(jobId: string) {
     setMarcadas((m) => (m.includes(jobId) ? m.filter((x) => x !== jobId) : [...m, jobId]));
@@ -217,6 +231,7 @@ export default function Books() {
     const temAlvo = ehVarios ? imoveisDoCatalogo.length > 0 : !!imovelEscolhido || (!auto && marcadas.length > 0);
     if (!temAlvo) return;
     setMontando(true);
+    setRecado(0);
     setErro(null);
     try {
       const r = await fetch("/api/books", {
