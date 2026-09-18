@@ -122,3 +122,19 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/* ---------- FAIXAS DA LINHA DO TEMPO (docs/planos/linha-do-tempo-spec.md, D3) ----------
+   Uma cor por tipo de coisa no vídeo, pra faixa fina de 8px já dizer o que é sem rótulo.
+   Contraste medido contra o fundo do editor (#081227), o painel (#112744) e o trilho
+   (#0d1e3a): o menor é a guia coral sobre o painel, 4,95 -- tudo acima de 3:1. A letra
+   escura #081227 sobre qualquer uma passa de 7. */
+.editor-escuro {
+  --faixa-voce: #2cb1a3;
+  --faixa-voz: #e9b949;
+  --faixa-musica: #7f9cf5;
+  --faixa-textos: #fad7c4;
+  --faixa-adesivos: #d08be8;
+  --faixa-legendas: #8fd19e;
+  --linha-guia: #f06b4f;
+  --trilho-faixa: #0d1e3a;
+}
