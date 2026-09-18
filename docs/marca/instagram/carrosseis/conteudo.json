@@ -1,0 +1,58 @@
+[
+  {
+    "slug": "01-antes-e-depois",
+    "titulo": "Antes e depois",
+    "legenda": " A mesma sala, duas fotos. Mobiliar, esvaziar, tirar objeto, trocar piso, parede ou céu, direto da foto do celular. Toda imagem alterada sai com o aviso de imagem ilustrativa. 5 fotos grátis, sem cartão: link na bio.",
+    "slides": [
+      {"bg": "light", "logo": true, "par_topo": ["sala", "Mobiliar · sala de estar, estilo praiano"], "tag": "Antes e depois", "h1": "A mesma sala. Duas fotos. Só uma vende.", "big": true, "body": "O que muda não é a câmera. É o que o comprador consegue imaginar."},
+      {"bg": "dark", "tag": "O problema", "h1": "Foto de cômodo vazio não emociona ninguém", "body": "Sem móveis, o comprador não se vê morando ali. O anúncio passa batido no feed e a visita não acontece.", "pills": ["~fotógrafo + móveis alugados", "~dias de montagem", "~custo por imóvel"]},
+      {"bg": "grad", "tag": "A solução", "h1": "Mobiliar a foto, sem mover um sofá", "par": ["quarto", "Mobiliar · quarto vazio, estilo escandinavo"], "body": "Você envia a foto, escolhe o estilo e recebe o cômodo pronto pra anunciar."},
+      {"bg": "light", "tag": "Não é só mobiliar", "h2": "Uma foto de celular, várias saídas", "items": [["sofa", "Mobiliar", "10 estilos, do escandinavo ao brasileiro contemporâneo"], ["empty", "Esvaziar", "Tira os móveis do morador e devolve o cômodo vazio"], ["x", "Tirar objeto", "Some com a bagunça da bancada"], ["layers", "Trocar piso ou parede", "O mesmo cômodo com outro acabamento"], ["sun", "Melhorar foto", "Luz, cor e perspectiva corrigidas"], ["cloud", "Trocar céu", "Fachada com dia bonito"]]},
+      {"bg": "dark", "tag": "Mais antes e depois", "h2": "Bancada limpa, parede nova", "par": ["cozinha", "Tirar objeto · a bagunça da bancada"], "par2": ["parede", "Mudar parede · terracota"]},
+      {"bg": "light", "tag": "Como funciona", "h2": "Três passos, no celular", "steps": [["Envie a foto", "Do celular mesmo: escura, vazia ou bagunçada, tudo entra"], ["Escolha o que fazer", "Mobiliar, esvaziar, tirar objeto, trocar piso, parede ou céu"], ["Compare, baixe e publique", "Antes e depois lado a lado, no tamanho do portal"]], "footnote": "Toda foto alterada sai com o aviso “Imagem ilustrativa”. É o que protege você no anúncio."},
+      {"bg": "grad", "logo": true, "h1": "Teste com a sua próxima foto", "big": true, "body": "5 fotos grátis, sem cartão.", "cta": "Testar grátis"}
+    ]
+  },
+  {
+    "slug": "02-cinco-erros-fotos",
+    "titulo": "5 erros nas fotos de imóveis",
+    "legenda": " Os 5 erros de foto que afastam comprador. Todos têm conserto, e no mesmo lugar. Salva pra não esquecer.",
+    "slides": [
+      {"bg": "light", "logo": true, "tag": "Fotos de imóveis", "h1": "5 erros de foto que afastam comprador", "big": true, "body": "E o corretor nem percebe que está cometendo."},
+      {"bg": "dark", "bignum": "01", "h2": "Cômodo vazio", "body": "Sem móveis não há escala nem referência. O quarto parece menor do que é, e ninguém se imagina morando ali."},
+      {"bg": "light", "bignum": "02", "h2": "Foto escura ou amarelada", "body": "Luz ruim passa a sensação de imóvel mal cuidado. O comprador julga o estado do imóvel pela foto, não pela descrição."},
+      {"bg": "dark", "bignum": "03", "h2": "Céu cinza na fachada", "body": "O clima do dia vira o clima do anúncio. Fachada com céu fechado parece triste, mesmo que a casa seja ótima."},
+      {"bg": "light", "bignum": "04", "h2": "Bagunça do morador", "body": "Roupa na cadeira, geladeira cheia de ímã, brinquedo no chão. Os objetos pessoais tiram o foco do imóvel."},
+      {"bg": "dark", "bignum": "05", "h2": "Mesmo estilo pra todo público", "body": "Apartamento de casal jovem e casa de família pedem cenários diferentes. Foto genérica não conversa com ninguém."},
+      {"bg": "light", "tag": "A boa notícia", "h2": "Os cinco têm conserto no mesmo lugar", "items": [["sofa", "Mobiliar", "10 estilos: o cenário certo pra cada público"], ["sun", "Melhorar foto", "Luz, cor e perspectiva corrigidas"], ["cloud", "Trocar céu", "Dia bonito em qualquer fachada"], ["x", "Tirar objeto ou esvaziar", "Adeus bagunça do morador"]]},
+      {"bg": "grad", "logo": true, "h1": "Manda a foto pior que você tem", "big": true, "body": "A gente devolve pronta pra anunciar. 5 fotos grátis, sem cartão.", "cta": "Testar grátis"}
+    ]
+  },
+  {
+    "slug": "03-como-funciona",
+    "titulo": "Como funciona, passo a passo",
+    "legenda": " Do celular pro anúncio em 3 passos. Sem designer, sem fotógrafo, sem mover um móvel. As 5 primeiras fotos são por nossa conta.",
+    "slides": [
+      {"bg": "light", "logo": true, "tag": "Passo a passo", "h1": "Do celular pro anúncio em 3 passos", "big": true, "body": "Sem designer, sem fotógrafo, sem mover um móvel."},
+      {"bg": "dark", "bignum": "1", "tag": "Passo 1", "h2": "Envie a foto", "body": "Foto do celular serve. Ela fica guardada numa área só sua, e a original nunca é alterada."},
+      {"bg": "light", "bignum": "2", "tag": "Passo 2", "h2": "Escolha o que fazer", "body": "Uma ação por vez, com o estilo que combina com o público do imóvel.", "pills": ["Mobiliar", "Esvaziar", "Tirar objeto", "Trocar piso", "Melhorar foto", "Trocar céu"]},
+      {"bg": "dark", "bignum": "3", "tag": "Passo 3", "h2": "Compare e publique", "body": "Em menos de um minuto o resultado aparece ao lado do original, com o aviso de imagem ilustrativa. Ficou ruim? O crédito volta na hora."},
+      {"bg": "light", "tag": "Quanto custa", "h2": "Você paga pela foto editada", "items": [["coin", "1 crédito, 1 foto editada", "Assinatura ou pacote avulso, que não expira"], ["check", "Vídeo, tour 360° e planta", "Sem gastar crédito"], ["lock", "Sem contrato", "Cancela com um clique, sem multa"]]},
+      {"bg": "grad", "logo": true, "h1": "As 5 primeiras fotos são por nossa conta", "big": true, "body": "Sem cartão. Teste com um imóvel de verdade.", "cta": "Testar grátis"}
+    ]
+  },
+  {
+    "slug": "04-apresentacao",
+    "titulo": "Apresentação do Encena",
+    "legenda": " Encena: fotos, vídeo, tour 360°, planta e terreno, com a sua marca, num lugar só. Feito pra corretor e imobiliária. 5 fotos grátis no link da bio.",
+    "slides": [
+      {"bg": "light", "logo": true, "foto_topo": ["sala-depois", "Mobiliar · sala de estar, estilo praiano"], "tag": "Apresentando", "h1": "O imóvel inteiro, pronto para anunciar.", "big": true, "body": "Fotos, vídeo, tour 360°, planta e terreno, com a sua marca, num lugar só."},
+      {"bg": "dark", "tag": "O problema", "h1": "Anúncio bom dá trabalho demais", "body": "Fotógrafo, móveis, editor de vídeo, alguém pro material. Por isso a maioria sai com a foto do celular e mais nada.", "items": [["coin", "Caro", "Um fornecedor pra cada peça do anúncio"], ["clock", "Lento", "Dias entre a captação e o anúncio no ar"]]},
+      {"bg": "grad", "tag": "A solução", "h1": "Da foto ao anúncio, com a sua marca", "quote": "Feito pra corretor e imobiliária, não pra designer.", "pills": ["Fotos", "Vídeo", "Tour 360°", "Planta", "Terreno", "Book e posts"]},
+      {"bg": "light", "tag": "O que faz", "h2": "Tudo que o anúncio precisa", "items": [["sofa", "Fotos editadas", "Mobiliar, esvaziar, trocar piso, parede e céu"], ["play", "Vídeo do imóvel", "Movimento de câmera, música, narração e sua marca"], ["globo", "Tour 360°", "Da foto 360° ou da panorâmica do celular"], ["planta", "Planta baixa", "Áreas calculadas tocando nos cantos"], ["lote", "Terreno e lote", "Lote demarcado com medidas e área"], ["book", "Book e posts", "Material pronto pra mandar e postar"]]},
+      {"bg": "dark", "tag": "Por que confiar", "h2": "Sem pegadinha", "items": [["shield", "Aviso de imagem ilustrativa", "Gravado em toda foto alterada: protege você no anúncio"], ["lock", "Original guardada", "Sua foto fica privada e intacta"], ["coin", "Crédito de volta", "Ficou ruim? Uma IA confere e o crédito volta"]]},
+      {"bg": "light", "tag": "Pra quem é", "h2": "Do corretor sozinho à imobiliária inteira", "items": [["user", "Corretor", "Sem CNPJ e sem equipe: só o seu e-mail"], ["users", "Equipe", "Dupla de corretores ou corretor com assistente"], ["building", "Imobiliária", "A marca da casa no material de todo corretor"]]},
+      {"bg": "grad", "logo": true, "h1": "Conheça o Encena", "big": true, "body": "5 fotos grátis, sem cartão.", "cta": "Testar grátis"}
+    ]
+  }
+]

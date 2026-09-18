@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="total-slides" content="6">
+<title>Como funciona, passo a passo · Encena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+:root{--indigo:#0F2D5B;--indigo-2:#16386E;--coral:#F06B4F;--coral-escuro:#D9583E;--coral-texto:#C4462C;--pessego:#FAD7C4;--teal:#2CB1A3;--creme:#FFF8F3;--linha:#EFDFD5;--suave:#44546F}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#F3ECE6;font-family:'Geist',system-ui,sans-serif;color:var(--indigo)}
+body{display:flex;justify-content:center;padding:32px 0}
+.ig-frame{width:420px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(15,45,91,.14)}
+.ig-header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #EFEFEF}
+.ig-avatar{width:32px;height:32px;border-radius:50%;overflow:hidden;flex:0 0 32px}
+.ig-avatar svg{width:100%;height:100%;display:block}
+.ig-header b{font-size:13px;font-weight:600}
+.ig-header small{display:block;font-size:11px;color:#6B7280;font-weight:400}
+.viewport{width:420px;height:525px;overflow:hidden;position:relative;touch-action:pan-y;cursor:grab}
+.carousel-track{display:flex;height:100%;transition:transform .35s ease}
+.slide{width:420px;height:525px;flex:0 0 420px;position:relative;padding:36px 32px 72px 32px;display:flex;flex-direction:column;overflow:hidden}
+.slide.light{background:var(--creme);color:var(--indigo)}
+.slide.dark{background:radial-gradient(circle at 100% 0%,rgba(240,107,79,.20),transparent 55%),var(--indigo);color:#fff}
+.slide.grad{background:radial-gradient(circle at 0% 0%,rgba(15,45,91,.22),transparent 60%),linear-gradient(165deg,#B8402A 0%,#D9583E 50%,#F06B4F 100%);color:#fff}
+.serif,.sans{font-family:'Geist',system-ui,sans-serif}
+.tag{display:inline-block;align-self:flex-start;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:5px 10px;border-radius:999px;margin-bottom:16px}
+.light .tag{background:var(--pessego);color:var(--indigo)}
+.dark .tag{background:rgba(240,107,79,.16);color:var(--pessego);border:1px solid rgba(240,107,79,.45)}
+.grad .tag{background:var(--indigo);color:var(--pessego)}
+h1{font-size:30px;font-weight:700;line-height:1.12;letter-spacing:-.6px;margin-bottom:14px}
+h1.big{font-size:33px}
+h2{font-size:26px;font-weight:700;line-height:1.16;letter-spacing:-.4px;margin-bottom:14px}
+p.body{font-size:14px;line-height:1.55;font-weight:400;max-width:350px}
+.light p.body{color:var(--suave)}
+.dark p.body{color:#C9D3E3}
+.grad p.body{color:#fff}
+.logo{display:flex;align-items:center;gap:9px;margin-bottom:auto}
+.logo.junto{margin-bottom:16px}
+.logo svg{width:30px;height:30px;display:block}
+.logo span{font-weight:700;font-size:16px;letter-spacing:-.3px}
+.logo span small{font-size:.58em;font-weight:600;opacity:.55;letter-spacing:0}
+.spacer{flex:1}
+.slide.center{justify-content:center}
+.quote{background:rgba(15,45,91,.55);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:16px 18px;font-style:italic;font-size:15px;line-height:1.5;margin-top:14px;color:#fff}
+.light .quote{background:var(--indigo);border-color:var(--indigo)}
+.list{margin-top:4px}
+.list.compact{margin-top:0}.list.compact .item{padding:6px 0}.list.compact .icon{width:26px;height:26px;flex-basis:26px}.list.compact .item span{font-size:11px}
+.item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--linha);align-items:flex-start}
+.dark .item{border-bottom-color:rgba(255,255,255,.1)}
+.item:last-child{border-bottom:none}
+.icon{width:30px;height:30px;border-radius:8px;flex:0 0 30px;display:flex;align-items:center;justify-content:center}
+.light .icon{background:var(--coral);color:#fff}
+.dark .icon{background:rgba(240,107,79,.14);color:var(--coral)}
+.icon svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.item b{display:block;font-size:14px;font-weight:600;margin-bottom:2px}
+.item span{font-size:12px;line-height:1.45}
+.light .item span{color:var(--suave)}
+.dark .item span{color:#C9D3E3}
+.step{display:flex;gap:16px;padding:12px 0;border-bottom:1px solid var(--linha);align-items:flex-start}
+.step:last-child{border-bottom:none}
+.step .n{font-size:28px;font-weight:300;line-height:1;color:var(--coral-escuro);width:32px;flex:0 0 32px}
+.step b{display:block;font-size:14px;font-weight:600;margin-bottom:2px}
+.step span{font-size:12px;line-height:1.45;color:var(--suave)}
+.bignum{font-size:92px;font-weight:300;line-height:.9;letter-spacing:-4px;margin-bottom:14px}
+.light .bignum{color:var(--coral-escuro)}
+.dark .bignum{color:var(--coral)}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.pill{font-size:11px;font-weight:600;padding:6px 11px;border-radius:999px;border:1px solid}
+.light .pill{border-color:var(--coral-escuro);color:var(--indigo);background:#fff}
+.dark .pill{border-color:rgba(255,255,255,.28);color:#fff}
+.grad .pill{border-color:rgba(255,255,255,.6);color:#fff}
+.pill.strike{text-decoration:line-through;opacity:.7}
+.par{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:2px 0 6px}
+.par figure,.foto figure{position:relative}
+.par img{width:100%;aspect-ratio:4/3;object-fit:cover;object-position:100% 50%;border-radius:10px;display:block}
+.foto img{width:100%;aspect-ratio:16/10;object-fit:cover;object-position:100% 60%;border-radius:12px;display:block}
+.rot{position:absolute;left:6px;top:6px;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:3px 7px;border-radius:999px;color:#fff}
+.rot.antes{background:rgba(15,45,91,.88)}
+.rot.depois{background:var(--coral-texto)}
+.leg-foto{font-size:11px;line-height:1.4;margin-bottom:14px}
+.light .leg-foto{color:var(--suave)}
+.dark .leg-foto{color:#C9D3E3}
+.grad .leg-foto{color:#fff}
+.cta{display:inline-block;align-self:flex-start;margin-top:22px;padding:13px 26px;border-radius:999px;background:var(--creme);color:var(--indigo);font-size:15px;font-weight:700}
+.handle{font-size:12px;font-weight:600;opacity:.9;margin-top:14px}
+.nota{font-size:11.5px;line-height:1.45;margin-top:auto;padding-top:10px}
+.light .nota{color:var(--suave)}
+.progress{position:absolute;left:28px;right:28px;bottom:20px;display:flex;align-items:center;gap:10px}
+.progress .track{flex:1;height:3px;border-radius:3px;background:rgba(15,45,91,.1);overflow:hidden}
+.dark .progress .track,.grad .progress .track{background:rgba(255,255,255,.16)}
+.progress .fill{height:100%;border-radius:3px;background:var(--coral)}
+.grad .progress .fill{background:#fff}
+.progress .count{font-size:11px;font-weight:500;opacity:.75}
+.arrow{position:absolute;top:0;right:0;width:48px;height:100%;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.light .arrow{background:linear-gradient(90deg,transparent,rgba(15,45,91,.06))}
+.dark .arrow,.grad .arrow{background:linear-gradient(90deg,transparent,rgba(255,255,255,.08))}
+.arrow svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+.ig-dots{display:flex;justify-content:center;gap:4px;padding:10px 0 4px}
+.ig-dots i{width:6px;height:6px;border-radius:50%;background:#D1D5DB}
+.ig-dots i.on{background:var(--coral)}
+.ig-actions{display:flex;gap:14px;padding:6px 14px 8px}
+.ig-actions svg{width:22px;height:22px;stroke:var(--indigo);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ig-actions .save{margin-left:auto}
+.ig-caption{padding:0 14px 14px;font-size:13px;line-height:1.45}
+.ig-caption b{margin-right:6px}
+body.exportando{padding:0;background:transparent;display:block}
+body.exportando .ig-frame{border-radius:0;box-shadow:none;width:420px}
+body.exportando .ig-header,body.exportando .ig-dots,body.exportando .ig-actions,body.exportando .ig-caption{display:none}
+
+</style>
+</head>
+<body>
+<div class="ig-frame">
+  <div class="ig-header"><div class="ig-avatar"><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#0F2D5B"/><g transform="translate(32 32) scale(0.86) translate(-35 -32)"><rect x="16" y="15" width="8" height="34" rx="2" fill="#fff"/><rect x="16" y="15" width="30" height="8" rx="2" fill="#fff"/><rect x="16" y="41" width="30" height="8" rx="2" fill="#fff"/><rect x="16" y="28" width="38" height="8" rx="4" fill="#F06B4F"/></g></svg></div><div><b>encena.app</b><small>O imóvel inteiro, pronto para anunciar.</small></div></div>
+  <div class="viewport" id="viewport">
+    <div class="carousel-track" id="track">
+<section class="slide light">
+<div class="logo"><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0F2D5B"/><rect x="16" y="15" width="8" height="34" rx="2" fill="#fff"/><rect x="16" y="15" width="30" height="8" rx="2" fill="#fff"/><rect x="16" y="41" width="30" height="8" rx="2" fill="#fff"/><rect x="16" y="28" width="38" height="8" rx="4" fill="#F06B4F"/></svg><span>Encena<small>.ai</small></span></div>
+<span class="tag sans">Passo a passo</span>
+<h1 class="serif big">Do celular pro anúncio em 3 passos</h1>
+<p class="body sans">Sem designer, sem fotógrafo, sem mover um móvel.</p>
+<div class="progress"><div class="track"><div class="fill" style="width:16.7%"></div></div><span class="count sans">1/6</span></div>
+<div class="arrow"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+</section>
+<section class="slide dark center">
+<span class="tag sans">Passo 1</span>
+<div class="bignum serif">1</div>
+<h2 class="serif">Envie a foto</h2>
+<p class="body sans">Foto do celular serve. Ela fica guardada numa área só sua, e a original nunca é alterada.</p>
+<div class="progress"><div class="track"><div class="fill" style="width:33.3%"></div></div><span class="count sans">2/6</span></div>
+<div class="arrow"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+</section>
+<section class="slide light center">
+<span class="tag sans">Passo 2</span>
+<div class="bignum serif">2</div>
+<h2 class="serif">Escolha o que fazer</h2>
+<p class="body sans">Uma ação por vez, com o estilo que combina com o público do imóvel.</p>
+<div class="pills">
+<span class="pill sans">Mobiliar</span>
+<span class="pill sans">Esvaziar</span>
+<span class="pill sans">Tirar objeto</span>
+<span class="pill sans">Trocar piso</span>
+<span class="pill sans">Melhorar foto</span>
+<span class="pill sans">Trocar céu</span>
+</div>
+<div class="progress"><div class="track"><div class="fill" style="width:50.0%"></div></div><span class="count sans">3/6</span></div>
+<div class="arrow"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+</section>
+<section class="slide dark center">
+<span class="tag sans">Passo 3</span>
+<div class="bignum serif">3</div>
+<h2 class="serif">Compare e publique</h2>
+<p class="body sans">Em menos de um minuto o resultado aparece ao lado do original, com o aviso de imagem ilustrativa. Ficou ruim? O crédito volta na hora.</p>
+<div class="progress"><div class="track"><div class="fill" style="width:66.7%"></div></div><span class="count sans">4/6</span></div>
+<div class="arrow"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+</section>
+<section class="slide light">
+<span class="tag sans">Quanto custa</span>
+<h2 class="serif">Você paga pela foto editada</h2>
+<div class="list">
+<div class="item"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h3.5a1.5 1.5 0 0 1 0 3H11a1.5 1.5 0 0 0 0 3h3.5"/></svg></div><div><b class="sans">1 crédito, 1 foto editada</b><span class="sans">Assinatura ou pacote avulso, que não expira</span></div></div>
+<div class="item"><div class="icon"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div><div><b class="sans">Vídeo, tour 360° e planta</b><span class="sans">Sem gastar crédito</span></div></div>
+<div class="item"><div class="icon"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div><b class="sans">Sem contrato</b><span class="sans">Cancela com um clique, sem multa</span></div></div>
+</div>
+<div class="progress"><div class="track"><div class="fill" style="width:83.3%"></div></div><span class="count sans">5/6</span></div>
+<div class="arrow"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+</section>
+<section class="slide grad">
+<div class="logo"><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0F2D5B"/><rect x="16" y="15" width="8" height="34" rx="2" fill="#fff"/><rect x="16" y="15" width="30" height="8" rx="2" fill="#fff"/><rect x="16" y="41" width="30" height="8" rx="2" fill="#fff"/><rect x="16" y="28" width="38" height="8" rx="4" fill="#F06B4F"/></svg><span>Encena<small>.ai</small></span></div>
+<h1 class="serif big">As 5 primeiras fotos são por nossa conta</h1>
+<p class="body sans">Sem cartão. Teste com um imóvel de verdade.</p>
+<div class="spacer"></div><a class="cta sans">Testar grátis</a><div class="handle sans">@encena.app</div>
+<div class="progress"><div class="track"><div class="fill" style="width:100.0%"></div></div><span class="count sans">6/6</span></div>
+</section>
+    </div>
+  </div>
+  <div class="ig-dots" id="dots"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div>
+  <div class="ig-actions">
+    <svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+    <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>
+    <svg viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
+    <svg class="save" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+  </div>
+  <div class="ig-caption"><b>encena.app</b> Do celular pro anúncio em 3 passos. Sem designer, sem fotógrafo, sem mover um móvel. As 5 primeiras fotos são por nossa conta.</div>
+</div>
+<script>
+(function(){
+  var total=6,idx=0,track=document.getElementById('track'),vp=document.getElementById('viewport'),dots=document.getElementById('dots').children;
+  function go(n){idx=Math.max(0,Math.min(total-1,n));track.style.transform='translateX('+(-idx*420)+'px)';for(var k=0;k<total;k++)dots[k].className=k===idx?'on':'';}
+  var x0=null;
+  vp.addEventListener('pointerdown',function(ev){x0=ev.clientX;});
+  vp.addEventListener('pointerup',function(ev){if(x0===null)return;var d=ev.clientX-x0;x0=null;if(d<-30)go(idx+1);else if(d>30)go(idx-1);else go(ev.clientX>210?idx+1:idx-1);});
+  document.addEventListener('keydown',function(ev){if(ev.key==='ArrowRight')go(idx+1);if(ev.key==='ArrowLeft')go(idx-1);});
+})();
+</script>
+</body>
+</html>
