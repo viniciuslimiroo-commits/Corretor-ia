@@ -1409,7 +1409,11 @@ export default function EditorDeVideo() {
     const t0 = performance.now();
     const cx = ((caixa.left + caixa.width / 2 - palco.left) / palco.width) * 100;
     const cy = ((caixa.top + caixa.height / 2 - palco.top) / palco.height) * 100;
-    const decimo = (v: number) => Math.round(Math.min(95, Math.max(5, v)) * 10) / 10;
+    // O texto inteiro fica dentro do quadro, como o vídeo faz (min/max no drawtext e na arte):
+    // o centro não passa da metade da largura/altura dele a partir da borda.
+    const meiaL = Math.max(5, (caixa.width / 2 / palco.width) * 100);
+    const meiaA = Math.max(5, (caixa.height / 2 / palco.height) * 100);
+    const decimo = (v: number, meia: number) => Math.round(Math.min(100 - meia, Math.max(meia, v)) * 10) / 10;
     let arrastou = false;
     let pendente: { x: number; y: number } | null = null;
     let quadro = 0;
@@ -1418,7 +1422,7 @@ export default function EditorDeVideo() {
       const dy = m.clientY - y0;
       if (!arrastou && Math.hypot(dx, dy) > 6) arrastou = true;
       if (!arrastou || indice < 0) return;
-      pendente = { x: decimo(cx + (dx / palco.width) * 100), y: decimo(cy + (dy / palco.height) * 100) };
+      pendente = { x: decimo(cx + (dx / palco.width) * 100, meiaL), y: decimo(cy + (dy / palco.height) * 100, meiaA) };
       if (!quadro)
         quadro = requestAnimationFrame(() => {
           quadro = 0;
@@ -2842,6 +2846,7 @@ export default function EditorDeVideo() {
             <div className="mx-auto w-full" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
               <div
                 ref={palcoRef}
+                data-palco
                 className="relative mx-auto h-[34vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
                 style={{ aspectRatio: PROPORCAO[formato] }}
                 // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
