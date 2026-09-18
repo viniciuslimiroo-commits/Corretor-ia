@@ -360,7 +360,9 @@ export default function LinhaDoTempo({
             }}
             onDrop={(e) => {
               e.preventDefault();
-              aoSoltarEm(blocos[blocos.length - 1]?.chave ?? "fim", e);
+              // Soltar no espaço vazio é "no fim". Usar a chave do último bloco punha a
+              // foto ANTES da última cena.
+              aoSoltarEm("fim", e);
             }}
           >
             {blocos.map((b, i) => {

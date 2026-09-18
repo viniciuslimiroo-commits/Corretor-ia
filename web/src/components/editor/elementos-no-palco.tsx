@@ -3,7 +3,7 @@
 import { ELEMENTO_POR_ID, FICHA_EXEMPLO, ANCORAS, livreDe, posicionarPecas, type AncoraElemento, type IconeFicha } from "@/lib/elementos";
 import { ADESIVO_POR_ID, idDoAdesivo, urlDoAdesivo } from "@/lib/adesivos";
 import { LOOP_CLIPE_S, TAMANHO_CLIPE, TAMANHO_CLIPE_MAX, TAMANHO_CLIPE_MIN, idDoPexels } from "@/lib/pexels";
-import type { ElementoCena } from "@/lib/video";
+import { LIMITES, type ElementoCena } from "@/lib/video";
 import type { ItemMenu, useMenuContexto } from "@/components/editor/menu-contexto";
 import { useRef, type ReactNode } from "react";
 import { useMovimento } from "@/components/editor/com-movimento";
@@ -110,7 +110,8 @@ export default function ElementosNoPalco({
                 {
                   rotulo: "Duplicar peça",
                   icone: "copiar",
-                  desligado: elementos.length >= 4,
+                  // O limite de peças por cena (3): com 4 aqui, o botão ficava ativo e não fazia nada.
+                  desligado: elementos.length >= LIMITES.elementosPorCena,
                   aoEscolher: () => aoDuplicar(p.i),
                 },
               ]
@@ -149,7 +150,6 @@ export default function ElementosNoPalco({
             icone: "lixeira",
             perigo: true,
             divisor: true,
-            atalho: "Del",
             aoEscolher: () => aoTirar(p.i),
           },
         ];
@@ -168,49 +168,58 @@ export default function ElementosNoPalco({
             title={`${rotulo} · clique e arraste para mover · botão direito para opções`}
             {...gatilho(itens)}
             onPointerDown={(e) => {
-              if (p.quadroInteiro) return;
-              if (e.button !== 0) return;
+              // Arrastar move (x/y livre, a MESMA conta do vídeo); toque curto seleciona. Não
+              // seleciona quando o dedo ficou segurado (o menu abre aos 450ms) nem quando o
+              // toque foi cancelado pela rolagem. O movimento entra uma vez por quadro.
+              if (p.quadroInteiro || e.button !== 0) return;
               const el = e.currentTarget;
-              el.setPointerCapture(e.pointerId);
-              const inicioX = e.clientX;
-              const inicioY = e.clientY;
               const pai = el.parentElement;
               if (!pai) return;
+              el.setPointerCapture(e.pointerId);
               const rectPai = pai.getBoundingClientRect();
               const rectEl = el.getBoundingClientRect();
+              const x0 = e.clientX;
+              const y0 = e.clientY;
+              const t0 = performance.now();
               // O arraste parte de onde a peça ESTÁ desenhada (perto da borda, a conta a mantém
               // dentro do quadro, e o centro guardado pode estar um pouco além).
-              const atualX = ((rectEl.left + rectEl.width / 2 - rectPai.left) / rectPai.width) * 100;
-              const atualY = ((rectEl.top + rectEl.height / 2 - rectPai.top) / rectPai.height) * 100;
+              const cx = ((rectEl.left + rectEl.width / 2 - rectPai.left) / rectPai.width) * 100;
+              const cy = ((rectEl.top + rectEl.height / 2 - rectPai.top) / rectPai.height) * 100;
+              const decimo = (v: number) => Math.round(Math.min(95, Math.max(5, v)) * 10) / 10;
               let arrastou = false;
-
-              const onMove = (me: PointerEvent) => {
-                const dx = me.clientX - inicioX;
-                const dy = me.clientY - inicioY;
-                if (!arrastou && Math.hypot(dx, dy) > 4) arrastou = true;
-                if (arrastou) {
-                  const px = Math.min(95, Math.max(5, atualX + (dx / rectPai.width) * 100));
-                  const py = Math.min(95, Math.max(5, atualY + (dy / rectPai.height) * 100));
-                  aoMudar(p.i, { x: Math.round(px * 10) / 10, y: Math.round(py * 10) / 10 });
-                }
+              let pendente: { x: number; y: number } | null = null;
+              let quadro = 0;
+              const mover = (m: PointerEvent) => {
+                const dx = m.clientX - x0;
+                const dy = m.clientY - y0;
+                if (!arrastou && Math.hypot(dx, dy) > 6) arrastou = true;
+                if (!arrastou) return;
+                pendente = { x: decimo(cx + (dx / rectPai.width) * 100), y: decimo(cy + (dy / rectPai.height) * 100) };
+                if (!quadro)
+                  quadro = requestAnimationFrame(() => {
+                    quadro = 0;
+                    if (pendente) aoMudar(p.i, pendente);
+                  });
               };
-
-              const onUp = () => {
-                el.removeEventListener("pointermove", onMove);
-                el.removeEventListener("pointerup", onUp);
-                el.removeEventListener("pointercancel", onUp);
-                if (!arrastou && aoSelecionar) aoSelecionar(p.i);
+              const terminar = (cancelado: boolean) => {
+                el.removeEventListener("pointermove", mover);
+                el.removeEventListener("pointerup", soltar);
+                el.removeEventListener("pointercancel", cancelar);
+                if (quadro) cancelAnimationFrame(quadro);
+                if (arrastou && pendente) aoMudar(p.i, pendente);
+                if (!arrastou && !cancelado && performance.now() - t0 < 450) aoSelecionar?.(p.i);
               };
-
-              el.addEventListener("pointermove", onMove);
-              el.addEventListener("pointerup", onUp);
-              el.addEventListener("pointercancel", onUp);
+              const soltar = () => terminar(false);
+              const cancelar = () => terminar(true);
+              el.addEventListener("pointermove", mover);
+              el.addEventListener("pointerup", soltar);
+              el.addEventListener("pointercancel", cancelar);
             }}
             className={
-              "absolute cursor-grab active:cursor-grabbing select-none transition-shadow hover:outline hover:outline-2 hover:outline-white/70 " +
+              "absolute cursor-grab touch-none active:cursor-grabbing select-none transition-shadow hover:outline hover:outline-2 hover:outline-white/70 " +
               // Moldura cobre o quadro inteiro: não pode roubar o clique do palco.
               (p.quadroInteiro ? "pointer-events-none" : "pointer-events-auto") +
-              (selecionado === p.i ? " outline-2 outline-offset-2 outline-dashed outline-white/90 drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" : "")
+              (selecionado === p.i ? " outline-2 outline-offset-2 outline-dashed outline-[#f06b4f]" : "")
             }
             style={estilo}
           >

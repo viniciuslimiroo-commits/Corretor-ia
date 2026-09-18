@@ -333,6 +333,8 @@ export default function EditorDeVideo() {
   const [musicaVolume, setMusicaVolume] = useState(LIMITES.musicaVolumePadrao);
   /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
   const [legendas, setLegendas] = useState<Legendas | null>(null);
+  /** De qual arquivo de voz a transcrição saiu: trocando a voz, a legenda fica fora de sincronia. */
+  const [legendasDaVoz, setLegendasDaVoz] = useState<string | null>(null);
   const [transcrevendo, setTranscrevendo] = useState(false);
   /** Você aparecendo no vídeo: o arquivo, os ajustes e a câmera enquanto grava. */
   const [apresentador, setApresentador] = useState<Apresentador | null>(null);
@@ -659,6 +661,10 @@ export default function EditorDeVideo() {
    * mandando pro fim, que é o gesto rápido de quem está montando na ordem.
    */
   function adicionarGeracao(g: Geracao, antes?: string) {
+    if (cenas.length >= LIMITES.cenasMax) {
+      setErro(`No máximo ${LIMITES.cenasMax} cenas por vídeo.`);
+      return;
+    }
     setCenas((lista) => {
       const nova: CenaUI = {
         chave: chave(),
@@ -687,7 +693,23 @@ export default function EditorDeVideo() {
   async function enviarArquivos(arquivos: FileList | null) {
     if (!arquivos || !supabase) return;
     setErro(null);
-    for (const f of Array.from(arquivos)) {
+    // Áudio solto aqui virava cena de FOTO e a exportação quebrava no ffmpeg. Áudio tem
+    // lugar próprio (narração ou música); aqui só entra imagem e vídeo.
+    const todos = Array.from(arquivos);
+    const audios = todos.filter((f) => f.type.startsWith("audio/"));
+    const cabem = Math.max(0, LIMITES.cenasMax - cenas.length);
+    const midias = todos.filter((f) => !f.type.startsWith("audio/")).slice(0, cabem);
+    const sobraram = todos.length - audios.length - midias.length;
+    if (audios.length || sobraram)
+      setErro(
+        [
+          audios.length ? "Áudio não vira cena: use Narração pra sua voz ou Música pra trilha." : "",
+          sobraram ? `No máximo ${LIMITES.cenasMax} cenas por vídeo: ${sobraram} arquivo(s) ficaram de fora.` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+    for (const f of midias) {
       setEnviando((n) => n + 1);
       try {
         const r = await fetch("/api/video/upload", {
@@ -826,6 +848,7 @@ export default function EditorDeVideo() {
       // VÍDEO, e a voz só começa em `vozInicio`. Sem somar, toda legenda saía adiantada.
       // Só as novas: as já salvas foram ajustadas à mão contra o que se via.
       const novas = d.legendas as Legendas | null;
+      setLegendasDaVoz(vozArquivo.caminho);
       setLegendas(
         novas
           ? { ...novas, trechos: novas.trechos.map((t) => ({ ...t, inicio: Math.round((t.inicio + vozInicio) * 100) / 100, fim: Math.round((t.fim + vozInicio) * 100) / 100 })) }
@@ -1013,35 +1036,6 @@ export default function EditorDeVideo() {
     );
   }
 
-  function adicionarVideoComoCena(v: VideoResumo, antesDe?: string) {
-    const novaChave = chave();
-    const nova: CenaUI = {
-      chave: novaChave,
-      tipo: "clipe",
-      arquivo: v.id,
-      miniatura: v.miniatura,
-      rotulo: v.titulo || "Clipe de vídeo",
-      temAntes: false,
-      ehClipe: true,
-      eh360: false,
-      efeito: "aproximar",
-      animacao: "caminhar",
-      movimento: "olhar_volta",
-      legenda: "",
-      duracao: v.duracao ? Math.min(Math.round(v.duracao), 30) : 6,
-      melhorar: false,
-      inicio: 0,
-    };
-    setCenas((lista) => {
-      if (!antesDe || antesDe === "fim") return [...lista, nova];
-      const idx = lista.findIndex((s) => s.chave === antesDe);
-      if (idx < 0) return [...lista, nova];
-      const copia = [...lista];
-      copia.splice(idx, 0, nova);
-      return copia;
-    });
-    setSelecionada(novaChave);
-  }
 
   /**
    * Soltar na linha do tempo. Aceita:
@@ -1051,18 +1045,15 @@ export default function EditorDeVideo() {
    * - CENAS que já estão na linha (troca de lugar).
    */
   function soltarEm(alvo: string, ev?: React.DragEvent) {
+    // Durante a geração o vídeo está sendo montado com as cenas de agora: não muda nada.
+    if (gerando) {
+      arrastando.current = null;
+      return;
+    }
     if (ev) {
       if (ev.dataTransfer?.files && ev.dataTransfer.files.length > 0) {
         ev.preventDefault();
         enviarArquivos(ev.dataTransfer.files);
-        arrastando.current = null;
-        return;
-      }
-      const videoId = ev.dataTransfer?.getData("text/encena-video");
-      if (videoId) {
-        ev.preventDefault();
-        const v = videos?.find((x) => x.id === videoId);
-        if (v) adicionarVideoComoCena(v, alvo);
         arrastando.current = null;
         return;
       }
@@ -1080,7 +1071,8 @@ export default function EditorDeVideo() {
     if (!de || de === alvo) return;
     setCenas((lista) => {
       const i = lista.findIndex((s) => s.chave === de);
-      const j = lista.findIndex((s) => s.chave === alvo);
+      // "fim": solta no espaço vazio depois do último bloco.
+      const j = alvo === "fim" ? lista.length - 1 : lista.findIndex((s) => s.chave === alvo);
       if (i < 0 || j < 0) return lista;
       const nova = [...lista];
       const [movida] = nova.splice(i, 1);
@@ -1397,6 +1389,57 @@ export default function EditorDeVideo() {
     setTextoEmDigitacao(textoInicial ?? "");
   }
 
+  /**
+   * Toque num texto do palco. Arrastar move (posição livre, x/y em % do centro -- a mesma
+   * regra que o vídeo usa); toque curto edita. Não edita quando: o dedo ficou segurado (o
+   * menu de toque longo abre aos 450ms), o toque foi cancelado (a página rolou) ou o texto
+   * já está em edição (reabrir punha o valor antigo de volta no campo). O movimento entra
+   * uma vez por quadro: a cada `pointermove` este componente inteiro redesenhava.
+   * A legenda (índice -1) não se arrasta: ela tem lugar fixo no vídeo.
+   */
+  function tocarTextoDoPalco(e: React.PointerEvent<HTMLElement>, k: string, indice: number, texto: string, emEdicao: boolean) {
+    if (e.button !== 0 || emEdicao) return;
+    const el = e.currentTarget;
+    const palco = palcoRef.current?.getBoundingClientRect();
+    if (!palco) return;
+    el.setPointerCapture(e.pointerId);
+    const caixa = el.getBoundingClientRect();
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const t0 = performance.now();
+    const cx = ((caixa.left + caixa.width / 2 - palco.left) / palco.width) * 100;
+    const cy = ((caixa.top + caixa.height / 2 - palco.top) / palco.height) * 100;
+    const decimo = (v: number) => Math.round(Math.min(95, Math.max(5, v)) * 10) / 10;
+    let arrastou = false;
+    let pendente: { x: number; y: number } | null = null;
+    let quadro = 0;
+    const mover = (m: PointerEvent) => {
+      const dx = m.clientX - x0;
+      const dy = m.clientY - y0;
+      if (!arrastou && Math.hypot(dx, dy) > 6) arrastou = true;
+      if (!arrastou || indice < 0) return;
+      pendente = { x: decimo(cx + (dx / palco.width) * 100), y: decimo(cy + (dy / palco.height) * 100) };
+      if (!quadro)
+        quadro = requestAnimationFrame(() => {
+          quadro = 0;
+          if (pendente) mudarTexto(k, indice, pendente);
+        });
+    };
+    const terminar = (cancelado: boolean) => {
+      el.removeEventListener("pointermove", mover);
+      el.removeEventListener("pointerup", soltar);
+      el.removeEventListener("pointercancel", cancelar);
+      if (quadro) cancelAnimationFrame(quadro);
+      if (arrastou && pendente && indice >= 0) mudarTexto(k, indice, pendente);
+      if (!arrastou && !cancelado && performance.now() - t0 < 450) abrirEdicaoTexto(k, indice, texto);
+    };
+    const soltar = () => terminar(false);
+    const cancelar = () => terminar(true);
+    el.addEventListener("pointermove", mover);
+    el.addEventListener("pointerup", soltar);
+    el.addEventListener("pointercancel", cancelar);
+  }
+
   /** Grava o que foi digitado em cima do elemento. Índice -1 é a legenda da cena. */
   function salvarTextoDoPalco(k: string, indice: number, valor: string) {
     const limpo = valor.trim();
@@ -1468,14 +1511,23 @@ export default function EditorDeVideo() {
   /**
    * O menu contextual completo da CENA (botão direito ou toque longo na timeline / palco).
    *
-   * Oferece operações profissionais estilo CapCut: divisão, apara no cabeçote, velocidade,
-   * cópia/cola, rotação, espelho, silenciar áudio de vídeo e ordenação.
+   * Divisão, apara no cabeçote, velocidade, cópia/cola, rotação, espelho e ordenação.
+   *
+   * O que depende do CABEÇOTE diz a verdade quando ele está fora desta cena (o clique direito
+   * na linha do tempo não move o cabeçote): "Dividir" vira "Dividir no meio", "Congelar"
+   * congela o primeiro quadro, e aparar fica desligado com o motivo -- antes, aparar não fazia
+   * nada, sem aviso.
    */
   function abrirMenuDaCena(ev: React.MouseEvent<HTMLElement | Element>, cena: CenaUI) {
     ev.preventDefault();
+    // "Pôr um texto aqui" usa a altura do clique só quando ele foi NO PALCO: na linha do
+    // tempo, o bloco tem 64px e a fração não quer dizer nada sobre a foto.
+    const noPalco = !!palcoRef.current?.contains(ev.currentTarget as Node);
     const caixa = ev.currentTarget.getBoundingClientRect();
     const fracao = (ev.clientY - caixa.top) / Math.max(1, caixa.height);
-    const posicao: PosicaoTexto = fracao < 0.33 ? "topo" : fracao < 0.66 ? "centro" : "base";
+    const posicao: PosicaoTexto = !noPalco ? "base" : fracao < 0.33 ? "topo" : fracao < 0.66 ? "centro" : "base";
+    const noCabecote = cabecoteDentroDe(cena.chave);
+    const foraDoCabecote = "Pare o cabeçote dentro desta cena";
     const cheio = (cena.textos?.length ?? 0) >= LIMITES.textosPorCena;
     const idxCena = cenas.findIndex((s) => s.chave === cena.chave);
     const podeMoverTras = idxCena > 0;
@@ -1484,23 +1536,24 @@ export default function EditorDeVideo() {
     menu.abrir(ev.clientX, ev.clientY, [
       // ---- Corte & Edição ----
       {
-        rotulo: "Dividir no cabeçote",
+        rotulo: noCabecote === null ? "Dividir no meio" : "Dividir no cabeçote",
         icone: "dividir",
-        atalho: "S",
         dica: cena.tipo === "animada" ? "Cena animada não se divide" : undefined,
         desligado: gerando || cena.tipo === "animada" || cenas.length >= LIMITES.cenasMax || cena.duracao < LIMITES.duracaoMin * 2,
         aoEscolher: () => dividirNoCabecote(cena.chave),
       },
       {
         rotulo: "Cortar início até o cabeçote",
-        icone: "corrigir_perspectiva",
-        desligado: gerando || cena.tipo === "animada" || cena.duracao < LIMITES.duracaoMin * 2,
+        icone: "aparar_inicio",
+        dica: noCabecote === null ? foraDoCabecote : undefined,
+        desligado: gerando || noCabecote === null || cena.tipo === "animada" || cena.duracao < LIMITES.duracaoMin * 2,
         aoEscolher: () => apararNoCabecote(cena.chave, "inicio"),
       },
       {
         rotulo: "Cortar fim a partir do cabeçote",
-        icone: "corrigir_perspectiva",
-        desligado: gerando || cena.tipo === "animada" || cena.duracao < LIMITES.duracaoMin * 2,
+        icone: "aparar_fim",
+        dica: noCabecote === null ? foraDoCabecote : undefined,
+        desligado: gerando || noCabecote === null || cena.tipo === "animada" || cena.duracao < LIMITES.duracaoMin * 2,
         aoEscolher: () => apararNoCabecote(cena.chave, "fim"),
       },
       { divisor: true },
@@ -1547,7 +1600,7 @@ export default function EditorDeVideo() {
               },
             } as ItemMenu,
             {
-              rotulo: cena.congelar ? "Descongelar quadro" : "Congelar no cabeçote",
+              rotulo: cena.congelar ? "Descongelar quadro" : noCabecote === null ? "Congelar o primeiro quadro" : "Congelar no cabeçote",
               icone: "converter_hd",
               aoEscolher: () => congelarCena(cena.chave),
             } as ItemMenu,
@@ -1570,13 +1623,13 @@ export default function EditorDeVideo() {
       },
       {
         rotulo: "Mover pra trás",
-        icone: "cima",
+        icone: "seta_esq",
         desligado: gerando || !podeMoverTras,
         aoEscolher: () => mover(cena.chave, -1),
       },
       {
         rotulo: "Mover pra frente",
-        icone: "cima",
+        icone: "seta_dir",
         desligado: gerando || !podeMoverFrente,
         aoEscolher: () => mover(cena.chave, 1),
       },
@@ -2049,15 +2102,22 @@ export default function EditorDeVideo() {
                                         setVozArquivo({ caminho: g.caminho, url: g.url, nome: g.nome });
                                         setNarrar(true);
                                       }}
-                                      className={"rounded px-2 py-0.5 text-xs font-semibold transition " + (estaAtivo ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")}
+                                      className={"min-h-10 rounded px-2 text-xs font-semibold transition sm:min-h-0 sm:py-0.5 " + (estaAtivo ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")}
                                     >
-                                      {estaAtivo ? "✓ Ativo" : "+ Usar na timeline"}
+                                      {estaAtivo ? "✓ Em uso" : "Usar esta"}
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setGravacoesVoz((lista) => lista.filter((item) => item.id !== g.id))}
-                                      className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                                      title="Remover gravação"
+                                      onClick={() => {
+                                        // Tirar da lista a que está EM USO tirava só da lista: ela
+                                        // continuava indo pro vídeo.
+                                        if (estaAtivo) setVozArquivo(null);
+                                        URL.revokeObjectURL(g.url);
+                                        setGravacoesVoz((lista) => lista.filter((item) => item.id !== g.id));
+                                      }}
+                                      className="flex min-h-10 min-w-10 items-center justify-center rounded text-neutral-400 hover:bg-red-50 hover:text-red-600 sm:min-h-0 sm:min-w-0 sm:p-1"
+                                      title="Tirar da lista"
+                                      aria-label={`Tirar ${g.nome} da lista`}
                                     >
                                       <Icone nome="lixeira" className="h-3.5 w-3.5" />
                                     </button>
@@ -2071,6 +2131,9 @@ export default function EditorDeVideo() {
                       </div>
                     )}
                     {!vozArquivo && gravacoesVoz.length === 0 && <p className="mt-2 text-xs text-amber-700">Sem áudio, o vídeo sai sem voz.</p>}
+                    {legendas && legendasDaVoz && vozArquivo && vozArquivo.caminho !== legendasDaVoz && (
+                      <p className="mt-2 text-xs text-amber-700">As legendas são da outra gravação: gere de novo pra acompanhar esta voz.</p>
+                    )}
                   </div>
                 )}
 
@@ -2608,7 +2671,7 @@ export default function EditorDeVideo() {
           <Cartao>
             <Rotulo>Seus vídeos</Rotulo>
             <p className="-mt-1 mb-3 text-xs text-neutral-500">
-              Vídeos que você já produziu. Clique em <strong>+ Usar na timeline</strong> para inserir como clipe no projeto atual e cortar livremente.
+              Vídeos que você já produziu. Toque pra assistir; <strong>Abrir projeto</strong> reabre as cenas e os ajustes.
             </p>
             {videos === null ? (
               <p className="text-sm text-neutral-500">Carregando…</p>
@@ -2617,19 +2680,13 @@ export default function EditorDeVideo() {
             ) : (
               <ul className="divide-y divide-neutral-100">
                 {videos.map((v) => {
-                  const jaNaTimeline = cenas.some((s) => s.arquivo === v.id || s.miniatura === v.miniatura);
                   return (
                     <li key={v.id} className="py-2.5">
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => abrirVideo(v)}
-                          draggable={!gerando}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("text/encena-video", v.id);
-                            e.dataTransfer.effectAllowed = "copy";
-                          }}
-                          className="flex h-14 w-20 shrink-0 cursor-grab active:cursor-grabbing items-center justify-center overflow-hidden rounded-lg bg-neutral-900 shadow-sm transition hover:ring-2 hover:ring-marca-coral"
-                          title="Clique para assistir · arraste para a linha do tempo para usar"
+                          className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900 shadow-sm transition hover:ring-2 hover:ring-marca-coral"
+                          title="Assistir"
                         >
                           {v.miniatura ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -2647,16 +2704,8 @@ export default function EditorDeVideo() {
                             {v.status === "falhou" && " · falhou"}
                           </p>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => adicionarVideoComoCena(v)}
-                              disabled={gerando || cenas.length >= LIMITES.cenasMax}
-                              className="inline-flex items-center gap-1 rounded bg-marca-coral/10 px-2 py-0.5 text-xs font-semibold text-marca-coral hover:bg-marca-coral/20 disabled:opacity-40"
-                              title="Insere este vídeo na linha do tempo abaixo para cortar e editar"
-                            >
-                              <Icone nome="mais" className="h-3 w-3" />
-                              {jaNaTimeline ? "+ Usar de novo" : "+ Usar na timeline"}
-                            </button>
+                            {/* "Usar este vídeo na linha do tempo" saiu por enquanto: o servidor não sabe
+                                montar um vídeo do Encena como clipe (recusava na hora de gerar). */}
                             {v.status === "concluido" && (
                               <button
                                 type="button"
@@ -2888,47 +2937,15 @@ export default function EditorDeVideo() {
                               role="button"
                               tabIndex={0}
                               {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
-                              onPointerDown={(e) => {
-                                if (e.button !== 0) return;
-                                const el = e.currentTarget;
-                                el.setPointerCapture(e.pointerId);
-                                const inicioX = e.clientX;
-                                const inicioY = e.clientY;
-                                const rectPalco = palcoRef.current?.getBoundingClientRect();
-                                const rectEl = el.getBoundingClientRect();
-                                if (!rectPalco) return;
-                                const atualX = estiloLivre ? (t.x as number) : (((rectEl.left + rectEl.width / 2) - rectPalco.left) / rectPalco.width) * 100;
-                                const atualY = estiloLivre ? (t.y as number) : (((rectEl.top + rectEl.height / 2) - rectPalco.top) / rectPalco.height) * 100;
-                                let arrastou = false;
-
-                                const onMove = (me: PointerEvent) => {
-                                  const dx = me.clientX - inicioX;
-                                  const dy = me.clientY - inicioY;
-                                  if (!arrastou && Math.hypot(dx, dy) > 4) arrastou = true;
-                                  if (arrastou) {
-                                    const px = Math.min(95, Math.max(5, atualX + (dx / rectPalco.width) * 100));
-                                    const py = Math.min(95, Math.max(5, atualY + (dy / rectPalco.height) * 100));
-                                    if (indice >= 0) {
-                                      mudarTexto(cenaAtual.chave, indice, { x: Math.round(px * 10) / 10, y: Math.round(py * 10) / 10 });
-                                    }
-                                  }
-                                };
-
-                                const onUp = () => {
-                                  el.removeEventListener("pointermove", onMove);
-                                  el.removeEventListener("pointerup", onUp);
-                                  el.removeEventListener("pointercancel", onUp);
-                                  if (!arrastou) {
-                                    abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
-                                  }
-                                };
-
-                                el.addEventListener("pointermove", onMove);
-                                el.addEventListener("pointerup", onUp);
-                                el.addEventListener("pointercancel", onUp);
+                              onPointerDown={(e) => tocarTextoDoPalco(e, cenaAtual.chave, indice, t.texto || "", emEdicao)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
+                                }
                               }}
                               title="Clique e arraste para mover · clique para editar"
-                              className="pointer-events-auto flex cursor-grab active:cursor-grabbing justify-center select-none transition hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)]"
+                              className="pointer-events-auto flex cursor-grab touch-none active:cursor-grabbing justify-center select-none transition hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)]"
                             >
                               <TextoComEfeito
                                 efeito={t.arte as string}
@@ -2939,7 +2956,9 @@ export default function EditorDeVideo() {
                               />
                             </span>
                             {emEdicao && (
-                              <div className="pointer-events-auto absolute top-full mt-2 z-30 flex flex-col items-center gap-1">
+                              // Na metade de baixo, o campo abre por cima: embaixo ele sai do palco
+                              // (que corta o que passa da borda) e a pessoa digita sem ver.
+                              <div className={`pointer-events-auto absolute z-30 flex flex-col items-center gap-1 ${(estiloLivre ? (t.y as number) > 55 : pos !== "topo") ? "bottom-full mb-2" : "top-full mt-2"}`}>
                                 <input
                                   autoFocus
                                   value={textoEmDigitacao}
@@ -2971,57 +2990,26 @@ export default function EditorDeVideo() {
                               if (e.key === "Escape") setEditando(null);
                             }}
                             className="pointer-events-auto w-full max-w-[90%] rounded-lg border border-white/40 bg-neutral-950/90 px-2.5 py-1 text-center font-medium text-white shadow-2xl backdrop-blur-md outline-none ring-2 ring-white/60 transition"
-                            style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 11 : 13 }}
+                            style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12 }}
                           />
                         ) : (
                           <span
                             role="button"
                             tabIndex={0}
                             {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
-                            onPointerDown={(e) => {
-                              if (e.button !== 0) return;
-                              const el = e.currentTarget;
-                              el.setPointerCapture(e.pointerId);
-                              const inicioX = e.clientX;
-                              const inicioY = e.clientY;
-                              const rectPalco = palcoRef.current?.getBoundingClientRect();
-                              const rectEl = el.getBoundingClientRect();
-                              if (!rectPalco) return;
-                              const atualX = estiloLivre ? (t.x as number) : (((rectEl.left + rectEl.width / 2) - rectPalco.left) / rectPalco.width) * 100;
-                              const atualY = estiloLivre ? (t.y as number) : (((rectEl.top + rectEl.height / 2) - rectPalco.top) / rectPalco.height) * 100;
-                              let arrastou = false;
-
-                              const onMove = (me: PointerEvent) => {
-                                const dx = me.clientX - inicioX;
-                                const dy = me.clientY - inicioY;
-                                if (!arrastou && Math.hypot(dx, dy) > 4) arrastou = true;
-                                if (arrastou) {
-                                  const px = Math.min(95, Math.max(5, atualX + (dx / rectPalco.width) * 100));
-                                  const py = Math.min(95, Math.max(5, atualY + (dy / rectPalco.height) * 100));
-                                  if (indice >= 0) {
-                                    mudarTexto(cenaAtual.chave, indice, { x: Math.round(px * 10) / 10, y: Math.round(py * 10) / 10 });
-                                  }
-                                }
-                              };
-
-                              const onUp = () => {
-                                el.removeEventListener("pointermove", onMove);
-                                el.removeEventListener("pointerup", onUp);
-                                el.removeEventListener("pointercancel", onUp);
-                                if (!arrastou) {
-                                  abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
-                                }
-                              };
-
-                              el.addEventListener("pointermove", onMove);
-                              el.addEventListener("pointerup", onUp);
-                              el.addEventListener("pointercancel", onUp);
+                            onPointerDown={(e) => tocarTextoDoPalco(e, cenaAtual.chave, indice, t.texto || "", emEdicao)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
+                              }
                             }}
                             title="Clique e arraste para mover · clique para editar"
-                            className="pointer-events-auto max-w-full cursor-grab active:cursor-grabbing truncate select-none rounded-md px-2.5 py-1 text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
+                            className="pointer-events-auto max-w-full cursor-grab touch-none active:cursor-grabbing truncate select-none rounded-md px-2.5 py-1 text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
                             style={{
-                              background: est.id === "etiqueta" ? "rgba(15,23,42,0.88)" : "rgba(15,45,91,0.88)",
-                              fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 11 : 13,
+                              // As cores do vídeo (video.ts, ESTILOS_TEXTO): etiqueta é coral lá, então é aqui.
+                              background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
+                              fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
                               fontWeight: est.id === "destaque" ? 700 : 500,
                             }}
                           >

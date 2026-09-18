@@ -114,9 +114,12 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
 
   if (!aberto) return null;
 
-  // Encosta na borda em vez de vazar. 232px de largura e ~40px por linha é a medida real.
+  // Encosta na borda em vez de vazar. 232px de largura e ~42px por linha é a medida real.
+  // O menu da cena de clipe tem ~20 itens: sem teto, passava da altura do celular e "Capa"
+  // e "Apagar" ficavam fora da tela. Com teto, ele rola por dentro.
   const largura = 232;
-  const altura = Math.min(aberto.itens.length * 42 + 20, 380);
+  const teto = Math.min(380, (typeof window !== "undefined" ? window.innerHeight : 800) - 16);
+  const altura = Math.min(aberto.itens.length * 42 + 20, teto);
   const x = Math.max(8, Math.min(aberto.x, (typeof window !== "undefined" ? window.innerWidth : 400) - largura - 8));
   const y = Math.max(8, Math.min(aberto.y, (typeof window !== "undefined" ? window.innerHeight : 800) - altura - 8));
 
@@ -124,8 +127,8 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
     <div
       ref={caixa}
       role="menu"
-      style={{ left: x, top: y, width: largura }}
-      className="fixed z-50 overflow-hidden rounded-xl border border-neutral-700/80 bg-neutral-900/95 py-1.5 text-neutral-200 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+      style={{ left: x, top: y, width: largura, maxHeight: teto }}
+      className="fixed z-50 overflow-y-auto overscroll-contain rounded-xl border border-neutral-700/80 bg-neutral-900/95 py-1.5 text-neutral-200 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
     >
       {aberto.itens.map((item, i) => {
         if (item.divisor && !item.rotulo) {
@@ -142,7 +145,7 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
                 item.aoEscolher?.();
                 aoFechar();
               }}
-              className={`flex w-full items-center justify-between gap-2.5 px-3 py-2 text-left text-xs transition disabled:opacity-30 ${
+              className={`flex min-h-10 w-full items-center justify-between gap-2.5 px-3 py-2 text-left text-xs transition disabled:opacity-30 sm:min-h-0 ${
                 item.perigo
                   ? "text-red-400 hover:bg-red-500/20 hover:text-red-300"
                   : "text-neutral-200 hover:bg-neutral-800/90 hover:text-white"
