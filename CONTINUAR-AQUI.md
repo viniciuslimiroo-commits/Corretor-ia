@@ -8,6 +8,25 @@ depois. **Leia inteiro antes de mexer em qualquer coisa.**
 > escreva o que fez na seção [Diário](#diário-de-quem-continuou) no fim deste arquivo e faça
 > commit com mensagem clara. É por esse diário e pelo `git log` que o próximo retoma.
 
+## 0. Como trabalhar sem risco (ler primeiro)
+
+1. **Trabalhe no branch `antigravity`, nunca no `main`:**
+   ```bash
+   git switch -c antigravity     # na primeira vez; depois: git switch antigravity
+   ```
+   Push do branch `antigravity` só gera uma PRÉVIA na Vercel (endereço de teste), não mexe
+   no site no ar. **Push no `main` publica o site: nunca faça.** Quem junta o branch no
+   `main` é o Claude, quando voltar, depois de revisar e rodar os testes.
+2. **Comece pelas tarefas bem definidas e de baixo risco:**
+   - Tradução PT/ES/EN das telas que faltam (seção 8): o padrão está pronto em `web/src/i18n/`;
+     uma tela por commit, conferida em 375px.
+   - Os 6 erros de lint antigos (seção 8), um arquivo por commit, sem mudar comportamento.
+   - Galeria: abas "Áudios" e "Materiais"; a corrida de estado do `mudarImovel`.
+3. **A linha do tempo (P7, seção 6) é a parte mais delicada do projeto.** Só mexa nela
+   seguindo a especificação à risca e rodando TODOS os testes da seção 3 (inclusive os de
+   navegador) antes de dizer que ficou pronto. Na dúvida, deixe pro Claude.
+4. Nunca diga "feito" sem ter rodado os testes. Se não conseguiu rodar, escreva isso no Diário.
+
 ---
 
 ## 1. O que é o Encena
