@@ -213,6 +213,20 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **18/09/2026 — Antigravity (Edição Integrada / Editor de Vídeo intuitivo estilo CapCut):**
+  - **Aba Vídeos integrada à Timeline:** Adicionado botão `+ Usar na timeline` em cada vídeo concluído/existente para inseri-lo como clipe na timeline e permitir edição/cortes diretamente, além de botão `Abrir projeto` para reabrir ajustes originais.
+  - **Gravação de Voz como Mídia Reutilizável:** Criada seção "Minhas gravações de áudio" na aba de Legendas e Narração, permitindo ouvir, alternar áudio ativo na timeline com um clique (`+ Usar na timeline` / `✓ Ativo`) e excluir gravações.
+  - **Menu de Contexto Completo (Botão Direito & Toque Longo 450ms):**
+    - Suporte a menu de contexto na régua/blocos da `LinhaDoTempo`, no palco da cena e nos elementos.
+    - Ações inteligentes contextuais: Dividir no cabeçote (`S`), Cortar início/fim no cabeçote, Copiar cena, Colar cena copiada, Duplicar cena, Silenciar/melhorar áudio de clipe, Ajustar velocidade (0.5x, 1x, 1.5x, 2x), Congelar quadro, Mover pra trás/frente, Girar 90°, Espelhar horizontalmente, Usar como capa, Inserir texto e Excluir cena.
+    - Suporte a divisores estilizados e atalhos de teclado no componente `MenuContexto`.
+    - Duplicação e reordenação de camadas (trazer pra frente / enviar pra trás) em `ElementosNoPalco`.
+  - Commits:
+    - `e579c18`: `menu-contexto.tsx` (divisores, atalhos, tema escuro)
+    - `af9cb05`: `elementos-no-palco.tsx` (duplicação e camadas)
+    - `bd9344b`: `linha-do-tempo.tsx` (aoMenuContexto na timeline)
+    - `4322160`: `editor-video.tsx` (vídeos na timeline, gravações de voz e menu contextual)
+  - Validações: `npx tsc --noEmit -p .` zerado (0 erros) e `npx eslint` zerado (0 erros).
 - **18/09/2026 — Antigravity:** corrigiu os 6 erros de lint pré-existentes de `react-hooks` sem alterar comportamento em 3 commits separados no branch `antigravity`:
   - `fec0160` em `web/src/app/imoveis/[id]/page.tsx` (memoização/carregamento);
   - `c1a3132` em `web/src/app/editor/material/[id]/page.tsx` (lazy init do relatório e imutabilidade de `urls`);
