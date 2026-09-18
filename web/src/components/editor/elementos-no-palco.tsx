@@ -43,6 +43,8 @@ export default function ElementosNoPalco({
   gatilho,
   aoMudar,
   aoTirar,
+  aoDuplicar,
+  aoMoverCamada,
   selecionado,
   aoSelecionar,
 }: {
@@ -55,6 +57,8 @@ export default function ElementosNoPalco({
   gatilho: ReturnType<typeof useMenuContexto>["gatilho"];
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
+  aoDuplicar?: (i: number) => void;
+  aoMoverCamada?: (i: number, direcao: "frente" | "tras") => void;
   /**
    * Linha do tempo (P6), opcional: a peça selecionada ganha o contorno tracejado coral, e
    * um toque numa peça a seleciona. O dedo segurado continua abrindo o menu.
@@ -101,12 +105,21 @@ export default function ElementosNoPalco({
         const maximo = ehClipe ? TAMANHO_CLIPE_MAX : p.adesivo && ADESIVO_POR_ID[p.adesivo].animado ? 0.2 : 0.3;
         const minimo = ehClipe ? TAMANHO_CLIPE_MIN : 0.05;
         const itens: ItemMenu[] = [
-          { rotulo: `Tirar ${rotulo.toLowerCase()}`, icone: "lixeira", perigo: true, aoEscolher: () => aoTirar(p.i) },
+          ...(aoDuplicar
+            ? [
+                {
+                  rotulo: "Duplicar peça",
+                  icone: "copiar",
+                  desligado: elementos.length >= 4,
+                  aoEscolher: () => aoDuplicar(p.i),
+                },
+              ]
+            : []),
           ...(p.quadroInteiro
             ? []
             : [
-                { rotulo: "Maior", icone: "mais", desligado: tamanhoAtual >= maximo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.min(maximo, Math.round((tamanhoAtual * 1.25) * 1000) / 1000) }) },
-                { rotulo: "Menor", icone: "baixo", desligado: tamanhoAtual <= minimo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.max(minimo, Math.round((tamanhoAtual / 1.25) * 1000) / 1000) }) },
+                { rotulo: "Aumentar", icone: "mais", desligado: tamanhoAtual >= maximo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.min(maximo, Math.round((tamanhoAtual * 1.25) * 1000) / 1000) }) },
+                { rotulo: "Diminuir", icone: "baixo", desligado: tamanhoAtual <= minimo, aoEscolher: () => aoMudar(p.i, { tamanho: Math.max(minimo, Math.round((tamanhoAtual / 1.25) * 1000) / 1000) }) },
                 {
                   rotulo: "Trocar de canto",
                   icone: "girar",
@@ -114,6 +127,31 @@ export default function ElementosNoPalco({
                   aoEscolher: () => aoMudar(p.i, { ancora: GIRO_DE_CANTOS[(cantoAtual + 1) % GIRO_DE_CANTOS.length] }),
                 },
               ] as ItemMenu[]),
+          ...(aoMoverCamada && elementos.length > 1
+            ? [
+                {
+                  rotulo: "Trazer para frente",
+                  icone: "cima",
+                  divisor: true,
+                  desligado: p.i === elementos.length - 1,
+                  aoEscolher: () => aoMoverCamada(p.i, "frente"),
+                },
+                {
+                  rotulo: "Enviar para trás",
+                  icone: "baixo",
+                  desligado: p.i === 0,
+                  aoEscolher: () => aoMoverCamada(p.i, "tras"),
+                },
+              ]
+            : []),
+          {
+            rotulo: `Excluir ${rotulo.toLowerCase()}`,
+            icone: "lixeira",
+            perigo: true,
+            divisor: true,
+            atalho: "Del",
+            aoEscolher: () => aoTirar(p.i),
+          },
         ];
         const estilo: React.CSSProperties = {
           left: `${(x / W_REF) * 100}%`,
