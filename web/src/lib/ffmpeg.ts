@@ -39,7 +39,7 @@ export function versaoDoFfmpeg(): number {
   if (versaoGuardada !== null) return versaoGuardada;
   let saida = "";
   try {
-    saida = String(execFileSync(caminhoFfmpeg(), ["-version"], { timeout: 20_000, maxBuffer: 1024 * 1024 }));
+    saida = String(execFileSync(/* turbopackIgnore: true */ caminhoFfmpeg(), ["-version"], { timeout: 20_000, maxBuffer: 1024 * 1024 }));
   } catch {
     saida = "";
   }
@@ -81,7 +81,7 @@ export function rodarFfmpeg(args: string[], timeoutMs = 240_000): Promise<{ segu
   const inicio = Date.now();
   const preparado = grafoEmArquivo(args);
   return new Promise<{ segundos: number }>((resolve, reject) => {
-    execFile(caminhoFfmpeg(), ["-y", "-hide_banner", "-loglevel", "error", "-nostdin", ...preparado.args], { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (erro, _stdout, stderr) => {
+    execFile(/* turbopackIgnore: true */ caminhoFfmpeg(), ["-y", "-hide_banner", "-loglevel", "error", "-nostdin", ...preparado.args], { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (erro, _stdout, stderr) => {
       if (erro) {
         const cauda = String(stderr ?? "").trim().split("\n").slice(-6).join(" | ");
         reject(new Error(`ffmpeg falhou (${erro.message.slice(0, 80)}): ${cauda.slice(0, 500)}`));
@@ -103,7 +103,7 @@ export function rodarFfmpeg(args: string[], timeoutMs = 240_000): Promise<{ segu
 /** Sonda um arquivo de mídia com o próprio ffmpeg (sem ffprobe no pacote estático). */
 export function sondarMidia(arquivo: string): Promise<{ duracao: number | null; largura: number | null; altura: number | null; temAudio: boolean }> {
   return new Promise((resolve) => {
-    execFile(caminhoFfmpeg(), ["-hide_banner", "-nostdin", "-i", arquivo], { timeout: 20_000 }, (_e, _o, stderr) => {
+    execFile(/* turbopackIgnore: true */ caminhoFfmpeg(), ["-hide_banner", "-nostdin", "-i", arquivo], { timeout: 20_000 }, (_e, _o, stderr) => {
       const s = String(stderr ?? "");
       const dur = s.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
       const dim = s.match(/Video:.*?\b(\d{2,5})x(\d{2,5})\b/);

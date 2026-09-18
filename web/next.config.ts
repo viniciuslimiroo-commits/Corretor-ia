@@ -13,7 +13,14 @@ const nextConfig: NextConfig = {
     // adesivos, uns 110 MB CADA, guardados por deploy: foi o que estourou o armazenamento
     // de funções da Vercel (50,85 GB de 10 GB em 17/09/2026). Criar o vídeo e assinar
     // upload não abrem o ffmpeg -- quem monta é `/api/video/[id]`.
-    "/api/video/\\[id\\]": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/**", "./public/musica/**", "./public/efeitos/**"],
+    //
+    // Só os arquivos do NÍVEL de cima de adesivos, músicas e efeitos (`*`, não `**`): as
+    // subpastas `mini/` e `previa/` são do navegador. Com `**` elas voltavam pro pacote
+    // mesmo listadas nas exclusões abaixo -- a inclusão ganha da exclusão (medido em 18/09:
+    // 11 MB de prévia dentro da função de montagem).
+    // Nos adesivos, por EXTENSÃO: `./public/adesivos/*` também casa a PASTA `mini`, e pasta
+    // incluída entra inteira.
+    "/api/video/\\[id\\]": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/*.png", "./public/adesivos/*.gif", "./public/musica/*.m4a", "./public/efeitos/*.m4a"],
     // O efeito de texto desenha com as fontes do disco; as outras rotas do editor, não.
     "/api/editor/efeito-texto": ["./assets/fontes/**"],
   },
@@ -26,6 +33,11 @@ const nextConfig: NextConfig = {
   // custam ~11 MB de função pra nada.
   outputFileTracingExcludes: {
     "/api/video/\\[id\\]": ["./public/adesivos/mini/**", "./public/musica/previa/**", "./public/efeitos/previa/**"],
+    // CRIAR o vídeo não roda o ffmpeg, mas importa o pipeline (pipelineInicial,
+    // animacoesGuardadas), que importa a montagem -- e o rastreio seguia os caminhos até o
+    // binário, as músicas, os adesivos e as fontes: ~130 MB numa rota que só grava a linha
+    // no banco (medido em 18/09). Quem monta é /api/video/[id], e ela leva tudo acima.
+    "/api/video": ["./node_modules/ffmpeg-static/**", "./bin/**", "./assets/**", "./public/musica/**", "./public/efeitos/**", "./public/adesivos/**"],
   },
   serverExternalPackages: ["ffmpeg-static"],
 
