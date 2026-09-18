@@ -324,6 +324,10 @@ export default function EditorDeVideo() {
   const [voz, setVoz] = useState<VozId>("laura");
   /** Voz própria pronta: caminho no bucket + URL local pra ouvir antes de gerar. */
   const [vozArquivo, setVozArquivo] = useState<{ caminho: string; url: string; nome: string } | null>(null);
+  /** Histórico de gravações e áudios enviados no editor, permitindo reutilização. */
+  const [gravacoesVoz, setGravacoesVoz] = useState<Array<{ id: string; caminho: string; url: string; nome: string; criadoEm: string }>>([]);
+  /** Cena copiada para colar via menu de contexto. */
+  const [cenaCopiada, setCenaCopiada] = useState<CenaUI | null>(null);
   const [vozVolume, setVozVolume] = useState(1);
   const [vozInicio, setVozInicio] = useState(0.7);
   const [musicaVolume, setMusicaVolume] = useState(LIMITES.musicaVolumePadrao);
@@ -748,7 +752,10 @@ export default function EditorDeVideo() {
       if (!r.ok) throw new Error(d.error);
       const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, arquivo, { contentType: tipo });
       if (error) throw new Error(error.message);
-      setVozArquivo({ caminho: d.caminho, url: URL.createObjectURL(arquivo), nome });
+      const url = URL.createObjectURL(arquivo);
+      const novoItem = { caminho: d.caminho, url, nome };
+      setVozArquivo(novoItem);
+      setGravacoesVoz((lista) => [{ id: chave(), caminho: d.caminho, url, nome, criadoEm: new Date().toISOString() }, ...lista]);
       setNarrar(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui enviar o áudio.");
@@ -988,6 +995,43 @@ export default function EditorDeVideo() {
   }
   function removerElemento(k: string, i: number) {
     setCenas((lista) => lista.map((s) => (s.chave === k ? { ...s, elementos: (s.elementos ?? []).filter((_, j) => j !== i) } : s)));
+  }
+  function moverCamadaElemento(k: string, i: number, direcao: "frente" | "tras") {
+    setCenas((lista) =>
+      lista.map((s) => {
+        if (s.chave !== k) return s;
+        const atuais = [...(s.elementos ?? [])];
+        if (atuais.length <= 1) return s;
+        const destino = direcao === "frente" ? Math.min(atuais.length - 1, i + 1) : Math.max(0, i - 1);
+        if (destino === i) return s;
+        const [removido] = atuais.splice(i, 1);
+        atuais.splice(destino, 0, removido);
+        return { ...s, elementos: atuais };
+      })
+    );
+  }
+
+  function adicionarVideoComoCena(v: VideoResumo) {
+    const novaChave = chave();
+    const nova: CenaUI = {
+      chave: novaChave,
+      tipo: "clipe",
+      arquivo: v.id,
+      miniatura: v.miniatura,
+      rotulo: v.titulo || "Clipe de vídeo",
+      temAntes: false,
+      ehClipe: true,
+      eh360: false,
+      efeito: "aproximar",
+      animacao: "caminhar",
+      movimento: "olhar_volta",
+      legenda: "",
+      duracao: v.duracao ? Math.min(Math.round(v.duracao), 30) : 6,
+      melhorar: false,
+      inicio: 0,
+    };
+    setCenas((lista) => [...lista, nova]);
+    setSelecionada(novaChave);
   }
 
   /**
@@ -1375,13 +1419,141 @@ export default function EditorDeVideo() {
    * "Pôr um texto aqui" usa a altura do clique dentro do quadro pra decidir se o texto
    * nasce em cima, no meio ou embaixo -- é o que faz "aqui" querer dizer alguma coisa.
    */
-  function abrirMenuDaCena(ev: React.MouseEvent<HTMLElement>, cena: CenaUI) {
+  function colarCenaApos(chaveAlvo: string) {
+    if (!cenaCopiada) return;
+    const novaChave = chave();
+    const nova: CenaUI = {
+      ...cenaCopiada,
+      chave: novaChave,
+    };
+    setCenas((lista) => {
+      const idx = lista.findIndex((s) => s.chave === chaveAlvo);
+      if (idx < 0) return [...lista, nova];
+      const copia = [...lista];
+      copia.splice(idx + 1, 0, nova);
+      return copia;
+    });
+    setSelecionada(novaChave);
+  }
+
+  /**
+   * O menu contextual completo da CENA (botão direito ou toque longo na timeline / palco).
+   *
+   * Oferece operações profissionais estilo CapCut: divisão, apara no cabeçote, velocidade,
+   * cópia/cola, rotação, espelho, silenciar áudio de vídeo e ordenação.
+   */
+  function abrirMenuDaCena(ev: React.MouseEvent<HTMLElement | Element>, cena: CenaUI) {
     ev.preventDefault();
     const caixa = ev.currentTarget.getBoundingClientRect();
     const fracao = (ev.clientY - caixa.top) / Math.max(1, caixa.height);
     const posicao: PosicaoTexto = fracao < 0.33 ? "topo" : fracao < 0.66 ? "centro" : "base";
     const cheio = (cena.textos?.length ?? 0) >= LIMITES.textosPorCena;
+    const idxCena = cenas.findIndex((s) => s.chave === cena.chave);
+    const podeMoverTras = idxCena > 0;
+    const podeMoverFrente = idxCena >= 0 && idxCena < cenas.length - 1;
+
     menu.abrir(ev.clientX, ev.clientY, [
+      // ---- Corte & Edição ----
+      {
+        rotulo: "Dividir no cabeçote",
+        icone: "dividir",
+        atalho: "S",
+        dica: cena.tipo === "animada" ? "Cena animada não se divide" : undefined,
+        desligado: gerando || cena.tipo === "animada" || cenas.length >= LIMITES.cenasMax || cena.duracao < LIMITES.duracaoMin * 2,
+        aoEscolher: () => dividirNoCabecote(cena.chave),
+      },
+      {
+        rotulo: "Cortar início até o cabeçote",
+        icone: "corrigir_perspectiva",
+        desligado: gerando || cena.tipo === "animada" || cena.duracao < LIMITES.duracaoMin * 2,
+        aoEscolher: () => apararNoCabecote(cena.chave, "inicio"),
+      },
+      {
+        rotulo: "Cortar fim a partir do cabeçote",
+        icone: "corrigir_perspectiva",
+        desligado: gerando || cena.tipo === "animada" || cena.duracao < LIMITES.duracaoMin * 2,
+        aoEscolher: () => apararNoCabecote(cena.chave, "fim"),
+      },
+      { divisor: true },
+
+      // ---- Área de Transferência & Duplicação ----
+      {
+        rotulo: "Copiar cena",
+        icone: "copiar",
+        aoEscolher: () => setCenaCopiada(cena),
+      },
+      ...(cenaCopiada
+        ? [
+            {
+              rotulo: "Colar cena copiada aqui",
+              icone: "mais",
+              desligado: gerando || cenas.length >= LIMITES.cenasMax,
+              aoEscolher: () => colarCenaApos(cena.chave),
+            } as ItemMenu,
+          ]
+        : []),
+      {
+        rotulo: "Duplicar cena",
+        icone: "copiar",
+        desligado: gerando || cenas.length >= LIMITES.cenasMax,
+        aoEscolher: () => duplicar(cena.chave),
+      },
+      { divisor: true },
+
+      // ---- Vídeo / Clipe Específico ----
+      ...(cena.ehClipe
+        ? [
+            {
+              rotulo: cena.melhorar ? "Desativar melhoria de cor" : "Melhorar cor do clipe",
+              icone: "magica",
+              aoEscolher: () => mudarCena(cena.chave, { melhorar: !cena.melhorar }),
+            } as ItemMenu,
+            {
+              rotulo: (cena.velocidade ?? 1) === 1 ? "Acelerar (1.5x)" : (cena.velocidade ?? 1) === 1.5 ? "Super rápido (2x)" : (cena.velocidade ?? 1) === 2 ? "Câmera lenta (0.5x)" : "Velocidade normal (1x)",
+              icone: "play",
+              dica: `Velocidade atual: ${(cena.velocidade ?? 1)}x`,
+              aoEscolher: () => {
+                const proxima = (cena.velocidade ?? 1) === 1 ? 1.5 : (cena.velocidade ?? 1) === 1.5 ? 2 : (cena.velocidade ?? 1) === 2 ? 0.5 : 1;
+                velocidadeDaCena(cena.chave, proxima);
+              },
+            } as ItemMenu,
+            {
+              rotulo: cena.congelar ? "Descongelar quadro" : "Congelar no cabeçote",
+              icone: "converter_hd",
+              aoEscolher: () => congelarCena(cena.chave),
+            } as ItemMenu,
+            { divisor: true },
+          ]
+        : []),
+
+      // ---- Movimento & Orientação ----
+      {
+        rotulo: "Girar 90°",
+        icone: "girar",
+        desligado: gerando || cena.tipo === "tour360",
+        aoEscolher: () => girarCena(cena.chave),
+      },
+      {
+        rotulo: cena.espelho ? "Desfazer espelhamento" : "Espelhar horizontalmente",
+        icone: "espelhar",
+        desligado: gerando || cena.tipo === "tour360",
+        aoEscolher: () => espelharCena(cena.chave),
+      },
+      {
+        rotulo: "Mover pra trás",
+        icone: "cima",
+        desligado: gerando || !podeMoverTras,
+        aoEscolher: () => mover(cena.chave, -1),
+      },
+      {
+        rotulo: "Mover pra frente",
+        icone: "cima",
+        desligado: gerando || !podeMoverFrente,
+        aoEscolher: () => mover(cena.chave, 1),
+      },
+      { divisor: true },
+
+      // ---- Textos e Capa ----
       {
         rotulo: "Pôr um texto aqui",
         icone: "editar_prompt",
@@ -1392,19 +1564,28 @@ export default function EditorDeVideo() {
           setEditando({ chave: cena.chave, indice: cena.textos?.length ?? 0 });
         },
       },
-      { rotulo: "Trocar a foto desta cena", icone: "foto", dica: "Abre a mídia do imóvel", aoEscolher: () => setAba("midia") },
       {
-        rotulo: "Dividir no cabeçote",
-        icone: "dividir",
-        dica: cena.tipo === "animada" ? "Cena animada não se divide" : undefined,
-        desligado: gerando || cena.tipo === "animada" || cenas.length >= LIMITES.cenasMax || cena.duracao < LIMITES.duracaoMin * 2,
-        aoEscolher: () => dividirNoCabecote(cena.chave),
+        rotulo: "Usar como capa do vídeo",
+        icone: "estrela",
+        desligado: (capa ?? cenas[0]?.chave) === cena.chave,
+        aoEscolher: () => setCapa(cena.chave),
       },
-      { rotulo: "Girar um quarto de volta", icone: "girar", desligado: gerando || cena.tipo === "tour360", aoEscolher: () => girarCena(cena.chave) },
-      { rotulo: cena.espelho ? "Desfazer o espelho" : "Espelhar", icone: "espelhar", desligado: gerando || cena.tipo === "tour360", aoEscolher: () => espelharCena(cena.chave) },
-      { rotulo: "Usar como capa do vídeo", icone: "estrela", desligado: (capa ?? cenas[0]?.chave) === cena.chave, aoEscolher: () => setCapa(cena.chave) },
-      { rotulo: "Duplicar a cena", icone: "copiar", desligado: gerando || cenas.length >= LIMITES.cenasMax, aoEscolher: () => duplicar(cena.chave) },
-      { rotulo: "Apagar a cena", icone: "lixeira", perigo: true, desligado: gerando, aoEscolher: () => remover(cena.chave) },
+      {
+        rotulo: "Trocar mídia desta cena",
+        icone: "foto",
+        dica: "Abre a aba de mídias",
+        aoEscolher: () => setAba("midia"),
+      },
+      { divisor: true },
+
+      // ---- Exclusão ----
+      {
+        rotulo: "Apagar a cena",
+        icone: "lixeira",
+        perigo: true,
+        desligado: gerando,
+        aoEscolher: () => remover(cena.chave),
+      },
     ]);
   }
 
@@ -1802,12 +1983,65 @@ export default function EditorDeVideo() {
                     )}
 
                     {vozArquivo && (
-                      <div className="mt-2 rounded-lg bg-neutral-50 p-2">
-                        <p className="truncate text-xs text-neutral-600">{vozArquivo.nome}</p>
-                        <audio src={vozArquivo.url} controls className="mt-1 h-8 w-full" />
+                      <div className="mt-2 rounded-lg border border-marca-coral/30 bg-marca-coral/5 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold text-neutral-800">
+                            🎙 {vozArquivo.nome} (ativa na timeline)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVozArquivo(null);
+                            }}
+                            className="text-[11px] text-neutral-500 hover:text-red-600 underline"
+                          >
+                            Desativar
+                          </button>
+                        </div>
+                        <audio src={vozArquivo.url} controls className="mt-1.5 h-8 w-full" />
                       </div>
                     )}
-                    {!vozArquivo && <p className="mt-2 text-xs text-amber-700">Sem áudio, o vídeo sai sem voz.</p>}
+
+                    {gravacoesVoz.length > 0 && (
+                      <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
+                        <p className="text-xs font-medium text-neutral-700">Minhas gravações de áudio ({gravacoesVoz.length})</p>
+                        <p className="text-[11px] text-neutral-500">Áudios gravados ou enviados para usar na timeline como narração:</p>
+                        <ul className="mt-2 space-y-2">
+                          {gravacoesVoz.map((g) => {
+                            const estaAtivo = vozArquivo?.caminho === g.caminho;
+                            return (
+                              <li key={g.id} className={"flex flex-col gap-1.5 rounded-lg border p-2 transition " + (estaAtivo ? "border-marca-coral bg-white shadow-sm" : "border-neutral-200 bg-white")}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-xs font-medium text-neutral-800">{g.nome}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setVozArquivo({ caminho: g.caminho, url: g.url, nome: g.nome });
+                                        setNarrar(true);
+                                      }}
+                                      className={"rounded px-2 py-0.5 text-xs font-semibold transition " + (estaAtivo ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")}
+                                    >
+                                      {estaAtivo ? "✓ Ativo" : "+ Usar na timeline"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setGravacoesVoz((lista) => lista.filter((item) => item.id !== g.id))}
+                                      className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                                      title="Remover gravação"
+                                    >
+                                      <Icone nome="lixeira" className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <audio src={g.url} controls className="h-7 w-full" />
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {!vozArquivo && gravacoesVoz.length === 0 && <p className="mt-2 text-xs text-amber-700">Sem áudio, o vídeo sai sem voz.</p>}
                   </div>
                 )}
 
@@ -2344,47 +2578,74 @@ export default function EditorDeVideo() {
           {mostrarAba("videos") && (
           <Cartao>
             <Rotulo>Seus vídeos</Rotulo>
+            <p className="-mt-1 mb-3 text-xs text-neutral-500">
+              Vídeos que você já produziu. Clique em <strong>+ Usar na timeline</strong> para inserir como clipe no projeto atual e cortar livremente.
+            </p>
             {videos === null ? (
               <p className="text-sm text-neutral-500">Carregando…</p>
             ) : videos.length === 0 ? (
               <p className="text-sm text-neutral-500">Nenhum ainda.</p>
             ) : (
               <ul className="divide-y divide-neutral-100">
-                {videos.map((v) => (
-                  <li key={v.id} className="flex items-center gap-3 py-2">
-                    <button onClick={() => abrirVideo(v)} className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100" title="Abrir">
-                      {v.miniatura ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={v.miniatura} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <Icone nome="play" className="h-5 w-5 text-neutral-400" />
-                      )}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{v.titulo}</p>
-                      <p className="text-xs text-neutral-500">
-                        {dataCurta(v.criadoEm)} · {v.formato}
-                        {v.duracao ? ` · ${Math.round(v.duracao)} s` : ""}
-                        {v.status === "gerando" && " · gerando"}
-                        {v.status === "falhou" && " · falhou"}
-                      </p>
-                    </div>
-                    {v.status === "concluido" && (
-                      <button onClick={() => editarVideo(v.id)} disabled={gerando} className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-marca-indigo disabled:opacity-30" title="Editar: reabre as cenas e os ajustes">
-                        <Icone nome="editar_prompt" className="h-4 w-4" />
-                      </button>
-                    )}
-                    <BotaoConfirma
-                      pergunta="Apagar este vídeo?"
-                      detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."
-                      aoConfirmar={() => apagarVideo(v.id)}
-                      className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                      title="Apagar"
-                    >
-                      <Icone nome="lixeira" className="h-4 w-4" />
-                    </BotaoConfirma>
-                  </li>
-                ))}
+                {videos.map((v) => {
+                  const jaNaTimeline = cenas.some((s) => s.arquivo === v.id || s.miniatura === v.miniatura);
+                  return (
+                    <li key={v.id} className="py-2.5">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => abrirVideo(v)} className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900 shadow-sm" title="Assistir vídeo">
+                          {v.miniatura ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={v.miniatura} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <Icone nome="play" className="h-6 w-6 text-white/70" />
+                          )}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{v.titulo}</p>
+                          <p className="text-xs text-neutral-500">
+                            {dataCurta(v.criadoEm)} · {v.formato}
+                            {v.duracao ? ` · ${Math.round(v.duracao)} s` : ""}
+                            {v.status === "gerando" && " · gerando"}
+                            {v.status === "falhou" && " · falhou"}
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => adicionarVideoComoCena(v)}
+                              disabled={gerando || cenas.length >= LIMITES.cenasMax}
+                              className="inline-flex items-center gap-1 rounded bg-marca-coral/10 px-2 py-0.5 text-xs font-semibold text-marca-coral hover:bg-marca-coral/20 disabled:opacity-40"
+                              title="Insere este vídeo na linha do tempo abaixo para cortar e editar"
+                            >
+                              <Icone nome="mais" className="h-3 w-3" />
+                              {jaNaTimeline ? "+ Usar de novo" : "+ Usar na timeline"}
+                            </button>
+                            {v.status === "concluido" && (
+                              <button
+                                type="button"
+                                onClick={() => editarVideo(v.id)}
+                                disabled={gerando}
+                                className="inline-flex items-center gap-1 rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600 hover:bg-neutral-200 disabled:opacity-40"
+                                title="Reabre todas as cenas e os ajustes originais deste vídeo"
+                              >
+                                <Icone nome="editar_prompt" className="h-3 w-3" />
+                                Abrir projeto
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <BotaoConfirma
+                          pergunta="Apagar este vídeo?"
+                          detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."
+                          aoConfirmar={() => apagarVideo(v.id)}
+                          className="p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                          title="Apagar vídeo"
+                        >
+                          <Icone nome="lixeira" className="h-4 w-4" />
+                        </BotaoConfirma>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Cartao>
@@ -2643,6 +2904,11 @@ export default function EditorDeVideo() {
                     gatilho={menu.gatilho}
                     aoMudar={(i, m) => mudarElemento(cenaAtual.chave, i, m)}
                     aoTirar={(i) => removerElemento(cenaAtual.chave, i)}
+                    aoDuplicar={(i) => {
+                      const el = cenaAtual.elementos?.[i];
+                      if (el) adicionarElemento(cenaAtual.chave, { ...el });
+                    }}
+                    aoMoverCamada={(i, direcao) => moverCamadaElemento(cenaAtual.chave, i, direcao)}
                   />
                 )}
                 {/* Você por cima da foto, no lugar e no tamanho em que sai no vídeo. */}
@@ -3003,6 +3269,13 @@ export default function EditorDeVideo() {
         aoEspelhar={espelharCena}
         aoVelocidade={velocidadeDaCena}
         aoCongelar={congelarCena}
+        aoMenuContexto={(ev, chaveCena) => {
+          const c = cenas.find((s) => s.chave === chaveCena);
+          if (c) {
+            setSelecionada(chaveCena);
+            abrirMenuDaCena(ev, c);
+          }
+        }}
       />
 
       {/* O menu do botão direito. Um só, no fim, porque é `position: fixed` -- dentro do
