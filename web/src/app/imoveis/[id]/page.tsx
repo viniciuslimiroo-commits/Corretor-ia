@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
@@ -200,7 +200,7 @@ export default function PaginaImovel() {
         throw new Error("Resposta inesperada do servidor.");
       }
       if (!r.ok) throw new Error(d.error ?? "Não consegui enviar.");
-      aplicar(await buscar());
+      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao enviar.");
     } finally {
@@ -208,29 +208,44 @@ export default function PaginaImovel() {
     }
   }
 
-  const buscar = useCallback(async (): Promise<{ imovel: Imovel; geracoes: Geracao[] }> => {
-    const t = await token();
-    const r = await fetch(`/api/imoveis/${id}`, { headers: { Authorization: `Bearer ${t}` } });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error);
-    return d;
-  }, [id, token]);
-
-  const aplicar = useCallback((d: { imovel: Imovel; geracoes: Geracao[] }) => {
-    setImovel(d.imovel);
-    setGeracoes(d.geracoes);
-    setTitulo(d.imovel.titulo);
-    setEndereco(d.imovel.endereco ?? "");
-  }, []);
-
-  const carregar = useCallback(() => buscar().then(aplicar), [buscar, aplicar]);
+  async function carregar() {
+    try {
+      const t = await token();
+      const r = await fetch(`/api/imoveis/${id}`, { headers: { Authorization: `Bearer ${t}` } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setImovel(d.imovel);
+      setGeracoes(d.geracoes);
+      setTitulo(d.imovel.titulo);
+      setEndereco(d.imovel.endereco ?? "");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao carregar.");
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
-    buscar()
-      .then(aplicar)
-      .catch((e: Error) => setErro(e.message));
-  }, [user, buscar, aplicar]);
+    let ativo = true;
+    (async () => {
+      try {
+        const t = await token();
+        const r = await fetch(`/api/imoveis/${id}`, { headers: { Authorization: `Bearer ${t}` } });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        if (ativo) {
+          setImovel(d.imovel);
+          setGeracoes(d.geracoes);
+          setTitulo(d.imovel.titulo);
+          setEndereco(d.imovel.endereco ?? "");
+        }
+      } catch (e) {
+        if (ativo) setErro(e instanceof Error ? e.message : "Erro ao carregar.");
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [user, id, token]);
 
   async function patchImovel(corpo: Record<string, unknown>) {
     const resp = await fetch(`/api/imoveis/${id}`, {
