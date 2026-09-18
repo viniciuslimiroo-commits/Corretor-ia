@@ -273,7 +273,8 @@ if (process.argv.includes("--sem-portao")) {
 // ---------- 7. a ligação ----------
 
 {
-  const ler = (...p: string[]) => fs.readFileSync(path.join(RAIZ, "src", ...p), "utf8");
+  // Sem o replace, a conferência do texto falha em checkout do Windows (autocrlf gera CRLF).
+  const ler = (...p: string[]) => fs.readFileSync(path.join(RAIZ, "src", ...p), "utf8").replace(/\r\n/g, "\n");
   const ba = ler("components", "editor", "biblioteca-audio.tsx");
   conferir(/window\.dispatchEvent\(new Event\("encena:parar-previa"\)\)/.test(ba), "ouvir uma faixa manda a prévia parar");
   conferir(/addEventListener\("encena:parar-audio"/.test(ba) && /removeEventListener\("encena:parar-audio"/.test(ba), "e a biblioteca para quando a prévia começa, sem vazar o ouvinte");
