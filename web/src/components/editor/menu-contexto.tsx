@@ -21,13 +21,17 @@ import { Icone } from "@/components/ui";
 //     recurso existiria só pra quem edita no computador -- e ele edita no celular.
 
 export type ItemMenu = {
-  rotulo: string;
+  rotulo?: string;
   icone?: string;
   /** Linha de explicação, pra ação que não se entende só pelo nome. */
   dica?: string;
+  /** Texto curto do atalho de teclado (ex: "Del", "Ctrl+D"). */
+  atalho?: string;
   perigo?: boolean;
   desligado?: boolean;
-  aoEscolher: () => void;
+  /** Adiciona uma linha divisória antes deste item ou atua como divisor puro. */
+  divisor?: boolean;
+  aoEscolher?: () => void;
 };
 
 /** Quanto tempo o dedo fica parado até valer como botão direito. */
@@ -110,10 +114,9 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
 
   if (!aberto) return null;
 
-  // Encosta na borda em vez de vazar. 224px de largura e ~40px por linha é a medida real
-  // do que está desenhado aqui embaixo.
-  const largura = 224;
-  const altura = Math.min(aberto.itens.length * 40 + 12, 320);
+  // Encosta na borda em vez de vazar. 232px de largura e ~40px por linha é a medida real.
+  const largura = 232;
+  const altura = Math.min(aberto.itens.length * 42 + 20, 380);
   const x = Math.max(8, Math.min(aberto.x, (typeof window !== "undefined" ? window.innerWidth : 400) - largura - 8));
   const y = Math.max(8, Math.min(aberto.y, (typeof window !== "undefined" ? window.innerHeight : 800) - altura - 8));
 
@@ -122,29 +125,47 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
       ref={caixa}
       role="menu"
       style={{ left: x, top: y, width: largura }}
-      className="fixed z-50 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-xl"
+      className="fixed z-50 overflow-hidden rounded-xl border border-neutral-700/80 bg-neutral-900/95 py-1.5 text-neutral-200 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
     >
-      {aberto.itens.map((item, i) => (
-        <button
-          key={i}
-          type="button"
-          role="menuitem"
-          disabled={item.desligado}
-          onClick={() => {
-            item.aoEscolher();
-            aoFechar();
-          }}
-          className={`flex w-full items-start gap-2.5 px-3 py-2 text-left text-xs transition disabled:opacity-30 ${
-            item.perigo ? "text-red-600 hover:bg-red-50" : "text-neutral-700 hover:bg-neutral-100"
-          }`}
-        >
-          {item.icone ? <Icone nome={item.icone} className="mt-px h-3.5 w-3.5 shrink-0" /> : <span className="w-3.5 shrink-0" />}
-          <span className="min-w-0">
-            <span className="block font-medium">{item.rotulo}</span>
-            {item.dica ? <span className="block text-[10px] leading-tight text-neutral-400">{item.dica}</span> : null}
-          </span>
-        </button>
-      ))}
+      {aberto.itens.map((item, i) => {
+        if (item.divisor && !item.rotulo) {
+          return <div key={i} className="my-1 border-t border-neutral-800" />;
+        }
+        return (
+          <div key={i}>
+            {item.divisor && <div className="my-1 border-t border-neutral-800" />}
+            <button
+              type="button"
+              role="menuitem"
+              disabled={item.desligado}
+              onClick={() => {
+                item.aoEscolher?.();
+                aoFechar();
+              }}
+              className={`flex w-full items-center justify-between gap-2.5 px-3 py-2 text-left text-xs transition disabled:opacity-30 ${
+                item.perigo
+                  ? "text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                  : "text-neutral-200 hover:bg-neutral-800/90 hover:text-white"
+              }`}
+            >
+              <div className="flex min-w-0 items-center gap-2.5">
+                {item.icone ? (
+                  <Icone nome={item.icone} className={`h-4 w-4 shrink-0 ${item.perigo ? "text-red-400" : "text-neutral-400"}`} />
+                ) : (
+                  <span className="w-4 shrink-0" />
+                )}
+                <span className="min-w-0">
+                  <span className="block font-medium truncate">{item.rotulo}</span>
+                  {item.dica ? <span className="block text-[10px] leading-tight text-neutral-400 truncate">{item.dica}</span> : null}
+                </span>
+              </div>
+              {item.atalho && (
+                <span className="shrink-0 text-[10px] text-neutral-500 font-mono tracking-wider">{item.atalho}</span>
+              )}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
