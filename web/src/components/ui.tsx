@@ -560,6 +560,35 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M14 20.5h7M17.5 17v7" />
         </svg>
       );
+    // ---- linha do tempo (P6): barra da seleção e controles ----
+    case "pausa":
+      return <svg {...p}><path d="M8 5v14M16 5v14" /></svg>;
+    case "desfazer":
+      return <svg {...p}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>;
+    case "refazer":
+      return <svg {...p}><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></svg>;
+    case "ajustar":
+      return <svg {...p}><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4" /></svg>;
+    case "faixas":
+      return <svg {...p}><path d="M4 6h16M4 12h16M4 18h16" /></svg>;
+    case "volume":
+      return <svg {...p}><path d="M11 5 6 9H3v6h3l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>;
+    case "fade": // rampa que sobe, patamar, rampa que desce
+      return <svg {...p}><path d="M3 19 8 7h8l5 12" /><path d="M3 19h18" /></svg>;
+    case "trecho": // a onda com um recorte
+      return <svg {...p}><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2" /><rect x="9" y="3" width="8" height="18" rx="1.5" /></svg>;
+    case "inicio_aqui": // a barra do cursor com o começo colado nela
+      return <svg {...p}><path d="M6 4v16" /><path d="M10 8h10v8H10z" /></svg>;
+    case "fim_aqui":
+      return <svg {...p}><path d="M18 4v16" /><path d="M4 8h10v8H4z" /></svg>;
+    case "seta_esq":
+      return <svg {...p}><path d="m14 6-6 6 6 6" /></svg>;
+    case "seta_dir":
+      return <svg {...p}><path d="m10 6 6 6-6 6" /></svg>;
+    case "microfone":
+      return <svg {...p}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0 0 12 0M12 17v4" /></svg>;
+    case "legenda":
+      return <svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 13h4M13 13h4M7 16h10" /></svg>;
     default:
       return <svg {...p}><circle cx="12" cy="12" r="8" /></svg>;
   }

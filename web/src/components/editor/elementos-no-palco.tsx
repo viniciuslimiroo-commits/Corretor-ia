@@ -43,6 +43,8 @@ export default function ElementosNoPalco({
   gatilho,
   aoMudar,
   aoTirar,
+  selecionado,
+  aoSelecionar,
 }: {
   elementos: ElementoCena[];
   /** Largura ÷ altura do vídeo. */
@@ -53,6 +55,12 @@ export default function ElementosNoPalco({
   gatilho: ReturnType<typeof useMenuContexto>["gatilho"];
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
+  /**
+   * Linha do tempo (P6), opcional: a peça selecionada ganha o contorno tracejado coral, e
+   * um toque numa peça a seleciona. O dedo segurado continua abrindo o menu.
+   */
+  selecionado?: number;
+  aoSelecionar?: (i: number) => void;
 }) {
   const W_REF = Math.round(H_REF * proporcao);
 
@@ -120,10 +128,12 @@ export default function ElementosNoPalco({
             tabIndex={0}
             title={`${rotulo} · botão direito pra mexer`}
             {...gatilho(itens)}
+            onClick={aoSelecionar ? () => aoSelecionar(p.i) : undefined}
             className={
               "absolute cursor-context-menu select-none transition hover:outline hover:outline-2 hover:outline-white/70 " +
               // Moldura cobre o quadro inteiro: não pode roubar o clique do palco.
-              (p.quadroInteiro ? "pointer-events-none" : "pointer-events-auto")
+              (p.quadroInteiro ? "pointer-events-none" : "pointer-events-auto") +
+              (selecionado === p.i ? " outline-2 outline-offset-2 outline-dashed outline-[#f06b4f]" : "")
             }
             style={estilo}
           >

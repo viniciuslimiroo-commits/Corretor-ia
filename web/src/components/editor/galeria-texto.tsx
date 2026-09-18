@@ -65,15 +65,18 @@ export default function GaleriaTexto({
   temTextoSelecionado,
   cheio,
   desabilitado,
+  aba: abaDeFora,
+  aoMudarAba,
+  indiceAlvo,
 }: {
   /** Os dados do imóvel já preenchidos: preço, quartos, área. */
   pecas: { id: string; rotulo: string; texto: string }[];
   aoAdicionar: (t: TextoCena) => void;
-  /** Aplica uma entrada ao último texto da cena. */
-  aoTrocarAnimacao: (id: string) => void;
+  /** Aplica uma entrada ao último texto da cena (ou ao `indiceAlvo`, quando vem). */
+  aoTrocarAnimacao: (id: string, indice?: number) => void;
   animacaoAtual: string | null;
-  /** Aplica um movimento em laço ao último texto da cena. */
-  aoTrocarMovimento: (id: MovimentoId) => void;
+  /** Aplica um movimento em laço ao último texto da cena (ou ao `indiceAlvo`). */
+  aoTrocarMovimento: (id: MovimentoId, indice?: number) => void;
   movimentoAtual: MovimentoId;
   /** O último texto tem efeito (é imagem): só assim ele pode girar e crescer. */
   ultimoTemEfeito: boolean;
@@ -81,8 +84,21 @@ export default function GaleriaTexto({
   /** A cena já tem o número máximo de textos. */
   cheio: boolean;
   desabilitado?: boolean;
+  /**
+   * Linha do tempo (P6), tudo opcional. `aba` controlada de fora: o botão "Animação" da
+   * barra da seleção abre direto nela. `indiceAlvo`: o texto que a animação muda -- o
+   * SELECIONADO, e não o último da cena. Sem ele, continua valendo o último.
+   */
+  aba?: "efeitos" | "animacao";
+  aoMudarAba?: (aba: "efeitos" | "animacao") => void;
+  indiceAlvo?: number;
 }) {
-  const [aba, setAba] = useState<"efeitos" | "animacao">("efeitos");
+  const [abaAqui, setAbaAqui] = useState<"efeitos" | "animacao">("efeitos");
+  const aba = abaDeFora ?? abaAqui;
+  const setAba = (a: "efeitos" | "animacao") => {
+    setAbaAqui(a);
+    aoMudarAba?.(a);
+  };
   const [categoria, setCategoria] = useState<CategoriaEfeito | "todos">("todos");
   const [abertas, setAbertas] = useState<Set<CategoriaEfeito>>(new Set());
 
@@ -269,7 +285,7 @@ export default function GaleriaTexto({
       ) : (
         <>
           <p className="text-[11px] text-neutral-500">
-            {temTextoSelecionado ? "Vale pro último texto posto nesta cena." : "Ponha um texto na cena primeiro."}
+            {temTextoSelecionado ? (indiceAlvo !== undefined ? "Vale pro texto escolhido." : "Vale pro último texto posto nesta cena.") : "Ponha um texto na cena primeiro."}
           </p>
           <p className="text-xs font-semibold text-neutral-700">Entrada</p>
           <div className="grid grid-cols-2 gap-1.5">
@@ -278,7 +294,7 @@ export default function GaleriaTexto({
                 key={a.id}
                 type="button"
                 disabled={!temTextoSelecionado || desabilitado}
-                onClick={() => aoTrocarAnimacao(a.id)}
+                onClick={() => (indiceAlvo !== undefined ? aoTrocarAnimacao(a.id, indiceAlvo) : aoTrocarAnimacao(a.id))}
                 title={a.dica}
                 className={
                   "rounded-lg border px-2 py-2.5 text-left text-xs transition disabled:opacity-40 " +
@@ -305,7 +321,7 @@ export default function GaleriaTexto({
                 key={m.id}
                 type="button"
                 disabled={!temTextoSelecionado || !ultimoTemEfeito || desabilitado}
-                onClick={() => aoTrocarMovimento(m.id)}
+                onClick={() => (indiceAlvo !== undefined ? aoTrocarMovimento(m.id, indiceAlvo) : aoTrocarMovimento(m.id))}
                 title={m.dica}
                 className={
                   "rounded-lg border px-2 py-2 text-center text-xs transition disabled:opacity-40 " +

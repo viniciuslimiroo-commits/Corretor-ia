@@ -141,6 +141,7 @@ export default function GaleriaElementos({
   buscarClipes,
   aoMudar,
   aoTirar,
+  selecionado,
 }: {
   elementos: ElementoCena[];
   /** Os dados do imóvel, já em palavra. Vazio quando não há imóvel escolhido. */
@@ -152,8 +153,14 @@ export default function GaleriaElementos({
   buscarClipes: (termo: string, pagina: number, livre: boolean) => Promise<RespostaClipes>;
   aoMudar: (i: number, mudanca: Partial<ElementoCena>) => void;
   aoTirar: (i: number) => void;
+  /** Linha do tempo (P6): a peça selecionada na linha fica marcada em "Nesta cena". */
+  selecionado?: number;
 }) {
   const [aba, setAba] = useState<"adesivos" | "gifs">("adesivos");
+  const [cartaoSelecionado, setCartaoSelecionado] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    cartaoSelecionado?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [cartaoSelecionado]);
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState<CategoriaAdesivo | CategoriaGif | "todos">("todos");
 
@@ -264,7 +271,11 @@ export default function GaleriaElementos({
             if (!adesivo && !modelo && !clipe) return null;
             const rotulo = clipe ? `Clipe${clipe.autor ? " de " + clipe.autor : ""} (Pexels)` : adesivo ? ADESIVO_POR_ID[adesivo].rotulo : modelo!.rotulo;
             return (
-              <div key={i} className="mt-2 rounded-lg border border-neutral-200 bg-white p-2">
+              <div
+                key={i}
+                ref={selecionado === i ? setCartaoSelecionado : undefined}
+                className={selecionado === i ? "mt-2 rounded-lg border border-marca-coral bg-white p-2 ring-2 ring-marca-coral/30" : "mt-2 rounded-lg border border-neutral-200 bg-white p-2"}
+              >
                 <div className="flex items-center gap-2">
                   {adesivo ? (
                     // eslint-disable-next-line @next/next/no-img-element
