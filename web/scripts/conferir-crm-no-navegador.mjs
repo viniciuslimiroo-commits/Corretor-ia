@@ -104,7 +104,9 @@ try {
 
   // ---------- lista ----------
   await c.abrir(`${BASE}/crm`, { largura: 375, altura: 812, celular: true });
-  conferir(await esperarTexto("Pra hoje"), "lista: abre com as fichas de etapa (Pra hoje, Todos, etapas)");
+  conferir(await esperarTexto("Clientes"), "lista: abre");
+  const vazia = (await texto()).includes("Nenhum cliente ainda.");
+  if (vazia) conferir(!(await texto()).includes("Pra hoje"), "lista vazia: sem busca e sem nove fichas zeradas, só o convite pra cadastrar");
   conferir((await texto()).includes("Só você vê esta área"), "lista: avisa que só o admin vê por enquanto");
   conferir(await semRolagemDeLado(), "lista: nada vaza pro lado em 375px");
   await shot("1-lista");
@@ -132,6 +134,23 @@ try {
   }
   conferir(!!leadId, "cadastro: cadastrou e abriu a ficha do cliente");
   if (!leadId) throw new Error(`não abriu a ficha: ${(await texto()).slice(0, 300)}`);
+
+  // ---------- lista com cliente: fichas numa linha e busca ----------
+  await c.abrir(`${BASE}/crm`, { largura: 375, altura: 812, celular: true, pronto: "document.body.innerText.includes('Pra hoje')" });
+  const alturas = await c.avaliar("[...document.querySelectorAll('[aria-label=Etapas] > *')].map(e => Math.round(e.getBoundingClientRect().height))");
+  conferir(alturas.length >= 9 && Math.max(...alturas) <= 48, "lista: fichas de etapa numa linha só (rolam de lado, não quebram o texto)", `alturas ${[...new Set(alturas)].join("/")}px`);
+  conferir(await semRolagemDeLado(), "lista com cliente: a página não rola de lado (só a faixa das fichas)");
+  await preencher("input[type=search]", "TESTE do crm");
+  await esperar(300);
+  const achou = await c.avaliar("[...document.querySelectorAll('main li a')].map(a => a.getAttribute('href'))");
+  await preencher("input[type=search]", "9999-0000");
+  await esperar(300);
+  const peloNumero = await c.avaliar("document.querySelectorAll('main li a').length");
+  await preencher("input[type=search]", "zzz");
+  await esperar(300);
+  conferir(achou.includes(`/crm/${leadId}`) && peloNumero >= 1 && (await texto()).includes("Ninguém com esse nome ou número."), "lista: busca por nome (sem ligar pra maiúscula) e por pedaço do número");
+  await shot("2b-lista-com-cliente");
+  await c.abrir(`${BASE}/crm/${leadId}`, { largura: 375, altura: 812, celular: true });
 
   // ---------- sem CRECI (trava 8) ----------
   // Conta sem CRECI: confere a trava e põe um CRECI provisório pra seguir o roteiro. O
@@ -185,10 +204,31 @@ try {
     const link = await c.avaliar("window.__links[0] ?? ''");
     conferir(link.startsWith(`https://wa.me/${NUMERO}?text=`) && decodeURIComponent(link.split("text=")[1]).startsWith("Olá, Teste!"), "mensagem: gera o link com o texto pronto (quem envia é o corretor)", link.slice(0, 50) + "…");
     conferir(await esperarTexto("Em conversa"), "etapas: depois da 1ª mensagem, vai pra Em conversa");
+    conferir((await texto()).includes("Conversa aberta no seu aparelho"), "mensagem: depois de abrir, a tela diz o que aconteceu e o próximo passo");
+    // Tocar de novo (a conversa não abriu): mesma tentativa, mesmo texto de apresentação.
+    await clicar("Abrir a mensagem pra enviar");
+    for (let i = 0; i < 50 && (await c.avaliar("window.__links.length")) < 2; i++) await esperar(200);
+    await esperar(1000);
+    const [depois2] = await rest(`leads?id=eq.${leadId}&select=etapa,tentativas_sem_resposta`).then((r) => r.json());
+    const link2 = decodeURIComponent((await c.avaliar("window.__links[1] ?? ''")).split("text=")[1] ?? "");
+    conferir(depois2?.tentativas_sem_resposta === 1 && depois2?.etapa === "em_contato" && link2.includes("CRECI"), "reabrir no mesmo dia: mesma apresentação e NÃO vira 2ª tentativa", JSON.stringify(depois2));
+    conferir((await texto()).includes("não conta como nova tentativa"), "reabrir: a tela avisa que não contou");
     conferir(await esperarTexto("Respondeu"), "ficha: aparece o botão Respondeu");
     await clicar("Respondeu");
     conferir(await esperarTexto("Marcou que respondeu"), "histórico: registra que respondeu");
   }
+
+  // ---------- dados ----------
+  await preencher("main textarea:not([aria-label])", "Prefere contato à tarde.");
+  await clicar("Salvar dados");
+  conferir(await esperarTexto("Salvo."), "dados: salvar mostra \"Salvo.\"");
+  // Junto do botão que a pessoa acabou de tocar (antes ia pro cartão da Mensagem, fora da tela).
+  const ondeSalvo = await c.avaliar("(() => { const e = document.querySelector('[role=status]')?.getBoundingClientRect(); const b = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Salvar dados')?.getBoundingClientRect(); return e && b ? Math.round(Math.abs(e.top + e.height / 2 - (b.top + b.height / 2))) : null; })()");
+  conferir(ondeSalvo !== null && ondeSalvo < 30, "dados: o \"Salvo.\" aparece do lado do botão", `${ondeSalvo}px de diferença na altura`);
+  await clicar("Salvar dados");
+  conferir(await esperarTexto("Nada mudou."), "dados: salvar sem mudar nada diz isso");
+  const editados = await c.avaliar("(document.body.innerText.match(/Dados editados/g) ?? []).length");
+  conferir(editados === 1, "histórico: salvar sem mudança não vira \"Dados editados\"", `${editados}x`);
 
   // ---------- etapa ----------
   await clicar("Visita", "button");
@@ -197,6 +237,9 @@ try {
   // ---------- pediu para parar (trava 4) ----------
   await clicar("Pediu para parar");
   await esperar(300);
+  const caixaConfirma = await c.avaliar("(() => { const e = [...document.querySelectorAll('span.absolute')].find(s => (s.innerText || '').startsWith('Esta pessoa pediu para parar?')); const r = e?.getBoundingClientRect(); return r ? [Math.round(r.left), Math.round(r.right)] : null; })()");
+  conferir(!!caixaConfirma && caixaConfirma[0] >= 0 && caixaConfirma[1] <= 375, "pediu para parar: a confirmação cabe inteira na tela", JSON.stringify(caixaConfirma));
+  await shot("5a-confirmacao");
   const confirmou = await c.avaliar("(() => { const b = [...document.querySelectorAll('button')].filter(b => b.innerText.trim() === 'Pediu para parar'); if (b.length < 2) return false; b[b.length - 1].click(); return true; })()");
   conferir(confirmou, "pediu para parar: pede confirmação antes");
   // O botão "Pediu para parar" já estava na tela: espera a MENSAGEM sumir (resposta do servidor).

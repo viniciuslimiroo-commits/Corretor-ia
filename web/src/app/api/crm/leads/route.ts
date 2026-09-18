@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
+import { marcaEfetiva } from "@/lib/cobranca";
 import { ETAPAS, limparLeadNovo } from "@/lib/crm";
 import { CAMPOS_DO_LEAD, contaCrm, crmLiberado, doLeadsDaConta, numeroBloqueado, registrar } from "@/lib/crm-servidor";
 
@@ -18,7 +19,9 @@ export async function GET(req: NextRequest) {
 
   const porEtapa = Object.fromEntries(ETAPAS.map((e) => [e.id, 0])) as Record<string, number>;
   for (const l of data ?? []) porEtapa[l.etapa] = (porEtapa[l.etapa] ?? 0) + 1;
-  return NextResponse.json({ leads: data ?? [], porEtapa, veTudoDaCasa: c.veTudoDaCasa });
+  // Sem CRECI nenhuma mensagem sai: a lista avisa logo, não só na hora de enviar.
+  const marca = await marcaEfetiva(db, userId);
+  return NextResponse.json({ leads: data ?? [], porEtapa, veTudoDaCasa: c.veTudoDaCasa, temCreci: !!marca.creci?.trim() });
 }
 
 export async function POST(req: NextRequest) {
@@ -50,7 +53,17 @@ export async function POST(req: NextRequest) {
     .select(CAMPOS_DO_LEAD)
     .single();
   if (error) {
-    if (error.code === "23505") return NextResponse.json({ error: "Este número já está nos seus clientes." }, { status: 409 });
+    if (error.code === "23505") {
+      // Aponta o cliente que já existe. Se é de outro corretor da imobiliária (que esta
+      // pessoa não vê), diz isso -- "já está nos seus clientes" mandava procurar o que não aparece.
+      const base = db.from("leads").select("id, user_id").eq("telefone", r.lead.telefone);
+      const { data: existe } = await (c.orgId ? base.eq("org_id", c.orgId) : base.eq("user_id", userId).is("org_id", null)).maybeSingle();
+      const ve = !!existe && (!c.orgId || c.veTudoDaCasa || existe.user_id === userId);
+      return NextResponse.json(
+        ve ? { error: "Este número já está nos seus clientes.", existente: existe!.id } : { error: "Este número já é cliente de outro corretor da sua imobiliária." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: `Não consegui cadastrar agora (${error.message.slice(0, 120)}).` }, { status: 503 });
   }
   await registrar(db, c, data.id, "cadastrou", { origem: r.lead.origem, frio: r.lead.frio });

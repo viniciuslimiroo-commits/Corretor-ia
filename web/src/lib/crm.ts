@@ -183,30 +183,57 @@ export type LeadParaEnvio = {
 };
 
 export type PodeEnviar =
-  | { ok: true; primeiroContato: boolean; avisos: string[] }
+  | { ok: true; primeiroContato: boolean; reabertura: boolean; avisos: string[] }
   | { ok: false; motivo: "bloqueado" | "sem_creci" | "declaracao" | "limite_dia" | "sem_resposta" | "telefone"; texto: string };
 
-export function podeEnviar(lead: LeadParaEnvio, o: { creci: string | null; primeirosHoje: number; agora: Date }): PodeEnviar {
+/** Mesmo dia no calendário de Brasília (o dia do corretor, não o do servidor). */
+export function mesmoDiaEmBrasilia(a: Date, b: Date): boolean {
+  const dia = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(d);
+  return dia(a) === dia(b);
+}
+
+/**
+ * REABERTURA: abrir de novo, no mesmo dia, a mensagem que já foi aberta hoje (a conversa não
+ * abriu, o corretor fechou sem querer). É a MESMA tentativa: não conta de novo pro limite
+ * de tentativas nem pro de primeiros contatos, e o texto continua o mesmo. Sem isso, dois
+ * toques seguidos no botão levavam o cliente pra "Sem resposta" em segundos.
+ * `primeiraMensagemHoje`: a primeira mensagem DESTE cliente foi aberta hoje.
+ */
+export function podeEnviar(lead: LeadParaEnvio, o: { creci: string | null; primeirosHoje: number; agora: Date; primeiraMensagemHoje?: boolean }): PodeEnviar {
   if (lead.bloqueio === "pediu_parar") return { ok: false, motivo: "bloqueado", texto: "Esta pessoa pediu para parar. O envio fica travado pra sempre." };
   if (lead.bloqueio === "numero_errado") return { ok: false, motivo: "bloqueado", texto: "Número marcado como errado. Corrija o número pra enviar." };
   const tel = normalizarTelefone(lead.telefone);
   if (!tel) return { ok: false, motivo: "telefone", texto: "O número não parece um celular do Brasil com DDD." };
   if (!o.creci?.trim()) return { ok: false, motivo: "sem_creci", texto: "Cadastre seu CRECI em Minha marca antes de enviar mensagens." };
   if (!lead.declaracao_em) return { ok: false, motivo: "declaracao", texto: "Confirme que esta pessoa te passou o contato antes da primeira mensagem." };
-  if (lead.tentativas_sem_resposta >= LIMITES_CRM.tentativasSemResposta) {
+  const reabertura = !!lead.ultimo_envio_em && mesmoDiaEmBrasilia(new Date(lead.ultimo_envio_em), o.agora);
+  if (lead.tentativas_sem_resposta >= LIMITES_CRM.tentativasSemResposta && !reabertura) {
     return { ok: false, motivo: "sem_resposta", texto: `${LIMITES_CRM.tentativasSemResposta} mensagens sem resposta. Espere a pessoa responder e marque "Respondeu".` };
   }
-  const primeiroContato = !lead.ultimo_envio_em;
-  if (primeiroContato && o.primeirosHoje >= LIMITES_CRM.primeirosPorDia) {
+  const novo = !lead.ultimo_envio_em;
+  const primeiroContato = novo || (reabertura && !!o.primeiraMensagemHoje);
+  if (novo && o.primeirosHoje >= LIMITES_CRM.primeirosPorDia) {
     return { ok: false, motivo: "limite_dia", texto: `Você já fez ${LIMITES_CRM.primeirosPorDia} primeiros contatos hoje. Muita conversa nova no mesmo dia pode travar seu número. Continue amanhã.` };
   }
-  return { ok: true, primeiroContato, avisos: avisosDoEstado(tel.ddd, lead.frio, o.agora) };
+  return { ok: true, primeiroContato, reabertura, avisos: avisosDoEstado(tel.ddd, lead.frio, o.agora) };
 }
 
-/** O que muda no lead quando o corretor abre a mensagem pra enviar. */
-export function depoisDeEnviar(lead: { etapa: EtapaId; tentativas_sem_resposta: number }, agora: Date): { etapa: EtapaId; tentativas_sem_resposta: number; ultimo_envio_em: string } {
+/**
+ * O que muda no lead quando o corretor abre a mensagem pra enviar. Reabertura no mesmo dia
+ * não conta (ver podeEnviar). E "Sem resposta" só substitui etapa do começo (Novo, Em
+ * conversa): quem está em Visita ou Proposta continua lá -- a trava de tentativas vale do
+ * mesmo jeito, mas o corretor não perde em que pé a negociação estava.
+ */
+export function depoisDeEnviar(
+  lead: { etapa: EtapaId; tentativas_sem_resposta: number; ultimo_envio_em?: string | null },
+  agora: Date
+): { etapa: EtapaId; tentativas_sem_resposta: number; ultimo_envio_em: string } {
+  if (lead.ultimo_envio_em && mesmoDiaEmBrasilia(new Date(lead.ultimo_envio_em), agora)) {
+    return { etapa: lead.etapa, tentativas_sem_resposta: lead.tentativas_sem_resposta, ultimo_envio_em: agora.toISOString() };
+  }
   const tentativas = lead.tentativas_sem_resposta + 1;
-  const etapa: EtapaId = tentativas >= LIMITES_CRM.tentativasSemResposta ? "sem_resposta" : lead.etapa === "novo" ? "em_contato" : lead.etapa;
+  const inicio = lead.etapa === "novo" || lead.etapa === "em_contato";
+  const etapa: EtapaId = tentativas >= LIMITES_CRM.tentativasSemResposta && inicio ? "sem_resposta" : lead.etapa === "novo" ? "em_contato" : lead.etapa;
   return { etapa, tentativas_sem_resposta: tentativas, ultimo_envio_em: agora.toISOString() };
 }
 

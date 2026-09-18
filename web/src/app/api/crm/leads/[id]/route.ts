@@ -64,6 +64,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (typeof b.proximo_contato_em === "string" || b.proximo_contato_em === null) {
     mudanca.proximo_contato_em = typeof b.proximo_contato_em === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.proximo_contato_em) ? b.proximo_contato_em : null;
   }
+  if (typeof b.property_id === "string" || b.property_id === null) {
+    if (typeof b.property_id === "string") {
+      // O imóvel tem que ser da pessoa.
+      const { data: imovel } = await db.from("properties").select("id").eq("id", b.property_id).eq("user_id", c.userId).maybeSingle();
+      if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 404 });
+    }
+    mudanca.property_id = b.property_id;
+  }
   if (typeof b.telefone === "string") {
     // Trocar o número de quem pediu pra parar não destrava nada: o pedido é da pessoa.
     if (lead.bloqueio === "pediu_parar") return NextResponse.json({ error: "Esta pessoa pediu para parar. O número não se troca." }, { status: 409 });
@@ -77,7 +85,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (lead.bloqueio === "numero_errado") Object.assign(mudanca, { bloqueio: null, bloqueado_em: null, declaracao_em: null, declaracao_por: null, declaracao_versao: null, tentativas_sem_resposta: 0, ultimo_envio_em: null });
     }
   }
-  if (!Object.keys(mudanca).length) return NextResponse.json({ lead });
+  // A tela manda o formulário inteiro: só conta (e só vai pro histórico) o que mudou.
+  const atual = lead as Record<string, unknown>;
+  for (const k of Object.keys(mudanca)) if (mudanca[k] === (atual[k] ?? null)) delete mudanca[k];
+  if (!Object.keys(mudanca).length) return NextResponse.json({ lead, semMudanca: true });
 
   const { data, error } = await db.from("leads").update({ ...mudanca, atualizado_em: new Date().toISOString() }).eq("id", lead.id).select(CAMPOS_DO_LEAD).single();
   if (error) {

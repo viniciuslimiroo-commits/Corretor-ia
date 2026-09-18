@@ -54,11 +54,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       if (pedeDadoSensivel(texto)) {
         return NextResponse.json({ error: "A mensagem pede documento ou dado bancário. Isso não vai por mensagem: use um formulário seguro." }, { status: 400 });
       }
-      const depois = depoisDeEnviar({ etapa: lead.etapa as EtapaId, tentativas_sem_resposta: lead.tentativas_sem_resposta }, agora);
+      const depois = depoisDeEnviar({ etapa: lead.etapa as EtapaId, tentativas_sem_resposta: lead.tentativas_sem_resposta, ultimo_envio_em: lead.ultimo_envio_em }, agora);
       const novo = await salvar(depois);
       // O log guarda que o LINK foi gerado; se a pessoa enviou ou não, só o aparelho dela sabe.
-      await registrar(db, c, lead.id, "abriu_mensagem", { primeiro: situacao.pode.primeiroContato, editada: texto !== situacao.texto, avisos: situacao.pode.avisos.length });
-      return NextResponse.json({ lead: novo, link: linkDaMensagem(lead.telefone, texto), avisos: situacao.pode.avisos });
+      // `primeiro` só na primeira de verdade: é o que o limite do dia conta (reabrir não soma).
+      await registrar(db, c, lead.id, "abriu_mensagem", {
+        primeiro: !lead.ultimo_envio_em,
+        reaberta: situacao.pode.reabertura,
+        editada: texto !== situacao.texto,
+        avisos: situacao.pode.avisos.length,
+      });
+      return NextResponse.json({ lead: novo, link: linkDaMensagem(lead.telefone, texto), avisos: situacao.pode.avisos, reaberta: situacao.pode.reabertura });
     }
 
     if (acao === "respondeu") {

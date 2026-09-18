@@ -65,6 +65,9 @@ export function BotaoConfirma({
   title?: string;
 }) {
   const [armado, setArmado] = useState(false);
+  // A caixa abre alinhada pela direita do botão; se isso a jogasse pra fora da tela (botão
+  // perto da borda esquerda, no celular), abre pela esquerda. Medido no clique, não no render.
+  const [pelaEsquerda, setPelaEsquerda] = useState(false);
 
   useEffect(() => {
     if (!armado) return;
@@ -77,18 +80,28 @@ export function BotaoConfirma({
 
   return (
     <span className="relative inline-flex">
-      <Botao variante={variante} onClick={() => setArmado((v) => !v)} disabled={disabled} className={className} title={title}>
+      <Botao
+        variante={variante}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPelaEsquerda(r.right < 272 && r.left + 272 <= window.innerWidth);
+          setArmado((v) => !v);
+        }}
+        disabled={disabled}
+        className={className}
+        title={title}
+      >
         {children}
       </Botao>
       {armado && (
         <>
           {/* Clique fora fecha. Fixo e transparente, igual aos outros menus do app. */}
           <span className="fixed inset-0 z-40" onClick={() => setArmado(false)} />
-          <span className="absolute top-full right-0 z-50 mt-1.5 w-64 rounded-xl border border-neutral-200 bg-white p-3 text-left shadow-lg">
+          <span className={`absolute top-full ${pelaEsquerda ? "left-0" : "right-0"} z-50 mt-1.5 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white p-3 text-left shadow-lg`}>
             <span className="block text-sm font-medium text-neutral-900">{pergunta}</span>
             {detalhe && <span className="mt-1 block text-xs leading-relaxed text-neutral-500">{detalhe}</span>}
             <span className="mt-3 flex items-center justify-end gap-2">
-              <button onClick={() => setArmado(false)} className="rounded-lg px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">
+              <button onClick={() => setArmado(false)} className="min-h-10 rounded-lg px-3 text-sm text-neutral-600 hover:bg-neutral-100 sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs">
                 Cancelar
               </button>
               <button
@@ -96,7 +109,7 @@ export function BotaoConfirma({
                   setArmado(false);
                   aoConfirmar();
                 }}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                className="min-h-10 rounded-lg bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 sm:min-h-0 sm:py-1.5 sm:text-xs"
               >
                 {confirmar}
               </button>

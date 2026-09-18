@@ -99,6 +99,18 @@ export async function situacaoDeEnvio(db: Db, c: ContaCrm, lead: Record<string, 
     const { data } = await db.from("properties").select("titulo").eq("id", lead.property_id as string).maybeSingle();
     imovel = data?.titulo ?? null;
   }
+  // Reabertura da PRIMEIRA mensagem no mesmo dia: o texto continua o de apresentação.
+  let primeiraMensagemHoje = false;
+  if (lead.ultimo_envio_em) {
+    const { count } = await db
+      .from("leads_log")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", lead.id as string)
+      .eq("acao", "abriu_mensagem")
+      .eq("detalhe->>primeiro", "true")
+      .gte("criado_em", inicioDoDiaEmBrasilia(agora));
+    primeiraMensagemHoje = (count ?? 0) > 0;
+  }
   const pode = podeEnviar(
     {
       telefone: lead.telefone as string,
@@ -108,11 +120,12 @@ export async function situacaoDeEnvio(db: Db, c: ContaCrm, lead: Record<string, 
       ultimo_envio_em: (lead.ultimo_envio_em as string | null) ?? null,
       frio: !!lead.frio,
     },
-    { creci: marca.creci, primeirosHoje, agora }
+    { creci: marca.creci, primeirosHoje, agora, primeiraMensagemHoje }
   );
   const corretor = marca.nome ?? "";
-  const texto = lead.ultimo_envio_em
-    ? mensagemDeRetorno({ corretor, nomeLead: lead.nome as string })
-    : mensagemPronta({ corretor, creci: marca.creci ?? "", nomeLead: lead.nome as string, origem: lead.origem as OrigemId, imovel });
+  const apresentacao = pode.ok ? pode.primeiroContato : !lead.ultimo_envio_em;
+  const texto = apresentacao
+    ? mensagemPronta({ corretor, creci: marca.creci ?? "", nomeLead: lead.nome as string, origem: lead.origem as OrigemId, imovel })
+    : mensagemDeRetorno({ corretor, nomeLead: lead.nome as string });
   return { pode, texto, primeirosHoje, limiteDia: LIMITES_CRM.primeirosPorDia, corretor, creci: marca.creci, imovel };
 }

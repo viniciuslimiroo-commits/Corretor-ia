@@ -47,6 +47,9 @@ export default function Clientes() {
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [form, setForm] = useState({ nome: "", telefone: "", origem: "", email: "", property_id: "", observacoes: "" });
   const [ocupado, setOcupado] = useState(false);
+  const [existente, setExistente] = useState<string | null>(null);
+  const [temCreci, setTemCreci] = useState(true);
+  const [busca, setBusca] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -61,6 +64,7 @@ export default function Clientes() {
         if (!r.ok) throw new Error(d.error);
         setLeads(d.leads);
         setPorEtapa(d.porEtapa);
+        setTemCreci(d.temCreci !== false);
         const di = await ri.json().catch(() => ({}));
         if (ri.ok) setImoveis((di.imoveis ?? []).map((i: Imovel) => ({ id: i.id, titulo: i.titulo })));
       })
@@ -70,13 +74,19 @@ export default function Clientes() {
   const hoje = hojeISO();
   const praHoje = (l: Lead) => !l.bloqueio && l.etapa !== "fechado" && l.etapa !== "perdido" && ((!!l.proximo_contato_em && l.proximo_contato_em <= hoje) || (!l.ultimo_envio_em && l.etapa === "novo"));
   const lista = leads ?? [];
-  const visiveis = filtro === "todos" ? lista : filtro === "hoje" ? lista.filter(praHoje) : lista.filter((l) => l.etapa === filtro);
+  // Busca por nome (sem acento, sem maiúscula) ou por pedaço do número. Buscando, ignora a etapa.
+  const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const termo = semAcento(busca.trim());
+  const digitos = busca.replace(/\D/g, "");
+  const achados = termo ? lista.filter((l) => semAcento(l.nome).includes(termo) || (digitos.length >= 3 && l.telefone.includes(digitos))) : null;
+  const visiveis = achados ?? (filtro === "todos" ? lista : filtro === "hoje" ? lista.filter(praHoje) : lista.filter((l) => l.etapa === filtro));
   const nHoje = lista.filter(praHoje).length;
 
   async function criar(e: React.FormEvent) {
     e.preventDefault();
     setOcupado(true);
     setErro(null);
+    setExistente(null);
     try {
       const r = await fetch("/api/crm/leads", {
         method: "POST",
@@ -84,7 +94,10 @@ export default function Clientes() {
         body: JSON.stringify({ ...form, property_id: form.property_id || null }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
+      if (!r.ok) {
+        if (d.existente) setExistente(d.existente);
+        throw new Error(d.error);
+      }
       router.push(`/crm/${d.lead.id}`);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não consegui cadastrar.");
@@ -126,8 +139,16 @@ export default function Clientes() {
       )}
 
       {!fechado && (
-        <div className="mt-3">
+        <div className="mt-3 grid gap-2">
           <Aviso tipo="atencao">Só você vê esta área por enquanto. Ela abre pra todos depois da conversa com o advogado e da empresa aberta.</Aviso>
+          {!temCreci && (
+            <Aviso tipo="atencao">
+              Sem o seu CRECI em Minha marca, nenhuma mensagem sai.
+              <Link href="/marca" className="flex min-h-10 items-center font-medium underline">
+                Cadastrar agora
+              </Link>
+            </Aviso>
+          )}
         </div>
       )}
 
@@ -184,28 +205,49 @@ export default function Clientes() {
 
       {erro && (
         <div className="mt-4">
-          <Aviso tipo="erro">{erro}</Aviso>
+          <Aviso tipo="erro">
+            {erro}
+            {existente && (
+              <Link href={`/crm/${existente}`} className="flex min-h-10 items-center font-medium underline">
+                Abrir o cliente
+              </Link>
+            )}
+          </Aviso>
         </div>
       )}
 
       {!fechado && (
         <>
-          <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" role="tablist" aria-label="Etapas">
-            <Chip ativo={filtro === "hoje"} onClick={() => setFiltro("hoje")}>Pra hoje · {nHoje}</Chip>
-            <Chip ativo={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos · {leads?.length ?? 0}</Chip>
-            {ETAPAS.map((e) => (
-              <Chip key={e.id} ativo={filtro === e.id} onClick={() => setFiltro(e.id)}>
-                {e.rotulo} · {porEtapa[e.id] ?? 0}
-              </Chip>
-            ))}
-          </div>
+          {/* Sem cliente nenhum, busca e nove fichas zeradas só atrapalham. As fichas NÃO
+              encolhem: rolam de lado numa linha só (encolhendo, o texto quebrava em três linhas). */}
+          {lista.length > 0 && (
+            <>
+              <input
+                type="search"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por nome ou número"
+                aria-label="Buscar cliente"
+                className="mt-5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-base focus:border-marca-indigo focus:outline-none sm:text-sm"
+              />
+              <div className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&>*]:shrink-0 [&>*]:whitespace-nowrap ${achados ? "opacity-40" : ""}`} aria-label="Etapas">
+                <Chip ativo={filtro === "hoje"} onClick={() => setFiltro("hoje")}>Pra hoje · {nHoje}</Chip>
+                <Chip ativo={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos · {lista.length}</Chip>
+                {ETAPAS.map((e) => (
+                  <Chip key={e.id} ativo={filtro === e.id} onClick={() => setFiltro(e.id)}>
+                    {e.rotulo} · {porEtapa[e.id] ?? 0}
+                  </Chip>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="mt-4">
             {leads === null ? (
               <p className="text-sm text-neutral-500">Carregando…</p>
             ) : visiveis.length === 0 ? (
               <Cartao>
-                <p className="font-medium">{leads.length === 0 ? "Nenhum cliente ainda." : "Ninguém nesta etapa."}</p>
+                <p className="font-medium">{leads.length === 0 ? "Nenhum cliente ainda." : achados ? "Ninguém com esse nome ou número." : "Ninguém nesta etapa."}</p>
                 {leads.length === 0 && <p className="mt-1 text-sm text-neutral-600">Cadastre quem te pediu informação: de um portal, do seu anúncio, da placa, por indicação.</p>}
               </Cartao>
             ) : (

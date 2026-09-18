@@ -100,6 +100,25 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   conferir(e2.etapa === "sem_resposta" && e2.tentativas_sem_resposta === 2, "etapas: 2ª sem resposta leva pra Sem resposta");
   const e3 = depoisDeEnviar({ etapa: "visita", tentativas_sem_resposta: 0 }, t0);
   conferir(e3.etapa === "visita", "etapas: mensagem pra quem já está em Visita não rebaixa a etapa");
+  const e4 = depoisDeEnviar({ etapa: "proposta", tentativas_sem_resposta: 1, ultimo_envio_em: "2026-09-16T15:00:00Z" }, t0);
+  conferir(e4.etapa === "proposta" && e4.tentativas_sem_resposta === 2, "etapas: 2ª sem resposta de quem está em Proposta trava, mas não apaga a etapa");
+
+  // Reabrir no mesmo dia (a conversa não abriu, fechou sem querer) é a MESMA tentativa.
+  const hojeCedo = "2026-09-18T12:00:00Z"; // 9h em Brasília; t0 = 12h
+  const re = depoisDeEnviar({ etapa: "em_contato", tentativas_sem_resposta: 1, ultimo_envio_em: hojeCedo }, t0);
+  conferir(re.etapa === "em_contato" && re.tentativas_sem_resposta === 1, "reabertura: abrir 2x no mesmo dia não vira 2 tentativas (antes ia pra Sem resposta em segundos)");
+  const ontem = depoisDeEnviar({ etapa: "em_contato", tentativas_sem_resposta: 1, ultimo_envio_em: "2026-09-17T12:00:00Z" }, t0);
+  conferir(ontem.tentativas_sem_resposta === 2 && ontem.etapa === "sem_resposta", "reabertura: mensagem de ontem + nova hoje conta como 2ª tentativa");
+  const meiaNoite = depoisDeEnviar({ etapa: "em_contato", tentativas_sem_resposta: 1, ultimo_envio_em: "2026-09-18T02:30:00Z" }, t0);
+  conferir(meiaNoite.tentativas_sem_resposta === 2, "reabertura: o dia é o de Brasília (23h30 de ontem lá não é hoje)");
+  const base: LeadParaEnvio = { telefone: "5562999991234", bloqueio: null, declaracao_em: "x", tentativas_sem_resposta: 2, ultimo_envio_em: hojeCedo, frio: false };
+  const p1 = podeEnviar(base, { creci: "1", primeirosHoje: 0, agora: t0 });
+  conferir(p1.ok && p1.reabertura, "reabertura: com 2 tentativas, a de HOJE ainda pode ser reaberta");
+  const trava = podeEnviar({ ...base, ultimo_envio_em: "2026-09-17T12:00:00Z" }, { creci: "1", primeirosHoje: 0, agora: t0 });
+  conferir(!trava.ok && trava.motivo === "sem_resposta", "reabertura: com 2 tentativas e a última ontem, trava");
+  const p2 = podeEnviar({ ...base, tentativas_sem_resposta: 1 }, { creci: "1", primeirosHoje: 99, agora: t0, primeiraMensagemHoje: true });
+  conferir(p2.ok && p2.primeiroContato, "reabertura da 1ª mensagem: continua sendo apresentação e não esbarra no limite do dia");
+
   const r1 = depoisDeResponder({ etapa: "sem_resposta" });
   conferir(r1.etapa === "em_contato" && r1.tentativas_sem_resposta === 0, "etapas: respondeu zera as tentativas e volta pra conversa");
   conferir(depoisDeResponder({ etapa: "proposta" }).etapa === "proposta", "etapas: resposta de quem está em Proposta não muda a etapa");

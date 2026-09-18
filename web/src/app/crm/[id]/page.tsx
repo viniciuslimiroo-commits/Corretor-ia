@@ -29,10 +29,12 @@ type Lead = {
   tentativas_sem_resposta: number;
   ultimo_envio_em: string | null;
   proximo_contato_em: string | null;
+  property_id: string | null;
   criado_em: string;
 };
+type Imovel = { id: string; titulo: string };
 type Envio = {
-  pode: { ok: true; primeiroContato: boolean; avisos: string[] } | { ok: false; motivo: string; texto: string };
+  pode: { ok: true; primeiroContato: boolean; reabertura: boolean; avisos: string[] } | { ok: false; motivo: string; texto: string };
   texto: string;
   primeirosHoje: number;
   limiteDia: number;
@@ -67,21 +69,25 @@ export default function Cliente() {
   const [texto, setTexto] = useState("");
   const [aceito, setAceito] = useState(false);
   const [ocupado, setOcupado] = useState(false);
-  const [dados, setDados] = useState({ nome: "", telefone: "", email: "", proximo_contato_em: "", observacoes: "" });
+  const [dados, setDados] = useState({ nome: "", telefone: "", email: "", proximo_contato_em: "", observacoes: "", property_id: "" });
+  const [salvo, setSalvo] = useState<string | null>(null);
+  const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [versao, setVersao] = useState(0);
 
   useEffect(() => {
     if (!user || !id) return;
     token()
-      .then((t) => fetch(`/api/crm/leads/${id}`, { headers: { Authorization: `Bearer ${t}` } }))
-      .then(async (r) => {
+      .then((t) => Promise.all([fetch(`/api/crm/leads/${id}`, { headers: { Authorization: `Bearer ${t}` } }), fetch("/api/imoveis", { headers: { Authorization: `Bearer ${t}` } })]))
+      .then(async ([r, ri]) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error);
+        const di = await ri.json().catch(() => ({}));
+        if (ri.ok) setImoveis((di.imoveis ?? []).map((i: Imovel) => ({ id: i.id, titulo: i.titulo })));
         setLead(d.lead);
         setEnvio(d.envio);
         setHistorico(d.historico);
         setTexto(d.envio.texto);
-        setDados({ nome: d.lead.nome, telefone: telefoneLegivel(d.lead.telefone), email: d.lead.email ?? "", proximo_contato_em: d.lead.proximo_contato_em ?? "", observacoes: d.lead.observacoes ?? "" });
+        setDados({ nome: d.lead.nome, telefone: telefoneLegivel(d.lead.telefone), email: d.lead.email ?? "", proximo_contato_em: d.lead.proximo_contato_em ?? "", observacoes: d.lead.observacoes ?? "", property_id: d.lead.property_id ?? "" });
       })
       .catch((e) => setErro(e.message));
   }, [user, token, id, versao]);
@@ -108,6 +114,11 @@ export default function Cliente() {
   }
   const acao = (a: string, extra?: Record<string, unknown>) => chamar("POST", `/api/crm/leads/${id}/acao`, { acao: a, ...extra });
   const recarregar = () => setVersao((v) => v + 1);
+  // Mexeu num campo: o "Salvo." de antes já não vale.
+  const mudar = (m: Partial<typeof dados>) => {
+    setDados({ ...dados, ...m });
+    setSalvo(null);
+  };
 
   async function enviar() {
     // A janela abre JÁ, no toque: aberta depois do `await`, o navegador do celular bloqueia.
@@ -119,7 +130,14 @@ export default function Cliente() {
     }
     if (janela) janela.location.href = d.link;
     else window.location.href = d.link;
-    if (d.avisos?.length) setAviso(d.avisos.join(" "));
+    // Sem isso a caixa trocava de texto em silêncio e a pessoa não sabia o que tinha acontecido.
+    setAviso(
+      [
+        d.reaberta ? "Mensagem aberta de novo (não conta como nova tentativa)." : "Conversa aberta no seu aparelho com o texto pronto.",
+        "Quando a pessoa responder, volte aqui e toque em Respondeu.",
+        ...(d.avisos ?? []),
+      ].join(" ")
+    );
     recarregar();
   }
 
@@ -160,6 +178,7 @@ export default function Cliente() {
                 {telefoneLegivel(lead.telefone)} · {ORIGEM_POR_ID[lead.origem]?.rotulo}
                 {lead.frio && " · contato frio"}
               </p>
+              {envio.imovel && <p className="mt-0.5 text-sm text-neutral-700">Interesse: {envio.imovel}</p>}
             </div>
 
             {/* ---------- a mensagem ---------- */}
@@ -194,6 +213,7 @@ export default function Cliente() {
                   {envio.pode.avisos.map((a, i) => (
                     <Aviso key={i} tipo="atencao">{a}</Aviso>
                   ))}
+                  {envio.pode.reabertura && <p className="text-xs text-neutral-500">Você já abriu esta mensagem hoje. Abrir de novo não conta como nova tentativa.</p>}
                   <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={8} maxLength={1000} className={campo} aria-label="Texto da mensagem" />
                   <p className="text-xs text-neutral-500">
                     {envio.pode.primeiroContato
@@ -278,39 +298,54 @@ export default function Cliente() {
                     email: dados.email || null,
                     proximo_contato_em: dados.proximo_contato_em || null,
                     observacoes: dados.observacoes || null,
+                    property_id: dados.property_id || null,
                     ...(lead.bloqueio !== "pediu_parar" ? { telefone: dados.telefone } : {}),
                   });
                   if (d) {
-                    setAviso("Dados salvos.");
-                    recarregar();
+                    setSalvo(d.semMudanca ? "Nada mudou." : "Salvo.");
+                    if (!d.semMudanca) recarregar();
                   }
                 }}
               >
                 <label className="text-sm">
                   <span className={rotulo}>Nome</span>
-                  <input value={dados.nome} onChange={(e) => setDados({ ...dados, nome: e.target.value })} maxLength={80} className={campo} />
+                  <input value={dados.nome} onChange={(e) => mudar({ nome: e.target.value })} maxLength={80} className={campo} />
                 </label>
                 <label className="text-sm">
                   <span className={rotulo}>Celular</span>
-                  <input value={dados.telefone} inputMode="tel" disabled={lead.bloqueio === "pediu_parar"} onChange={(e) => setDados({ ...dados, telefone: e.target.value })} className={campo} />
+                  <input value={dados.telefone} inputMode="tel" disabled={lead.bloqueio === "pediu_parar"} onChange={(e) => mudar({ telefone: e.target.value })} className={campo} />
                 </label>
                 <label className="text-sm">
                   <span className={rotulo}>E-mail</span>
-                  <input type="email" value={dados.email} onChange={(e) => setDados({ ...dados, email: e.target.value })} className={campo} />
+                  <input type="email" value={dados.email} onChange={(e) => mudar({ email: e.target.value })} className={campo} />
                 </label>
                 <label className="text-sm">
                   <span className={rotulo}>Próximo contato</span>
-                  <input type="date" value={dados.proximo_contato_em} onChange={(e) => setDados({ ...dados, proximo_contato_em: e.target.value })} className={campo} />
+                  <input type="date" value={dados.proximo_contato_em} onChange={(e) => mudar({ proximo_contato_em: e.target.value })} className={campo} />
+                </label>
+                <label className="text-sm sm:col-span-2">
+                  <span className={rotulo}>Imóvel de interesse</span>
+                  <select value={dados.property_id} onChange={(e) => mudar({ property_id: e.target.value })} className={campo}>
+                    <option value="">Nenhum</option>
+                    {imoveis.map((i) => (
+                      <option key={i.id} value={i.id}>{i.titulo}</option>
+                    ))}
+                  </select>
                 </label>
                 <label className="text-sm sm:col-span-2">
                   <span className={rotulo}>Observações</span>
-                  <textarea value={dados.observacoes} onChange={(e) => setDados({ ...dados, observacoes: e.target.value })} rows={3} maxLength={1000} className={campo} />
+                  <textarea value={dados.observacoes} onChange={(e) => mudar({ observacoes: e.target.value })} rows={3} maxLength={1000} className={campo} />
                   <span className="mt-1 block text-xs text-neutral-500">{AVISO_OBSERVACOES}</span>
                 </label>
-                <div className="sm:col-span-2">
+                <div className="flex items-center gap-3 sm:col-span-2">
                   <Botao type="submit" variante="secundaria" disabled={ocupado} className="min-h-11">
                     Salvar dados
                   </Botao>
+                  {salvo && (
+                    <span role="status" className="text-sm text-neutral-600">
+                      {salvo}
+                    </span>
+                  )}
                 </div>
               </form>
             </Cartao>
