@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { aceitarConvitePendente, contaDe, marcaEfetiva } from "@/lib/cobranca";
 import { progressoDaMarca } from "@/lib/cores-da-logo";
+import { crmLiberado } from "@/lib/crm-servidor";
 
 // Resumo da conta pra tela: saldo, plano, status e a imobiliária (se for membro). É o
 // único lugar de onde o navegador lê créditos -- antes ele lia users.creditos_saldo
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
     renovaEm: conta.renovaEm,
     org: conta.org,
     entrouEm,
+    /** O CRM (Clientes) ainda é só de quem está em ADMIN_EMAILS: decide se o menu mostra. */
+    crm: await crmLiberado(db, userId),
     marca: {
       onboarding: (u?.onboarding_marca as string | null) ?? null,
       progresso,

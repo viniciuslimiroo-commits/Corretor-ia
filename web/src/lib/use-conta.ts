@@ -69,6 +69,7 @@ export function useConta() {
           tipo: d.tipo === "org" ? "org" : "user",
           org: d.org ?? null,
           marca: d.marca ?? null,
+          crm: d.crm === true,
         });
         if (d.entrouEm) setAviso(`Você entrou na equipe de ${d.entrouEm}. Os créditos e a marca agora são da imobiliária.`);
       })

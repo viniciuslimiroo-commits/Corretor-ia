@@ -487,6 +487,14 @@ export function Icone({ nome, className = "h-5 w-5" }: { nome: string; className
           <path d="M16 15a5 5 0 0 1 5.5 5" />
         </svg>
       );
+    case "clientes": // uma pessoa e uma ficha
+      return (
+        <svg {...p}>
+          <circle cx="9" cy="8" r="3.5" />
+          <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+          <path d="M17 7h4M17 11h4M17 15h2.5" />
+        </svg>
+      );
     case "magica": // varinha
       return (
         <svg {...p}>

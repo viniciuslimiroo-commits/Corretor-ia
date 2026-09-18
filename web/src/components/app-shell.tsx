@@ -44,6 +44,8 @@ export type Conta = {
     pessoas: number;
     limite: number;
   } | null;
+  /** Clientes (CRM) liberado pra esta pessoa. Por enquanto só quem está em ADMIN_EMAILS. */
+  crm?: boolean;
   /** O estado da marca, pra decidir a tela de boas-vindas e o aviso de "complete". */
   marca: {
     onboarding: string | null;
@@ -201,6 +203,9 @@ export default function AppShell({
 
   // O que é da CONTA, não do trabalho do dia: vai pra bolinha.
   const daConta = [
+    // Clientes fica aqui (e não na barra) enquanto só o admin vê: na barra do celular não
+    // cabe mais uma fatia. Quando abrir pra todos, decidir o lugar dele.
+    ...(conta.crm ? [{ href: "/crm", rotulo: t("menu.clientes"), icone: "clientes", extra: null }] : []),
     {
       href: "/marca",
       rotulo: t("menu.marca"),
