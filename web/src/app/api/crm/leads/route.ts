@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { marcaEfetiva } from "@/lib/cobranca";
 import { ETAPAS, limparLeadNovo } from "@/lib/crm";
-import { CAMPOS_DO_LEAD, contaCrm, crmLiberado, doLeadsDaConta, numeroBloqueado, registrar } from "@/lib/crm-servidor";
+import { CAMPOS_DO_LEAD, contaCrm, crmLiberado, crmSoAdmin, doLeadsDaConta, nomesDosCorretores, numeroBloqueado, registrar } from "@/lib/crm-servidor";
 
 // CRM: a lista de clientes da conta e o cadastro de um novo. Regras em lib/crm.ts;
 // quem vê o quê em lib/crm-servidor.ts.
@@ -19,9 +19,14 @@ export async function GET(req: NextRequest) {
 
   const porEtapa = Object.fromEntries(ETAPAS.map((e) => [e.id, 0])) as Record<string, number>;
   for (const l of data ?? []) porEtapa[l.etapa] = (porEtapa[l.etapa] ?? 0) + 1;
+  // Dono e gestor veem a casa inteira: cada cliente de colega vem com o nome do corretor.
+  const deColegas = c.veTudoDaCasa ? (data ?? []).filter((l) => l.user_id !== userId) : [];
+  const nomes = await nomesDosCorretores(db, deColegas.map((l) => l.user_id as string));
+  const leads = (data ?? []).map((l) => (l.user_id !== userId && nomes[l.user_id as string] ? { ...l, corretor: nomes[l.user_id as string] } : l));
+
   // Sem CRECI nenhuma mensagem sai: a lista avisa logo, não só na hora de enviar.
   const marca = await marcaEfetiva(db, userId);
-  return NextResponse.json({ leads: data ?? [], porEtapa, veTudoDaCasa: c.veTudoDaCasa, temCreci: !!marca.creci?.trim() });
+  return NextResponse.json({ leads, porEtapa, veTudoDaCasa: c.veTudoDaCasa, temCreci: !!marca.creci?.trim(), soAdmin: crmSoAdmin() });
 }
 
 export async function POST(req: NextRequest) {

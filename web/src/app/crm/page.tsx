@@ -27,6 +27,8 @@ type Lead = {
   ultimo_envio_em: string | null;
   proximo_contato_em: string | null;
   atualizado_em: string;
+  /** Só pra dono/gestor, nos clientes de colegas. */
+  corretor?: string;
 };
 type Imovel = { id: string; titulo: string };
 type Filtro = "hoje" | "todos" | EtapaId;
@@ -49,6 +51,7 @@ export default function Clientes() {
   const [ocupado, setOcupado] = useState(false);
   const [existente, setExistente] = useState<string | null>(null);
   const [temCreci, setTemCreci] = useState(true);
+  const [soAdmin, setSoAdmin] = useState(true);
   const [busca, setBusca] = useState("");
 
   useEffect(() => {
@@ -65,6 +68,7 @@ export default function Clientes() {
         setLeads(d.leads);
         setPorEtapa(d.porEtapa);
         setTemCreci(d.temCreci !== false);
+        setSoAdmin(d.soAdmin !== false);
         const di = await ri.json().catch(() => ({}));
         if (ri.ok) setImoveis((di.imoveis ?? []).map((i: Imovel) => ({ id: i.id, titulo: i.titulo })));
       })
@@ -78,7 +82,7 @@ export default function Clientes() {
   const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const termo = semAcento(busca.trim());
   const digitos = busca.replace(/\D/g, "");
-  const achados = termo ? lista.filter((l) => semAcento(l.nome).includes(termo) || (digitos.length >= 3 && l.telefone.includes(digitos))) : null;
+  const achados = termo ? lista.filter((l) => semAcento(l.nome).includes(termo) || semAcento(l.corretor ?? "").includes(termo) || (digitos.length >= 3 && l.telefone.includes(digitos))) : null;
   const visiveis = achados ?? (filtro === "todos" ? lista : filtro === "hoje" ? lista.filter(praHoje) : lista.filter((l) => l.etapa === filtro));
   const nHoje = lista.filter(praHoje).length;
 
@@ -140,7 +144,7 @@ export default function Clientes() {
 
       {!fechado && (
         <div className="mt-3 grid gap-2">
-          <Aviso tipo="atencao">Só você vê esta área por enquanto. Ela abre pra todos depois da conversa com o advogado e da empresa aberta.</Aviso>
+          {soAdmin && <Aviso tipo="atencao">Só você vê esta área por enquanto. Ela abre pra todos depois da conversa com o advogado e da empresa aberta.</Aviso>}
           {!temCreci && (
             <Aviso tipo="atencao">
               Sem o seu CRECI em Minha marca, nenhuma mensagem sai.
@@ -260,6 +264,7 @@ export default function Clientes() {
                         <p className="truncate text-sm text-neutral-500">
                           {telefoneLegivel(l.telefone)} · {ORIGEM_POR_ID[l.origem]?.rotulo.split(" (")[0]}
                         </p>
+                        {l.corretor && <p className="truncate text-xs text-neutral-400">Corretor: {l.corretor}</p>}
                       </div>
                       <div className="shrink-0 text-right">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${l.bloqueio ? "bg-red-50 text-red-700" : "bg-marca-pessego/60 text-marca-indigo"}`}>

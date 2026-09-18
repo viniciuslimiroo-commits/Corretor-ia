@@ -39,6 +39,17 @@ export async function crmLiberado(db: Db, userId: string): Promise<boolean> {
   return !!data?.email && lista.includes(String(data.email).toLowerCase());
 }
 
+/** Nomes dos corretores (pra quem vê a casa inteira saber de quem é cada cliente). */
+export async function nomesDosCorretores(db: Db, ids: string[]): Promise<Record<string, string>> {
+  const unicos = [...new Set(ids)];
+  if (!unicos.length) return {};
+  const { data } = await db.from("users").select("id, nome, email").in("id", unicos);
+  return Object.fromEntries((data ?? []).map((u) => [u.id, (u.nome as string | null)?.trim() || String(u.email ?? "").split("@")[0]]));
+}
+
+/** O CRM está fechado pros outros (só ADMIN_EMAILS)? A tela avisa enquanto estiver. */
+export const crmSoAdmin = () => process.env.CRM_ABERTO !== "1";
+
 /** Aplica "quem vê o quê" numa consulta de `leads`. */
 export function doLeadsDaConta<T>(consulta: T, c: ContaCrm): T {
   // Os tipos do construtor de consulta do Supabase estouram a inferência se o filtro for

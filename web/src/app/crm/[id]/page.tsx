@@ -64,6 +64,7 @@ export default function Cliente() {
   const [lead, setLead] = useState<Lead | null>(null);
   const [envio, setEnvio] = useState<Envio | null>(null);
   const [historico, setHistorico] = useState<Registro[]>([]);
+  const [corretor, setCorretor] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
@@ -86,6 +87,7 @@ export default function Cliente() {
         setLead(d.lead);
         setEnvio(d.envio);
         setHistorico(d.historico);
+        setCorretor(d.corretor ?? null);
         setTexto(d.envio.texto);
         setDados({ nome: d.lead.nome, telefone: telefoneLegivel(d.lead.telefone), email: d.lead.email ?? "", proximo_contato_em: d.lead.proximo_contato_em ?? "", observacoes: d.lead.observacoes ?? "", property_id: d.lead.property_id ?? "" });
       })
@@ -179,6 +181,7 @@ export default function Cliente() {
                 {lead.frio && " · contato frio"}
               </p>
               {envio.imovel && <p className="mt-0.5 text-sm text-neutral-700">Interesse: {envio.imovel}</p>}
+              {corretor && <p className="mt-0.5 text-sm text-neutral-700">Corretor: {corretor}</p>}
             </div>
 
             {/* ---------- a mensagem ---------- */}

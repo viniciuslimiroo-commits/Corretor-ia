@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { ETAPAS, LIMITES_CRM, normalizarTelefone, type EtapaId } from "@/lib/crm";
-import { CAMPOS_DO_LEAD, bloquearNumero, contaCrm, crmLiberado, doLeadsDaConta, numeroBloqueado, registrar, situacaoDeEnvio } from "@/lib/crm-servidor";
+import { CAMPOS_DO_LEAD, bloquearNumero, contaCrm, crmLiberado, doLeadsDaConta, nomesDosCorretores, numeroBloqueado, registrar, situacaoDeEnvio } from "@/lib/crm-servidor";
 
 // Um cliente: ver (com o histórico e o que dá pra fazer agora), editar, excluir de
 // verdade e exportar (direitos do titular, LGPD art. 18).
@@ -34,7 +34,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   const envio = await situacaoDeEnvio(db, c, lead, new Date());
-  return NextResponse.json({ lead, historico: historico ?? [], envio });
+  // Cliente de colega (quem vê a casa inteira): diz de quem é.
+  const corretor = lead.user_id !== c.userId ? ((await nomesDosCorretores(db, [lead.user_id]))[lead.user_id] ?? null) : null;
+  return NextResponse.json({ lead, historico: historico ?? [], envio, corretor });
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
