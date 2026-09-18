@@ -97,6 +97,7 @@ const alvosPequenos = () =>
   c.avaliar(`[...document.querySelectorAll('main button, main a, main input, main select, main textarea')].filter(e => e.offsetParent !== null && e.type !== 'checkbox' && e.type !== 'hidden').map(e => [e.innerText?.trim() || e.getAttribute('aria-label') || e.name || e.tagName, Math.round(e.getBoundingClientRect().height)]).filter(([, h]) => h < 40)`);
 
 let leadId = null;
+let creciOriginal = null; // { valor } quando o teste trocou o CRECI da conta
 try {
   await c.abrir(`${BASE}/login`, { largura: 375, altura: 812, celular: true });
   await c.avaliar(`localStorage.setItem(${JSON.stringify(`sb-${REF}-auth-token`)}, ${JSON.stringify(JSON.stringify(sessao))})`);
@@ -131,6 +132,19 @@ try {
   }
   conferir(!!leadId, "cadastro: cadastrou e abriu a ficha do cliente");
   if (!leadId) throw new Error(`não abriu a ficha: ${(await texto()).slice(0, 300)}`);
+
+  // ---------- sem CRECI (trava 8) ----------
+  // Conta sem CRECI: confere a trava e põe um CRECI provisório pra seguir o roteiro. O
+  // valor original volta no fim, junto com a limpeza.
+  await esperarTexto("Mensagem");
+  await esperar(500);
+  if ((await texto()).includes("Cadastre seu CRECI")) {
+    conferir((await texto()).includes("Abrir Minha marca"), "ficha: sem CRECI no perfil, trava a mensagem e leva pra Minha marca (trava 8)");
+    const [u] = await rest(`users?id=eq.${userId}&select=creci`).then((r) => r.json());
+    creciOriginal = { valor: u?.creci ?? null };
+    await rest(`users?id=eq.${userId}`, { method: "PATCH", body: JSON.stringify({ creci: "TESTE-0000" }) });
+    await c.abrir(`${BASE}/crm/${leadId}`, { largura: 375, altura: 812, celular: true });
+  }
 
   // ---------- declaração (trava 3) ----------
   conferir(await esperarTexto("aceitou receber mensagens minhas"), "ficha: antes da 1ª mensagem, pede a declaração");
@@ -185,7 +199,13 @@ try {
   await esperar(300);
   const confirmou = await c.avaliar("(() => { const b = [...document.querySelectorAll('button')].filter(b => b.innerText.trim() === 'Pediu para parar'); if (b.length < 2) return false; b[b.length - 1].click(); return true; })()");
   conferir(confirmou, "pediu para parar: pede confirmação antes");
-  conferir(await esperarTexto("Pediu para parar", 8000) && !(await texto()).includes("Abrir a mensagem pra enviar"), "pediu para parar: a mensagem some da ficha");
+  // O botão "Pediu para parar" já estava na tela: espera a MENSAGEM sumir (resposta do servidor).
+  let sumiu = false;
+  for (let i = 0; i < 50 && !sumiu; i++) {
+    sumiu = !(await texto()).includes("Abrir a mensagem pra enviar");
+    if (!sumiu) await esperar(200);
+  }
+  conferir(sumiu && !(await c.avaliar("!!document.querySelector('textarea[aria-label=\"Texto da mensagem\"]')")), "pediu para parar: a mensagem some da ficha", (await texto()).match(/Mensagem\n+([^\n]+)/)?.[1] ?? "");
   await shot("5-bloqueado");
 
   // ---------- exportar ----------
@@ -215,6 +235,11 @@ try {
   const bloqueios = await rest(`leads_bloqueados?conta=eq.${conta}&telefone_hash=eq.${hash}`, { method: "DELETE" }).then((r) => r.json());
   const logs = await rest(`leads_log?user_id=eq.${userId}&criado_em=gte.${encodeURIComponent(inicio)}`, { method: "DELETE" }).then((r) => r.json());
   console.log(`\nlimpeza: ${leads.length} cliente(s), ${bloqueios.length} bloqueio(s), ${logs.length} linha(s) de histórico apagadas`);
+  if (creciOriginal) {
+    await rest(`users?id=eq.${userId}`, { method: "PATCH", body: JSON.stringify({ creci: creciOriginal.valor }) });
+    const [u] = await rest(`users?id=eq.${userId}&select=creci`).then((r) => r.json());
+    conferir((u?.creci ?? null) === creciOriginal.valor, "limpeza: o CRECI da conta voltou ao que era", String(u?.creci ?? "vazio"));
+  }
   const resto = await rest(`leads_bloqueados?conta=eq.${conta}&telefone_hash=eq.${hash}&select=conta`).then((r) => r.json());
   conferir(resto.length === 0, "limpeza: o bloqueio do número de teste saiu (o banco ficou como estava)");
   console.log(`telas: ${SAIDA}`);

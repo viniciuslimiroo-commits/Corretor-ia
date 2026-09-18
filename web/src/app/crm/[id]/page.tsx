@@ -194,7 +194,7 @@ export default function Cliente() {
                   {envio.pode.avisos.map((a, i) => (
                     <Aviso key={i} tipo="atencao">{a}</Aviso>
                   ))}
-                  <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={5} maxLength={1000} className={campo} aria-label="Texto da mensagem" />
+                  <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={8} maxLength={1000} className={campo} aria-label="Texto da mensagem" />
                   <p className="text-xs text-neutral-500">
                     {envio.pode.primeiroContato
                       ? `Primeiro contato: sem link, se identificando e com a opção de sair. Hoje: ${envio.primeirosHoje} de ${envio.limiteDia} primeiros contatos.`
