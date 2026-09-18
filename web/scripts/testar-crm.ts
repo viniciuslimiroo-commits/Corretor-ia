@@ -13,7 +13,11 @@ import {
   limparLeadNovo,
   linkDaMensagem,
   mensagemPronta,
+  montarMensagem,
   normalizarTelefone,
+  pedidoDaMensagem,
+  semLinks,
+  temLink,
   pedeDadoSensivel,
   podeEnviar,
   telefoneLegivel,
@@ -119,6 +123,12 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   const p2 = podeEnviar({ ...base, tentativas_sem_resposta: 1 }, { creci: "1", primeirosHoje: 99, agora: t0, primeiraMensagemHoje: true });
   conferir(p2.ok && p2.primeiroContato, "reabertura da 1ª mensagem: continua sendo apresentação e não esbarra no limite do dia");
 
+  // Depois do "respondeu" (tentativas 0), a próxima do mesmo dia é conversa NOVA: conta, e não é 1º contato.
+  const aposResposta = depoisDeEnviar({ etapa: "em_contato", tentativas_sem_resposta: 0, ultimo_envio_em: hojeCedo }, t0);
+  conferir(aposResposta.tentativas_sem_resposta === 1, "reabertura: depois que a pessoa respondeu, a mensagem do mesmo dia conta como nova");
+  const p3 = podeEnviar({ ...base, tentativas_sem_resposta: 0 }, { creci: "1", primeirosHoje: 0, agora: t0, primeiraMensagemHoje: true });
+  conferir(p3.ok && !p3.primeiroContato && !p3.reabertura, "reabertura: depois da resposta, não é mais 1º contato (os materiais liberam)");
+
   const r1 = depoisDeResponder({ etapa: "sem_resposta" });
   conferir(r1.etapa === "em_contato" && r1.tentativas_sem_resposta === 0, "etapas: respondeu zera as tentativas e volta pra conversa");
   conferir(depoisDeResponder({ etapa: "proposta" }).etapa === "proposta", "etapas: resposta de quem está em Proposta não muda a etapa");
@@ -141,6 +151,23 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   const lead: LeadParaEnvio = { telefone: "5541999991234", bloqueio: null, declaracao_em: "x", tentativas_sem_resposta: 0, ultimo_envio_em: null, frio: true };
   const p = podeEnviar(lead, { creci: "1", primeirosHoje: 0, agora: noite });
   conferir(p.ok && p.avisos.length === 2, "estado: o aviso não trava o envio, só informa (a decisão é do corretor)");
+}
+
+// ---------- mensagem preparada com IA e materiais ----------
+{
+  const base = { corretor: "João Lima", creci: "12345-F", nomeLead: "Maria da Silva" };
+  // A IA "desobediente": cumprimenta de novo, põe link e esquece o SAIR.
+  const m1 = montarMensagem({ ...base, primeiroContato: true, miolo: "Vi que você se interessou pelo apê. Veja em https://golpe.com/x e me diga!", links: [{ rotulo: "Fotos", url: "https://encena.app/c/abc" }] });
+  conferir(m1.startsWith("Olá, Maria! Aqui é João Lima, corretor(a) de imóveis, CRECI 12345-F.") && m1.endsWith("é só responder SAIR."), "preparada, 1º contato: abertura com CRECI e saída SAIR são do Encena, não da IA", m1);
+  conferir(!temLink(m1), "preparada, 1º contato: nenhum link sai (nem o que a IA inventou, nem o de material)");
+  const m2 = montarMensagem({ ...base, primeiroContato: false, miolo: "Olá, Maria! Separei o material, segue abaixo. www.site-falso.com Quer visitar?", links: [{ rotulo: "Fotos", url: "https://encena.app/c/abc" }, { rotulo: "Vídeo", url: "javascript:alert(1)" }] });
+  conferir(m2.includes("Fotos: https://encena.app/c/abc") && !m2.includes("site-falso") && !m2.includes("javascript:"), "preparada, retorno: só os links dos materiais (https), um por linha; o da IA some", m2.replace(/\n/g, " ⏎ "));
+  conferir(semLinks("Veja https://a.com/b , ok?") === "Veja, ok?", "semLinks: tira o link e arruma a pontuação");
+  const p1 = pedidoDaMensagem({ primeiroContato: true, nomeLead: "Maria da Silva", corretor: "João", origem: "portal", etapa: "novo", tom: "cordial", imovel: { titulo: "Apto 302", preco: "R$ 690.000", ficha: [{ rotulo: "Dormitórios", valor: "3" }] }, materiais: [] });
+  conferir(/N[ÃA]O cumprimente/.test(p1) && p1.includes("Apto 302") && p1.includes("pelo anúncio no portal"), "pedido à IA, 1º contato: só o miolo, com o imóvel e de onde veio o contato");
+  const p2 = pedidoDaMensagem({ primeiroContato: false, nomeLead: "Maria da Silva", corretor: "João", origem: "portal", etapa: "visita", tom: "direto", imovel: null, materiais: ["as fotos", "o vídeo"] });
+  conferir(p2.includes("as fotos, o vídeo") && p2.includes("não escreva endereço"), "pedido à IA, retorno: cita os materiais, mas a IA não escreve link");
+  conferir(!/silva|99999|@/i.test(p1 + p2), "pedido à IA: sem sobrenome, telefone ou e-mail do cliente (só o necessário)");
 }
 
 conferir(DECLARACAO.texto.includes("passou o contato") && /^\d{4}-\d{2}-\d{2}$/.test(DECLARACAO.versao), "declaração: texto e versão datada (vão pro banco com cada assinatura)");

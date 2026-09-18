@@ -181,6 +181,9 @@ export default function AppShell({
         icone: "imoveis",
         grupo: "achar",
       },
+      // Clientes do lado de Imóveis: é pra QUEM o corretor manda o que fez. Enquanto o CRM
+      // estiver fechado (só ADMIN_EMAILS), só aparece pra quem entra nele.
+      ...(conta.crm ? [{ href: "/crm", rotulo: "menu.clientes", icone: "clientes", grupo: "achar" as const }] : []),
       // Galeria é o INSUMO (foto, planta, vídeo); Materiais é o ENTREGÁVEL (book, catálogo).
       {
         href: "/galeria",
@@ -203,9 +206,6 @@ export default function AppShell({
 
   // O que é da CONTA, não do trabalho do dia: vai pra bolinha.
   const daConta = [
-    // Clientes fica aqui (e não na barra) enquanto só o admin vê: na barra do celular não
-    // cabe mais uma fatia. Quando abrir pra todos, decidir o lugar dele.
-    ...(conta.crm ? [{ href: "/crm", rotulo: t("menu.clientes"), icone: "clientes", extra: null }] : []),
     {
       href: "/marca",
       rotulo: t("menu.marca"),

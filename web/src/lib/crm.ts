@@ -171,6 +171,109 @@ export function pedeDadoSensivel(texto: string): boolean {
   return /\b(cpf|rg|identidade|cnh|documento|senha|conta banc[aá]ria|ag[eê]ncia|pix|cart[aã]o de cr[eé]dito|dados banc[aá]rios)\b/i.test(texto);
 }
 
+// ---------- mensagem preparada (IA + materiais) ----------
+//
+// A IA escreve; o que a regra EXIGE, o Encena escreve. No primeiro contato a abertura (nome,
+// profissão, CRECI) e a saída (SAIR) são fixas e a IA só escreve o miolo -- assim nenhuma
+// resposta criativa tira a identificação. Link a IA nunca escreve: o que ela puser some, e
+// os links dos materiais entram depois, pelo código, um por linha (só fora do 1º contato).
+
+const RE_LINK = /\bhttps?:\/\/\S+|\bwww\.\S+/gi;
+
+/** Tem endereço de internet no texto? (1º contato não pode ter: é o que marca spam.) */
+export function temLink(texto: string): boolean {
+  return /\bhttps?:\/\/|\bwww\./i.test(texto);
+}
+
+/** Tira os links e arruma os espaços que sobram. */
+export function semLinks(texto: string): string {
+  return texto
+    .replace(RE_LINK, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ +([,.!?;:])/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export type LinkDeMaterial = { rotulo: string; url: string };
+
+export const TONS = [
+  { id: "cordial", rotulo: "Cordial", instrucao: "tom cordial e acolhedor" },
+  { id: "direto", rotulo: "Direto", instrucao: "tom direto e objetivo, frases curtas" },
+  { id: "animado", rotulo: "Animado", instrucao: "tom animado e caloroso, sem exagero" },
+] as const;
+export type TomId = (typeof TONS)[number]["id"];
+export const TOM_POR_ID = Object.fromEntries(TONS.map((t) => [t.id, t])) as Record<TomId, (typeof TONS)[number]>;
+
+/** A mensagem final: o que a IA escreveu, com o obrigatório em volta e os links no fim. */
+export function montarMensagem(o: { primeiroContato: boolean; corretor: string; creci: string; nomeLead: string; miolo: string; links: LinkDeMaterial[] }): string {
+  const miolo = semLinks(o.miolo).replace(/\s*\n\s*/g, o.primeiroContato ? " " : "\n");
+  if (o.primeiroContato) {
+    return `Olá, ${primeiroNome(o.nomeLead)}! Aqui é ${o.corretor.trim()}, corretor(a) de imóveis, CRECI ${o.creci.trim()}. ${miolo} Se não quiser receber mensagens minhas, é só responder SAIR.`
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+  const links = o.links.filter((l) => /^https?:\/\//.test(l.url)).map((l) => `${l.rotulo}: ${l.url}`);
+  return links.length ? `${miolo}\n\n${links.join("\n")}` : miolo;
+}
+
+/**
+ * O pedido pra IA. Só vai o que a mensagem precisa: primeiro nome, a etapa e os dados do
+ * imóvel. Telefone, e-mail e observações do cliente NÃO vão (a IA é um fornecedor de fora;
+ * mandar só o necessário é o que a Lei de Proteção de Dados pede).
+ */
+export function pedidoDaMensagem(o: {
+  primeiroContato: boolean;
+  nomeLead: string;
+  corretor: string;
+  origem: OrigemId;
+  etapa: EtapaId;
+  tom: TomId;
+  imovel: { titulo: string; endereco?: string | null; preco?: string | null; ficha: { rotulo: string; valor: string }[]; descricao?: string | null } | null;
+  materiais: string[];
+}): string {
+  const tom = TOM_POR_ID[o.tom] ?? TONS[0];
+  const im = o.imovel;
+  const dados = im
+    ? [
+        `Imóvel: ${im.titulo}.`,
+        im.endereco ? `Onde: ${im.endereco}.` : "",
+        im.preco ? `Valor: ${im.preco}.` : "",
+        im.ficha.length ? `Ficha: ${im.ficha.map((f) => `${f.rotulo} ${f.valor}`).join("; ")}.` : "",
+        im.descricao ? `Descrição do corretor: ${im.descricao}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "Nenhum imóvel escolhido.";
+  const comum = [
+    "Português do Brasil, como numa conversa de celular. Sem emojis, sem hashtags, sem links, sem assinatura.",
+    "Não invente nada sobre o imóvel: só use os dados abaixo. Sem promessas (nada de 'melhor da região', 'oportunidade única').",
+    "Nunca peça documento, CPF, RG ou dado bancário.",
+    `Use ${tom.instrucao}.`,
+  ];
+  if (o.primeiroContato) {
+    return [
+      "Você escreve UMA ou DUAS frases do meio de uma primeira mensagem de corretor de imóveis para uma pessoa que pediu informação.",
+      `A abertura (saudação, nome ${o.corretor} e CRECI) e o fim (como sair da lista) já existem: NÃO cumprimente, NÃO se apresente e NÃO se despeça.`,
+      `Diga de onde veio o contato (${ORIGEM_POR_ID[o.origem]?.frase ?? "pelo seu contato"}) e pergunte se pode mandar as informações do imóvel. No máximo 35 palavras.`,
+      ...comum,
+      dados,
+      "Responda só com as frases.",
+    ].join("\n");
+  }
+  return [
+    `Você escreve uma mensagem curta de ${o.corretor}, corretor de imóveis, para ${primeiroNome(o.nomeLead)}, com quem já está conversando (etapa: ${ETAPA_POR_ID[o.etapa]?.rotulo ?? o.etapa}).`,
+    "Comece com 'Olá, " + primeiroNome(o.nomeLead) + "!'. De 2 a 4 frases, no máximo 70 palavras.",
+    o.materiais.length
+      ? `Diga que está mandando logo abaixo: ${o.materiais.join(", ")} (os links vão depois da mensagem; não escreva endereço nenhum).`
+      : "Não fale de links nem de anexos.",
+    "Termine com uma pergunta simples que convide a responder (ex.: se quer marcar uma visita).",
+    ...comum,
+    dados,
+    "Responda só com a mensagem.",
+  ].join("\n");
+}
+
 // ---------- quando pode enviar ----------
 
 export type LeadParaEnvio = {
@@ -197,7 +300,8 @@ export function mesmoDiaEmBrasilia(a: Date, b: Date): boolean {
  * abriu, o corretor fechou sem querer). É a MESMA tentativa: não conta de novo pro limite
  * de tentativas nem pro de primeiros contatos, e o texto continua o mesmo. Sem isso, dois
  * toques seguidos no botão levavam o cliente pra "Sem resposta" em segundos.
- * `primeiraMensagemHoje`: a primeira mensagem DESTE cliente foi aberta hoje.
+ * `primeiraMensagemHoje`: a última mensagem que saiu (a que está sendo reaberta) foi a
+ * PRIMEIRA deste cliente.
  */
 export function podeEnviar(lead: LeadParaEnvio, o: { creci: string | null; primeirosHoje: number; agora: Date; primeiraMensagemHoje?: boolean }): PodeEnviar {
   if (lead.bloqueio === "pediu_parar") return { ok: false, motivo: "bloqueado", texto: "Esta pessoa pediu para parar. O envio fica travado pra sempre." };
@@ -206,7 +310,9 @@ export function podeEnviar(lead: LeadParaEnvio, o: { creci: string | null; prime
   if (!tel) return { ok: false, motivo: "telefone", texto: "O número não parece um celular do Brasil com DDD." };
   if (!o.creci?.trim()) return { ok: false, motivo: "sem_creci", texto: "Cadastre seu CRECI em Minha marca antes de enviar mensagens." };
   if (!lead.declaracao_em) return { ok: false, motivo: "declaracao", texto: "Confirme que esta pessoa te passou o contato antes da primeira mensagem." };
-  const reabertura = !!lead.ultimo_envio_em && mesmoDiaEmBrasilia(new Date(lead.ultimo_envio_em), o.agora);
+  // Reabrir só vale enquanto a última mensagem está SEM resposta (tentativas > 0): depois do
+  // "respondeu", a próxima mensagem é outra conversa, mesmo que seja no mesmo dia.
+  const reabertura = !!lead.ultimo_envio_em && lead.tentativas_sem_resposta > 0 && mesmoDiaEmBrasilia(new Date(lead.ultimo_envio_em), o.agora);
   if (lead.tentativas_sem_resposta >= LIMITES_CRM.tentativasSemResposta && !reabertura) {
     return { ok: false, motivo: "sem_resposta", texto: `${LIMITES_CRM.tentativasSemResposta} mensagens sem resposta. Espere a pessoa responder e marque "Respondeu".` };
   }
@@ -228,7 +334,7 @@ export function depoisDeEnviar(
   lead: { etapa: EtapaId; tentativas_sem_resposta: number; ultimo_envio_em?: string | null },
   agora: Date
 ): { etapa: EtapaId; tentativas_sem_resposta: number; ultimo_envio_em: string } {
-  if (lead.ultimo_envio_em && mesmoDiaEmBrasilia(new Date(lead.ultimo_envio_em), agora)) {
+  if (lead.ultimo_envio_em && lead.tentativas_sem_resposta > 0 && mesmoDiaEmBrasilia(new Date(lead.ultimo_envio_em), agora)) {
     return { etapa: lead.etapa, tentativas_sem_resposta: lead.tentativas_sem_resposta, ultimo_envio_em: agora.toISOString() };
   }
   const tentativas = lead.tentativas_sem_resposta + 1;

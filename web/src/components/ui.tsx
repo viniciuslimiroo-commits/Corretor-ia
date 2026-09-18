@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 
 // Peças pequenas da interface, no padrão da marca. Nada de biblioteca: Tailwind e
 // as cores marca-* definidas em globals.css. Manter poucas variantes e usar sempre
@@ -172,8 +172,12 @@ export function Miniatura({ arquivo, className = "" }: { arquivo: File; classNam
   return <img ref={img} alt="" className={className} />;
 }
 
-export function Cartao({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm ${className}`}>{children}</div>;
+export function Cartao({ children, className = "", style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
+  return (
+    <div className={`rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm ${className}`} style={style}>
+      {children}
+    </div>
+  );
 }
 
 export function Rotulo({ children }: { children: ReactNode }) {

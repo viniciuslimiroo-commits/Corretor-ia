@@ -110,17 +110,21 @@ export async function situacaoDeEnvio(db: Db, c: ContaCrm, lead: Record<string, 
     const { data } = await db.from("properties").select("titulo").eq("id", lead.property_id as string).maybeSingle();
     imovel = data?.titulo ?? null;
   }
-  // Reabertura da PRIMEIRA mensagem no mesmo dia: o texto continua o de apresentação.
+  // Reabertura da PRIMEIRA mensagem: só quando a última mensagem que saiu (sem contar as
+  // reaberturas) FOI a primeira. Olhar só "a primeira foi hoje" errava: depois de "respondeu"
+  // e de uma 2ª mensagem no mesmo dia, o painel voltava a tratar tudo como 1º contato e
+  // travava os materiais. (O "mesmo dia" e o "sem resposta" ficam em podeEnviar.)
   let primeiraMensagemHoje = false;
   if (lead.ultimo_envio_em) {
-    const { count } = await db
+    const { data: ultimos } = await db
       .from("leads_log")
-      .select("id", { count: "exact", head: true })
+      .select("detalhe")
       .eq("lead_id", lead.id as string)
       .eq("acao", "abriu_mensagem")
-      .eq("detalhe->>primeiro", "true")
-      .gte("criado_em", inicioDoDiaEmBrasilia(agora));
-    primeiraMensagemHoje = (count ?? 0) > 0;
+      .order("criado_em", { ascending: false })
+      .limit(10);
+    const ultima = (ultimos ?? []).find((l) => (l.detalhe as { reaberta?: boolean } | null)?.reaberta !== true);
+    primeiraMensagemHoje = (ultima?.detalhe as { primeiro?: boolean } | null)?.primeiro === true;
   }
   const pode = podeEnviar(
     {

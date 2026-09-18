@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
-import { DECLARACAO, depoisDeEnviar, depoisDeResponder, linkDaMensagem, pedeDadoSensivel, type EtapaId } from "@/lib/crm";
+import { DECLARACAO, depoisDeEnviar, depoisDeResponder, linkDaMensagem, pedeDadoSensivel, temLink, type EtapaId } from "@/lib/crm";
 import { CAMPOS_DO_LEAD, bloquearNumero, contaCrm, crmLiberado, doLeadsDaConta, registrar, situacaoDeEnvio } from "@/lib/crm-servidor";
 
 // As AÇÕES de um cliente, cada uma com a trava dela:
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: lead } = await doLeadsDaConta(db.from("leads").select(CAMPOS_DO_LEAD).eq("id", id), c).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
 
-  const corpo = (await req.json().catch(() => ({}))) as { acao?: string; texto?: unknown; aceito?: unknown };
+  const corpo = (await req.json().catch(() => ({}))) as { acao?: string; texto?: unknown; aceito?: unknown; canal?: unknown };
   const acao = corpo.acao as Acao;
   if (!ACOES.includes(acao)) return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 });
   const agora = new Date();
@@ -54,6 +54,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       if (pedeDadoSensivel(texto)) {
         return NextResponse.json({ error: "A mensagem pede documento ou dado bancário. Isso não vai por mensagem: use um formulário seguro." }, { status: 400 });
       }
+      // 1º contato sem link (o que marca spam), nem colado à mão: materiais depois da resposta.
+      if (situacao.pode.primeiroContato && temLink(texto)) {
+        return NextResponse.json({ error: "A primeira mensagem vai sem link. Mande os materiais depois que a pessoa responder." }, { status: 400 });
+      }
+      // Abrir a conversa, copiar ou compartilhar: pra regra é a mesma coisa (conta no limite
+      // do dia e nas tentativas). O canal só vai pro histórico.
+      const canal = corpo.canal === "copiar" || corpo.canal === "compartilhar" ? corpo.canal : "abrir";
       const depois = depoisDeEnviar({ etapa: lead.etapa as EtapaId, tentativas_sem_resposta: lead.tentativas_sem_resposta, ultimo_envio_em: lead.ultimo_envio_em }, agora);
       const novo = await salvar(depois);
       // O log guarda que o LINK foi gerado; se a pessoa enviou ou não, só o aparelho dela sabe.
@@ -63,6 +70,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         reaberta: situacao.pode.reabertura,
         editada: texto !== situacao.texto,
         avisos: situacao.pode.avisos.length,
+        canal,
+        links: (texto.match(/\bhttps?:\/\//g) ?? []).length,
       });
       return NextResponse.json({ lead: novo, link: linkDaMensagem(lead.telefone, texto), avisos: situacao.pode.avisos, reaberta: situacao.pode.reabertura });
     }

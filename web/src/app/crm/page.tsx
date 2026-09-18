@@ -7,6 +7,7 @@ import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
 import { Aviso, Botao, Cartao, Chip, Icone } from "@/components/ui";
 import { AVISO_OBSERVACOES, ETAPAS, ETAPA_POR_ID, ORIGENS, ORIGEM_POR_ID, telefoneLegivel, type EtapaId, type OrigemId } from "@/lib/crm";
+import { COR_ETAPA, iniciais } from "@/components/crm/comum";
 
 // CLIENTES (o CRM do corretor): quem pediu informação, em que pé está, e o próximo passo.
 //
@@ -125,7 +126,7 @@ export default function Clientes() {
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Clientes</h1>
+          <h1 className="text-2xl font-semibold">Meus clientes</h1>
           <p className="mt-1 text-sm text-neutral-500">Quem pediu informação, em que pé está e o próximo passo.</p>
         </div>
         {!criando && !fechado && (
@@ -234,7 +235,7 @@ export default function Clientes() {
                 aria-label="Buscar cliente"
                 className="mt-5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-base focus:border-marca-indigo focus:outline-none sm:text-sm"
               />
-              <div className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&>*]:shrink-0 [&>*]:whitespace-nowrap ${achados ? "opacity-40" : ""}`} aria-label="Etapas">
+              <div className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&>*]:min-h-10 [&>*]:shrink-0 [&>*]:whitespace-nowrap sm:[&>*]:min-h-0 ${achados ? "opacity-40" : ""}`} aria-label="Etapas">
                 <Chip ativo={filtro === "hoje"} onClick={() => setFiltro("hoje")}>Pra hoje · {nHoje}</Chip>
                 <Chip ativo={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos · {lista.length}</Chip>
                 {ETAPAS.map((e) => (
@@ -256,9 +257,16 @@ export default function Clientes() {
               </Cartao>
             ) : (
               <ul className="grid gap-2">
-                {visiveis.map((l) => (
-                  <li key={l.id}>
-                    <Link href={`/crm/${l.id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm transition hover:border-neutral-400">
+                {visiveis.map((l, k) => (
+                  <li key={l.id} className="surgir" style={{ animationDelay: `${Math.min(k, 8) * 35}ms` }}>
+                    <Link
+                      href={`/crm/${l.id}`}
+                      className="flex min-h-16 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
+                    >
+                      <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-marca-indigo to-[#1d4a8a] text-sm font-semibold text-white">
+                        {iniciais(l.nome)}
+                        <span className={`absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full ring-2 ring-white ${l.bloqueio ? "bg-red-500" : COR_ETAPA[l.etapa]?.ponto}`} />
+                      </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{l.nome}</p>
                         <p className="truncate text-sm text-neutral-500">

@@ -111,6 +111,39 @@
   background-color: var(--fundo-editor);
 }
 
+/* ---------- PAINEL DO CLIENTE (CRM) ----------
+   Movimento pequeno e com propósito: os cartões chegam de baixo (em sequência, pelo
+   animation-delay de cada um), o brilho do cabeçote respira devagar e o check de um
+   material marcado "estala". Quem pede menos movimento no sistema não vê nada disso. */
+@keyframes surgir {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes respirar {
+  from { opacity: 0.35; transform: scale(1); }
+  to { opacity: 0.6; transform: scale(1.12); }
+}
+@keyframes estalar {
+  0% { transform: scale(0.4); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes brilho-carregando {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.surgir { animation: surgir 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.respirar { animation: respirar 7s ease-in-out infinite alternate; }
+.estalar { animation: estalar 0.28s ease-out both; }
+.carregando-ia {
+  background: linear-gradient(90deg, #f3f4f6 0%, #fde6dd 45%, #f3f4f6 90%);
+  background-size: 200% 100%;
+  animation: brilho-carregando 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .surgir, .respirar, .estalar, .carregando-ia { animation: none; }
+}
+
 /* Barra de progresso indeterminada do editor. */
 @keyframes deslizar {
   0% { transform: translateX(-100%); }

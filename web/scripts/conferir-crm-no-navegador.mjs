@@ -1,8 +1,8 @@
 // O CRM (Clientes) no navegador, em 375px, com a conta de verdade (tem que estar em
 // ADMIN_EMAILS). Passa pelas travas pela TELA, como o corretor faria:
 //
-//   cadastro -> declaração -> "Abrir a mensagem" (só gera o link, não abre nada) ->
-//   Respondeu -> Pediu para parar -> Excluir -> cadastrar o mesmo número de novo (recusa)
+//   cadastro -> declaração -> "Abrir conversa" (só gera o link, não abre nada) ->
+//   Ela respondeu -> Pediu para parar -> Excluir -> cadastrar o mesmo número de novo (recusa)
 //
 //   BASE=http://localhost:3001 node scripts/conferir-crm-no-navegador.mjs
 //
@@ -92,6 +92,8 @@ const clicar = (t, seletor = "button, a, label") =>
 // Campo controlado do React: precisa do setter nativo + evento, senão o estado não muda.
 const preencher = (seletor, valor) =>
   c.avaliar(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); if (!e) return false; const p = Object.getPrototypeOf(e); Object.getOwnPropertyDescriptor(p, 'value').set.call(e, ${JSON.stringify(valor)}); e.dispatchEvent(new Event(e.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); return true; })()`);
+// Mensagem travada = caixa do texto desligada (ou fora da tela), como quando falta declaração ou houve bloqueio.
+const mensagemTravada = () => c.avaliar("(() => { const t = document.querySelector('textarea[aria-label=\"Texto da mensagem\"]'); return !t || t.disabled; })()");
 const semRolagemDeLado = () => c.avaliar("document.documentElement.scrollWidth <= window.innerWidth + 1");
 const alvosPequenos = () =>
   c.avaliar(`[...document.querySelectorAll('main button, main a, main input, main select, main textarea')].filter(e => e.offsetParent !== null && e.type !== 'checkbox' && e.type !== 'hidden').map(e => [e.innerText?.trim() || e.getAttribute('aria-label') || e.name || e.tagName, Math.round(e.getBoundingClientRect().height)]).filter(([, h]) => h < 40)`);
@@ -158,7 +160,7 @@ try {
   await esperarTexto("Mensagem");
   await esperar(500);
   if ((await texto()).includes("Cadastre seu CRECI")) {
-    conferir((await texto()).includes("Abrir Minha marca"), "ficha: sem CRECI no perfil, trava a mensagem e leva pra Minha marca (trava 8)");
+    conferir((await texto()).includes("Cadastrar o CRECI em Minha marca"), "ficha: sem CRECI no perfil, trava a mensagem e leva pra Minha marca (trava 8)");
     const [u] = await rest(`users?id=eq.${userId}&select=creci`).then((r) => r.json());
     creciOriginal = { valor: u?.creci ?? null };
     await rest(`users?id=eq.${userId}`, { method: "PATCH", body: JSON.stringify({ creci: "TESTE-0000" }) });
@@ -167,7 +169,7 @@ try {
 
   // ---------- declaração (trava 3) ----------
   conferir(await esperarTexto("aceitou receber mensagens minhas"), "ficha: antes da 1ª mensagem, pede a declaração");
-  conferir(await c.avaliar("![...document.querySelectorAll('textarea')].some(t => t.getAttribute('aria-label') === 'Texto da mensagem')"), "ficha: sem declaração, a mensagem nem aparece");
+  conferir(await mensagemTravada(), "ficha: sem declaração, a mensagem fica travada");
   conferir(await semRolagemDeLado(), "ficha: nada vaza pro lado em 375px");
   await shot("3-declaracao");
   await c.avaliar("document.querySelector('main input[type=checkbox]').click()");
@@ -178,61 +180,71 @@ try {
   const temMensagem = await (async () => {
     for (let i = 0; i < 75; i++) {
       const t = await texto();
-      if (t.includes("Abrir a mensagem pra enviar") || t.includes("CRECI")) return t;
+      // "Abrir conversa" existe desde o começo (desligado): o que diz que liberou é a caixa do texto.
+      if (!(await mensagemTravada()) || t.includes("Cadastre seu CRECI")) return t;
       await esperar(200);
     }
     return await texto();
   })();
-  const semCreci = !temMensagem.includes("Abrir a mensagem pra enviar");
+  const semCreci = !!(await mensagemTravada());
   if (semCreci) {
-    conferir(temMensagem.includes("CRECI") && temMensagem.includes("Abrir Minha marca"), "mensagem: sem CRECI no perfil, trava e leva pra Minha marca (trava 8)");
+    conferir(temMensagem.includes("CRECI") && temMensagem.includes("Cadastrar o CRECI em Minha marca"), "mensagem: sem CRECI no perfil, trava e leva pra Minha marca (trava 8)");
     await shot("4-sem-creci");
   } else {
     const msg = await c.avaliar("document.querySelector('textarea[aria-label=\"Texto da mensagem\"]').value");
     conferir(/^Olá, Teste!/.test(msg) && /CRECI/.test(msg) && msg.includes("responder SAIR") && !/https?:/.test(msg), "mensagem: se identifica com CRECI, dá a saída e não tem link", msg.slice(0, 90) + "…");
-    conferir((await texto()).includes("primeiros contatos"), "mensagem: mostra quantos primeiros contatos já foram hoje (trava 9)");
+    conferir((await texto()).includes("Primeiros contatos hoje"), "mensagem: mostra quantos primeiros contatos já foram hoje (trava 9)");
     await shot("4-mensagem");
     // Troca o window.open por um que só guarda o link: nada sai do navegador.
     await c.avaliar("window.__links = []; window.open = () => ({ close() {}, location: { set href(v) { window.__links.push(v); } } })");
     await preencher("textarea[aria-label='Texto da mensagem']", "Me manda seu CPF e os dados bancários, por favor.");
-    await clicar("Abrir a mensagem pra enviar");
+    await clicar("Abrir conversa");
     conferir(await esperarTexto("dado bancário"), "mensagem editada pedindo CPF/banco: o servidor recusa e explica");
     conferir((await c.avaliar("window.__links.length")) === 0, "mensagem recusada: nenhum link gerado");
     await preencher("textarea[aria-label='Texto da mensagem']", msg);
-    await clicar("Abrir a mensagem pra enviar");
+    await clicar("Abrir conversa");
     for (let i = 0; i < 50 && !(await c.avaliar("window.__links.length")); i++) await esperar(200);
     const link = await c.avaliar("window.__links[0] ?? ''");
     conferir(link.startsWith(`https://wa.me/${NUMERO}?text=`) && decodeURIComponent(link.split("text=")[1]).startsWith("Olá, Teste!"), "mensagem: gera o link com o texto pronto (quem envia é o corretor)", link.slice(0, 50) + "…");
     conferir(await esperarTexto("Em conversa"), "etapas: depois da 1ª mensagem, vai pra Em conversa");
-    conferir((await texto()).includes("Conversa aberta no seu aparelho"), "mensagem: depois de abrir, a tela diz o que aconteceu e o próximo passo");
+    conferir((await texto()).includes("Conversa aberta com o texto pronto"), "mensagem: depois de abrir, a tela diz o que aconteceu e o próximo passo");
     // Tocar de novo (a conversa não abriu): mesma tentativa, mesmo texto de apresentação.
-    await clicar("Abrir a mensagem pra enviar");
+    await clicar("Abrir conversa");
     for (let i = 0; i < 50 && (await c.avaliar("window.__links.length")) < 2; i++) await esperar(200);
     await esperar(1000);
     const [depois2] = await rest(`leads?id=eq.${leadId}&select=etapa,tentativas_sem_resposta`).then((r) => r.json());
     const link2 = decodeURIComponent((await c.avaliar("window.__links[1] ?? ''")).split("text=")[1] ?? "");
     conferir(depois2?.tentativas_sem_resposta === 1 && depois2?.etapa === "em_contato" && link2.includes("CRECI"), "reabrir no mesmo dia: mesma apresentação e NÃO vira 2ª tentativa", JSON.stringify(depois2));
-    conferir((await texto()).includes("não conta como nova tentativa"), "reabrir: a tela avisa que não contou");
-    conferir(await esperarTexto("Respondeu"), "ficha: aparece o botão Respondeu");
-    await clicar("Respondeu");
-    conferir(await esperarTexto("Marcou que respondeu"), "histórico: registra que respondeu");
+    conferir((await texto()).includes("Não contou como nova tentativa"), "reabrir: a tela avisa que não contou");
+    conferir(await esperarTexto("Ela respondeu"), "ficha: aparece o botão Ela respondeu");
+    await clicar("Ela respondeu");
+    let respondeuNoLog = false;
+    for (let i = 0; i < 30 && !respondeuNoLog; i++) {
+      await esperar(300);
+      respondeuNoLog = (await rest(`leads_log?lead_id=eq.${leadId}&acao=eq.respondeu&select=id`).then((r) => r.json())).length > 0;
+    }
+    conferir(respondeuNoLog, "histórico: registra que respondeu");
   }
 
   // ---------- dados ----------
+  // Os dados ficam atrás de "Editar" (consultar é o comum; editar, o raro).
+  await clicar("Editar", "button");
+  await esperar(300);
   await preencher("main textarea:not([aria-label])", "Prefere contato à tarde.");
   await clicar("Salvar dados");
   conferir(await esperarTexto("Salvo."), "dados: salvar mostra \"Salvo.\"");
   // Junto do botão que a pessoa acabou de tocar (antes ia pro cartão da Mensagem, fora da tela).
   const ondeSalvo = await c.avaliar("(() => { const e = document.querySelector('[role=status]')?.getBoundingClientRect(); const b = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Salvar dados')?.getBoundingClientRect(); return e && b ? Math.round(Math.abs(e.top + e.height / 2 - (b.top + b.height / 2))) : null; })()");
   conferir(ondeSalvo !== null && ondeSalvo < 30, "dados: o \"Salvo.\" aparece do lado do botão", `${ondeSalvo}px de diferença na altura`);
+  await esperar(1500); // a tela relê o cliente depois de salvar
   await clicar("Salvar dados");
   conferir(await esperarTexto("Nada mudou."), "dados: salvar sem mudar nada diz isso");
   const editados = await c.avaliar("(document.body.innerText.match(/Dados editados/g) ?? []).length");
   conferir(editados === 1, "histórico: salvar sem mudança não vira \"Dados editados\"", `${editados}x`);
 
   // ---------- etapa ----------
-  await clicar("Visita", "button");
-  conferir(await esperarTexto("Mudou de etapa → Visita"), "etapa: trocar a ficha grava no histórico");
+  await c.avaliar("document.querySelector('button[aria-label=Visita]').click()");
+  conferir(await esperarTexto("para Visita"), "etapa: trocar no caminho grava no histórico");
 
   // ---------- pediu para parar (trava 4) ----------
   await clicar("Pediu para parar");
@@ -245,10 +257,10 @@ try {
   // O botão "Pediu para parar" já estava na tela: espera a MENSAGEM sumir (resposta do servidor).
   let sumiu = false;
   for (let i = 0; i < 50 && !sumiu; i++) {
-    sumiu = !(await texto()).includes("Abrir a mensagem pra enviar");
+    sumiu = !!(await mensagemTravada());
     if (!sumiu) await esperar(200);
   }
-  conferir(sumiu && !(await c.avaliar("!!document.querySelector('textarea[aria-label=\"Texto da mensagem\"]')")), "pediu para parar: a mensagem some da ficha", (await texto()).match(/Mensagem\n+([^\n]+)/)?.[1] ?? "");
+  conferir(sumiu, "pediu para parar: a mensagem trava na ficha", (await texto()).match(/Mensagem\n+([^\n]+)/)?.[1] ?? "");
   await shot("5-bloqueado");
 
   // ---------- exportar ----------
@@ -276,7 +288,12 @@ try {
   // ---------- limpeza: o que este teste escreveu no banco ----------
   const leads = await rest(`leads?telefone=eq.${NUMERO}&user_id=eq.${userId}`, { method: "DELETE" }).then((r) => r.json());
   const bloqueios = await rest(`leads_bloqueados?conta=eq.${conta}&telefone_hash=eq.${hash}`, { method: "DELETE" }).then((r) => r.json());
-  const logs = await rest(`leads_log?user_id=eq.${userId}&criado_em=gte.${encodeURIComponent(inicio)}`, { method: "DELETE" }).then((r) => r.json());
+  // Só o histórico do cliente de teste: a conta pode ter cliente de verdade mexendo agora.
+  // (Excluído pela tela, o cliente deixa o histórico com lead_id nulo: esses são os de teste.)
+  const logs = [
+    ...(leadId ? await rest(`leads_log?lead_id=eq.${leadId}`, { method: "DELETE" }).then((r) => r.json()) : []),
+    ...(await rest(`leads_log?lead_id=is.null&user_id=eq.${userId}&criado_em=gte.${encodeURIComponent(inicio)}`, { method: "DELETE" }).then((r) => r.json())),
+  ];
   console.log(`\nlimpeza: ${leads.length} cliente(s), ${bloqueios.length} bloqueio(s), ${logs.length} linha(s) de histórico apagadas`);
   if (creciOriginal) {
     await rest(`users?id=eq.${userId}`, { method: "PATCH", body: JSON.stringify({ creci: creciOriginal.valor }) });

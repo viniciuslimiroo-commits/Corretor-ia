@@ -224,8 +224,8 @@ try {
   conferir((await texto()).includes("aceitou receber mensagens minhas"), "tela: número corrigido pede a declaração de novo");
 
   // Link abrindo DE VERDADE (toque real, sem trocar o window.open): o Encena fica aberto?
-  await c.abrir(`${BASE}/crm/${ids.hoje}`, { largura: 375, altura: 812, celular: true, pronto: "document.body.innerText.includes('Abrir a mensagem')" });
-  const botao = await c.avaliar("(() => { const b = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Abrir a mensagem pra enviar'); b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+  await c.abrir(`${BASE}/crm/${ids.hoje}`, { largura: 375, altura: 812, celular: true, pronto: "document.body.innerText.includes('Abrir conversa')" });
+  const botao = await c.avaliar("(() => { const b = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Abrir conversa'); b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
   await esperar(300);
   const antes = (await c.cdp("Target.getTargets")).targetInfos.filter((t) => t.type === "page").length;
   await c.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: botao.x, y: botao.y }] });
@@ -236,7 +236,7 @@ try {
   const conversa = abas.find((t) => /wa\.me|whatsapp\.com/.test(t.url));
   conferir(abas.length === antes + 1 && !!conversa && aqui === `/crm/${ids.hoje}`, "toque de verdade: a conversa abre em outra aba e o Encena continua na ficha", conversa?.url.slice(0, 60));
   // Este cliente já recebeu mensagem hoje (pela API, acima): é reabertura, e a tela diz isso.
-  conferir((await texto()).includes("Mensagem aberta de novo") && (await texto()).includes("volte aqui e toque em Respondeu"), "toque de verdade: a ficha diz o que aconteceu (aqui, reabertura que não conta) e o próximo passo");
+  conferir((await texto()).includes("Não contou como nova tentativa") && (await texto()).includes("Ela respondeu"), "toque de verdade: a ficha diz o que aconteceu (aqui, reabertura que não conta) e o próximo passo");
 
   // Corretor, celular: só os dele; o do colega nem pelo link
   await entrar(corretor);
@@ -278,10 +278,18 @@ try {
   const membros = await rest(`org_members?org_id=eq.${org}&user_id=in.(${corretor.user.id},${gestor.user.id})`, { method: "DELETE" });
   await rest(`organizations?id=eq.${org}`, { method: "PATCH", body: JSON.stringify({ creci: orgAntes?.creci ?? null }) });
   const numeros = Object.values(N);
+  // Histórico: só dos clientes de teste (pelo id, antes de apagar), os órfãos de teste
+  // (cliente excluído no roteiro) e tudo das duas contas de TESTE. Nada do dono, que é real.
+  const idsTeste = Object.values(ids).filter(Boolean);
+  const logsTeste = [
+    ...(idsTeste.length ? await rest(`leads_log?lead_id=in.(${idsTeste.join(",")})`, { method: "DELETE" }) : []),
+    ...(await rest(`leads_log?user_id=in.(${corretor.user.id},${gestor.user.id})&criado_em=gte.${encodeURIComponent(inicio)}`, { method: "DELETE" })),
+    ...(await rest(`leads_log?lead_id=is.null&org_id=eq.${org}&acao=in.(excluiu,pediu_parar,numero_errado)&criado_em=gte.${encodeURIComponent(inicio)}`, { method: "DELETE" })),
+  ];
   const leads = await rest(`leads?org_id=eq.${org}&telefone=in.(${numeros.join(",")})`, { method: "DELETE" });
   const hashes = numeros.map((n) => crypto.createHash("sha256").update(`${org}:${n}`).digest("hex"));
   const bloqueios = await rest(`leads_bloqueados?conta=eq.${org}&telefone_hash=in.(${hashes.join(",")})`, { method: "DELETE" });
-  const logs = await rest(`leads_log?user_id=in.(${dono.user.id},${corretor.user.id},${gestor.user.id})&criado_em=gte.${encodeURIComponent(inicio)}`, { method: "DELETE" });
+  const logs = logsTeste;
   const [orgDepois] = await rest(`organizations?id=eq.${org}&select=creci`);
   const sobras = await rest(`leads?telefone=in.(${numeros.join(",")})&select=id`);
   console.log(`\ndesfeito: ${leads.length} cliente(s), ${bloqueios.length} bloqueio(s), ${logs.length} linha(s) de histórico, ${membros.length} conta(s) de teste fora da imobiliária, CRECI da imobiliária de volta a ${JSON.stringify(orgDepois?.creci ?? null)}`);
