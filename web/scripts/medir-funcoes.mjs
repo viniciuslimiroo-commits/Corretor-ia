@@ -6,15 +6,15 @@
 // next.config.ts, sem medir -- a de criar vídeo continuou com 138 MB e a de montar levava
 // as cópias de prévia que a exclusão dizia tirar (medido em 18/09).
 //
-//   rm -rf .next && npx next build && node scripts/medir-funcoes.cjs [quantas=8]
+//   rm -rf .next && npx next build && node scripts/medir-funcoes.mjs [quantas=8]
 //
 // Build de medição com o servidor de desenvolvimento PARADO: ele escreve na mesma `.next`
 // e o build sai quebrado (e os números, errados).
 
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
 
-const web = path.resolve(__dirname, "..");
+const web = path.resolve(import.meta.dirname, "..");
 const raiz = path.join(web, ".next", "server", "app");
 if (!fs.existsSync(raiz)) {
   console.error("Sem .next/server/app: rode `npx next build` antes.");
