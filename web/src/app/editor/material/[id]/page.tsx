@@ -158,7 +158,18 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
   /** Post, Story e carrossel saem em JPG: o que é publicado, não mandado. */
   const ehImagem = TIPO_POR_ID[carga.book.tipo]?.saida === "imagem";
   // Recado de uma vez só, deixado pela tela de criação quando o book saiu no automático.
-  const [relatorio, setRelatorio] = useState<Relatorio | null>(null);
+  const [relatorio, setRelatorio] = useState<Relatorio | null>(() => {
+    if (typeof window === "undefined") return null;
+    const chave = `book:${carga.book.id}:relatorio`;
+    try {
+      const cru = sessionStorage.getItem(chave);
+      if (!cru) return null;
+      sessionStorage.removeItem(chave);
+      return JSON.parse(cru) as Relatorio;
+    } catch {
+      return null;
+    }
+  });
   const centro = useRef<HTMLDivElement | null>(null);
   // No celular a página acompanha a largura da tela; no computador vale o zoom da barra.
   const [larguraTela, setLarguraTela] = useState(1200);
@@ -171,16 +182,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     return () => window.removeEventListener("resize", medir);
   }, []);
   const larguraPagina = larguraTela < 1024 ? Math.min(LARGURA_BASE, larguraTela - 48) : LARGURA_BASE * zoom;
-
-  useEffect(() => {
-    const chave = `book:${carga.book.id}:relatorio`;
-    try {
-      const cru = sessionStorage.getItem(chave);
-      if (!cru) return;
-      sessionStorage.removeItem(chave);
-      setRelatorio(JSON.parse(cru) as Relatorio);
-    } catch {}
-  }, [carga.book.id]);
+  const [urlsExtras, setUrlsExtras] = useState<Record<string, string>>({});
 
   const book = useBook({
     id: carga.book.id,
@@ -427,7 +429,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
       throw new Error("Resposta inesperada do servidor.");
     }
     if (!r.ok || !d.jobId) throw new Error(d.error ?? "Não consegui buscar o mapa.");
-    if (d.url) carga.urls[d.jobId] = d.url;
+    if (d.url) setUrlsExtras((u) => ({ ...u, [d.jobId as string]: d.url! }));
     book.aplicar((doc) => porImagem(doc, paginaId, d.jobId as string, 0));
     avisar("Mapa do endereço adicionado.", true);
   }
@@ -444,7 +446,7 @@ function Editor({ carga, token, aoSair }: { carga: Carga; token: () => Promise<s
     }
   }
 
-  const dados = (i: number): DadosPagina => ({ layout: book.layout[i], urls: carga.urls, logo: carga.logo });
+  const dados = (i: number): DadosPagina => ({ layout: book.layout[i], urls: { ...carga.urls, ...urlsExtras }, logo: carga.logo });
   const usadas = imagensDoDocumento(book.documento);
 
   function escolherDaGaveta(jobId: string) {
