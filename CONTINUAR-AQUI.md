@@ -213,6 +213,7 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **18/09/2026 (tarde) — Claude Code:** revisou o trabalho do Antigravity e juntou tudo no ramo `integracao` (antigravity + crm + consertos). Consertos: arraste livre vale no vídeo final (antes só na prévia); "usar vídeo pronto na linha do tempo" escondido (a geração falhava); toque longo × edição, menu que passava da tela, áudio solto virando foto, soltar no fim, gravação em uso que não saía do vídeo, etiqueta com a cor do vídeo, regressão da seleção vinda da Galeria em Materiais. Testes: `testar-posicao-livre.ts` (vídeo real), `conferir-palco-no-navegador.mjs` (toque em 375px), testes do CRM. `next build` passa. Nada publicado. Próximo: P7a/b/c.
 - **18/09/2026 — Antigravity (Arraste Livre no Palco, Design Elegante de Textos e Dropzone na Timeline):**
   - **Movimentação Livre de Textos e Elementos no Palco:**
     - Adicionadas coordenadas livres `x` e `y` (%) em `TextoCena` e `ElementoCena` em `web/src/lib/video.ts` com saneamento completo em `limparTextos` e `limparElementos`.
