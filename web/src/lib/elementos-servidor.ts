@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { ELEMENTO_POR_ID, COR_ELEMENTO_PADRAO, posicionarPecas, type AncoraElemento } from "./elementos";
+import { ELEMENTO_POR_ID, COR_ELEMENTO_PADRAO, livreDe, posicionarPecas, type AncoraElemento } from "./elementos";
 import { ADESIVO_POR_ID, arquivoDeAdesivo, idDoAdesivo } from "./adesivos";
 import { TAMANHO_CLIPE, idDoPexels } from "./pexels";
 import { prepararClipePexels } from "./pexels-servidor";
@@ -49,7 +49,7 @@ export async function rasterizarElementos(
   const corPadrao = corValida(opcoes.cor) ?? COR_ELEMENTO_PADRAO;
   // Primeiro desenha tudo (o tamanho de cada peça só existe depois de desenhada); depois
   // posiciona todas de uma vez, com a MESMA função que o palco da tela usa.
-  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; animacao?: string; animado?: boolean; movimento?: string; video?: boolean }[] = [];
+  const desenhadas: { arquivo: string; largura: number; altura: number; ancora: AncoraElemento; quadroInteiro?: boolean; livre?: { x: number; y: number }; animacao?: string; animado?: boolean; movimento?: string; video?: boolean }[] = [];
 
   for (let k = 0; k < lista.length; k++) {
     const e = lista[k];
@@ -101,6 +101,7 @@ export async function rasterizarElementos(
       ancora: (e.ancora ?? modelo?.ancora ?? "topo_dir") as AncoraElemento,
       // Moldura vale o quadro inteiro: nasce em (0,0) e não empilha com nada.
       quadroInteiro: modelo?.quadroInteiro,
+      livre: livreDe(e),
       animacao: e.animacao,
       animado,
       movimento: e.movimento,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ELEMENTO_POR_ID, FICHA_EXEMPLO, ANCORAS, posicionarPecas, type AncoraElemento, type IconeFicha } from "@/lib/elementos";
+import { ELEMENTO_POR_ID, FICHA_EXEMPLO, ANCORAS, livreDe, posicionarPecas, type AncoraElemento, type IconeFicha } from "@/lib/elementos";
 import { ADESIVO_POR_ID, idDoAdesivo, urlDoAdesivo } from "@/lib/adesivos";
 import { LOOP_CLIPE_S, TAMANHO_CLIPE, TAMANHO_CLIPE_MAX, TAMANHO_CLIPE_MIN, idDoPexels } from "@/lib/pexels";
 import type { ElementoCena } from "@/lib/video";
@@ -90,7 +90,7 @@ export default function ElementosNoPalco({
     return { e, adesivo: null, svg: d.svg, largura: d.largura, altura: d.altura, ancora: (e.ancora ?? m.ancora) as AncoraElemento, quadroInteiro: !!m.quadroInteiro };
   });
 
-  const validas = pecas.map((p, i) => (p ? { ...p, i } : null)).filter(Boolean) as (NonNullable<(typeof pecas)[number]> & { i: number })[];
+  const validas = pecas.map((p, i) => (p ? { ...p, i, livre: livreDe(p.e) } : null)).filter(Boolean) as (NonNullable<(typeof pecas)[number]> & { i: number; livre?: { x: number; y: number } })[];
   const lugares = posicionarPecas(validas, W_REF, H_REF, topoOcupado);
 
   return (
@@ -153,21 +153,13 @@ export default function ElementosNoPalco({
             aoEscolher: () => aoTirar(p.i),
           },
         ];
-        const estiloLivre = typeof p.e.x === "number" && typeof p.e.y === "number";
-        const estilo: React.CSSProperties = estiloLivre
-          ? {
-              left: `${p.e.x}%`,
-              top: `${p.e.y}%`,
-              width: `${(p.largura / W_REF) * 100}%`,
-              height: `${(p.altura / H_REF) * 100}%`,
-              transform: "translate(-50%, -50%)",
-            }
-          : {
-              left: `${(x / W_REF) * 100}%`,
-              top: `${(y / H_REF) * 100}%`,
-              width: `${(p.largura / W_REF) * 100}%`,
-              height: `${(p.altura / H_REF) * 100}%`,
-            };
+        // Livre ou no canto, o lugar vem da MESMA conta que o servidor faz (posicionarPecas).
+        const estilo: React.CSSProperties = {
+          left: `${(x / W_REF) * 100}%`,
+          top: `${(y / H_REF) * 100}%`,
+          width: `${(p.largura / W_REF) * 100}%`,
+          height: `${(p.altura / H_REF) * 100}%`,
+        };
         return (
           <span
             key={`${p.e.id}-${p.i}`}
@@ -186,8 +178,10 @@ export default function ElementosNoPalco({
               if (!pai) return;
               const rectPai = pai.getBoundingClientRect();
               const rectEl = el.getBoundingClientRect();
-              const atualX = estiloLivre ? (p.e.x as number) : (((rectEl.left + rectEl.width / 2) - rectPai.left) / rectPai.width) * 100;
-              const atualY = estiloLivre ? (p.e.y as number) : (((rectEl.top + rectEl.height / 2) - rectPai.top) / rectPai.height) * 100;
+              // O arraste parte de onde a peça ESTÁ desenhada (perto da borda, a conta a mantém
+              // dentro do quadro, e o centro guardado pode estar um pouco além).
+              const atualX = ((rectEl.left + rectEl.width / 2 - rectPai.left) / rectPai.width) * 100;
+              const atualY = ((rectEl.top + rectEl.height / 2 - rectPai.top) / rectPai.height) * 100;
               let arrastou = false;
 
               const onMove = (me: PointerEvent) => {

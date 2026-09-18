@@ -64,7 +64,10 @@ export async function rasterizarArtes(
     const arquivo = path.join(pasta, `${prefixo}-arte-${k}.png`);
     await sharp(Buffer.from(d.svg)).png().toFile(arquivo);
     if (!fs.existsSync(arquivo)) continue;
-    saida.push({ arquivo, y: lugares[i].y, largura: d.largura, altura: d.altura, animacao: t.animacao, movimento: t.movimento });
+    // Arrastado no palco: o centro no ponto soltado, inteiro dentro do quadro (lugaresDoTexto
+    // já pôs o y; o x depende da largura, que só se sabe aqui, depois de desenhar).
+    const x = typeof t.x === "number" && typeof t.y === "number" ? Math.min(Math.max(0, Math.round((W * t.x) / 100 - d.largura / 2)), Math.max(0, W - d.largura)) : undefined;
+    saida.push({ arquivo, ...(x !== undefined ? { x } : {}), y: lugares[i].y, largura: d.largura, altura: d.altura, animacao: t.animacao, movimento: t.movimento });
   }
   return saida;
 }

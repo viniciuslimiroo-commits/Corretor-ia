@@ -93,16 +93,13 @@ export default function Books() {
   );
   const [tipoEscolhido, setTipoEscolhido] = useState<TipoBook>("book");
   const [imagens, setImagens] = useState<ItemBiblioteca[] | null>(null);
+  // Quem chega da Galeria com fotos marcadas cai no modo manual, com a seleção já feita.
+  // Os TRÊS estados abaixo leem a mesma seleção no valor inicial, então nenhum deles pode
+  // apagá-la (o primeiro apagava, e os outros dois liam vazio: modo "auto" e "veio 0").
+  // Quem apaga é o efeito logo depois, com a tela já montada.
   const [marcadas, setMarcadas] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
-    if (new URLSearchParams(window.location.search).get("novo") === "1") {
-      const vindas = lerSelecao();
-      if (vindas.length > 0) {
-        limparSelecao();
-        return vindas;
-      }
-    }
-    return [];
+    return new URLSearchParams(window.location.search).get("novo") === "1" ? lerSelecao() : [];
   });
   const [montando, setMontando] = useState(false);
   const [modo, setModo] = useState<"auto" | "manual">(() => {
@@ -127,6 +124,10 @@ export default function Books() {
     return 0;
   });
   const { user, token } = c;
+
+  useEffect(() => {
+    if (veioDaGaleria > 0) limparSelecao();
+  }, [veioDaGaleria]);
 
   // Montar automaticamente leva de 10 a 40 segundos: a IA olha cada foto. Barra de
   // progresso mentiria (não dá pra saber a fração); dizer o que está acontecendo, não.

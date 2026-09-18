@@ -533,7 +533,7 @@ export const COR_ELEMENTO_PADRAO = CORAL;
  * de 96px se cobrirem por 10 pixels (medido).
  */
 export function posicionarPecas(
-  pecas: { ancora: AncoraElemento; largura: number; altura: number; quadroInteiro?: boolean }[],
+  pecas: { ancora: AncoraElemento; largura: number; altura: number; quadroInteiro?: boolean; livre?: { x: number; y: number } }[],
   W: number,
   H: number,
   topoOcupado = false
@@ -542,6 +542,8 @@ export function posicionarPecas(
   const folga = Math.max(4, Math.round(H * 0.012));
   return pecas.map((p) => {
     if (p.quadroInteiro) return { x: 0, y: 0 };
+    // Arrastada no palco: vai pra onde a pessoa soltou e não entra na pilha do canto.
+    if (p.livre) return lugarLivre(p.livre, W, H, p.largura, p.altura);
     const lugar = lugarDoElemento(p.ancora, W, H, p.largura, p.altura, topoOcupado);
     let y = lugar.y;
     const limite = ocupado[p.ancora];
@@ -554,6 +556,22 @@ export function posicionarPecas(
     }
     return { x: lugar.x, y };
   });
+}
+
+/**
+ * Posição LIVRE (arrastada no palco): `x`/`y` são o CENTRO da peça, em % do quadro. A peça
+ * fica inteira dentro do quadro. É a mesma conta na prévia e no vídeo -- o arraste antes
+ * mudava só a prévia, e o vídeo saía com a peça no canto de antes.
+ */
+export function lugarLivre(livre: { x: number; y: number }, W: number, H: number, largura: number, altura: number): { x: number; y: number } {
+  const x = Math.round((W * livre.x) / 100 - largura / 2);
+  const y = Math.round((H * livre.y) / 100 - altura / 2);
+  return { x: Math.min(Math.max(0, x), Math.max(0, W - largura)), y: Math.min(Math.max(0, y), Math.max(0, H - altura)) };
+}
+
+/** A posição livre de um texto ou elemento, se ele tiver uma (os dois números). */
+export function livreDe(o: { x?: number; y?: number }): { x: number; y: number } | undefined {
+  return typeof o.x === "number" && typeof o.y === "number" ? { x: o.x, y: o.y } : undefined;
 }
 
 /**

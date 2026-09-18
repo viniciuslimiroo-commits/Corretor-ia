@@ -152,6 +152,12 @@ export function lugaresDoTexto(textos: TextoCena[], H: number, topoOcupado = fal
   const usadas: Record<string, number> = {};
   return textos.map((t, i) => {
     const posicao = t.posicao ?? "base";
+    // Arrastado no palco: o CENTRO vai pro ponto soltado (mesma regra das peças, em
+    // elementos.ts `lugarLivre`), e ele não empurra os outros textos da mesma posição.
+    if (typeof t.x === "number" && typeof t.y === "number") {
+      const alt = alturas[i] ?? Math.round(H * 0.08);
+      return { y: Math.min(Math.max(0, Math.round((H * t.y) / 100 - alt / 2)), Math.max(0, H - alt)), posicao };
+    }
     const nivel = usadas[posicao] ?? 0;
     usadas[posicao] = nivel + 1;
     const alt = alturas[i] ?? Math.round(H * 0.08);
@@ -171,6 +177,8 @@ export function lugaresDoTexto(textos: TextoCena[], H: number, topoOcupado = fal
  */
 export type ArteNaCena = {
   arquivo: string;
+  /** Só quando o texto foi arrastado no palco. Sem ele, a arte sai centrada na largura. */
+  x?: number;
   y: number;
   largura: number;
   altura: number;
@@ -191,7 +199,7 @@ export type PecaNaCena = ArteNaCena & { x: number };
 /** Junta arte (centrada) e elemento (ancorado) numa lista só, na ordem do desenho. */
 function pecasDaCena(W: number, duracao: number, artes?: ArteNaCena[], pecas?: PecaNaCena[]): (PecaNaCena & { duracao: number })[] {
   return [
-    ...(artes ?? []).map((a) => ({ ...a, duracao, x: Math.round((W - a.largura) / 2) })),
+    ...(artes ?? []).map((a) => ({ ...a, duracao, x: a.x ?? Math.round((W - a.largura) / 2) })),
     ...(pecas ?? []).map((p) => ({ ...p, duracao })),
   ];
 }
@@ -285,8 +293,9 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
   const usadas: Record<string, number> = {};
   return textos.map((t) => {
     const posicao = t.posicao ?? "base";
-    const nivel = usadas[posicao] ?? 0;
-    usadas[posicao] = nivel + 1;
+    const livre = typeof t.x === "number" && typeof t.y === "number";
+    const nivel = livre ? 0 : (usadas[posicao] ?? 0);
+    if (!livre) usadas[posicao] = nivel + 1;
     const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"] ?? ESTILO_TEXTO_POR_ID.faixa;
     // O VISUAL do texto vence o estilo base. É o que faz cada modelo da galeria ter cara
     // própria -- e o que faz a prévia no cartão ser verdade, porque os dois lados leem os
@@ -299,8 +308,18 @@ export function filtrosDeTexto(textos: TextoCena[], W: number, H: number, topoOc
     // isso só aparece no arquivo final (apareceu: a etiqueta saiu sob o título).
     const alto = Math.round(H * (topoOcupado ? 0.19 : 0.08)) + nivel * passo;
     const baixo = Math.round(H * 0.09) + nivel * passo;
-    const paradoY = posicao === "topo" ? `${alto}` : posicao === "centro" ? `(h-text_h)/2+${nivel * passo}` : `h-text_h-${baixo}`;
-    const paradoX = `(w-text_w)/2`;
+    // Arrastado no palco: o centro do texto no ponto soltado, sem sair do quadro (a vírgula
+    // dentro de min/max vai escapada, como nas animações abaixo).
+    const fx = livre ? ((t.x as number) / 100).toFixed(4) : "";
+    const fy = livre ? ((t.y as number) / 100).toFixed(4) : "";
+    const paradoY = livre
+      ? `min(max(0\\,h*${fy}-text_h/2)\\,h-text_h)`
+      : posicao === "topo"
+        ? `${alto}`
+        : posicao === "centro"
+          ? `(h-text_h)/2+${nivel * passo}`
+          : `h-text_h-${baixo}`;
+    const paradoX = livre ? `min(max(0\\,w*${fx}-text_w/2)\\,w-text_w)` : `(w-text_w)/2`;
 
     // ---- a ENTRADA ----
     //
