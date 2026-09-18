@@ -213,4 +213,9 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **18/09/2026 — Antigravity:** corrigiu os 6 erros de lint pré-existentes de `react-hooks` sem alterar comportamento em 3 commits separados no branch `antigravity`:
+  - `fec0160` em `web/src/app/imoveis/[id]/page.tsx` (memoização/carregamento);
+  - `c1a3132` em `web/src/app/editor/material/[id]/page.tsx` (lazy init do relatório e imutabilidade de `urls`);
+  - `7abd495` em `web/src/app/materiais/page.tsx` (lazy init de URL/seleção, remoção de ref durante render e reset de progresso).
+  Validações: `tsc --noEmit` e `eslint` zerados (0 erros, 0 avisos).
 - **18/09/2026 — Claude Code:** escreveu este arquivo (commit 29b0eb5). Antes dele, o último commit de código foi `ec13c01`.
