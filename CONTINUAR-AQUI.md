@@ -146,9 +146,9 @@ editar** (música, voz, Você, textos, adesivos, legendas, cenas), como nos edit
 
 ## 7. Pendências que dependem do Vinicius
 
-1. **Liberar o push dos commits locais** (seção 5). Depois do deploy: **montar um vídeo sem
-   crédito em produção** (sem cena animada e sem voz de IA) e conferir música, adesivo e
-   fonte — é a prova que falta do conserto das funções (`8df8f45`).
+1. ~~Liberar o push e provar o conserto das funções em produção~~ — **FEITO 18/09**: publicado
+   (`88b959d`), e `web/scripts/conferir-video-producao.mjs` montou um vídeo no ar sem crédito
+   (música −25 dB, adesivo no ponto solto, texto com a fonte, sem aviso), apagado no fim.
 2. **Confirmar o @ do Instagram** usado nos carrosséis (`@encena.app` provisório): trocar em
    `docs/marca/instagram/carrosseis/gerar.py` (`MARCA["arroba"]`) e no `CLAUDE.md` da pasta.
 3. **DNS do `encena.app.br`** no Registro.br: `A @ 216.198.79.1`, `A @ 64.29.17.1`,
@@ -213,6 +213,7 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **18/09/2026 (fim da tarde) — Claude Code:** publicou o ramo `integracao` no `main` (`88b959d`, no ar ~1 min depois) e provou em produção com `conferir-video-producao.mjs`. Próximo: P7a/b/c.
 - **18/09/2026 (tarde) — Claude Code:** revisou o trabalho do Antigravity e juntou tudo no ramo `integracao` (antigravity + crm + consertos). Consertos: arraste livre vale no vídeo final (antes só na prévia); "usar vídeo pronto na linha do tempo" escondido (a geração falhava); toque longo × edição, menu que passava da tela, áudio solto virando foto, soltar no fim, gravação em uso que não saía do vídeo, etiqueta com a cor do vídeo, regressão da seleção vinda da Galeria em Materiais. Testes: `testar-posicao-livre.ts` (vídeo real), `conferir-palco-no-navegador.mjs` (toque em 375px), testes do CRM. `next build` passa. Nada publicado. Próximo: P7a/b/c.
 - **18/09/2026 — Antigravity (Arraste Livre no Palco, Design Elegante de Textos e Dropzone na Timeline):**
   - **Movimentação Livre de Textos e Elementos no Palco:**
