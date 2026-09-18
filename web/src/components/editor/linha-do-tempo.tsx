@@ -114,6 +114,7 @@ export default function LinhaDoTempo({
   aoEspelhar,
   aoVelocidade,
   aoCongelar,
+  aoMenuContexto,
 }: {
   blocos: BlocoCena[];
   selecionada: string | null;
@@ -145,6 +146,7 @@ export default function LinhaDoTempo({
   aoEspelhar: (chave: string) => void;
   aoVelocidade: (chave: string, velocidade: number) => void;
   aoCongelar: (chave: string) => void;
+  aoMenuContexto?: (ev: React.MouseEvent, chave: string) => void;
 }) {
   const trilho = useRef<HTMLDivElement | null>(null);
 
@@ -361,12 +363,20 @@ export default function LinhaDoTempo({
                     onDragStart={() => aoComecarArraste(b.chave)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => aoSoltarEm(b.chave, e)}
+                    onContextMenu={(e) => {
+                      if (aoMenuContexto) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        aoSelecionar(b.chave);
+                        aoMenuContexto(e, b.chave);
+                      }
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       aoSelecionar(b.chave);
                       aoMoverTempo(inicios[i]);
                     }}
-                    title={`${b.rotulo} · ${b.duracao}s`}
+                    title={`${b.rotulo} · ${b.duracao}s · clique com botão direito para opções`}
                     className={
                       "relative block h-16 w-full overflow-hidden rounded-md border-2 text-left transition " +
                       (ativa ? "border-marca-coral" : "border-transparent hover:border-neutral-300")
