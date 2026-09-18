@@ -243,6 +243,10 @@ export type TextoCena = {
    * não gira nem cresce.
    */
   movimento?: MovimentoId;
+  /** Coordenada X no palco em porcentagem (0 a 100). */
+  x?: number;
+  /** Coordenada Y no palco em porcentagem (0 a 100). */
+  y?: number;
   /**
    * Release 2 (docs/planos/linha-do-tempo-spec.md, A6): segundo do CLIPE DA CENA em que o
    * texto aparece. Ausente = 0. Declarado agora; o saneador ainda não lê nem guarda.
@@ -492,6 +496,10 @@ export type ElementoCena = {
    * porque alguém mexeu na marca no meio da montagem.
    */
   cor?: string;
+  /** Coordenada X no palco em porcentagem (0 a 100). */
+  x?: number;
+  /** Coordenada Y no palco em porcentagem (0 a 100). */
+  y?: number;
   /**
    * Release 2 (docs/planos/linha-do-tempo-spec.md, A6): segundo do CLIPE DA CENA em que a
    * peça aparece. Ausente = 0. Declarado agora; o saneador ainda não lê nem guarda.
@@ -1090,6 +1098,10 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
     const tam = Number(e.tamanho);
     const animacao = ANIMACOES_TEXTO.some((a) => a.id === e.animacao) ? (e.animacao as AnimacaoTexto) : "nenhuma";
 
+    const xNum = Number(e.x);
+    const yNum = Number(e.y);
+    const posLivre = Number.isFinite(xNum) && Number.isFinite(yNum) ? { x: Math.min(100, Math.max(0, Math.round(xNum * 10) / 10)), y: Math.min(100, Math.max(0, Math.round(yNum * 10) / 10)) } : {};
+
     // Adesivo 3D: só existe se o id estiver no catálogo (que é o que tem arquivo no disco).
     // Não carrega texto nem cor -- é uma imagem pronta -- e nasce num canto de cima, que é
     // onde um selo de "novo" ou uma chave costuma ir.
@@ -1098,6 +1110,7 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
       lista.push({
         id: `adesivo:${adesivo}`,
         ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : "topo_dir",
+        ...posLivre,
         ...(Number.isFinite(tam) && tam >= 0.04 && tam <= 0.5 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
         animacao,
         ...(ehMovimento(e.movimento) && e.movimento !== "nenhum" && !ADESIVO_POR_ID[adesivo].animado ? { movimento: e.movimento } : {}),
@@ -1115,6 +1128,7 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
       lista.push({
         id: `pexels:${pexels}`,
         ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : "base_dir",
+        ...posLivre,
         ...(Number.isFinite(tam) && tam >= TAMANHO_CLIPE_MIN && tam <= TAMANHO_CLIPE_MAX ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
         animacao,
         ...(ehUrlDoPexels(c.previa) && cl > 0 && cl < 10000 && ca > 0 && ca < 10000
@@ -1147,6 +1161,7 @@ function limparElementos(bruto: unknown): ElementoCena[] | undefined {
       ...(conteudo ? { texto: conteudo } : {}),
       ...(itens.length ? { itens } : {}),
       ancora: ANCORAS.some((a) => a.id === e.ancora) ? (e.ancora as AncoraElemento) : modelo.ancora,
+      ...posLivre,
       ...(Number.isFinite(tam) && tam >= 0.02 && tam <= 1 ? { tamanho: Math.round(tam * 1000) / 1000 } : {}),
       ...(typeof e.cor === "string" && /^#[0-9a-fA-F]{6}$/.test(e.cor) ? { cor: e.cor.toLowerCase() } : {}),
       animacao,
@@ -1164,11 +1179,16 @@ function limparTextos(bruto: unknown): TextoCena[] | undefined {
     const t = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
     const conteudo = texto(t.texto, LIMITES.textoMax);
     if (!conteudo) continue;
+    const txNum = Number(t.x);
+    const tyNum = Number(t.y);
+    const tPosLivre = Number.isFinite(txNum) && Number.isFinite(tyNum) ? { x: Math.min(100, Math.max(0, Math.round(txNum * 10) / 10)), y: Math.min(100, Math.max(0, Math.round(tyNum * 10) / 10)) } : {};
+
     lista.push({
       texto: conteudo,
       posicao: POSICOES_TEXTO.some((p) => p.id === t.posicao) ? (t.posicao as PosicaoTexto) : "base",
       estilo: ESTILOS_TEXTO.some((e) => e.id === t.estilo) ? (t.estilo as EstiloTexto) : "faixa",
       animacao: ANIMACOES_TEXTO.some((a) => a.id === t.animacao) ? (t.animacao as AnimacaoTexto) : "nenhuma",
+      ...tPosLivre,
       // A ARTE e o ACABAMENTO vinham sendo jogados fora aqui. O texto chegava ao
       // servidor só com posição, estilo e animação, então TODO modelo de texto virava
       // texto simples no vídeo -- sem erro, sem aviso, e sem aparecer em teste nenhum

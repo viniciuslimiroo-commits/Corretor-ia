@@ -359,7 +359,9 @@ export default function EditorDeVideo() {
   const menu = useMenuContexto();
   /** Qual texto do palco está aberto pra digitar. `null` = nenhum; `-1` = a legenda. */
   const [editando, setEditando] = useState<{ chave: string; indice: number } | null>(null);
+  const [textoEmDigitacao, setTextoEmDigitacao] = useState<string>("");
   const [editandoTitulo, setEditandoTitulo] = useState(false);
+  const palcoRef = useRef<HTMLDivElement | null>(null);
   /** Se o painel desta aba aparece agora: um de cada vez, escolhido na trilha. */
   const mostrarAba = (id: AbaId) => aba === id;
   /** Onde o cabeçote está, em segundos. É o que o palco mostra. */
@@ -1011,7 +1013,7 @@ export default function EditorDeVideo() {
     );
   }
 
-  function adicionarVideoComoCena(v: VideoResumo) {
+  function adicionarVideoComoCena(v: VideoResumo, antesDe?: string) {
     const novaChave = chave();
     const nova: CenaUI = {
       chave: novaChave,
@@ -1030,27 +1032,48 @@ export default function EditorDeVideo() {
       melhorar: false,
       inicio: 0,
     };
-    setCenas((lista) => [...lista, nova]);
+    setCenas((lista) => {
+      if (!antesDe || antesDe === "fim") return [...lista, nova];
+      const idx = lista.findIndex((s) => s.chave === antesDe);
+      if (idx < 0) return [...lista, nova];
+      const copia = [...lista];
+      copia.splice(idx, 0, nova);
+      return copia;
+    });
     setSelecionada(novaChave);
   }
 
   /**
-   * Soltar na linha do tempo. Duas origens, um alvo:
-   *
-   * - uma CENA que já está na linha: troca de lugar;
-   * - uma FOTO da biblioteca: entra ali, empurrando o resto pra frente.
-   *
-   * A foto vem pelo `dataTransfer` do próprio navegador, e não por um ref, porque é o
-   * único jeito de o arraste sobreviver a sair de uma coluna e entrar na outra.
+   * Soltar na linha do tempo. Aceita:
+   * - ARQUIVOS externos (imagens ou vídeos do computador/SO);
+   * - VÍDEOS da aba de vídeos;
+   * - FOTOS da biblioteca de materiais;
+   * - CENAS que já estão na linha (troca de lugar).
    */
   function soltarEm(alvo: string, ev?: React.DragEvent) {
-    const jobId = ev?.dataTransfer?.getData("text/encena-foto");
-    if (jobId) {
-      ev?.preventDefault();
-      const g = geracoes.find((x) => x.id === jobId);
-      if (g) adicionarGeracao(g, alvo);
-      arrastando.current = null;
-      return;
+    if (ev) {
+      if (ev.dataTransfer?.files && ev.dataTransfer.files.length > 0) {
+        ev.preventDefault();
+        enviarArquivos(ev.dataTransfer.files);
+        arrastando.current = null;
+        return;
+      }
+      const videoId = ev.dataTransfer?.getData("text/encena-video");
+      if (videoId) {
+        ev.preventDefault();
+        const v = videos?.find((x) => x.id === videoId);
+        if (v) adicionarVideoComoCena(v, alvo);
+        arrastando.current = null;
+        return;
+      }
+      const jobId = ev.dataTransfer?.getData("text/encena-foto");
+      if (jobId) {
+        ev.preventDefault();
+        const g = geracoes.find((x) => x.id === jobId);
+        if (g) adicionarGeracao(g, alvo);
+        arrastando.current = null;
+        return;
+      }
     }
     const de = arrastando.current;
     arrastando.current = null;
@@ -1368,6 +1391,12 @@ export default function EditorDeVideo() {
   // Os itens saem daqui e não de dentro da marcação: no meio do JSX eles somem entre as
   // aspas e ninguém acha de novo pra mudar uma palavra.
 
+  /** Abre a digitação direta do texto no palco com o valor inicial preenchido. */
+  function abrirEdicaoTexto(k: string, indice: number, textoInicial?: string) {
+    setEditando({ chave: k, indice });
+    setTextoEmDigitacao(textoInicial ?? "");
+  }
+
   /** Grava o que foi digitado em cima do elemento. Índice -1 é a legenda da cena. */
   function salvarTextoDoPalco(k: string, indice: number, valor: string) {
     const limpo = valor.trim();
@@ -1384,7 +1413,7 @@ export default function EditorDeVideo() {
       aoEscolher: () => mudarTexto(cena.chave, indice, { posicao }),
     });
     return [
-      { rotulo: "Editar o texto", icone: "editar_prompt", aoEscolher: () => setEditando({ chave: cena.chave, indice }) },
+      { rotulo: "Editar o texto", icone: "editar_prompt", aoEscolher: () => abrirEdicaoTexto(cena.chave, indice, ehLegenda ? (cena.legenda || "") : (t.texto || "")) },
       ...(ehLegenda
         ? []
         : [
@@ -1561,7 +1590,7 @@ export default function EditorDeVideo() {
         desligado: cheio,
         aoEscolher: () => {
           adicionarTexto(cena.chave, { texto: "", posicao, estilo: "faixa", animacao: "nenhuma" });
-          setEditando({ chave: cena.chave, indice: cena.textos?.length ?? 0 });
+          abrirEdicaoTexto(cena.chave, cena.textos?.length ?? 0, "");
         },
       },
       {
@@ -2592,7 +2621,16 @@ export default function EditorDeVideo() {
                   return (
                     <li key={v.id} className="py-2.5">
                       <div className="flex items-center gap-3">
-                        <button onClick={() => abrirVideo(v)} className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900 shadow-sm" title="Assistir vídeo">
+                        <button
+                          onClick={() => abrirVideo(v)}
+                          draggable={!gerando}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/encena-video", v.id);
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
+                          className="flex h-14 w-20 shrink-0 cursor-grab active:cursor-grabbing items-center justify-center overflow-hidden rounded-lg bg-neutral-900 shadow-sm transition hover:ring-2 hover:ring-marca-coral"
+                          title="Clique para assistir · arraste para a linha do tempo para usar"
+                        >
                           {v.miniatura ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={v.miniatura} alt="" className="h-full w-full object-cover" />
@@ -2754,6 +2792,7 @@ export default function EditorDeVideo() {
                 exato e sobra tela pro resto. No computador volta a ser a largura que manda. */}
             <div className="mx-auto w-full" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
               <div
+                ref={palcoRef}
                 className="relative mx-auto h-[34vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
                 style={{ aspectRatio: PROPORCAO[formato] }}
                 // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
@@ -2793,7 +2832,7 @@ export default function EditorDeVideo() {
                           if (e.key === "Enter") e.currentTarget.blur();
                           if (e.key === "Escape") setEditandoTitulo(false);
                         }}
-                        className="pointer-events-auto w-full max-w-[85%] rounded bg-marca-indigo px-2 py-1 text-center text-[11px] font-semibold text-white outline-none ring-2 ring-white/70"
+                        className="pointer-events-auto w-full max-w-[85%] rounded-lg border border-white/40 bg-neutral-950/90 px-2.5 py-1 text-center text-[11px] font-semibold text-white shadow-xl backdrop-blur-md outline-none ring-2 ring-white/60"
                       />
                     ) : (
                       <span
@@ -2806,83 +2845,183 @@ export default function EditorDeVideo() {
                           { rotulo: "Tirar o título do vídeo", icone: "lixeira", perigo: true, dica: "A faixa some do topo de todas as cenas", aoEscolher: () => setTitulo("") },
                         ])}
                         title="Clique pra editar · botão direito pra mais"
-                        className="pointer-events-auto cursor-pointer truncate rounded bg-marca-indigo/90 px-2 py-1 text-[11px] font-semibold text-white transition hover:ring-2 hover:ring-white/70"
+                        className="pointer-events-auto cursor-pointer truncate rounded-md bg-neutral-950/80 px-2 py-1 text-[11px] font-semibold text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
                       >
                         {titulo}
                       </span>
                     )}
                   </span>
                 )}
-                {/* Os textos da cena, no lugar em que vão sair. Não é o render (isso é
-                    ffmpeg), é o ensaio: dá pra ver se o preço cobriu a janela. */}
+                {/* Os textos da cena, no lugar em que vão sair. Suporta posição livre ou ancorada. */}
                 {cenaAtual &&
                   textosDaCena({ legenda: cenaAtual.legenda || undefined, textos: cenaAtual.textos }).map((t, i) => {
                     const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"];
                     const pos = t.posicao ?? "base";
-                    // `textosDaCena` põe a legenda na frente da lista. Aqui ela vira o
-                    // índice -1, porque legenda é um CAMPO da cena e os outros são itens
-                    // de um vetor -- apagar um pelo caminho do outro apagaria o errado.
                     const ehLegenda = !!cenaAtual.legenda && i === 0;
                     const indice = ehLegenda ? -1 : i - (cenaAtual.legenda ? 1 : 0);
                     const emEdicao = editando?.chave === cenaAtual.chave && editando.indice === indice;
-                    // Texto com EFEITO novo (fonte de verdade em contorno) é desenhado pelo
-                    // servidor e ocupa no palco a mesma fração da largura que ocupa no vídeo.
-                    // Por isso o invólucro não tem margem lateral, e a altura segue a mesma
-                    // conta de `lugaresDoTexto` (8% em cima, 19% com título, 9% embaixo).
                     const comEfeito = !!t.arte && IDS_EFEITOS_TEXTO.has(t.arte);
+                    const estiloLivre = typeof t.x === "number" && typeof t.y === "number";
+
+                    const wrapperClasses = estiloLivre
+                      ? "pointer-events-none absolute z-20 flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
+                      : "pointer-events-none absolute inset-x-0 z-20 flex justify-center " +
+                        (comEfeito
+                          ? pos === "topo"
+                            ? titulo
+                              ? "top-[19%]"
+                              : "top-[8%]"
+                            : pos === "centro"
+                              ? "top-1/2 -translate-y-1/2"
+                              : "bottom-[9%]"
+                          : "px-3 " + (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]"));
+
+                    const wrapperStyle: React.CSSProperties = estiloLivre
+                      ? { left: `${t.x}%`, top: `${t.y}%` }
+                      : {};
+
                     return (
-                      <span
-                        key={i}
-                        className={
-                          "pointer-events-none absolute inset-x-0 flex justify-center " +
-                          (comEfeito
-                            ? pos === "topo"
-                              ? titulo
-                                ? "top-[19%]"
-                                : "top-[8%]"
-                              : pos === "centro"
-                                ? "top-1/2 -translate-y-1/2"
-                                : "bottom-[9%]"
-                            : "px-3 " + (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]"))
-                        }
-                      >
-                        {emEdicao ? (
+                      <span key={i} className={wrapperClasses} style={wrapperStyle}>
+                        {comEfeito ? (
+                          <div className="relative flex flex-col items-center">
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
+                              onPointerDown={(e) => {
+                                if (e.button !== 0) return;
+                                const el = e.currentTarget;
+                                el.setPointerCapture(e.pointerId);
+                                const inicioX = e.clientX;
+                                const inicioY = e.clientY;
+                                const rectPalco = palcoRef.current?.getBoundingClientRect();
+                                const rectEl = el.getBoundingClientRect();
+                                if (!rectPalco) return;
+                                const atualX = estiloLivre ? (t.x as number) : (((rectEl.left + rectEl.width / 2) - rectPalco.left) / rectPalco.width) * 100;
+                                const atualY = estiloLivre ? (t.y as number) : (((rectEl.top + rectEl.height / 2) - rectPalco.top) / rectPalco.height) * 100;
+                                let arrastou = false;
+
+                                const onMove = (me: PointerEvent) => {
+                                  const dx = me.clientX - inicioX;
+                                  const dy = me.clientY - inicioY;
+                                  if (!arrastou && Math.hypot(dx, dy) > 4) arrastou = true;
+                                  if (arrastou) {
+                                    const px = Math.min(95, Math.max(5, atualX + (dx / rectPalco.width) * 100));
+                                    const py = Math.min(95, Math.max(5, atualY + (dy / rectPalco.height) * 100));
+                                    if (indice >= 0) {
+                                      mudarTexto(cenaAtual.chave, indice, { x: Math.round(px * 10) / 10, y: Math.round(py * 10) / 10 });
+                                    }
+                                  }
+                                };
+
+                                const onUp = () => {
+                                  el.removeEventListener("pointermove", onMove);
+                                  el.removeEventListener("pointerup", onUp);
+                                  el.removeEventListener("pointercancel", onUp);
+                                  if (!arrastou) {
+                                    abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
+                                  }
+                                };
+
+                                el.addEventListener("pointermove", onMove);
+                                el.addEventListener("pointerup", onUp);
+                                el.addEventListener("pointercancel", onUp);
+                              }}
+                              title="Clique e arraste para mover · clique para editar"
+                              className="pointer-events-auto flex cursor-grab active:cursor-grabbing justify-center select-none transition hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)]"
+                            >
+                              <TextoComEfeito
+                                efeito={t.arte as string}
+                                texto={emEdicao ? (textoEmDigitacao || t.texto || "Texto") : (t.texto || "Texto")}
+                                formato={formato}
+                                n={i}
+                                movimento={t.movimento}
+                              />
+                            </span>
+                            {emEdicao && (
+                              <div className="pointer-events-auto absolute top-full mt-2 z-30 flex flex-col items-center gap-1">
+                                <input
+                                  autoFocus
+                                  value={textoEmDigitacao}
+                                  onChange={(e) => setTextoEmDigitacao(e.target.value)}
+                                  maxLength={ehLegenda ? LIMITES.legendaMax : LIMITES.textoMax}
+                                  onBlur={() => salvarTextoDoPalco(cenaAtual.chave, indice, textoEmDigitacao)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape") setEditando(null);
+                                  }}
+                                  className="w-56 rounded-xl border border-white/40 bg-neutral-950/90 px-3 py-1.5 text-center text-sm font-semibold text-white shadow-2xl backdrop-blur-md outline-none ring-2 ring-white/60 focus:border-white focus:ring-white transition"
+                                  placeholder="Digite o texto..."
+                                />
+                                <span className="rounded bg-black/80 px-2 py-0.5 text-[9px] text-white/90 backdrop-blur-sm">
+                                  Enter para salvar · Esc para cancelar
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : emEdicao ? (
                           <input
                             autoFocus
-                            defaultValue={t.texto}
+                            value={textoEmDigitacao}
+                            onChange={(e) => setTextoEmDigitacao(e.target.value)}
                             maxLength={ehLegenda ? LIMITES.legendaMax : LIMITES.textoMax}
-                            onBlur={(e) => salvarTextoDoPalco(cenaAtual.chave, indice, e.target.value)}
+                            onBlur={() => salvarTextoDoPalco(cenaAtual.chave, indice, textoEmDigitacao)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") e.currentTarget.blur();
                               if (e.key === "Escape") setEditando(null);
                             }}
-                            className="pointer-events-auto w-full max-w-[90%] rounded bg-marca-indigo px-2 py-1 text-center text-white outline-none ring-2 ring-white/70"
-                            style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12 }}
+                            className="pointer-events-auto w-full max-w-[90%] rounded-lg border border-white/40 bg-neutral-950/90 px-2.5 py-1 text-center font-medium text-white shadow-2xl backdrop-blur-md outline-none ring-2 ring-white/60 transition"
+                            style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 11 : 13 }}
                           />
-                        ) : comEfeito ? (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => setEditando({ chave: cenaAtual.chave, indice })}
-                            onKeyDown={(e) => e.key === "Enter" && setEditando({ chave: cenaAtual.chave, indice })}
-                            {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
-                            title="Clique pra editar · botão direito pra mais"
-                            className="pointer-events-auto flex w-full cursor-pointer justify-center transition hover:drop-shadow-[0_0_2px_rgba(255,255,255,0.8)]"
-                          >
-                            <TextoComEfeito efeito={t.arte as string} texto={t.texto || "Texto"} formato={formato} n={i} movimento={t.movimento} />
-                          </span>
                         ) : (
                           <span
                             role="button"
                             tabIndex={0}
-                            onClick={() => setEditando({ chave: cenaAtual.chave, indice })}
-                            onKeyDown={(e) => e.key === "Enter" && setEditando({ chave: cenaAtual.chave, indice })}
                             {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
-                            title="Clique pra editar · botão direito pra mais"
-                            className="pointer-events-auto max-w-full cursor-pointer truncate rounded px-2 py-1 text-white transition hover:ring-2 hover:ring-white/70"
+                            onPointerDown={(e) => {
+                              if (e.button !== 0) return;
+                              const el = e.currentTarget;
+                              el.setPointerCapture(e.pointerId);
+                              const inicioX = e.clientX;
+                              const inicioY = e.clientY;
+                              const rectPalco = palcoRef.current?.getBoundingClientRect();
+                              const rectEl = el.getBoundingClientRect();
+                              if (!rectPalco) return;
+                              const atualX = estiloLivre ? (t.x as number) : (((rectEl.left + rectEl.width / 2) - rectPalco.left) / rectPalco.width) * 100;
+                              const atualY = estiloLivre ? (t.y as number) : (((rectEl.top + rectEl.height / 2) - rectPalco.top) / rectPalco.height) * 100;
+                              let arrastou = false;
+
+                              const onMove = (me: PointerEvent) => {
+                                const dx = me.clientX - inicioX;
+                                const dy = me.clientY - inicioY;
+                                if (!arrastou && Math.hypot(dx, dy) > 4) arrastou = true;
+                                if (arrastou) {
+                                  const px = Math.min(95, Math.max(5, atualX + (dx / rectPalco.width) * 100));
+                                  const py = Math.min(95, Math.max(5, atualY + (dy / rectPalco.height) * 100));
+                                  if (indice >= 0) {
+                                    mudarTexto(cenaAtual.chave, indice, { x: Math.round(px * 10) / 10, y: Math.round(py * 10) / 10 });
+                                  }
+                                }
+                              };
+
+                              const onUp = () => {
+                                el.removeEventListener("pointermove", onMove);
+                                el.removeEventListener("pointerup", onUp);
+                                el.removeEventListener("pointercancel", onUp);
+                                if (!arrastou) {
+                                  abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
+                                }
+                              };
+
+                              el.addEventListener("pointermove", onMove);
+                              el.addEventListener("pointerup", onUp);
+                              el.addEventListener("pointercancel", onUp);
+                            }}
+                            title="Clique e arraste para mover · clique para editar"
+                            className="pointer-events-auto max-w-full cursor-grab active:cursor-grabbing truncate select-none rounded-md px-2.5 py-1 text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
                             style={{
-                              background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
-                              fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
+                              background: est.id === "etiqueta" ? "rgba(15,23,42,0.88)" : "rgba(15,45,91,0.88)",
+                              fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 11 : 13,
                               fontWeight: est.id === "destaque" ? 700 : 500,
                             }}
                           >

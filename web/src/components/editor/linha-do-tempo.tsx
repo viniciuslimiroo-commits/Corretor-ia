@@ -351,7 +351,18 @@ export default function LinhaDoTempo({
           </div>
 
           {/* trilha */}
-          <ul className="relative flex items-stretch" onClick={irPara}>
+          <ul
+            className="relative flex items-stretch"
+            onClick={irPara}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              aoSoltarEm(blocos[blocos.length - 1]?.chave ?? "fim", e);
+            }}
+          >
             {blocos.map((b, i) => {
               const ativa = selecionada === b.chave;
               const largura = larguras[i] * zoom;
@@ -361,8 +372,16 @@ export default function LinhaDoTempo({
                     type="button"
                     draggable={!gerando}
                     onDragStart={() => aoComecarArraste(b.chave)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => aoSoltarEm(b.chave, e)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      aoSoltarEm(b.chave, e);
+                    }}
                     onContextMenu={(e) => {
                       if (aoMenuContexto) {
                         e.preventDefault();
@@ -423,8 +442,18 @@ export default function LinhaDoTempo({
             )}
 
             {blocos.length === 0 && (
-              <li className="grid h-16 w-full place-items-center rounded-md border border-dashed border-neutral-200 text-xs text-neutral-500">
-                Arraste as fotos pra cá, ou escolha em Mídia.
+              <li
+                className="grid h-16 w-full place-items-center rounded-md border-2 border-dashed border-neutral-300 bg-neutral-50/50 text-xs text-neutral-500 hover:border-marca-coral hover:bg-marca-coral/5 transition cursor-pointer"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  aoSoltarEm("fim", e);
+                }}
+              >
+                Arraste imagens ou vídeos pra cá, ou escolha nas abas laterais.
               </li>
             )}
           </ul>

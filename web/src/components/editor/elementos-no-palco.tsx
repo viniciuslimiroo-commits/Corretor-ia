@@ -153,25 +153,70 @@ export default function ElementosNoPalco({
             aoEscolher: () => aoTirar(p.i),
           },
         ];
-        const estilo: React.CSSProperties = {
-          left: `${(x / W_REF) * 100}%`,
-          top: `${(y / H_REF) * 100}%`,
-          width: `${(p.largura / W_REF) * 100}%`,
-          height: `${(p.altura / H_REF) * 100}%`,
-        };
+        const estiloLivre = typeof p.e.x === "number" && typeof p.e.y === "number";
+        const estilo: React.CSSProperties = estiloLivre
+          ? {
+              left: `${p.e.x}%`,
+              top: `${p.e.y}%`,
+              width: `${(p.largura / W_REF) * 100}%`,
+              height: `${(p.altura / H_REF) * 100}%`,
+              transform: "translate(-50%, -50%)",
+            }
+          : {
+              left: `${(x / W_REF) * 100}%`,
+              top: `${(y / H_REF) * 100}%`,
+              width: `${(p.largura / W_REF) * 100}%`,
+              height: `${(p.altura / H_REF) * 100}%`,
+            };
         return (
           <span
             key={`${p.e.id}-${p.i}`}
             role="button"
             tabIndex={0}
-            title={`${rotulo} · botão direito pra mexer`}
+            title={`${rotulo} · clique e arraste para mover · botão direito para opções`}
             {...gatilho(itens)}
-            onClick={aoSelecionar ? () => aoSelecionar(p.i) : undefined}
+            onPointerDown={(e) => {
+              if (p.quadroInteiro) return;
+              if (e.button !== 0) return;
+              const el = e.currentTarget;
+              el.setPointerCapture(e.pointerId);
+              const inicioX = e.clientX;
+              const inicioY = e.clientY;
+              const pai = el.parentElement;
+              if (!pai) return;
+              const rectPai = pai.getBoundingClientRect();
+              const rectEl = el.getBoundingClientRect();
+              const atualX = estiloLivre ? (p.e.x as number) : (((rectEl.left + rectEl.width / 2) - rectPai.left) / rectPai.width) * 100;
+              const atualY = estiloLivre ? (p.e.y as number) : (((rectEl.top + rectEl.height / 2) - rectPai.top) / rectPai.height) * 100;
+              let arrastou = false;
+
+              const onMove = (me: PointerEvent) => {
+                const dx = me.clientX - inicioX;
+                const dy = me.clientY - inicioY;
+                if (!arrastou && Math.hypot(dx, dy) > 4) arrastou = true;
+                if (arrastou) {
+                  const px = Math.min(95, Math.max(5, atualX + (dx / rectPai.width) * 100));
+                  const py = Math.min(95, Math.max(5, atualY + (dy / rectPai.height) * 100));
+                  aoMudar(p.i, { x: Math.round(px * 10) / 10, y: Math.round(py * 10) / 10 });
+                }
+              };
+
+              const onUp = () => {
+                el.removeEventListener("pointermove", onMove);
+                el.removeEventListener("pointerup", onUp);
+                el.removeEventListener("pointercancel", onUp);
+                if (!arrastou && aoSelecionar) aoSelecionar(p.i);
+              };
+
+              el.addEventListener("pointermove", onMove);
+              el.addEventListener("pointerup", onUp);
+              el.addEventListener("pointercancel", onUp);
+            }}
             className={
-              "absolute cursor-context-menu select-none transition hover:outline hover:outline-2 hover:outline-white/70 " +
+              "absolute cursor-grab active:cursor-grabbing select-none transition-shadow hover:outline hover:outline-2 hover:outline-white/70 " +
               // Moldura cobre o quadro inteiro: não pode roubar o clique do palco.
               (p.quadroInteiro ? "pointer-events-none" : "pointer-events-auto") +
-              (selecionado === p.i ? " outline-2 outline-offset-2 outline-dashed outline-[#f06b4f]" : "")
+              (selecionado === p.i ? " outline-2 outline-offset-2 outline-dashed outline-white/90 drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" : "")
             }
             style={estilo}
           >

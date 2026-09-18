@@ -213,6 +213,18 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **18/09/2026 — Antigravity (Arraste Livre no Palco, Design Elegante de Textos e Dropzone na Timeline):**
+  - **Movimentação Livre de Textos e Elementos no Palco:**
+    - Adicionadas coordenadas livres `x` e `y` (%) em `TextoCena` e `ElementoCena` em `web/src/lib/video.ts` com saneamento completo em `limparTextos` e `limparElementos`.
+    - Suporte a clique e arraste livre para qualquer ponto do vídeo/foto usando Pointer Events no palco (`editor-video.tsx` e `elementos-no-palco.tsx`), tanto no desktop (mouse) quanto no celular (touch).
+  - **Edição de Texto In-place Elegante e Fiel ao Design (Sem Laranja):**
+    - Eliminado o fundo laranja `rgba(240,107,79,0.88)` e inputs destrutivos durante a edição de texto no palco.
+    - Preservação de 100% da fonte, textura, acabamentos e efeitos SVG de `TextoComEfeito` com digitação e atualização em tempo real, sobreposta por interface dark blur refinada (`backdrop-blur-md` e bordas translúcidas elegantes).
+    - Remoção de contornos laranjas estáticos na seleção de elementos, substituídos por contornos sutis de alto contraste (`outline-white/90`).
+  - **Arrastar Arquivos e Vídeos Diretamente para a Timeline:**
+    - Miniaturas da aba Vídeos tornadas arrastáveis (`draggable` com `text/encena-video`).
+    - Dropzone na `LinhaDoTempo` aceitando arquivos externos do computador/SO (imagens e vídeos mp4/mov/jpg/png via `enviarArquivos`), vídeos já gerados e fotos da biblioteca de materiais.
+  - Validações: `npx tsc --noEmit -p .` com 0 erros e `npx eslint` com 0 erros.
 - **18/09/2026 — Antigravity (Edição Integrada / Editor de Vídeo intuitivo estilo CapCut):**
   - **Aba Vídeos integrada à Timeline:** Adicionado botão `+ Usar na timeline` em cada vídeo concluído/existente para inseri-lo como clipe na timeline e permitir edição/cortes diretamente, além de botão `Abrir projeto` para reabrir ajustes originais.
   - **Gravação de Voz como Mídia Reutilizável:** Criada seção "Minhas gravações de áudio" na aba de Legendas e Narração, permitindo ouvir, alternar áudio ativo na timeline com um clique (`+ Usar na timeline` / `✓ Ativo`) e excluir gravações.
