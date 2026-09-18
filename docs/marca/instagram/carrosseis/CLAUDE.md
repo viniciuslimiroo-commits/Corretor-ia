@@ -171,6 +171,12 @@ Regras críticas:
    JPEG ou PNG de verdade antes: data:image/jpeg vs data:image/png)
 3. Mantenha o layout em 420px
 4. Escale com device_scale_factor: 1080 / 420 = 2.5714
+   ATENÇÃO (medido em 18/09/2026, Chrome no Windows): com a densidade de pixel 2,57, texto
+   pequeno (11-12px) sai com letras desalinhadas ("es tar", "ilus trativa"), porque cada letra
+   é medida a 11px e cai em pixel inteiro. O `exportar-chrome.mjs` evita isso ampliando a
+   página por CSS (`document.body.style.zoom = 2.5714`, janela 1080x1350, densidade 1): a
+   letra passa a ser medida a 28px. Prefira ele. O `exportar.py` ainda usa a densidade e não
+   foi testado aqui (sem Playwright nesta máquina); se usar, confira o texto miúdo no PNG.
 5. Esconda o cabeçalho, as bolinhas, as ações e a legenda na exportação
    (o script faz isso via classe `.exportando` no body — garanta no CSS:
    `body.exportando .ig-header, body.exportando .ig-dots,
