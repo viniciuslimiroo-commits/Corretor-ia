@@ -127,7 +127,7 @@ editar** (música, voz, Você, textos, adesivos, legendas, cenas), como nos edit
 
 ## 7. Pendências que dependem do Vinicius
 
-1. **Liberar o push dos 8 commits** (seção 5). Depois do deploy: **montar um vídeo sem
+1. **Liberar o push dos commits locais** (seção 5). Depois do deploy: **montar um vídeo sem
    crédito em produção** (sem cena animada e sem voz de IA) e conferir música, adesivo e
    fonte — é a prova que falta do conserto das funções (`8df8f45`).
 2. **Confirmar o @ do Instagram** usado nos carrosséis (`@encena.app` provisório): trocar em
@@ -194,4 +194,4 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
-- **18/09/2026 — Claude Code:** escreveu este arquivo. Último commit: `ec13c01`.
+- **18/09/2026 — Claude Code:** escreveu este arquivo (commit 29b0eb5). Antes dele, o último commit de código foi `ec13c01`.
