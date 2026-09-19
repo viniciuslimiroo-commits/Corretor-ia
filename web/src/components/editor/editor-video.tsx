@@ -65,7 +65,14 @@ import { pecasDoImovel, resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imove
 import { useIdioma } from "@/i18n/cliente";
 import MenuContexto, { useMenuContexto, type ItemMenu } from "@/components/editor/menu-contexto";
 import SeletorImovel from "@/components/seletor-imovel";
-import LinhaDoTempo, { type BlocoCena } from "@/components/editor/linha-do-tempo";
+import LinhaDeFaixas from "@/components/editor/faixas/linha-de-faixas";
+import BarraDaSelecao, { DeslizanteDaSubBarra } from "@/components/editor/barra-da-selecao";
+import { useAvisos } from "@/components/editor/aviso-desfazer";
+import ListaDaFoto from "@/components/editor/lista-da-foto";
+import LegendaNoPalco from "@/components/editor/legenda-no-palco";
+import { useHistorico } from "@/components/editor/usar-historico";
+import { usePreviaDeAudio } from "@/components/editor/usar-previa-de-audio";
+import { decodificarPicos, type PicosDaFaixa } from "@/lib/picos-audio";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
 import GaleriaElementos, { type RespostaClipes } from "@/components/editor/galeria-elementos";
@@ -82,8 +89,33 @@ import { lerLegenda } from "@/lib/legenda-arquivo";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { useResumoEdicao } from "@/components/editor/usar-resumo-edicao";
-import { audiosEfetivos, legendasDaTranscricao, type RefItem } from "@/lib/linha-do-tempo";
-import { escolherMusica, inicioDaVoz, musicaNova, volumeDaMusica, volumeDaVoz, vozNova } from "@/lib/audio-do-editor";
+import {
+  acoesDaSelecao,
+  aplicarGesto,
+  apagar as apagarDaLinha,
+  audiosEfetivos,
+  blocosDoEstado,
+  botaoDeslocar,
+  botaoFimAqui,
+  botaoInicioAqui,
+  ctxDoEstado,
+  dividirNoTempo,
+  duplicarNaFoto,
+  faixaAberta as qualFaixaAbre,
+  legendasDaTranscricao,
+  mesmoRef,
+  moverParaFoto,
+  pontosDeEncaixe,
+  realinharSelecao,
+  zoomParaAjustar,
+  type BlocoLinha,
+  type EstadoLinha,
+  type FaixaId,
+  type Gesto,
+  type Medidas,
+  type RefItem,
+} from "@/lib/linha-do-tempo";
+import { escolherMusica, inicioDaVoz, itensDaPrevia, marcasDaPrevia, musicaNova, novoIdDeAudio, volumeDaMusica, volumeDaVoz, vozNova, type FontesDoEditor } from "@/lib/audio-do-editor";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -398,21 +430,27 @@ export default function EditorDeVideo() {
   const palcoRef = useRef<HTMLDivElement | null>(null);
   /** Se o painel desta aba aparece agora: um de cada vez, escolhido na trilha. */
   const mostrarAba = (id: AbaId) => aba === id;
-  /** Onde o cabeçote está, em segundos. É o que o palco mostra. */
+  /** Onde o cabeçote está, em segundos (100ms de folga; o quadro a quadro vem do relógio da prévia). */
   const [tempo, setTempo] = useState(0);
-  const [tocando, setTocando] = useState(false);
-  /** O tempo atual pro efeito de tocar ler sem virar dependência dele. */
-  const tempoRef = useRef(0);
   /** Zoom da linha do tempo, em pixels por segundo. */
   const [zoomLinha, setZoomLinha] = useState(30);
   /** Som curto em cada virada de cena. */
   const [efeitoSonoro, setEfeitoSonoro] = useState<EfeitoSonoroId>("nenhum");
-
-  /** Move o cabeçote. Guarda no ref junto, que é de onde o laço de tocar lê o início. */
-  const moverTempo = useCallback((segundos: number) => {
-    tempoRef.current = segundos;
-    setTempo(segundos);
-  }, []);
+  // ---- linha do tempo com faixas: o que é só de interface (não entra no desfazer) ----
+  /** A última faixa aberta à mão (celular: uma aberta por vez). */
+  const [ultimaFaixa, setUltimaFaixa] = useState<FaixaId | null>(null);
+  /** Botão "Faixas": todas abertas (o palco encolhe). */
+  const [todasAbertas, setTodasAbertas] = useState(false);
+  /** A sub-barra aberta na barra da seleção, presa ao item em que foi aberta. */
+  const [subBarra, setSubBarra] = useState<{ tipo: "volume" | "fade" | "trecho" | "velocidade" | "texto"; de: string } | null>(null);
+  /** Uma foto com vários textos/adesivos: a lista pra escolher um. */
+  const [listaAberta, setListaAberta] = useState<BlocoLinha | null>(null);
+  /** A forma de onda de cada música do catálogo (public/musica/picos.json). */
+  const [picos, setPicos] = useState<Partial<Record<MusicaId, PicosDaFaixa>>>({});
+  /** Duração do vídeo do Você, quando o navegador já leu. */
+  const [segundosDoVoce, setSegundosDoVoce] = useState<number | null>(null);
+  /** Altura do palco em px (a legenda no palco se mede por ela). */
+  const [alturaPalco, setAlturaPalco] = useState(0);
 
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string } | null>(null);
@@ -541,12 +579,19 @@ export default function EditorDeVideo() {
    */
   const [templateAberto, setTemplateAberto] = useState<TemplateVideo | null>(null);
 
-  /** Escolheu uma música na aba Áudio (D6): cria, troca ou tira o trecho. */
+  /**
+   * Escolheu uma música na aba Áudio (D6): cria, troca ou tira o trecho -- e MOSTRA: a faixa
+   * Música abre, o trecho novo fica selecionado e o aviso diz o que aconteceu, com Desfazer.
+   */
   function escolherMusicaDaBiblioteca(id: MusicaId) {
     const m = escolherMusica(audios, selecao, id, musicaVolume);
     if (m.audios === audios) return;
+    historico.novoPasso();
     setAudios(m.audios);
     setSelecao(m.selecao);
+    if (m.abrir) setUltimaFaixa(m.abrir);
+    if (m.aviso) avisar(m.aviso, { desfazer: () => historico.desfazer() });
+    resumoEdicao.registrarEdicao("musica", "botao");
   }
 
   function aplicarTemplate(t: TemplateVideo) {
@@ -867,8 +912,11 @@ export default function EditorDeVideo() {
       setNarrar(true);
       // Na linha do tempo: um trecho de voz (ou os cortes da gravação velha voltam a ser um só).
       const m = vozNova(audios);
+      historico.novoPasso();
       setAudios(m.audios);
       setSelecao(m.selecao);
+      setUltimaFaixa("voz");
+      if (m.aviso) avisar(m.aviso, { desfazer: () => historico.desfazer() });
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui enviar o áudio.");
     } finally {
@@ -1357,42 +1405,120 @@ export default function EditorDeVideo() {
   }
 
 
-  /**
-   * Os blocos da linha do tempo, e onde cada um começa.
-   *
-   * A largura do bloco é a DURAÇÃO -- é isso que transforma uma fila de cartões numa
-   * linha do tempo de verdade, e é o que responde "quanto tempo tem meu vídeo" sem
-   * ninguém somar nada de cabeça.
-   */
-  const blocosDaLinha: BlocoCena[] = useMemo(
-    () =>
-      cenas.map((s) => ({
-        chave: s.chave,
-        rotulo: s.rotulo,
-        miniatura: s.miniatura,
-        duracao: s.duracao,
-        tipo: s.tipo,
-        temVideo: temVideoCorrendo(s.tipo),
-        giro: s.giro,
-        espelho: s.espelho,
-        velocidade: s.velocidade,
-        congelado: s.congelar,
-        emenda: TRANSICOES.find((t) => t.id === (s.transicao ?? transicao))?.rotulo ?? "",
-      })),
-    [cenas, transicao]
-  );
-
   /** Em que segundo cada cena começa. Serve pro cabeçote saber quem está no ar. */
   const iniciosDasCenas = useMemo(() => relogioDaLinha.clipes.slice(0, cenas.length).map((c) => c.inicio), [relogioDaLinha, cenas.length]);
   /** Inícios de todos os blocos da linha, com a tela final quando ela entra. */
   const iniciosDaLinha = useMemo(() => relogioDaLinha.clipes.map((c) => c.inicio), [relogioDaLinha]);
   const duracaoDaLinha = relogioDaLinha.total;
-  /** A duração pro laço da prévia ler sem reiniciar quando a pessoa mexe numa cena. */
-  const duracaoDaLinhaRef = useRef(duracaoDaLinha);
-  useEffect(() => {
-    duracaoDaLinhaRef.current = duracaoDaLinha;
-  }, [duracaoDaLinha]);
+  // ================= LINHA DO TEMPO COM FAIXAS (docs/planos/linha-do-tempo-spec.md, P7) =================
+  //
+  // Tudo o que entra no vídeo aparece numa faixa: fotos, Você, voz, música, textos, adesivos,
+  // legendas. Toque seleciona; a barra de baixo mostra o que dá pra fazer com o selecionado;
+  // arrastar move ou apara o que já está selecionado; tudo tem Desfazer.
+  const { avisar, elemento: avisos } = useAvisos();
+  const estadoLinha: EstadoLinha<CenaUI> = useMemo(
+    () => ({ cenas, transicao, telaFinal: telaFinalEntra, titulo, audios, narracao: narracaoBase, musicaVolume, efeitoSonoro, apresentador, legendas }),
+    [cenas, transicao, telaFinalEntra, titulo, audios, narracaoBase, musicaVolume, efeitoSonoro, apresentador, legendas]
+  );
+  // Voz de IA ainda não tem arquivo novo (a montagem grava de novo): o bloco é estimativa e
+  // não se corta. Cortar a voz de IA fica pra quando a voz gravada for reaproveitada.
+  const medidas: Medidas = useMemo(
+    () => ({ segundosDaVoz: origemVoz === "ia" ? null : segundosDaVoz, vozEstimada: !!narracaoBase && origemVoz === "ia", segundosEstimadosDaVoz: roteiro.trim().length / 15, segundosDoVoce }),
+    [segundosDaVoz, narracaoBase, origemVoz, roteiro, segundosDoVoce]
+  );
+  const ctxLinha = useMemo(() => ctxDoEstado(estadoLinha, medidas), [estadoLinha, medidas]);
+  const faixas = useMemo(() => blocosDoEstado(ctxLinha), [ctxLinha]);
 
+  // ---- a PRÉVIA COM SOM (P4): o Play toca música, voz, Você e os sons das viradas ----
+  const fontesDaPrevia: FontesDoEditor = useMemo(
+    () => ({
+      voz: narracaoBase && origemVoz !== "ia" && vozArquivo ? { chave: vozArquivo.caminho, url: vozArquivo.url } : null,
+      voce: apresentador && apreUrl ? { chave: `voce/${apresentador.arquivo}`, url: apreUrl } : null,
+    }),
+    [narracaoBase, origemVoz, vozArquivo, apresentador, apreUrl]
+  );
+  const itensPrevia = useMemo(() => itensDaPrevia(faixas, audiosEfetivos(audios, narracaoBase), apresentador, fontesDaPrevia), [faixas, audios, narracaoBase, apresentador, fontesDaPrevia]);
+  const marcasPrevia = useMemo(() => marcasDaPrevia(faixas, efeitoSonoro), [faixas, efeitoSonoro]);
+  const aoTerminarPrevia = useCallback(() => {}, []);
+  const aoSemSomPrevia = useCallback(
+    (motivo: "contexto" | "decodificar" | "elemento") => {
+      avisar(motivo === "contexto" ? "Prévia sem som — toque em Play de novo" : motivo === "elemento" ? "Prévia sem o som do Você" : "Um dos áudios não carregou: ele fica mudo na prévia");
+      resumoEdicao.registrar({ tipo: "semSom" } as never);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resumoEdicao é estável (useMemo); avisar também (useCallback)
+    [avisar]
+  );
+  const previa = usePreviaDeAudio({ itens: itensPrevia, marcas: marcasPrevia, total: faixas.total, aoTerminar: aoTerminarPrevia, aoSemSom: aoSemSomPrevia });
+  const tocando = previa.tocando;
+  const { preparar: prepararPrevia, relogio: relogioDaPrevia } = previa;
+  // Os arquivos são baixados e decodificados já: no primeiro Play o som sai na hora.
+  useEffect(() => {
+    prepararPrevia([...itensPrevia.map((i) => i.fonte), ...marcasPrevia.map((m) => m.fonte)]);
+  }, [prepararPrevia, itensPrevia, marcasPrevia]);
+  // O tempo da tela anda com o relógio da prévia, de 100 em 100ms (o quadro a quadro é da linha).
+  useEffect(() => {
+    let ultimo = 0;
+    return relogioDaPrevia.assinar((t) => {
+      const agora = performance.now();
+      if (agora - ultimo < 100) return;
+      ultimo = agora;
+      setTempo(Math.round(t * 100) / 100);
+    });
+  }, [relogioDaPrevia]);
+  // A forma de onda de cada música (gerada no build: public/musica/picos.json).
+  useEffect(() => {
+    let vivo = true;
+    fetch("/musica/picos.json")
+      .then((r) => r.json())
+      .then((j) => vivo && setPicos(decodificarPicos(j)))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  // ---- DESFAZER (P6): tudo que muda o vídeo; não o tempo, a seleção, a aba nem o zoom ----
+  const docEdicao = useMemo(
+    () => ({ cenas, audios, apresentador, legendas, telaFinal, chamada, efeitoSonoro, transicao, musicaVolume, titulo, preco, local, narrar, origemVoz, roteiro, voz, vozArquivo, capa, filtro, intensidadeFiltro, ajustesVideo, capaMontada, formato }),
+    [cenas, audios, apresentador, legendas, telaFinal, chamada, efeitoSonoro, transicao, musicaVolume, titulo, preco, local, narrar, origemVoz, roteiro, voz, vozArquivo, capa, filtro, intensidadeFiltro, ajustesVideo, capaMontada, formato]
+  );
+  const restaurar = useCallback(
+    (d: typeof docEdicao) => {
+      setCenas(d.cenas);
+      setAudios(d.audios);
+      setApresentador(d.apresentador);
+      setLegendas(d.legendas);
+      setTelaFinal(d.telaFinal);
+      setChamada(d.chamada);
+      setEfeitoSonoro(d.efeitoSonoro);
+      setTransicao(d.transicao);
+      setMusicaVolume(d.musicaVolume);
+      setTitulo(d.titulo);
+      setPreco(d.preco);
+      setLocal(d.local);
+      setNarrar(d.narrar);
+      setOrigemVoz(d.origemVoz);
+      setRoteiro(d.roteiro);
+      setVoz(d.voz);
+      setVozArquivo(d.vozArquivo);
+      setCapa(d.capa);
+      setFiltro(d.filtro);
+      setIntensidadeFiltro(d.intensidadeFiltro);
+      setAjustesVideo(d.ajustesVideo);
+      setCapaMontada(d.capaMontada);
+      setFormato(d.formato);
+      // A seleção continua valendo? (o item pode ter sumido com o desfazer)
+      const ctx = ctxDoEstado({ ...estadoLinha, cenas: d.cenas, audios: d.audios, apresentador: d.apresentador, legendas: d.legendas, titulo: d.titulo, transicao: d.transicao, efeitoSonoro: d.efeitoSonoro }, medidas);
+      setSelecao((sel) => realinharSelecao(ctx, sel));
+    },
+    [estadoLinha, medidas]
+  );
+  const historico = useHistorico(docEdicao, restaurar);
+  // Só em desenvolvimento: os testes de navegador leem o pedido que SERIA mandado, sem gerar.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __encenaEditor?: unknown }).__encenaEditor = { espec: () => espec, selecao: () => selecao, tempo: () => tempo };
+  });
   // ---------- ferramentas da barra da linha do tempo ----------
   //
   // Todas trabalham sobre o CABEÇOTE, não sobre um número digitado num campo. É a
@@ -1780,41 +1906,259 @@ export default function EditorDeVideo() {
     );
   }
 
-  /**
-   * A PRÉVIA que toca.
-   *
-   * Não é o vídeo montado -- é o cabeçote andando e o palco trocando de cena na hora
-   * certa. Serve pra ver o RITMO antes de gerar: se uma cena está longa demais, isso
-   * aparece assistindo, nunca olhando um número de duração.
-   */
-  useEffect(() => {
-    if (!tocando) return;
-    // Intervalo com DELTA REAL, não requestAnimationFrame: o rAF para quando a aba não
-    // está à frente, e aí a prévia congela sem ninguém entender por quê. O delta vem do
-    // relógio, então o cabeçote anda no tempo certo mesmo se um quadro atrasar.
-    //
-    // O ref anda JUNTO com o estado a cada tique. Antes só o estado andava: pausar e tocar
-    // de novo recomeçava do ponto em que o play foi apertado da primeira vez.
-    //
-    // Soma o delta desde o ÚLTIMO tique a partir do ref, e não desde o play: tocar na régua
-    // com a prévia rodando move o ref, e a conta desde o play puxava o cabeçote de volta.
-    let ultimo = performance.now();
-    const id = setInterval(() => {
-      const agora = performance.now();
-      const novo = tempoRef.current + (agora - ultimo) / 1000;
-      ultimo = agora;
-      const fim = duracaoDaLinhaRef.current;
-      if (novo >= fim) {
-        tempoRef.current = fim;
-        setTempo(fim);
-        setTocando(false);
-      } else {
-        tempoRef.current = novo;
-        setTempo(novo);
+  // ---------- ações da linha do tempo (barra da seleção, menu, gestos) ----------
+
+  /** O estado que uma ação da linha devolveu, de volta nos estados do editor. */
+  function aplicarEstadoLinha(e: EstadoLinha<CenaUI>) {
+    setCenas(e.cenas);
+    setAudios(e.audios);
+    setApresentador(e.apresentador);
+    setLegendas(e.legendas);
+    setTitulo(e.titulo);
+    if (!e.narracao && narracaoBase) setNarrar(false);
+  }
+
+  /** Um passo de edição pela linha: desfazer volta a ele; o aviso diz o que aconteceu. */
+  function aplicarLinha(r: { estado: EstadoLinha<CenaUI>; selecao: RefItem | null; mudou: boolean; motivo?: string }, ref: RefItem, aviso?: string) {
+    if (!r.mudou) {
+      if (r.motivo) avisar(r.motivo);
+      return false;
+    }
+    historico.novoPasso();
+    aplicarEstadoLinha(r.estado);
+    setSelecao(r.selecao);
+    resumoEdicao.registrarEdicao(ref.faixa, "botao");
+    if (aviso) avisar(aviso, { desfazer: () => historico.desfazer() });
+    return true;
+  }
+
+  const novoIdLinha = () => novoIdDeAudio(audios.map((a) => a.id));
+  /** Uma ação de CENA feita pelas funções de sempre do editor, como um passo de desfazer. */
+  function naCena(f: () => void, aviso?: string) {
+    historico.novoPasso();
+    f();
+    resumoEdicao.registrarEdicao("cenas", "botao");
+    if (aviso) avisar(aviso, { desfazer: () => historico.desfazer() });
+  }
+  const chaveDoRef = (r: RefItem | null) => (r ? JSON.stringify(r) : "");
+
+  /** O botão da barra da seleção (ou o item do menu) com o nome `id`, sobre o item `ref`. */
+  function executarAcao(id: string, ref: RefItem | null = selecao) {
+    if (!ref) return;
+    const t = tempo;
+    const f = ref.faixa;
+    // --- sub-barras: abrem (ou fecham) presas ao item ---
+    if (id === "volume" || id === "fade" || id === "trecho" || id === "velocidade" || id === "editar_texto") {
+      const tipo = id === "editar_texto" ? "texto" : id;
+      setSubBarra((sb) => (sb && sb.tipo === tipo && sb.de === chaveDoRef(ref) ? null : { tipo, de: chaveDoRef(ref) }));
+      return;
+    }
+    if (f === "musica" || f === "voz" || f === "voce" || f === "legendas") {
+      if (id === "inicio_aqui") return void aplicarLinha(botaoInicioAqui(ctxLinha, ref, t), ref, "Cortado aqui");
+      if (id === "fim_aqui") return void aplicarLinha(botaoFimAqui(ctxLinha, ref, t), ref, "Cortado aqui");
+      if (id === "menos05") return void aplicarLinha(botaoDeslocar(ctxLinha, ref, -0.5), ref);
+      if (id === "mais05") return void aplicarLinha(botaoDeslocar(ctxLinha, ref, 0.5), ref);
+      if (id === "menos01") return void aplicarLinha(botaoDeslocar(ctxLinha, ref, -0.1), ref);
+      if (id === "mais01") return void aplicarLinha(botaoDeslocar(ctxLinha, ref, 0.1), ref);
+      if (id === "dividir") return void aplicarLinha(dividirNoTempo(ctxLinha, ref, t, novoIdLinha), ref, "Dividido no cursor");
+      if (id === "trocar") return void setAba("audio");
+      if (id === "mais_trecho" && f === "legendas") {
+        const trechos = legendas?.trechos ?? [];
+        const proximo = trechos.filter((x) => x.inicio > t).reduce((m, x) => Math.min(m, x.inicio), duracao);
+        const novo = { inicio: Math.round(t * 100) / 100, fim: Math.round(Math.min(t + 2, proximo, duracao) * 100) / 100, texto: "" };
+        const lista = [...trechos, novo].sort((a, b) => a.inicio - b.inicio);
+        historico.novoPasso();
+        setLegendas({ estilo: legendas?.estilo ?? ESTILOS_LEGENDA[0].id, ...(legendas ?? {}), trechos: lista } as Legendas);
+        const i = lista.indexOf(novo);
+        setSelecao({ faixa: "legendas", indice: i });
+        setSubBarra({ tipo: "texto", de: chaveDoRef({ faixa: "legendas", indice: i }) });
+        return;
       }
-    }, 50);
-    return () => clearInterval(id);
-  }, [tocando]);
+    }
+    if (id === "apagar") {
+      const r = apagarDaLinha(ctxLinha, ref);
+      const extra = r.legendasApagadas && f === "voz" ? ` · ${r.legendasApagadas} legenda${r.legendasApagadas > 1 ? "s" : ""} junto` : "";
+      const nome = f === "musica" ? "Música apagada" : f === "voz" ? `Voz apagada${extra}${r.narracaoDesligada ? " · narração desligada" : ""}` : f === "voce" ? "Você tirado" : f === "legendas" ? "Legenda apagada" : f === "cenas" ? "Foto apagada" : "Apagado";
+      if (f === "cenas") return naCena(() => remover(ref.chave), nome);
+      if (f === "telaFinal") return naCena(() => setTelaFinal(false), "Tela final tirada");
+      return void aplicarLinha({ ...r, mudou: true }, ref, nome);
+    }
+    if (f === "textos" || f === "adesivos") {
+      if (id === "foto_anterior") return void aplicarLinha(moverParaFoto(ctxLinha, ref, -1), ref, "Foi pra foto anterior");
+      if (id === "proxima_foto") return void aplicarLinha(moverParaFoto(ctxLinha, ref, 1), ref, "Foi pra próxima foto");
+      if (id === "duplicar") return void aplicarLinha(duplicarNaFoto(ctxLinha, ref), ref, "Duplicado");
+      if (id === "editar") {
+        if (f === "textos") {
+          const texto = ref.indice < 0 ? (cenas.find((x) => x.chave === ref.chave)?.legenda ?? "") : (cenas.find((x) => x.chave === ref.chave)?.textos?.[ref.indice]?.texto ?? "");
+          return abrirEdicaoTexto(ref.chave, ref.indice, texto);
+        }
+        return void setAba("elementos");
+      }
+      if (id === "animacao") return void setAba(f === "textos" ? "texto" : "elementos");
+    }
+    if (f === "titulo") {
+      if (id === "editar_titulo") {
+        setAba("texto");
+        setEditandoTitulo(true);
+        return;
+      }
+    }
+    if (f === "telaFinal") {
+      if (id === "frase") return void setAba("texto");
+      if (id === "tirar") return naCena(() => setTelaFinal(false), "Tela final tirada");
+    }
+    if (f === "cenas") {
+      const k = ref.chave;
+      if (id === "dividir") return naCena(() => dividirNoCabecote(k), "Foto dividida");
+      if (id === "aparar_inicio") return naCena(() => apararNoCabecote(k, "inicio"), "Início aparado");
+      if (id === "aparar_fim") return naCena(() => apararNoCabecote(k, "fim"), "Fim aparado");
+      if (id === "girar") return naCena(() => girarCena(k));
+      if (id === "espelhar") return naCena(() => espelharCena(k));
+      if (id === "congelar") return naCena(() => congelarCena(k));
+      if (id === "duplicar") return naCena(() => duplicar(k), "Foto duplicada");
+      if (id === "mover_esq") return naCena(() => mover(k, -1));
+      if (id === "mover_dir") return naCena(() => mover(k, 1));
+      if (id === "capa") return naCena(() => setCapa(k), "Esta foto é a capa");
+    }
+  }
+
+  /** Nome do selecionado, no alto da barra. */
+  function tituloDaSelecao(r: RefItem): string {
+    const n = (chave: string) => cenas.findIndex((x) => x.chave === chave) + 1;
+    switch (r.faixa) {
+      case "cenas":
+        return `Foto ${n(r.chave)}`;
+      case "musica": {
+        const a = audios.find((x) => x.id === r.id);
+        return `Música · ${a && a.fonte.tipo === "musica" ? (MUSICAS.find((m) => m.id === (a.fonte as { id: MusicaId }).id)?.rotulo ?? "") : ""}`;
+      }
+      case "voz":
+        return "Voz";
+      case "voce":
+        return "Você";
+      case "legendas":
+        return `Legenda ${r.indice + 1}`;
+      case "textos":
+        return r.indice < 0 ? `Legenda da foto ${n(r.chave)}` : `Texto · foto ${n(r.chave)}`;
+      case "adesivos":
+        return `Adesivo · foto ${n(r.chave)}`;
+      case "titulo":
+        return "Título";
+      case "telaFinal":
+        return "Tela final";
+    }
+  }
+
+  /** A sub-barra do item selecionado: volume, fade, trecho da música, velocidade, texto da legenda. */
+  function subBarraDaSelecao(): React.ReactNode {
+    if (!selecao || !subBarra || subBarra.de !== chaveDoRef(selecao)) return null;
+    const r = selecao;
+    const item = r.faixa === "musica" || r.faixa === "voz" ? audios.find((a) => a.id === r.id) : undefined;
+    const mudarItem = (m: Partial<ItemAudio>) => item && setAudios((l) => l.map((a) => (a.id === item.id ? { ...a, ...m } : a)));
+    if (subBarra.tipo === "volume") {
+      if (item) return <DeslizanteDaSubBarra rotulo="Volume" valor={item.volume} min={r.faixa === "voz" ? 0.2 : 0} max={r.faixa === "voz" ? 2 : 1} passo={0.05} formatar={(v) => `${Math.round(v * 100)}%`} aoMudar={(v) => mudarItem({ volume: Math.round(v * 100) / 100 })} />;
+      if (r.faixa === "voce" && apresentador) return <DeslizanteDaSubBarra rotulo="Volume" valor={apresentador.volume ?? 1} min={0} max={2} passo={0.1} formatar={(v) => `${Math.round(v * 100)}%`} aoMudar={(v) => setApresentador({ ...apresentador, volume: Math.round(v * 10) / 10 })} />;
+    }
+    if (subBarra.tipo === "fade" && item) {
+      const b = faixas.trilhas[r.faixa as "musica"].find((x) => mesmoRef(x.ref, r));
+      const dur = b ? b.ate - b.de : 10;
+      return (
+        <div className="flex w-full items-center gap-2">
+          <DeslizanteDaSubBarra rotulo="Entrada" valor={item.fadeEntrada} min={0} max={Math.min(5, dur - item.fadeSaida)} passo={0.1} formatar={(v) => `${v.toFixed(1)}s`} aoMudar={(v) => mudarItem({ fadeEntrada: Math.round(v * 10) / 10 })} />
+          <DeslizanteDaSubBarra rotulo="Saída" valor={item.fadeSaida} min={0} max={Math.min(5, dur - item.fadeEntrada)} passo={0.1} formatar={(v) => `${v.toFixed(1)}s`} aoMudar={(v) => mudarItem({ fadeSaida: Math.round(v * 10) / 10 })} />
+        </div>
+      );
+    }
+    if (subBarra.tipo === "trecho" && r.faixa === "musica") {
+      const deslizar = (delta: number) => aplicarLinha(aplicarGesto(ctxLinha, r, { tipo: "deslizarTrecho", delta }, null), r);
+      return (
+        <div className="flex w-full items-center gap-1 text-xs text-neutral-300">
+          <span className="min-w-0 flex-1 truncate px-2">Arraste a onda para escolher o trecho</span>
+          <button type="button" onClick={() => deslizar(-1)} className="h-11 min-w-14 rounded-lg px-2 hover:bg-white/10">◀ 1s</button>
+          <button type="button" onClick={() => deslizar(1)} className="h-11 min-w-14 rounded-lg px-2 hover:bg-white/10">1s ▶</button>
+          <button type="button" onClick={() => setSubBarra(null)} className="h-11 min-w-14 rounded-lg px-2 font-semibold text-white hover:bg-white/10">Pronto</button>
+        </div>
+      );
+    }
+    if (subBarra.tipo === "velocidade" && r.faixa === "cenas") {
+      const atual = cenas.find((x) => x.chave === r.chave)?.velocidade ?? 1;
+      return (
+        <div className="flex w-full items-center gap-1">
+          {[0.5, 1, 1.5, 2].map((v) => (
+            <button key={v} type="button" onClick={() => naCena(() => velocidadeDaCena(r.chave, v))} aria-pressed={atual === v} className={"h-11 min-w-14 rounded-lg px-3 text-sm " + (atual === v ? "bg-marca-coral text-white" : "text-neutral-300 hover:bg-white/10")}>
+              {String(v).replace(".", ",")}x
+            </button>
+          ))}
+        </div>
+      );
+    }
+    if (subBarra.tipo === "texto" && r.faixa === "legendas") {
+      const tr = legendas?.trechos[r.indice];
+      if (!tr) return null;
+      return (
+        <div className="flex w-full items-center gap-2 px-1">
+          <input autoFocus value={tr.texto} onChange={(e) => mudarTrecho(r.indice, e.target.value)} maxLength={LIMITES.legendaMax} placeholder="O que está sendo dito" className="h-9 min-w-0 flex-1 rounded-lg border border-white/20 bg-neutral-950 px-3 text-base text-white outline-none focus:border-white" />
+          <button type="button" onClick={() => setSubBarra(null)} className="h-11 min-w-14 rounded-lg px-2 text-sm font-semibold text-white hover:bg-white/10">Pronto</button>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  // Atalhos no computador (D4): Espaço toca/pausa; Delete apaga; Ctrl+Z desfaz; Ctrl+Shift+Z / Ctrl+Y refaz.
+  const atalhos = useRef<{ tocar(): void; apagar(): void; desfazer(): void; refazer(): void } | null>(null);
+  useEffect(() => {
+    atalhos.current = {
+      tocar: () => alternarTocar(),
+      apagar: () => selecao && executarAcao("apagar"),
+      desfazer: () => historico.desfazer() && resumoEdicao.registrar({ tipo: "desfazer" } as never),
+      refazer: () => historico.refazer() && resumoEdicao.registrar({ tipo: "refazer" } as never),
+    };
+  });
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo?.closest?.("input, textarea, select, button, [contenteditable]")) return;
+      const a = atalhos.current;
+      if (!a) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        a.tocar();
+      } else if (e.key === "Delete" || e.key === "Backspace") a.apagar();
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        a.desfazer();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+        e.preventDefault();
+        a.refazer();
+      }
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, []);
+
+  /** Play/Pausa. Chamado DIRETO do toque (o iOS só libera o som dentro do gesto). */
+  function alternarTocar() {
+    if (tocando) {
+      previa.pausar();
+      setTempo(Math.round(previa.relogio.agora() * 100) / 100);
+    } else previa.tocar(tempo >= faixas.total - 0.05 ? 0 : tempo);
+  }
+
+  // A altura do palco, pra legenda no palco ter o tamanho certo; e a da linha, pro layout do celular.
+  const [raizEditor, setRaizEditor] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!raizEditor) return;
+    const linha = raizEditor.querySelector<HTMLElement>('[data-area="linha"]');
+    const palco = raizEditor.querySelector<HTMLElement>("[data-palco]");
+    const ro = new ResizeObserver(() => {
+      if (linha) raizEditor.style.setProperty("--altura-linha", `${linha.offsetHeight}px`);
+      if (palco) setAlturaPalco(palco.offsetHeight);
+    });
+    if (linha) ro.observe(linha);
+    if (palco) ro.observe(palco);
+    return () => ro.disconnect();
+  }, [raizEditor, cenas.length]);
 
   /**
    * Que cena está no ar no segundo do cabeçote.
@@ -1841,7 +2185,10 @@ export default function EditorDeVideo() {
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
   // A cena aberta no painel. Sem escolha, é a primeira: editor sem nada selecionado é
   // uma tela que não responde ao que a pessoa clica.
-  const indiceAtual = tocando ? indiceDoCabecote : Math.max(0, cenas.findIndex((s) => s.chave === selecionada));
+  // Tocando, manda o tempo; parado, manda a seleção (se ela for de uma foto); sem seleção, o cursor.
+  const chaveDaSelecao = selecao && (selecao.faixa === "cenas" || selecao.faixa === "textos" || selecao.faixa === "adesivos") ? selecao.chave : null;
+  const indiceSelecionado = chaveDaSelecao ? cenas.findIndex((s) => s.chave === chaveDaSelecao) : -1;
+  const indiceAtual = tocando || indiceSelecionado < 0 ? indiceDoCabecote : indiceSelecionado;
   const cenaAtual: CenaUI | null = cenas[indiceAtual] ?? null;
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
@@ -1853,7 +2200,17 @@ export default function EditorDeVideo() {
   // do tempo caía abaixo da dobra. A pessoa abria o editor e via um retângulo preto sem
   // nenhuma ferramenta à vista. A saída é pela seta no canto.
   return (
-    <div className="editor-escuro fixed inset-0 z-30 flex flex-col">
+    <div
+      ref={setRaizEditor}
+      className="editor-escuro fixed inset-0 z-30 flex flex-col"
+      style={
+        {
+          "--altura-fileira": selecao && celular ? "44px" : "68.5px",
+          "--painel-min": todasAbertas ? "0px" : "96px",
+          "--altura-palco": "min(39svh, calc(100svh - 57px - var(--altura-fileira) - var(--altura-linha, 198px) - var(--painel-min)))",
+        } as React.CSSProperties
+      }
+    >
       {/* ---------- barra do editor ---------- */}
       <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-3 py-2">
         <Link href="/editor" title="Sair do editor" className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100">
@@ -1876,7 +2233,20 @@ export default function EditorDeVideo() {
       {/* ---------- miolo: trilha · painel · palco ---------- */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ---------- trilha de ferramentas ---------- */}
-        <nav className="order-2 flex shrink-0 gap-1 overflow-x-auto border-neutral-200 px-2 py-1 md:order-1 md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:px-1 md:py-2">
+        {celular && selecao && (
+          <div className="order-2 shrink-0 border-t border-neutral-200 md:hidden">
+            <BarraDaSelecao
+              titulo={tituloDaSelecao(selecao)}
+              preso={selecao.faixa === "textos" || selecao.faixa === "adesivos"}
+              acoes={acoesDaSelecao(ctxLinha, selecao, tempo, gerando)}
+              aoAcao={(id) => executarAcao(id)}
+              aoFechar={() => setSelecao(null)}
+              aoMotivo={(t) => avisar(t)}
+              subBarra={subBarraDaSelecao()}
+            />
+          </div>
+        )}
+        <nav className={"order-2 flex shrink-0 gap-1 overflow-x-auto border-neutral-200 px-2 py-1 md:order-1 md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:px-1 md:py-2 " + (celular && selecao ? "max-md:hidden" : "")}>
           {ABAS.map((a) => {
             const ativa = aba === a.id;
             return (
@@ -1899,7 +2269,7 @@ export default function EditorDeVideo() {
         </nav>
 
         {/* ---------- painel da aba ---------- */}
-        <div className="order-3 flex min-h-0 flex-col gap-3 overflow-y-auto border-neutral-200 p-3 max-md:flex-1 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px]">
+        <div className={"order-3 flex min-h-0 flex-col gap-3 overflow-y-auto border-neutral-200 p-3 max-md:flex-1 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px] " + (todasAbertas ? "max-md:hidden" : "")}>
           {mostrarAba("midia") && (
           <Cartao>
             <Rotulo>Mídia</Rotulo>
@@ -2206,8 +2576,11 @@ export default function EditorDeVideo() {
                                         setVozArquivo({ caminho: g.caminho, url: g.url, nome: g.nome });
                                         setNarrar(true);
                                         const m = vozNova(audios);
+                                        historico.novoPasso();
                                         setAudios(m.audios);
                                         setSelecao(m.selecao);
+                                        setUltimaFaixa("voz");
+                                        if (m.aviso) avisar(m.aviso, { desfazer: () => historico.desfazer() });
                                       }}
                                       className={"min-h-10 rounded px-2 text-xs font-semibold transition sm:min-h-0 sm:py-0.5 " + (estaAtivo ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")}
                                     >
@@ -2852,7 +3225,7 @@ export default function EditorDeVideo() {
             dentro. Antes os dois dividiam por conteúdo: com a galeria de Texto ou de Elementos
             aberta (comprida), o painel levava tudo e o palco encolhia pra 24px -- a pessoa
             escolhia um efeito e não via a foto. Visto em 375x812. */}
-        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 max-md:h-[46vh] max-md:flex-none md:order-3">
+        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 max-md:h-[var(--altura-palco)] max-md:flex-none max-md:p-2 md:order-3">
       {erro && (
         <div className="mx-auto w-full max-w-2xl text-sm">
           <Aviso tipo="erro">{erro}</Aviso>
@@ -2950,7 +3323,7 @@ export default function EditorDeVideo() {
               <div
                 ref={palcoRef}
                 data-palco
-                className="relative mx-auto h-[34vh] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
+                className="relative mx-auto h-[calc(var(--altura-palco)-42px)] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
                 style={{ aspectRatio: PROPORCAO[formato] }}
                 // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
                 // com a cena. Os textos por cima têm o menu DELES e param o evento aqui,
@@ -3147,9 +3520,32 @@ export default function EditorDeVideo() {
                   />
                 )}
                 {/* Você por cima da foto, no lugar e no tamanho em que sai no vídeo. */}
-                {apresentador && apreUrl && <ApresentadorNoPalco apresentador={apresentador} url={apreUrl} proporcao={PROPORCAO_NUM[formato]} aoMudar={setApresentador} />}
+                {apresentador && apreUrl && (
+                  <ApresentadorNoPalco
+                    apresentador={apresentador}
+                    url={apreUrl}
+                    proporcao={PROPORCAO_NUM[formato]}
+                    aoMudar={setApresentador}
+                    tempo={tempo}
+                    tocando={tocando}
+                    selecionado={selecao?.faixa === "voce"}
+                    aoSelecionar={() => setSelecao({ faixa: "voce" })}
+                    aoMedirDuracao={(d) => setSegundosDoVoce(Math.round(d * 100) / 100)}
+                  />
+                )}
+                {/* A legenda de agora, no lugar e no tamanho em que sai no vídeo. */}
+                <LegendaNoPalco
+                  legendas={legendas}
+                  tempo={tempo}
+                  alturaPalco={alturaPalco}
+                  apresentadorNoPe={apresentador?.formato === "rodape"}
+                  selecionado={selecao?.faixa === "legendas" ? selecao.indice : null}
+                  aoSelecionar={(i) => setSelecao({ faixa: "legendas", indice: i })}
+                />
               </div>
-              <p className="mt-2 truncate text-center text-xs text-neutral-500">
+              {/* No celular o palco tem altura contada ao pixel (o quadro ocupa tudo): a legenda
+                  ficava meio cortada embaixo. Lá a linha do tempo já mostra em que cena se está. */}
+              <p className="mt-2 truncate text-center text-xs text-neutral-500 max-md:hidden">
                 {cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}
               </p>
             </div>
@@ -3476,42 +3872,104 @@ export default function EditorDeVideo() {
         </section>
       </div>
 
-      {/* ---------- linha do tempo ----------
-           Régua, blocos do tamanho da duração e cabeçote que anda. O componente inteiro
-           mora em components/editor/linha-do-tempo.tsx -- ver lá o porquê de cada peça. */}
-      <LinhaDoTempo
-        blocos={blocosDaLinha}
-        selecionada={cenaAtual?.chave ?? null}
-        capa={capa ?? cenas[0]?.chave ?? null}
-        telaFinal={telaFinalEntra}
-        inicios={iniciosDaLinha}
-        total={duracaoDaLinha}
+      {/* ---------- linha do tempo com faixas ----------
+           Fotos, Você, voz, música, textos, adesivos e legendas, cada um na sua faixa
+           (components/editor/faixas). Toque seleciona, a barra mostra o que dá pra fazer. */}
+      <LinhaDeFaixas
+        faixas={faixas}
+        total={faixas.total}
+        relogio={previa.relogio}
         tempo={tempo}
         tocando={tocando}
         zoom={zoomLinha}
+        selecao={selecao}
+        faixaAberta={qualFaixaAbre({ selecao, aba, ultima: ultimaFaixa, faixas })}
+        todasAbertas={todasAbertas}
+        podeDesfazer={historico.podeDesfazer}
+        podeRefazer={historico.podeRefazer}
         gerando={gerando}
-        aoSelecionar={setSelecionada}
-        aoMoverTempo={moverTempo}
-        aoTocar={(t) => { if (t && tempo >= duracaoDaLinha - 0.05) moverTempo(0); setTocando(t); }}
-        aoZoom={setZoomLinha}
-        aoComecarArraste={(k) => (arrastando.current = k)}
-        aoSoltarEm={soltarEm}
-        aoDuplicar={duplicar}
-        aoApagar={remover}
-        aoDividir={dividirNoCabecote}
-        aoAparar={apararNoCabecote}
-        aoGirar={girarCena}
-        aoEspelhar={espelharCena}
-        aoVelocidade={velocidadeDaCena}
-        aoCongelar={congelarCena}
-        aoMenuContexto={(ev, chaveCena) => {
-          const c = cenas.find((s) => s.chave === chaveCena);
-          if (c) {
-            setSelecionada(chaveCena);
-            abrirMenuDaCena(ev, c);
+        celular={celular}
+        picos={picos}
+        miniaturas={Object.fromEntries(cenas.map((x) => [x.chave, x.miniatura]))}
+        capa={capa ?? cenas[0]?.chave ?? null}
+        semSom={new Set(itensPrevia.filter((i) => previa.semSom.has(i.fonte.chave)).map((i) => i.id))}
+        animadas={new Set(cenas.filter((x) => x.tipo === "animada").map((x) => x.chave))}
+        modoTrecho={!!selecao && subBarra?.tipo === "trecho" && subBarra.de === chaveDoRef(selecao)}
+        barra={
+          !celular && selecao ? (
+            <BarraDaSelecao
+              compacta
+              titulo={tituloDaSelecao(selecao)}
+              preso={selecao.faixa === "textos" || selecao.faixa === "adesivos"}
+              acoes={acoesDaSelecao(ctxLinha, selecao, tempo, gerando)}
+              aoAcao={(id) => executarAcao(id)}
+              aoFechar={() => setSelecao(null)}
+              aoMotivo={(t) => avisar(t)}
+              subBarra={subBarraDaSelecao()}
+            />
+          ) : undefined
+        }
+        simularGesto={(ref: RefItem, g: Gesto) => aplicarGesto(ctxLinha, ref, g, { pontos: pontosDeEncaixe(ctxLinha, ref, tempo), limiarSeg: 10 / zoomLinha }) as never}
+        aoConfirmarGesto={(ref: RefItem, g: Gesto) => {
+          const r = aplicarGesto(ctxLinha, ref, g, { pontos: pontosDeEncaixe(ctxLinha, ref, tempo), limiarSeg: 10 / zoomLinha });
+          if (r.mudou) {
+            historico.novoPasso();
+            aplicarEstadoLinha(r.estado);
+            resumoEdicao.registrarEdicao(ref.faixa, "arraste");
           }
+          setSelecao(r.selecao);
         }}
+        aoTocar={(t) => {
+          if (t === tocando) return;
+          alternarTocar();
+        }}
+        aoBuscar={(t) => {
+          previa.buscar(t);
+          setTempo(Math.round(t * 100) / 100);
+        }}
+        aoZoom={setZoomLinha}
+        aoAjustar={() => setZoomLinha(zoomParaAjustar(faixas.total, raizEditor?.querySelector<HTMLElement>("[data-rolagem]")?.clientWidth ?? 375))}
+        aoAlternarFaixas={() => setTodasAbertas((v) => !v)}
+        aoAbrirFaixa={(f) => {
+          setUltimaFaixa(f);
+          setSelecao(null);
+        }}
+        aoSelecionar={setSelecao}
+        aoAbrirLista={(grupo) => setListaAberta(grupo)}
+        aoMenu={(ref, x, y) => {
+          setSelecao(ref);
+          menu.abrir(
+            x,
+            y,
+            acoesDaSelecao(ctxLinha, ref, tempo, gerando).map((a) => ({ rotulo: a.rotulo, icone: a.icone, desligado: !a.ativo, dica: a.motivo, perigo: a.perigo, aoEscolher: () => executarAcao(a.id, ref) }))
+          );
+        }}
+        aoDesfazer={() => historico.desfazer() && resumoEdicao.registrar({ tipo: "desfazer" } as never)}
+        aoRefazer={() => historico.refazer() && resumoEdicao.registrar({ tipo: "refazer" } as never)}
+        aoSoltarFoto={(chaveAlvo, ev) => soltarEm(chaveAlvo ?? "fim", ev)}
       />
+
+      {/* Uma foto com vários textos ou adesivos: escolhe qual. */}
+      {listaAberta?.itens && (
+        <ListaDaFoto
+          titulo={listaAberta.rotulo}
+          itens={listaAberta.itens.map((ref) => {
+            const cena = "chave" in ref ? cenas.find((x) => x.chave === ref.chave) : undefined;
+            const rotulo =
+              ref.faixa === "textos" ? (ref.indice < 0 ? `Legenda: ${cena?.legenda ?? ""}` : cena?.textos?.[ref.indice]?.texto || "Texto") : ref.faixa === "adesivos" ? (cena?.elementos?.[ref.indice]?.id.replace(/^adesivo:|^pexels:/, "") ?? "Adesivo") : "Item";
+            return { ref, rotulo, icone: ref.faixa === "textos" ? "editar_prompt" : "elementos" };
+          })}
+          selecao={selecao}
+          aoEscolher={(ref) => {
+            setSelecao(ref);
+            setListaAberta(null);
+          }}
+          aoFechar={() => setListaAberta(null)}
+        />
+      )}
+
+      {/* Os avisos com Desfazer (acima da linha do tempo). */}
+      {avisos}
 
       {/* O menu do botão direito. Um só, no fim, porque é `position: fixed` -- dentro do
           palco ele seria cortado pelo `overflow-hidden` do quadro. */}

@@ -6,8 +6,8 @@
 //                                o teclado subia e fechava o menu)
 //   arrastar                  -> move (x/y) e não abre a edição
 //   menu                      -> cabe na altura da tela
-//   menu da linha do tempo    -> com o cabeçote fora da cena: "Dividir no meio" e aparar
-//                                desligado (antes aparar não fazia nada, sem aviso)
+//   menu da linha do tempo    -> dedo segurado na cena (linha de faixas): com o cursor fora
+//                                dela, Dividir e Aparar apagados, dizendo o porquê
 //
 //   BASE=http://localhost:3002 node scripts/conferir-palco-no-navegador.mjs
 
@@ -132,18 +132,23 @@ try {
   // 4) a etiqueta na prévia tem a cor do vídeo (coral), não a escura
   conferir(/240, 107, 79/.test(cor), "prévia: etiqueta \"À venda\" com a cor do vídeo (coral)", cor);
 
-  // 5) menu da cena pela linha do tempo, com o cabeçote no começo (fora da cena)
-  const bloco = await caixa("li > button[title*='botão direito']");
+  // 5) menu da cena pela linha do tempo NOVA (faixas): dedo segurado num bloco de cena abre o
+  //    menu com as MESMAS ações da barra; cursor no começo = fora da cena: dividir/aparar apagados.
+  await c.avaliar("document.querySelector('[data-rolagem]')?.scrollTo?.({ left: 0 })");
+  await esperar(300);
+  const bloco = await c.avaliar("(() => { const b = [...document.querySelectorAll('[data-area=linha] [data-alvo=bloco]')].find(e => !e.closest('[data-faixa]')); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 40), y: r.top + r.height / 2 }; })()");
   if (bloco) {
-    await c.cdp("Input.dispatchMouseEvent", { type: "mousePressed", x: bloco.x, y: bloco.y, button: "right", clickCount: 1 });
-    await c.cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: bloco.x, y: bloco.y, button: "right", clickCount: 1 });
+    await toque([[bloco.x, bloco.y]], "touchStart");
+    await esperar(700);
+    await toque([], "touchEnd");
     await esperar(500);
-    const itens = await c.avaliar("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map(b => ({ t: b.innerText.split('\\n')[0].trim(), off: b.disabled }))");
+    const L = "String.fromCharCode(10)";
+    const itens = await c.avaliar(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map(b => ({ t: b.innerText.split(${L})[0].trim(), dica: (b.innerText.split(${L})[1] ?? '').trim(), off: b.disabled }))`);
     const menuL = await menuAberto();
-    const dividir = itens.find((i) => i.t.startsWith("Dividir"));
-    const aparar = itens.find((i) => i.t.startsWith("Cortar início"));
-    conferir(dividir?.t === "Dividir no meio" && aparar?.off === true, "menu da linha do tempo: cabeçote fora da cena -> \"Dividir no meio\" e aparar desligado", `${dividir?.t} · aparar ${aparar?.off ? "desligado" : "LIGADO"}`);
-    conferir(!!menuL && menuL.base <= 812 && menuL.topo >= 0, "menu da cena (~20 itens): cabe na tela e rola por dentro", menuL ? `${menuL.itens} itens, ${menuL.topo}..${menuL.base}, rola: ${menuL.rola}` : "sem menu");
+    const dividir = itens.find((i) => i.t === "Dividir");
+    const aparar = itens.find((i) => i.t === "Aparar início");
+    conferir(!!dividir && dividir.off && /cursor/.test(dividir.dica) && aparar?.off === true, "menu da cena na linha nova: cursor fora da cena -> Dividir e Aparar apagados, dizendo o porquê", `${dividir?.dica ?? "sem Dividir"}`);
+    conferir(!!menuL && menuL.base <= 812 && menuL.topo >= 0, "menu da cena: cabe na tela (rola por dentro se precisar)", menuL ? `${menuL.itens} itens, ${menuL.topo}..${menuL.base}` : "sem menu");
     conferir(!itens.some((i) => /silenci/i.test(i.t)), "menu: sem \"silenciar\" (não existe)");
     await shot("p4-menu-linha");
   } else conferir(false, "linha do tempo: achar o bloco da cena");
