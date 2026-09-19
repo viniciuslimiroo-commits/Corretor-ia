@@ -209,6 +209,33 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **19/09/2026 (tarde) — Claude Code (revisão do editor de vídeo, branch `editor-2026`, NÃO
+  publicado ainda):** pedido dele: "clico num vídeo e tento pôr na timeline e não acontece
+  nada; janela sobreposta; trava; botões pequenos; aparência antiga; modernize como CapCut/
+  Canva, revisão real". Commits `592980d` e `bf851a4`.
+  - **Vídeos na linha:** vídeo pronto DA PESSOA vira clipe (pedido-video.ts aceita
+    `<user>/videos/<id>.mp4` e confere que existe; GET /api/video/[id] devolve `arquivo`, e
+    ao reabrir `clipeUrl` e miniatura de cada clipe). Vídeo longo entra em partes de até 8s
+    (lib/clipes-do-editor.ts) que emendam sem soluço (`clipeContinua` em video.ts: mesmo
+    arquivo + corte seco = sem o pouso de 0,45s). Palco mostra o vídeo (VideoNoPalco).
+  - **Travamento:** tocando, o editor só redesenha quando a cena muda (useTempoAoVivo pro
+    relógio, legenda, Você). Medido no celular com CPU 4x mais lenta, 5s de Play: 31-49 ->
+    ~60 quadros/s, engasgos >50ms 14-25 -> 1-5, script 2,2s -> 1,1s.
+  - **Visual:** tokens `--ed-*` (globals.css), ui-editor.tsx (Secao, Pilula, Segmentado,
+    BotaoEd, BotaoIcone, Alternar, Deslizante, CartaoOpcao, Vazio, Nota), cabeçalho novo,
+    trilho de ferramentas (coluna no computador, pé no celular), painel sem caixas, FOLHA no
+    celular (folha.tsx), coluna "Ajustes da cena" (>=1200px; abaixo disso, embaixo do palco;
+    celular: botão Ajustes na barra da seleção), linha do tempo com tira de filme, alças de
+    corte nas cenas (aparaCena), zoom, marca de soltura e +, menus popover/folha de ações,
+    avisos novos, janela do vídeo pronto (modal-video-pronto.tsx). Abas: Formato e Marca
+    viraram "Ajustes"; "Vídeos" virou "Seus vídeos" com pôr na linha.
+  - **Provas:** conferir-editor-videos (25), conferir-editor-botoes (todos os botões),
+    conferir-editor-gerar (gerar pela tela, apaga pelo id), conferir-video-clipes (monta de
+    verdade e mede no arquivo), conferir-editor-faixas, conferir-palco-no-navegador,
+    conferir-faixas-no-navegador (medidas novas: 128/222/392, 364 no computador); unitários
+    testar-clipes-do-editor, testar-aparar-cena, testar-pedido-video e os de sempre; build ok.
+  - Depois de publicar: `conferir-video-clipes.mjs` com BASE=produção.
+
 - **19/09/2026 — Claude Code (P7a + P7b, branch `p7-faixas`, PUBLICADO 19/09 em 39953b6 com o
   "sim" dele; prova no ar: `CORTE=1 conferir-video-producao.mjs` -- música cortada toca na
   cena 1 a -21 dB e some na 2, -91 dB; `conferir-editor-faixas.mjs` com BASE=produção ok):** pedido do
