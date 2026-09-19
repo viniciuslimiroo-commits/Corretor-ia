@@ -303,6 +303,8 @@ type AbaId = (typeof ABAS)[number]["id"];
 
 /** A proporção de cada formato, pro palco mostrar o quadro certo. */
 const PROPORCAO: Record<FormatoId, string> = { "9:16": "9 / 16", "16:9": "16 / 9", "1:1": "1 / 1", "4:5": "4 / 5" };
+/** Altura do quadro por unidade de largura (o inverso da proporção), pro palco caber no computador. */
+const ALTO_POR_LARGO: Record<FormatoId, number> = { "9:16": 16 / 9, "16:9": 9 / 16, "1:1": 1, "4:5": 5 / 4 };
 const PROPORCAO_NUM: Record<FormatoId, number> = { "9:16": 9 / 16, "16:9": 16 / 9, "1:1": 1, "4:5": 4 / 5 };
 
 function dataCurta(iso: string) {
@@ -3343,13 +3345,21 @@ export default function EditorDeVideo() {
                 tela inteira do celular e empurrava a trilha de ferramentas e a linha do
                 tempo pra fora da vista. A pessoa abria o editor e via um retângulo preto.
                 Com altura fixa em 34vh (o palco inteiro tem 46vh) e largura derivada da proporção, o quadro continua
-                exato e sobra tela pro resto. No computador volta a ser a largura que manda. */}
-            <div className="mx-auto w-full" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
+                exato e sobra tela pro resto. No computador manda o MENOR entre a largura da coluna
+                e a altura que sobra acima da linha do tempo: num notebook de 800px de altura o
+                9:16 pela largura dava 640px e o pé do quadro ficava escondido atrás da linha. */}
+            <div className="mx-auto w-full [container-type:inline-size]" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
               <div
                 ref={palcoRef}
                 data-palco
-                className="relative mx-auto h-[calc(var(--altura-palco)-42px)] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-auto md:w-full"
-                style={{ aspectRatio: PROPORCAO[formato] }}
+                className="relative mx-auto h-[calc(var(--altura-palco)-42px)] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-[var(--alto-palco-pc)]"
+                style={
+                  {
+                    aspectRatio: PROPORCAO[formato],
+                    // 90px = folga do palco (p-3) + do cartão (p-4, borda) + a legenda "Cena N de M".
+                    "--alto-palco-pc": `min(calc(100cqw * ${ALTO_POR_LARGO[formato]}), calc(100svh - 57px - var(--altura-linha, 198px) - 90px))`,
+                  } as React.CSSProperties
+                }
                 // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
                 // com a cena. Os textos por cima têm o menu DELES e param o evento aqui,
                 // senão apagar um texto viraria apagar a cena inteira.

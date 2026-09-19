@@ -173,6 +173,15 @@ try {
   await esperar(800);
   conferir(await c.avaliar("document.documentElement.scrollWidth <= innerWidth + 1"), "1280px: nada vaza pro lado");
   await shot("f4-computador");
+  // O quadro do palco cabe INTEIRO acima da linha do tempo nos notebooks comuns (antes, em
+  // 1280x800, o 9:16 pela largura dava 640px e o pé ficava escondido atrás da linha).
+  for (const [w, h] of [[1280, 800], [1366, 768], [1920, 1080]]) {
+    await c.abrir(`${BASE}/editor/video`, { largura: w, altura: h, celular: false, pronto: "!!document.querySelector('[data-palco]')" });
+    await esperar(900);
+    const q = await c.avaliar("(() => { const e = document.querySelector('[data-palco]'); const p = e.getBoundingClientRect(); const l = document.querySelector('[data-area=\"linha\"]').getBoundingClientRect(); const s = e.closest('section').getBoundingClientRect(); return { alto: Math.round(p.height), largo: Math.round(p.width), pe: Math.round(p.bottom), linha: Math.round(l.top), fimPalco: Math.round(s.bottom) }; })()");
+    conferir(q.pe <= Math.min(q.linha, q.fimPalco) && Math.abs(q.largo / q.alto - 9 / 16) < 0.01 && q.alto >= 300, `${w}x${h}: o quadro 9:16 cabe inteiro acima da linha do tempo`, JSON.stringify(q));
+    if (w === 1366) await shot("f5-notebook-1366");
+  }
 } catch (e) {
   conferir(false, "o roteiro chegou ao fim", e.message);
   await shot("erro").catch(() => {});
