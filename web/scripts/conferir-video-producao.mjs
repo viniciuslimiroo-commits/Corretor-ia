@@ -10,6 +10,9 @@
 //   cena 2: a foto limpa -- o controle. A diferença entre as duas é só o que foi posto.
 // E música de fundo (o .m4a do catálogo).
 //
+// Com CORTE=1 a música vai como TRECHO (pedido versão 2, o que o editor manda depois que a
+// pessoa corta o bloco na linha do tempo): só na cena 1. Confere som na cena 1 e silêncio na 2.
+//
 //   BASE=https://corretor-ia-gilt.vercel.app CONTA=limiro.cardoso@outlook.com node scripts/conferir-video-producao.mjs
 //
 // Escreve UM vídeo na conta e apaga no fim. Confere que o saldo não mudou.
@@ -84,6 +87,15 @@ const espec = {
   transicao: "corte",
   filtro: "natural",
 };
+const CORTE = process.env.CORTE === "1";
+if (CORTE) {
+  // O formato exato de canonizarAudio (video.ts) quando há corte: sem `musica`, com `audios`.
+  Object.assign(espec, {
+    musica: "nenhuma",
+    versao: 2,
+    audios: [{ id: "provacor", fonte: { tipo: "musica", id: "calma" }, noVideo: 0, corteArquivo: 4, duracao: DUR, volume: 0.8, fadeEntrada: 0.2, fadeSaida: 0.2, laco: true }],
+  });
+}
 
 let videoId = null;
 try {
@@ -111,9 +123,17 @@ try {
   fs.writeFileSync(mp4, Buffer.from(await (await fetch(pronto.url)).arrayBuffer()));
 
   // Música: o volume médio de um trecho mudo fica abaixo de -70 dB.
-  const vol = spawnSync(ffmpeg, ["-hide_banner", "-i", mp4, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
-  const media = Number((vol.stderr.match(/mean_volume:\s*(-?[\d.]+) dB/) ?? [])[1]);
+  const volume = (de, dur) => {
+    const r = spawnSync(ffmpeg, ["-hide_banner", ...(de != null ? ["-ss", String(de), "-t", String(dur)] : []), "-i", mp4, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+    return Number((r.stderr.match(/mean_volume:\s*(-?[\d.]+) dB/) ?? [])[1]);
+  };
+  const media = volume(null);
   conferir(Number.isFinite(media) && media > -45, "tem música no arquivo (volume médio)", Number.isFinite(media) ? `${media} dB` : "sem trilha de áudio");
+  if (CORTE) {
+    const na1 = volume(0.4, DUR - 0.8);
+    const na2 = volume(DUR + 0.4, DUR - 0.8);
+    conferir(na1 > -45 && !(na2 > -70), "música CORTADA (versão 2): toca na cena 1 e para no fim do trecho", `cena 1 ${na1} dB · cena 2 ${Number.isFinite(na2) ? na2 + " dB" : "mudo"}`);
+  }
 
   // Imagem: cena 1 contra cena 2 (mesma foto, parada). O que mudou foi o que se pôs.
   const quadro = async (seg, nome) => {

@@ -146,7 +146,9 @@ try {
     await c.cdp("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: vk, modifiers: mod });
     await esperar(250);
   };
-  const tempoAgora = () => c.avaliar("window.__encenaEditor?.tempo?.() ?? -1");
+  // Em produção não há o gancho de depuração: lê o relógio da linha ("0:01.9/0:10.8", décimos).
+  const tempoAgora = () => c.avaliar("(() => { const f = window.__encenaEditor?.tempo; if (f) return f(); const m = document.querySelector('[data-area=\"linha\"]')?.innerText.match(/([0-9]+):([0-9]+[.,]?[0-9]*) *[/]/); return m ? +m[1] * 60 + +m[2].replace(',', '.') : -1; })()");
+  const precisao = (await c.avaliar("!!window.__encenaEditor")) ? 0.02 : 0.1;
   const total = await c.avaliar("window.__encenaEditor?.espec?.()?.cenas?.reduce((s, x) => s + (x.duracao ?? 0), 0) ?? 0");
   await tecla("End", "End", 35);
   const tFim = await tempoAgora();
@@ -156,7 +158,7 @@ try {
   await tecla("ArrowRight", "ArrowRight", 39, 8);
   await tecla("ArrowLeft", "ArrowLeft", 37);
   const tSetas = await tempoAgora();
-  conferir(tFim > 1 && tIni === 0 && Math.abs(tSetas - (2 - 1 / 30)) < 0.02, "teclado: End/Home vão ao fim e ao começo; Shift+→ anda 1s; ← volta um quadro", `fim ${tFim}s (cenas ${total}s) · começo ${tIni}s · setas ${tSetas}s`);
+  conferir(tFim > 1 && tIni === 0 && Math.abs(tSetas - (2 - 1 / 30)) < precisao, "teclado: End/Home vão ao fim e ao começo; Shift+→ anda 1s; ← volta um quadro", `fim ${tFim}s (cenas ${total}s) · começo ${tIni}s · setas ${tSetas}s`);
   const bm = await caixa('[data-faixa="musica"] [data-alvo="bloco"]');
   if (bm) await tocar(Math.min(bm.x + 30, 360), bm.cy);
   await esperar(500);
