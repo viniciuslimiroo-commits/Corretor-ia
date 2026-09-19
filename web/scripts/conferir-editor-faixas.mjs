@@ -5,7 +5,8 @@
 //   "Sem música" tira; escolher de novo ADICIONA, seleciona e avisa "toque para cortar";
 //   a barra da música tem Trecho, Início aqui, Fim aqui, Dividir, Volume, Fade, Trocar, Apagar;
 //   levar o cursor pra dentro e "Fim aqui" corta; Desfazer volta; o pedido vira versão 2;
-//   Play toca (o relógio anda) e Pausa para; nada vaza pro lado.
+//   Play toca (o relógio anda) e Pausa para; teclado: End/Home, setas (quadro e segundo), S
+//   divide, Ctrl+Z desfaz; nada vaza pro lado.
 //
 //   BASE=http://localhost:3002 CONTA=limiro.cardoso@outlook.com node scripts/conferir-editor-faixas.mjs
 
@@ -137,6 +138,35 @@ try {
   await esperar(500);
   conferir(!(await erroNaTela()), "depois de tocar e pausar, nenhum erro", await erroNaTela());
   void t0;
+
+  // ---------- atalhos de teclado (os do CapCut/Premiere) ----------
+  const tecla = async (key, code, vk, mod = 0) => {
+    await c.avaliar("document.activeElement?.blur?.()");
+    await c.cdp("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: vk, modifiers: mod });
+    await c.cdp("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: vk, modifiers: mod });
+    await esperar(250);
+  };
+  const tempoAgora = () => c.avaliar("window.__encenaEditor?.tempo?.() ?? -1");
+  const total = await c.avaliar("window.__encenaEditor?.espec?.()?.cenas?.reduce((s, x) => s + (x.duracao ?? 0), 0) ?? 0");
+  await tecla("End", "End", 35);
+  const tFim = await tempoAgora();
+  await tecla("Home", "Home", 36);
+  const tIni = await tempoAgora();
+  await tecla("ArrowRight", "ArrowRight", 39, 8);
+  await tecla("ArrowRight", "ArrowRight", 39, 8);
+  await tecla("ArrowLeft", "ArrowLeft", 37);
+  const tSetas = await tempoAgora();
+  conferir(tFim > 1 && tIni === 0 && Math.abs(tSetas - (2 - 1 / 30)) < 0.02, "teclado: End/Home vão ao fim e ao começo; Shift+→ anda 1s; ← volta um quadro", `fim ${tFim}s (cenas ${total}s) · começo ${tIni}s · setas ${tSetas}s`);
+  const bm = await caixa('[data-faixa="musica"] [data-alvo="bloco"]');
+  if (bm) await tocar(Math.min(bm.x + 30, 360), bm.cy);
+  await esperar(500);
+  await tecla("s", "KeyS", 83);
+  await esperar(500);
+  const partes = await blocosMusica();
+  conferir(partes.length === 2 && (await texto()).includes("Dividido no cursor"), "teclado: S divide a música selecionada no cursor (Ctrl+Z desfaz)", JSON.stringify(partes));
+  await tecla("z", "KeyZ", 90, 2);
+  await esperar(500);
+  conferir((await blocosMusica()).length === 1, "teclado: Ctrl+Z junta de novo");
 
   // ---------- computador ----------
   await c.abrir(`${BASE}/editor/video`, { largura: 1280, altura: 800, celular: false, pronto: "!!document.querySelector('[data-area=\"linha\"]')" });

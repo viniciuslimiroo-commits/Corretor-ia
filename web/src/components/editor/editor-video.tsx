@@ -2105,12 +2105,27 @@ export default function EditorDeVideo() {
     return null;
   }
 
-  // Atalhos no computador (D4): Espaço toca/pausa; Delete apaga; Ctrl+Z desfaz; Ctrl+Shift+Z / Ctrl+Y refaz.
-  const atalhos = useRef<{ tocar(): void; apagar(): void; desfazer(): void; refazer(): void } | null>(null);
+  // Atalhos no computador (D4), os mesmos do CapCut/Premiere: Espaço toca/pausa; Delete apaga;
+  // S ou Ctrl+B divide no cursor; ← → andam um quadro (com Shift, um segundo); Home/End vão
+  // ao começo e ao fim; Ctrl+Z desfaz; Ctrl+Shift+Z / Ctrl+Y refaz.
+  const atalhos = useRef<{ tocar(): void; apagar(): void; dividir(): void; andar(s: number): void; ir(t: number): void; desfazer(): void; refazer(): void } | null>(null);
   useEffect(() => {
     atalhos.current = {
       tocar: () => alternarTocar(),
       apagar: () => selecao && executarAcao("apagar"),
+      dividir: () => {
+        if (!selecao) return avisar("Toque num bloco da linha do tempo pra dividir");
+        const a = acoesDaSelecao(ctxLinha, selecao, tempo, gerando).find((x) => x.id === "dividir");
+        if (!a) return;
+        if (!a.ativo) return avisar(a.motivo ?? "Não dá pra dividir aqui");
+        executarAcao("dividir");
+      },
+      andar: (s) => atalhos.current?.ir(tempo + s),
+      ir: (t) => {
+        const alvo = Math.round(Math.min(Math.max(0, t), faixas.total) * 100) / 100;
+        previa.buscar(alvo);
+        setTempo(alvo);
+      },
       desfazer: () => historico.desfazer() && resumoEdicao.registrar({ tipo: "desfazer" } as never),
       refazer: () => historico.refazer() && resumoEdicao.registrar({ tipo: "refazer" } as never),
     };
@@ -2125,6 +2140,16 @@ export default function EditorDeVideo() {
         e.preventDefault();
         a.tocar();
       } else if (e.key === "Delete" || e.key === "Backspace") a.apagar();
+      else if ((e.key.toLowerCase() === "s" && !e.ctrlKey && !e.metaKey && !e.altKey) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b")) {
+        e.preventDefault();
+        a.dividir();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        a.andar((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 1 : 1 / 30));
+      } else if (e.key === "Home" || e.key === "End") {
+        e.preventDefault();
+        a.ir(e.key === "Home" ? 0 : Infinity);
+      }
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
         a.desfazer();
