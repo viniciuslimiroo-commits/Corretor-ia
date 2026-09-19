@@ -28,7 +28,10 @@ import {
   SELOS_IMOVEL,
   TRANSICOES,
   VOZES,
+  VOZ_PADRAO,
+  canonizarAudio,
   custoDoVideo,
+  itensDeAudioDoEspec,
   ehTransicao,
   relogioDoEspec,
   textosDaCena,
@@ -49,6 +52,7 @@ import {
   type MusicaId,
   type EfeitoSonoroId,
   type ElementoCena,
+  type ItemAudio,
   type Narracao,
   type OrigemVoz,
   type PosicaoTexto,
@@ -78,6 +82,8 @@ import { lerLegenda } from "@/lib/legenda-arquivo";
 import Compartilhar from "@/components/compartilhar";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { useResumoEdicao } from "@/components/editor/usar-resumo-edicao";
+import { audiosEfetivos, legendasDaTranscricao, type RefItem } from "@/lib/linha-do-tempo";
+import { escolherMusica, inicioDaVoz, musicaNova, volumeDaMusica, volumeDaVoz, vozNova } from "@/lib/audio-do-editor";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -289,11 +295,33 @@ export default function EditorDeVideo() {
   const [imovelId, setImovelId] = useState<string | null>(null);
   const [geracoes, setGeracoes] = useState<Geracao[]>([]);
   const [cenas, setCenas] = useState<CenaUI[]>([]);
-  /** A cena aberta no painel. É o que faz isto ser um editor e não um formulário. */
-  const [selecionada, setSelecionada] = useState<string | null>(null);
+  /**
+   * O que está selecionado: uma cena, um trecho de música ou de voz, um texto, um adesivo, o
+   * Você, uma legenda (RefItem, lib/linha-do-tempo.ts). Antes só cena podia ser escolhida.
+   */
+  const [selecao, setSelecao] = useState<RefItem | null>(null);
+  /** A cena selecionada, quando o selecionado é uma cena. */
+  const selecionada = selecao?.faixa === "cenas" ? selecao.chave : null;
+  /** Seleciona (ou tira) uma CENA. Tirar não mexe numa seleção que não é de cena. */
+  const setSelecionada = useCallback((k: string | null | ((atual: string | null) => string | null)) => {
+    setSelecao((atual) => {
+      const antes = atual?.faixa === "cenas" ? atual.chave : null;
+      const novo = typeof k === "function" ? k(antes) : k;
+      if (novo) return { faixa: "cenas", chave: novo };
+      return atual?.faixa === "cenas" ? null : atual;
+    });
+  }, []);
   const arrastando = useRef<string | null>(null);
   const [formato, setFormato] = useState<FormatoId>("9:16");
-  const [musica, setMusica] = useState<MusicaId>("calma");
+  /**
+   * O ÁUDIO como TRECHOS na linha do tempo (música e voz). Começa como sempre: "Calma" do
+   * começo ao fim. Antes era um valor só (`musica`): a música não aparecia na linha do tempo,
+   * não cortava e não tocava no Play.
+   */
+  const [audios, setAudios] = useState<ItemAudio[]>(() => [musicaNova("calma", LIMITES.musicaVolumePadrao, "musica00")]);
+  /** A música "da vez" (a do primeiro trecho), pro que pensa em uma música só: resumo, modelos, biblioteca. */
+  const musicaDoPrimeiroTrecho = audios.find((a) => a.fonte.tipo === "musica");
+  const musica: MusicaId = musicaDoPrimeiroTrecho && musicaDoPrimeiroTrecho.fonte.tipo === "musica" ? musicaDoPrimeiroTrecho.fonte.id : "nenhuma";
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   /** Acabamento de cor do vídeo inteiro. Cada cena pode sair da linha no painel dela. */
   const [filtro, setFiltro] = useState<FiltroId>("natural");
@@ -328,8 +356,12 @@ export default function EditorDeVideo() {
   const [gravacoesVoz, setGravacoesVoz] = useState<Array<{ id: string; caminho: string; url: string; nome: string; criadoEm: string }>>([]);
   /** Cena copiada para colar via menu de contexto. */
   const [cenaCopiada, setCenaCopiada] = useState<CenaUI | null>(null);
-  const [vozVolume, setVozVolume] = useState(1);
-  const [vozInicio, setVozInicio] = useState(0.7);
+  // Volume e início da voz saem dos TRECHOS de voz: o controle mostra o primeiro e mexe em todos.
+  const primeiraVoz = audios.filter((a) => a.fonte.tipo === "voz").reduce<ItemAudio | null>((p, a) => (!p || a.noVideo < p.noVideo ? a : p), null) ?? VOZ_PADRAO;
+  const vozVolume = primeiraVoz.volume;
+  const vozInicio = primeiraVoz.noVideo;
+  /** Duração do arquivo de voz (gravada, enviada ou de IA já gerada), quando o navegador já leu. */
+  const [segundosDaVoz, setSegundosDaVoz] = useState<number | null>(null);
   const [musicaVolume, setMusicaVolume] = useState(LIMITES.musicaVolumePadrao);
   /** Legendas queimadas no vídeo, com o tempo de cada trecho. */
   const [legendas, setLegendas] = useState<Legendas | null>(null);
@@ -429,23 +461,32 @@ export default function EditorDeVideo() {
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
 
+  /**
+   * A narração SEM o tempo (o tempo está nos trechos de voz). A voz só entra quando está
+   * PRONTA: roteiro escrito, ou arquivo já no servidor. Meio caminho (gravou e não usou) não
+   * vira vídeo mudo por engano.
+   */
+  const narracaoBase: Narracao | null = useMemo(
+    () =>
+      !narrar
+        ? null
+        : origemVoz === "ia"
+          ? roteiro.trim().length >= 10
+            ? ({ origem: "ia", roteiro: roteiro.trim(), voz } as Narracao)
+            : null
+          : vozArquivo
+            ? ({ origem: origemVoz, arquivo: vozArquivo.caminho } as Narracao)
+            : null,
+    [narrar, origemVoz, roteiro, voz, vozArquivo]
+  );
+
   const espec: EspecVideo = useMemo(
     () => ({
       formato,
       cenas: cenas.map((s) => ({ tipo: s.tipo, jobId: s.jobId, arquivo: s.arquivo, efeito: s.efeito, animacao: s.animacao, movimento: s.movimento, legenda: s.legenda || undefined, textos: s.textos, elementos: s.elementos, duracao: s.duracao, melhorar: s.melhorar, inicio: s.inicio, transicao: s.transicao, filtro: s.filtro, intensidade: s.intensidade, ajustes: s.ajustes, luz: s.luz, giro: s.giro, espelho: s.espelho, velocidade: s.velocidade, congelar: s.congelar })),
-      musica,
-      musicaVolume,
-      // A voz só entra quando está PRONTA: roteiro escrito, ou arquivo já no servidor.
-      // Meio caminho (gravou e não usou) não vira vídeo mudo por engano.
-      narracao: !narrar
-        ? null
-        : origemVoz === "ia"
-          ? roteiro.trim().length >= 10
-            ? ({ origem: "ia", roteiro: roteiro.trim(), voz, volume: vozVolume, inicio: vozInicio } as Narracao)
-            : null
-          : vozArquivo
-            ? ({ origem: origemVoz, arquivo: vozArquivo.caminho, volume: vozVolume, inicio: vozInicio } as Narracao)
-            : null,
+      // Música e voz na forma CANÔNICA (video.ts, `canonizarAudio`): o que não foi cortado nem
+      // dividido volta pro formato antigo, byte a byte; o resto vai como trechos (versão 2).
+      ...canonizarAudio({ itens: audiosEfetivos(audios, narracaoBase), narracao: narracaoBase, musicaVolume }),
       titulo,
       preco,
       local,
@@ -461,7 +502,7 @@ export default function EditorDeVideo() {
       capaMontada,
       efeitoSonoro,
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, intensidadeFiltro, ajustesVideo, capaMontada, efeitoSonoro]
+    [formato, cenas, audios, narracaoBase, musicaVolume, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, intensidadeFiltro, ajustesVideo, capaMontada, efeitoSonoro]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
@@ -500,10 +541,19 @@ export default function EditorDeVideo() {
    */
   const [templateAberto, setTemplateAberto] = useState<TemplateVideo | null>(null);
 
+  /** Escolheu uma música na aba Áudio (D6): cria, troca ou tira o trecho. */
+  function escolherMusicaDaBiblioteca(id: MusicaId) {
+    const m = escolherMusica(audios, selecao, id, musicaVolume);
+    if (m.audios === audios) return;
+    setAudios(m.audios);
+    setSelecao(m.selecao);
+  }
+
   function aplicarTemplate(t: TemplateVideo) {
     const novo = aplicarTemplateVideo(t, espec, pecas, { temWhatsapp: !!marca?.whatsapp });
     setFormato(novo.formato);
-    setMusica(novo.musica);
+    // A música do modelo entra como uma escolha na biblioteca, sem seleção (troca todos os trechos).
+    setAudios((l) => escolherMusica(l, null, novo.musica, musicaVolume).audios);
     setTransicao(novo.transicao);
     setTelaFinal(novo.telaFinal);
     setChamada(novo.chamada || CHAMADAS[0]);
@@ -546,6 +596,40 @@ export default function EditorDeVideo() {
   const telaFinalEntra = telaFinal && marca?.telaFinalPossivel !== false;
   const relogioDaLinha = useMemo(() => relogioDoEspec(espec, telaFinalEntra), [espec, telaFinalEntra]);
   const duracao = relogioDaLinha.total;
+
+  /** Os trechos de voz, com o padrão quando a narração está ligada e ainda não há nenhum. */
+  const comVoz = (l: ItemAudio[]) => (l.some((a) => a.fonte.tipo === "voz") ? l : [...l, { ...VOZ_PADRAO, fonte: { tipo: "voz" as const } }]);
+  function setVozVolume(v: number) {
+    setAudios((l) => volumeDaVoz(comVoz(l), v));
+  }
+  /** "Começa em": a voz inteira anda, e as legendas (que escrevem a fala dela) vão junto. */
+  function setVozInicio(v: number) {
+    const r = inicioDaVoz(comVoz(audios), v, duracao);
+    setAudios(r.audios);
+    if (r.delta && legendas) {
+      setLegendas({ ...legendas, trechos: legendas.trechos.map((t) => ({ ...t, inicio: Math.max(0, Math.round((t.inicio + r.delta) * 100) / 100), fim: Math.max(0.1, Math.round((t.fim + r.delta) * 100) / 100) })) });
+    }
+  }
+
+  // Quanto dura o arquivo de voz: sem isso, o bloco da voz na linha do tempo não tem fim.
+  useEffect(() => {
+    const url = vozArquivo?.url;
+    if (!url) {
+      Promise.resolve().then(() => setSegundosDaVoz(null));
+      return;
+    }
+    let vivo = true;
+    const a = new Audio();
+    a.preload = "metadata";
+    a.onloadedmetadata = () => {
+      if (vivo && Number.isFinite(a.duration) && a.duration > 0) setSegundosDaVoz(Math.round(a.duration * 100) / 100);
+    };
+    a.src = url;
+    return () => {
+      vivo = false;
+      a.removeAttribute("src");
+    };
+  }, [vozArquivo?.url]);
 
   const carregarVideos = useCallback(async () => {
     const t = await token();
@@ -781,6 +865,10 @@ export default function EditorDeVideo() {
       setVozArquivo(novoItem);
       setGravacoesVoz((lista) => [{ id: chave(), caminho: d.caminho, url, nome, criadoEm: new Date().toISOString() }, ...lista]);
       setNarrar(true);
+      // Na linha do tempo: um trecho de voz (ou os cortes da gravação velha voltam a ser um só).
+      const m = vozNova(audios);
+      setAudios(m.audios);
+      setSelecao(m.selecao);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui enviar o áudio.");
     } finally {
@@ -847,13 +935,12 @@ export default function EditorDeVideo() {
       // A transcrição vem no tempo do ARQUIVO de voz; a legenda é queimada no tempo do
       // VÍDEO, e a voz só começa em `vozInicio`. Sem somar, toda legenda saía adiantada.
       // Só as novas: as já salvas foram ajustadas à mão contra o que se via.
+      // Com a voz cortada ou dividida, cada frase vai pro trecho que a fala (legendasDaTranscricao);
+      // frase que caiu num pedaço cortado fora não vira legenda.
       const novas = d.legendas as Legendas | null;
       setLegendasDaVoz(vozArquivo.caminho);
-      setLegendas(
-        novas
-          ? { ...novas, trechos: novas.trechos.map((t) => ({ ...t, inicio: Math.round((t.inicio + vozInicio) * 100) / 100, fim: Math.round((t.fim + vozInicio) * 100) / 100 })) }
-          : null
-      );
+      const trechos = novas ? legendasDaTranscricao(novas.trechos, audiosEfetivos(audios, narracaoBase), segundosDaVoz) : [];
+      setLegendas(novas && trechos.length ? { ...novas, trechos } : null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao gerar as legendas.");
     } finally {
@@ -1202,7 +1289,9 @@ export default function EditorDeVideo() {
       setImovelId(dd.edicao?.imovelId ?? null);
       setCenas(novas);
       setFormato(e.formato);
-      setMusica(e.musica);
+      // Todos os trechos de áudio do vídeo (ou o que o formato antigo quer dizer).
+      setAudios(itensDeAudioDoEspec(e));
+      setSelecao(null);
       setTransicao(ehTransicao(e.transicao));
       setTitulo(e.titulo ?? "");
       setPreco(e.preco ?? "");
@@ -1214,8 +1303,6 @@ export default function EditorDeVideo() {
       setOrigemVoz(e.narracao?.origem ?? "ia");
       setRoteiro(e.narracao?.roteiro ?? "");
       setVoz(e.narracao?.voz ?? "laura");
-      setVozVolume(e.narracao?.volume ?? 1);
-      setVozInicio(e.narracao?.inicio ?? 0.7);
       // A voz volta tocável -- e, com ela, o arquivo que as legendas transcrevem. Vale
       // também pra voz de IA: a narração fica guardada depois que o vídeo é montado.
       setVozArquivo(dd.edicao?.vozArquivo && dd.edicao?.vozUrl ? { caminho: dd.edicao.vozArquivo, url: dd.edicao.vozUrl, nome: e.narracao?.arquivo ? "Áudio deste vídeo" : "Narração de IA deste vídeo" } : null);
@@ -1247,8 +1334,9 @@ export default function EditorDeVideo() {
     setRoteiro("");
     setOrigemVoz("ia");
     setVozArquivo(null);
-    setVozVolume(1);
-    setVozInicio(0.7);
+    // A música volta ao começo também (antes ficava a do vídeo anterior).
+    setAudios([musicaNova("calma", LIMITES.musicaVolumePadrao, "musica00")]);
+    setSelecao(null);
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setLegendas(null);
     setApresentador(null);
@@ -1926,8 +2014,8 @@ export default function EditorDeVideo() {
           <Cartao>
             <Rotulo>Música</Rotulo>
             <BibliotecaAudio
-              escolhida={musica}
-              aoEscolher={setMusica}
+              escolhida={selecao?.faixa === "musica" ? (() => { const a = audios.find((x) => x.id === selecao.id); return a && a.fonte.tipo === "musica" ? a.fonte.id : musica; })() : musica}
+              aoEscolher={(id) => escolherMusicaDaBiblioteca(id)}
               efeito={efeitoSonoro}
               aoEscolherEfeito={(id) => setEfeitoSonoro(id as EfeitoSonoroId)}
               efeitos={EFEITOS_SONOROS.filter((e) => e.arquivo)}
@@ -1935,8 +2023,20 @@ export default function EditorDeVideo() {
             />
             {musica !== "nenhuma" && (
               <label className="mt-3 block text-xs text-neutral-600">
-                Volume da música · {Math.round(musicaVolume * 100)}%
-                <input type="range" min={0} max={1} step={0.05} value={musicaVolume} onChange={(e) => setMusicaVolume(Number(e.target.value))} className="mt-1 w-full accent-marca-coral" />
+                Volume da música · {Math.round((musicaDoPrimeiroTrecho?.volume ?? musicaVolume) * 100)}%
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={musicaDoPrimeiroTrecho?.volume ?? musicaVolume}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setMusicaVolume(v);
+                    setAudios((l) => volumeDaMusica(l, v));
+                  }}
+                  className="mt-1 w-full accent-marca-coral"
+                />
                 {espec.narracao && (
                   <span className="mt-1 block text-[11px] text-neutral-500">
                     Com voz no vídeo, a música abaixa sozinha enquanto você fala e volta no silêncio.
@@ -2105,6 +2205,9 @@ export default function EditorDeVideo() {
                                       onClick={() => {
                                         setVozArquivo({ caminho: g.caminho, url: g.url, nome: g.nome });
                                         setNarrar(true);
+                                        const m = vozNova(audios);
+                                        setAudios(m.audios);
+                                        setSelecao(m.selecao);
                                       }}
                                       className={"min-h-10 rounded px-2 text-xs font-semibold transition sm:min-h-0 sm:py-0.5 " + (estaAtivo ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")}
                                     >
