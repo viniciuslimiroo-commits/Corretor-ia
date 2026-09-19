@@ -130,17 +130,13 @@ editar** (música, voz, Você, textos, adesivos, legendas, cenas), como nos edit
 - **Decisão (vale sobre tudo):** `docs/planos/linha-do-tempo-decisao.md` (opção D: textos e
   adesivos continuam PRESOS à foto; toque seleciona, arrastar só o selecionado).
 - **Especificação completa:** `docs/planos/linha-do-tempo-spec.md` (em inglês; seções A-G).
-- **Feito:** P0, P1, P2, P3, P4, P5, P6.
-- **Falta — P7, em três partes, todas em `web/src/components/editor/editor-video.tsx`
-  (~3000 linhas, editar com cuidado):**
-  - **P7a:** trocar a linha do tempo velha (`linha-do-tempo.tsx`) pela nova
-    (`faixas/linha-de-faixas.tsx`); seleção única (`RefItem`); barra da seleção no lugar da
-    fileira de abas no celular; histórico; avisos; palco por tempo. Ver spec seção E "P7a".
-  - **P7b:** música com SOM na prévia (`usar-previa-de-audio.ts`) e trechos de música de
-    verdade (`audios` no lugar de `musica`/`vozInicio`/`vozVolume`). **Só mostrar ao
-    Vinicius quando a música tocar.**
-  - **P7c:** voz em trechos, voz de IA reaproveitada sem cobrar de novo, legendas que andam
-    com a voz.
+- **Feito:** P0, P1, P2, P3, P4, P5, P6, **P7a e P7b** (branch `p7-faixas`, 19/09 -- ver
+  diário). A linha velha (`linha-do-tempo.tsx`) foi apagada; o editor usa
+  `faixas/linha-de-faixas.tsx`. Música é trecho (`audios`), aparece na faixa, corta e TOCA.
+- **Falta — P7c** (em `web/src/components/editor/editor-video.tsx`, ~4000 linhas):
+  - voz de IA reaproveitada sem cobrar de novo (`vozIaGuardada`) e cortada em trechos;
+  - primeiro toque num texto do palco só seleciona (D9); `GaleriaTexto` com `indiceAlvo`;
+  - conferir no dedo o modo "Trecho" (arrastar a música por dentro do bloco).
   - Critério de "pronto": conferido em **375px no celular** (spec F5) e no celular do Vinicius
     (a spec F7 fala em iPhone, mas o dele é um **Android, Samsung S25 FE**).
 
@@ -212,6 +208,21 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
+
+- **19/09/2026 — Claude Code (P7a + P7b, branch `p7-faixas`, NÃO publicado ainda):** pedido do
+  Vinicius: "ao selecionar uma faixa de áudio, ela não é adicionada à linha do tempo" +
+  "navegação instável; use programas parecidos de espelho" (CapCut).
+  - `3fbf41e` regras puras do áudio (`lib/audio-do-editor.ts`, teste `testar-audio-do-editor`).
+  - `feba677` música e voz viram trechos no estado do editor (pedido canônico: sem mexer, sai
+    no formato antigo byte a byte; com corte, `versao: 2` + `audios`).
+  - `915352d` a linha de faixas no lugar da velha: bloco de música, barra da seleção (no
+    celular troca a navegação), desfazer/refazer, avisos com Desfazer, Play com som.
+  - `bbd161f` atalhos S/Ctrl+B, setas (quadro; Shift = 1s), Home/End.
+  - Provas: `scripts/conferir-editor-faixas.mjs` (375 e 1280px, conta outlook, foto real) e
+    `conferir-palco-no-navegador.mjs` (menu da cena agora sai da linha nova); unitários da
+    linha, áudio, prévia, montagem e CRM; `testar-ferramentas-linha` (ffmpeg, rodar SEM
+    `timeout` -- o timeout mata o ffmpeg e parece erro); `next build` ok.
+  - Depois de publicar: gerar um vídeo em produção com a música cortada (pedido v2).
 
 - **18/09/2026 (noite) — Claude Code:** ramo `crm-painel` (sobre o `main` publicado): "Clientes" no menu principal; painel do cliente (cabeçalho com nome em destaque, próximo passo, caminho das etapas, histórico em linha do tempo, dados atrás de "Editar"); "Preparar envio" (imóvel → materiais como link público → mensagem com IA → abrir/copiar/compartilhar), com as travas do estudo jurídico. Testes: `testar-crm.ts`, `conferir-painel-cliente.mjs` (IA real, materiais reais), CRM antigos atualizados; limpeza só pelos clientes de teste (o dono já tem cliente real no CRM). `next build` passa. NÃO publicado.
 - **18/09/2026 (fim da tarde) — Claude Code:** publicou o ramo `integracao` no `main` (`88b959d`, no ar ~1 min depois) e provou em produção com `conferir-video-producao.mjs`. Próximo: P7a/b/c.
