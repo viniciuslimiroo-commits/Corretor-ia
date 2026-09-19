@@ -3700,7 +3700,6 @@ export default function EditorDeVideo() {
                       }
                     }}
                     title="Arraste pra mover · toque pra editar"
-                  data-texto-palco="1"
                     data-texto-palco="1"
                     className="pointer-events-auto flex cursor-grab touch-none select-none justify-center transition hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)] active:cursor-grabbing"
                   >
