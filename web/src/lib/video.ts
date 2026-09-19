@@ -946,6 +946,23 @@ export function duracaoDaCena(c: Cena): number {
   return Math.min(Math.max(d, LIMITES.duracaoMin), teto);
 }
 
+/**
+ * A cena `i` é um clipe que CONTINUA na seguinte: o mesmo arquivo, a próxima começa no
+ * segundo do arquivo em que esta termina, e a emenda entre as duas é corte seco. É o que
+ * sai quando um vídeo longo entra na linha do tempo em partes (lib/clipes-do-editor.ts)
+ * ou quando se divide um clipe e se escolhe "Corte": as partes emendam sem soluço, então
+ * a montagem não segura o último quadro (o "pouso") nessas cenas.
+ */
+export function clipeContinua(e: Pick<EspecVideo, "cenas" | "transicao">, i: number): boolean {
+  const a = e.cenas[i];
+  const b = e.cenas[i + 1];
+  if (!a || !b || a.tipo !== "clipe" || b.tipo !== "clipe" || !a.arquivo || a.arquivo !== b.arquivo) return false;
+  if (a.congelar || b.congelar) return false;
+  if (ehTransicao(a.transicao ?? e.transicao) !== "corte") return false;
+  const fim = (a.inicio ?? 0) + duracaoDaCena(a) * (a.velocidade ?? 1);
+  return Math.abs((b.inicio ?? 0) - fim) < 0.15;
+}
+
 export function duracaoEstimada(e: Pick<EspecVideo, "cenas" | "telaFinal" | "transicao">): number {
   return relogioDoEspec(e).total;
 }

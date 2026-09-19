@@ -1,7 +1,7 @@
 // AS FAIXAS DA LINHA DO TEMPO no navegador de verdade (docs/planos/linha-do-tempo-spec.md,
 // pacote P5, testes do harness).
 //
-// O que o Node não alcança: altura de cada peça no celular (114 / 198 / 378), alvos de
+// O que o Node não alcança: altura de cada peça no celular (128 / 222 / 392), alvos de
 // 44px, e o comportamento do dedo -- deslizar num bloco NÃO selecionado rola a linha sem
 // mexer nele; no selecionado, move; toque seleciona sem andar o tempo; fundo vazio tira a
 // seleção; tira fina abre a faixa; régua leva o cursor; segurar 450ms abre o menu; segundo
@@ -143,30 +143,30 @@ try {
   for (const [w, h] of [[375, 812], [375, 667]]) {
     await abrir("caso=seis&celular=1&aberta=musica", w, h, true);
     const a1 = await avaliar("document.querySelector('[data-area=linha]').getBoundingClientRect().height");
-    conferir(a1 === 198, `${w}x${h} · seis faixas, uma aberta: 198px`, a1);
+    conferir(a1 === 222, `${w}x${h} · seis faixas, uma aberta: 222px`, a1);
     const botoes = await avaliar("[...document.querySelectorAll('[data-area=linha] button')].map(b => { const r = b.getBoundingClientRect(); return [r.left, r.right, r.width, r.height]; })");
     const sobrepoe = botoes.some((b, i) => i > 0 && b[0] < botoes[i - 1][1] - 0.5);
     conferir(botoes.every((b) => b[2] >= 44 && b[3] >= 44) && !sobrepoe && Math.max(...botoes.map((b) => b[1])) <= w, `${w}x${h} · fileira de controles: 5 botões de 44×44, sem sobrepor, dentro de ${w}px`, botoes.map((b) => Math.round(b[0])).join(","));
     conferir((await avaliar("document.documentElement.scrollWidth")) === w, `${w}x${h} · a página não rola de lado`);
     await abrir("caso=nenhuma&celular=1", w, h, true);
     const a0 = await avaliar("document.querySelector('[data-area=linha]').getBoundingClientRect().height");
-    conferir(a0 === 114, `${w}x${h} · sem faixa: 114px`, a0);
+    conferir(a0 === 128, `${w}x${h} · sem faixa: 128px`, a0);
     await abrir("caso=seis&celular=1&todas=1", w, h, true);
     const a2 = await avaliar("document.querySelector('[data-area=linha]').getBoundingClientRect().height");
-    conferir(a2 === 378, `${w}x${h} · modo Faixas (todas abertas): 378px, sem rolagem por dentro`, a2);
+    conferir(a2 === 392, `${w}x${h} · modo Faixas (todas abertas): 392px, sem rolagem por dentro`, a2);
   }
   await abrir("caso=seis&celular=0", 1280, 800, false);
   const aDesk = await avaliar("document.querySelector('[data-area=linha]').getBoundingClientRect().height");
-  conferir(aDesk === 286, "1280x800 · computador, seis faixas abertas: 286px", aDesk);
+  conferir(aDesk === 364, "1280x800 · computador, seis faixas abertas: 364px", aDesk);
   const rotulo = await caixa('[data-faixa="voz"] > .sticky');
-  conferir(!!rotulo && Math.round(rotulo.w) === 72, "1280x800 · coluna de nomes com 72px", rotulo && Math.round(rotulo.w));
+  conferir(!!rotulo && Math.round(rotulo.w) === 108, "1280x800 · coluna de nomes com 108px (ícone + nome inteiro)", rotulo && Math.round(rotulo.w));
 
   // ---------- alça de 44px num bloco de 30px ----------
   await abrir("caso=curto&celular=1&aberta=musica", 375, 812, true);
   // O bloco curto (0,75s × 40px/s = 30px) é o segundo da faixa de música. Leva ele pro centro.
   await avaliar("(() => { const b = window.__linha; return true; })()");
   const curto = await caixa(seletorBloco("musica", 1));
-  conferir(!!curto && Math.round(curto.w) === 30, "bloco curto com 30px", curto && Math.round(curto.w));
+  conferir(!!curto && Math.round(curto.w) === 29, "bloco curto com 29px (30 menos a folga de 1px entre blocos)", curto && Math.round(curto.w));
   await avaliar(`document.querySelector('[data-rolagem]').scrollLeft += ${curto.cx - 187.5}`);
   await esperar(300);
   const curto2 = await caixa(seletorBloco("musica", 1));
@@ -325,7 +325,8 @@ try {
   await tocar(ajustar.cx, ajustar.cy);
   const aj = await L();
   const larg = await avaliar("document.querySelector('[data-rolagem]').clientWidth");
-  const conteudo = await avaliar("document.querySelector('[data-rolagem] .relative.shrink-0').getBoundingClientRect().width");
+  // O VÍDEO (zoom × duração), não a área rolável: ela tem 64px a mais depois do fim, onde mora o +.
+  const conteudo = aj.zoom * (await avaliar("window.__linha?.total ?? 0"));
   conferir(Math.abs(conteudo - (larg - 32)) < 2, "Ajustar: o vídeo inteiro cabe na largura (menos 32px)", `${Math.round(conteudo)}px em ${larg}px, zoom ${aj.zoom.toFixed(2)}`);
   conferir((await avaliar("document.documentElement.scrollWidth")) === 375, "depois de tudo, a página continua sem rolar de lado");
 

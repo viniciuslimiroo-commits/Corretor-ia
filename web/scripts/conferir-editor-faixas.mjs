@@ -44,6 +44,9 @@ const user = await fetch(`${SUPA}/auth/v1/user`, { headers: { apikey: env.NEXT_P
 const sessao = { access_token, refresh_token: p.get("refresh_token"), expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, token_type: "bearer", user };
 
 const c = await abrirChrome();
+// O selo "N" do modo de desenvolvimento fica em cima da primeira ferramenta do celular: some da
+// tela (continua lá, e o erroNaTela ainda lê o que ele mostra).
+await c.cdp("Page.addScriptToEvaluateOnNewDocument", { source: "document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = 'nextjs-portal{visibility:hidden!important}'; document.head.appendChild(st); });" });
 const shot = async (nome) => {
   const { data } = await c.cdp("Page.captureScreenshot", { format: "png" });
   fs.writeFileSync(path.join(SAIDA, `${nome}.png`), Buffer.from(data, "base64"));
@@ -69,7 +72,10 @@ const blocosMusica = () => c.avaliar("[...document.querySelectorAll('[data-faixa
 try {
   await c.abrir(`${BASE}/login`, { largura: 375, altura: 812, celular: true });
   await c.avaliar(`localStorage.setItem("sb-${REF}-auth-token", ${JSON.stringify(JSON.stringify(sessao))})`);
-  await c.abrir(`${BASE}/editor/video`, { largura: 375, altura: 812, celular: true, pronto: "[...document.querySelectorAll('select option')].some(o => /^[0-9a-f-]{36}$/.test(o.value))" });
+  await c.abrir(`${BASE}/editor/video`, { largura: 375, altura: 812, celular: true, pronto: "!!document.querySelector('[data-editor]')" });
+  // No celular o painel é uma folha que abre fechada: Mídia abre (e mostra o seletor de imóvel).
+  if (!(await c.avaliar("!!document.querySelector('select')"))) await tocarTexto("Mídia");
+  for (let i = 0; i < 60 && !(await c.avaliar("[...document.querySelectorAll('select option')].some(o => /^[0-9a-f-]{36}$/.test(o.value))")); i++) await esperar(250);
   // As fotos aparecem por imóvel: o primeiro que tiver foto pronta.
   const ids = await c.avaliar("(() => { const s = [...document.querySelectorAll('select')].find(x => [...x.options].some(o => /^[0-9a-f-]{36}$/.test(o.value))); s.setAttribute('data-imoveis', ''); return [...s.options].map(o => o.value).filter(v => /^[0-9a-f-]{36}$/.test(v)); })()");
   for (const id of ids) {

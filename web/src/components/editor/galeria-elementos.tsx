@@ -41,7 +41,7 @@ function CartaoClipe({ clipe, desligado, aoEscolher }: { clipe: ClipePexels; des
       disabled={desligado}
       title={clipe.autor ? `por ${clipe.autor} no Pexels` : "Pexels"}
       aria-label={`Pôr clipe ${clipe.autor ? "de " + clipe.autor : ""}`}
-      className="relative aspect-square overflow-hidden rounded-lg bg-neutral-800 transition hover:ring-2 hover:ring-marca-coral disabled:opacity-40"
+      className="relative aspect-square overflow-hidden rounded-xl bg-[#0b1426] transition hover:ring-2 hover:ring-[var(--ed-acento)] active:scale-[0.98] disabled:opacity-40"
     >
       {tocando ? (
         <video
@@ -63,7 +63,8 @@ function CartaoClipe({ clipe, desligado, aoEscolher }: { clipe: ClipePexels; des
     </button>
   );
 }
-import { Chip, Icone } from "@/components/ui";
+import { Icone } from "@/components/ui";
+import { BotaoEd, Nota, Pilula, Segmentado } from "@/components/editor/ui-editor";
 
 // A GALERIA DE ELEMENTOS, na lógica do CapCut: busca em cima, prateleiras embaixo.
 //
@@ -113,11 +114,11 @@ function CartaoDesenhado({ id, cor, itens, escolhido, desligado, aoEscolher }: {
       disabled={desligado}
       title={modelo?.rotulo}
       className={
-        "flex w-full flex-col items-center gap-1 rounded-xl border p-1.5 transition disabled:opacity-40 " +
-        (escolhido ? "border-marca-coral bg-marca-indigo/5" : "border-neutral-200 hover:border-neutral-400")
+        "flex w-full flex-col items-center gap-1.5 rounded-2xl p-1.5 transition disabled:opacity-40 " +
+        (escolhido ? "bg-[var(--ed-acento-suave)] ring-2 ring-inset ring-[var(--ed-acento)]" : "bg-[var(--ed-elevado)] ring-1 ring-inset ring-transparent hover:bg-[var(--ed-elevado-2)] hover:ring-[var(--ed-linha-forte)]")
       }
     >
-      <span className="flex h-[64px] w-full items-center justify-center overflow-hidden rounded-lg bg-neutral-800">
+      <span className="flex h-[64px] w-full items-center justify-center overflow-hidden rounded-xl bg-[#0b1426]">
         {p ? (
           <span
             className="flex items-center justify-center"
@@ -127,7 +128,7 @@ function CartaoDesenhado({ id, cor, itens, escolhido, desligado, aoEscolher }: {
           />
         ) : null}
       </span>
-      <span className="text-[10px] leading-tight text-neutral-600">{modelo?.rotulo}</span>
+      <span className="pb-0.5 text-[11px] leading-tight text-[var(--ed-texto-2)]">{modelo?.rotulo}</span>
     </button>
   );
 }
@@ -222,28 +223,23 @@ export default function GaleriaElementos({
   return (
     <div>
       {/* ---------- abas ---------- */}
-      <div className="mb-3 flex gap-1 border-b border-neutral-200">
-        {(["adesivos", "gifs"] as const).map((a) => (
-          <button
-            key={a}
-            type="button"
-            onClick={() => {
-              setAba(a);
-              setCategoria("todos");
-            }}
-            className={
-              "-mb-px border-b-2 px-3 py-1.5 text-sm transition " +
-              (aba === a ? "border-marca-coral font-medium text-marca-indigo" : "border-transparent text-neutral-500 hover:text-neutral-700")
-            }
-          >
-            {a === "adesivos" ? "Adesivos" : "GIFs"}
-          </button>
-        ))}
-      </div>
+      <Segmentado
+        rotulo="Adesivos ou GIFs"
+        className="mb-4"
+        opcoes={[
+          { id: "adesivos", rotulo: "Adesivos" },
+          { id: "gifs", rotulo: "GIFs" },
+        ]}
+        valor={aba}
+        aoMudar={(a) => {
+          setAba(a);
+          setCategoria("todos");
+        }}
+      />
 
       {/* ---------- busca ---------- */}
-      <label className="mb-3 flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2">
-        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <label className="mb-4 flex h-11 items-center gap-2.5 rounded-xl bg-[var(--ed-elevado)] px-3.5 ring-1 ring-inset ring-[var(--ed-linha)] focus-within:ring-2 focus-within:ring-[var(--ed-acento)]">
+        <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0 text-[var(--ed-texto-3)]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-3.5-3.5" />
         </svg>
@@ -252,12 +248,12 @@ export default function GaleriaElementos({
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           placeholder={gifs ? "Pesquisar GIFs: rindo, palmas, surpresa…" : "Pesquisar elementos: chave, piscina, rindo…"}
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+          className="min-w-0 flex-1 !border-0 !bg-transparent text-[14px] outline-none"
         />
       </label>
 
       {!podeMais && elementos.length >= LIMITES.elementosPorCena && (
-        <p className="mb-2 text-[11px] text-neutral-500">{LIMITES.elementosPorCena} peças já é o limite desta cena. Tire uma pra pôr outra.</p>
+        <Nota tipo="atencao" className="mb-3">{LIMITES.elementosPorCena} peças já é o limite desta cena. Tire uma pra pôr outra.</Nota>
       )}
 
       {/* ---------- o que já está na cena ---------- */}
@@ -381,8 +377,8 @@ export default function GaleriaElementos({
       {/* ---------- gente reagindo (Pexels) ---------- */}
       {gifs && (
         <div className="mb-4">
-          <div className="mb-1 flex items-baseline justify-between">
-            <p className="text-xs font-semibold text-neutral-700">Gente reagindo</p>
+          <div className="mb-2.5 flex items-baseline justify-between">
+            <p className="text-[13px] font-semibold text-[var(--ed-texto)]">Gente reagindo</p>
             <a href="https://www.pexels.com" target="_blank" rel="noreferrer" className="text-[10px] text-neutral-500 underline">
               {CREDITO_PEXELS}
             </a>
@@ -390,9 +386,9 @@ export default function GaleriaElementos({
           {/* Quebrando linha, e não rolando pro lado: numa fileira que rola, o celular só
                mostrava a primeira categoria e ele achou que só havia "palmas". */}
           {!buscando && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
+            <div className="mb-3 flex flex-wrap gap-2">
               {CATEGORIAS_REACAO.map((c) => (
-                <Chip
+                <Pilula
                   key={c.id}
                   ativo={reacao === c.id}
                   onClick={() => {
@@ -401,7 +397,7 @@ export default function GaleriaElementos({
                   }}
                 >
                   {c.rotulo}
-                </Chip>
+                </Pilula>
               ))}
             </div>
           )}
@@ -419,9 +415,9 @@ export default function GaleriaElementos({
               </div>
               {!carregandoClipes && clipes?.r.clipes.length === 0 && <p className="text-[11px] text-neutral-500">Nenhum clipe com “{termoClipes}”. Tente outra palavra: rindo, aplaudindo, cachorro.</p>}
               {!carregandoClipes && clipes?.r.temMais && (
-                <button type="button" onClick={() => setPagina((n) => n + 1)} className="mt-2 w-full rounded-lg border border-neutral-200 py-1.5 text-xs text-neutral-600 hover:border-neutral-400">
+                <BotaoEd tamanho="p" onClick={() => setPagina((n) => n + 1)} className="mt-2.5 w-full">
                   Mais clipes
-                </button>
+                </BotaoEd>
               )}
               <p className="mt-1.5 text-[10px] leading-snug text-neutral-400">{AVISO_PEXELS} Toque pra pôr; no computador, passe o mouse pra ver.</p>
             </>
@@ -430,18 +426,18 @@ export default function GaleriaElementos({
       )}
 
       {/* ---------- adesivos 3D / GIFs ---------- */}
-      <div className="mb-1 flex items-baseline justify-between">
-        <p className="text-xs font-semibold text-neutral-700">{(gifs ? "Emojis animados" : "Adesivos") + (buscando ? ` · ${adesivos.length}` : "")}</p>
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <p className="text-[13px] font-semibold text-[var(--ed-texto)]">{(gifs ? "Emojis animados" : "Adesivos") + (buscando ? ` · ${adesivos.length}` : "")}</p>
       </div>
       {!buscando && (
-        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
-          <Chip ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
+        <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <Pilula ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
             Todos
-          </Chip>
+          </Pilula>
           {categorias.map((c) => (
-            <Chip key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
+            <Pilula key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
               {c.rotulo}
-            </Chip>
+            </Pilula>
           ))}
         </div>
       )}
@@ -450,7 +446,7 @@ export default function GaleriaElementos({
           {gifs ? `Nenhum GIF com “${busca}”. Tente rir, uau, palmas, amor, festa.` : `Nenhum adesivo com “${busca}”. Tente casa, chave, dinheiro, praia, rindo.`}
         </p>
       ) : (
-        <div className="mb-4 grid max-h-[300px] grid-cols-5 gap-1 overflow-y-auto pr-1">
+        <div className="ed-rolagem mb-5 grid max-h-[320px] grid-cols-5 gap-1.5 overflow-y-auto pr-1">
           {adesivos.map((a) => (
             <button
               key={a.id}
@@ -459,7 +455,7 @@ export default function GaleriaElementos({
               disabled={!podeMais}
               title={a.rotulo}
               aria-label={`Pôr ${a.rotulo}`}
-              className="rounded-lg p-1 transition hover:bg-neutral-100 disabled:opacity-40"
+              className="rounded-xl p-1.5 transition hover:bg-[var(--ed-elevado-2)] active:scale-95 disabled:opacity-40"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={urlDaMiniatura(a.id)} alt="" loading="lazy" className="aspect-square w-full" draggable={false} />
@@ -474,7 +470,7 @@ export default function GaleriaElementos({
         !gifs &&
         CATEGORIAS_DESENHADAS.map((cat) => (
           <div key={cat} className="mb-3">
-            <p className="mb-1 text-xs font-semibold text-neutral-700">{ROTULO_DESENHADA[cat]}</p>
+            <p className="mb-1 text-[13px] font-semibold text-[var(--ed-texto)]">{ROTULO_DESENHADA[cat]}</p>
             {cat === "ficha" && itensDaFicha.length === 0 && (
               <p className="mb-1.5 text-[11px] text-neutral-500">Sem quartos, vagas nem metragem no cadastro deste imóvel: sai com números de exemplo.</p>
             )}

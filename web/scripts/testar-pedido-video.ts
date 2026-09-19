@@ -111,6 +111,27 @@ function deps(o: { jobs?: "ok" | "alheio" | "rodando" | "sem_original"; existe?:
     const r = await prepararPedidoDeVideo({ espec: trocarDono(espec) }, USUARIO, deps());
     conferir(!r.ok && r.status === 400 && r.error === mensagem, `arquivo de ${nome} de outra pasta é recusado`, !r.ok ? r.error : "");
   }
+
+  // Um vídeo que a pessoa JÁ FEZ entrando como clipe (a aba Vídeos do editor).
+  const VIDEO = "d431985b-0000-4000-8000-000000000001";
+  const comVideo = (arquivo: string, tipo = "clipe") => {
+    const e = JSON.parse(JSON.stringify(ESPECS_LINHA.cena_clipe_inicio_velocidade)) as { cenas: { tipo: string; arquivo?: string }[] };
+    const i = e.cenas.findIndex((c) => c.tipo === "clipe");
+    e.cenas[i] = { ...e.cenas[i], tipo, arquivo };
+    return e;
+  };
+  const dVideo = deps();
+  const okVideo = await prepararPedidoDeVideo({ espec: comVideo(`${USUARIO}/videos/${VIDEO}.mp4`) }, USUARIO, dVideo);
+  conferir(okVideo.ok && okVideo.espec.cenas.some((c) => c.arquivo === `${USUARIO}/videos/${VIDEO}.mp4`), "vídeo pronto DELA como clipe passa, com o caminho do arquivo final", !okVideo.ok ? okVideo.error : "");
+  conferir(dVideo.chamadas.some((c) => c.pasta === `${USUARIO}/videos` && c.nome === `${VIDEO}.mp4`), "e o arquivo é conferido no bucket antes de aceitar", JSON.stringify(dVideo.chamadas));
+  const sumiu = await prepararPedidoDeVideo({ espec: comVideo(`${USUARIO}/videos/${VIDEO}.mp4`) }, USUARIO, deps({ existe: false }));
+  conferir(!sumiu.ok && sumiu.status === 400 && /não existe mais/.test(sumiu.error), "vídeo apagado usado como cena: recusado com o motivo", !sumiu.ok ? sumiu.error : "");
+  const deOutro = await prepararPedidoDeVideo({ espec: comVideo(`${OUTRO}/videos/${VIDEO}.mp4`) }, USUARIO, deps());
+  conferir(!deOutro.ok && deOutro.status === 400, "vídeo pronto de OUTRA pessoa é recusado");
+  const comoFoto = await prepararPedidoDeVideo({ espec: comVideo(`${USUARIO}/videos/${VIDEO}.mp4`, "foto") }, USUARIO, deps());
+  conferir(!comoFoto.ok && comoFoto.status === 400, "vídeo pronto só entra como clipe (como foto, recusado)");
+  const miniatura = await prepararPedidoDeVideo({ espec: comVideo(`${USUARIO}/videos/${VIDEO}.jpg`) }, USUARIO, deps());
+  conferir(!miniatura.ok && miniatura.status === 400, "outro arquivo da pasta de vídeos (a miniatura) é recusado");
 }
 
 // ---------- 3. a voz de IA reaproveitada ----------

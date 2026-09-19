@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CATEGORIAS_FILTRO, CONTROLES_AJUSTE, MODELOS_FILTRO, type Ajustes, type CategoriaFiltro } from "@/lib/filtros";
-import { Chip } from "@/components/ui";
+import { BotaoEd, Deslizante, Pilula, Segmentado } from "@/components/editor/ui-editor";
 
 // A ABA FILTROS: duas gavetas, como em qualquer editor de foto.
 //
@@ -58,56 +58,48 @@ export default function PainelFiltros({
   return (
     <div>
       {/* ---------- vale pra quê ---------- */}
-      <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-neutral-100 p-1">
-        {(["video", "cena"] as const).map((e) => (
-          <button
-            key={e}
-            type="button"
-            onClick={() => aoEscopo(e)}
-            disabled={e === "cena" && !temCena}
-            className={
-              "rounded-lg px-2 py-1.5 text-xs font-medium transition disabled:opacity-30 " +
-              (escopo === e ? "bg-white text-marca-indigo shadow-sm" : "text-neutral-500")
-            }
-          >
-            {e === "video" ? "Vídeo inteiro" : "Só esta cena"}
-          </button>
-        ))}
-      </div>
+      <Segmentado
+        rotulo="Vale pra quê"
+        className="mb-3"
+        opcoes={[
+          { id: "video", rotulo: "Vídeo inteiro" },
+          { id: "cena", rotulo: temCena ? "Só esta cena" : "Só esta cena (escolha uma)" },
+        ]}
+        valor={escopo}
+        aoMudar={(e) => (e === "cena" && !temCena ? undefined : aoEscopo(e as EscopoCor))}
+      />
       {escopo === "cena" && cenaTemCorPropria && (
-        <button type="button" onClick={aoVoltarProVideo} className="mb-3 text-[11px] text-neutral-500 underline">
-          Tirar a cor própria desta cena (volta a seguir o vídeo)
-        </button>
+        <BotaoEd variante="fantasma" tamanho="p" onClick={aoVoltarProVideo} className="mb-3 -ml-2">
+          Tirar a cor própria desta cena
+        </BotaoEd>
       )}
 
       {/* ---------- gavetas ---------- */}
-      <div className="mb-3 flex gap-4 border-b border-neutral-200 text-sm">
-        {(["filtros", "ajustes"] as const).map((g) => (
-          <button
-            key={g}
-            type="button"
-            onClick={() => setGaveta(g)}
-            className={"-mb-px border-b-2 pb-1.5 font-medium transition " + (gaveta === g ? "border-marca-coral text-neutral-800" : "border-transparent text-neutral-500")}
-          >
-            {g === "filtros" ? "Filtros" : `Ajustes${mexidos ? ` · ${mexidos}` : ""}`}
-          </button>
-        ))}
-      </div>
+      <Segmentado
+        rotulo="Filtros ou ajustes"
+        className="mb-4"
+        opcoes={[
+          { id: "filtros", rotulo: "Filtros" },
+          { id: "ajustes", rotulo: `Ajustes${mexidos ? ` · ${mexidos}` : ""}` },
+        ]}
+        valor={gaveta}
+        aoMudar={(v) => setGaveta(v as typeof gaveta)}
+      />
 
       {gaveta === "filtros" ? (
         <>
-          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
-            <Chip ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
+          <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Pilula ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
               Todos
-            </Chip>
+            </Pilula>
             {CATEGORIAS_FILTRO.map((c) => (
-              <Chip key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
+              <Pilula key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
                 {c.rotulo}
-              </Chip>
+              </Pilula>
             ))}
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-3 gap-2">
             {lista.map((f) => {
               const escolhido = filtro === f.id;
               return (
@@ -118,46 +110,36 @@ export default function PainelFiltros({
                   disabled={desligado}
                   title={f.dica}
                   className={
-                    "overflow-hidden rounded-lg border-2 text-left transition disabled:opacity-40 " +
-                    (escolhido ? "border-marca-coral" : "border-transparent hover:border-neutral-400")
+                    "overflow-hidden rounded-xl text-left transition active:scale-[0.98] disabled:opacity-40 " +
+                    (escolhido ? "bg-[var(--ed-acento-suave)] ring-2 ring-[var(--ed-acento)]" : "bg-[var(--ed-elevado)] ring-1 ring-transparent hover:ring-[var(--ed-linha-forte)]")
                   }
                 >
-                  <span className="block aspect-[4/5] overflow-hidden bg-neutral-800">
+                  <span className="block aspect-[4/5] overflow-hidden bg-[#0b1426]">
                     {/* O filtro INTEIRO, sem os ajustes: é a cara do filtro que se escolhe. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/filtros/${f.id}.jpg`} alt="" className="h-full w-full object-cover" draggable={false} />
                   </span>
-                  <span className={"block truncate px-1 py-1 text-[11px] " + (escolhido ? "font-medium text-marca-indigo" : "text-neutral-600")}>{f.rotulo}</span>
+                  <span className={"block truncate px-2 py-1.5 text-[12px] " + (escolhido ? "font-semibold text-[var(--ed-acento-forte)]" : "text-[var(--ed-texto-2)]")}>{f.rotulo}</span>
                 </button>
               );
             })}
           </div>
 
           {filtro !== "natural" && (
-            <label className="mt-3 block text-xs text-neutral-600">
-              Intensidade · {Math.round(intensidade * 100)}%
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={intensidade}
-                onChange={(e) => aoIntensidade(Number(e.target.value))}
-                disabled={desligado}
-                className="mt-1 w-full accent-marca-coral"
-              />
-            </label>
+            <div className="mt-4 rounded-2xl bg-[var(--ed-elevado)] p-4">
+              <Deslizante rotulo="Intensidade" valor={intensidade} min={0} max={1} passo={0.05} formatar={(v) => `${Math.round(v * 100)}%`} aoMudar={aoIntensidade} disabled={desligado} />
+            </div>
           )}
         </>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {CONTROLES_AJUSTE.map((c) => {
             const v = ajustes[c.id] ?? 0;
             return (
-              <label key={c.id} className="block text-xs text-neutral-600" title={c.dica}>
+              <label key={c.id} className="block text-[12.5px] text-[var(--ed-texto-2)]" title={c.dica}>
                 <span className="flex items-baseline justify-between">
                   <span>{c.rotulo}</span>
-                  <span className="tabular-nums text-neutral-400">{v > 0 && c.min < 0 ? "+" : ""}{Math.round(v * 100)}</span>
+                  <span className="tabular-nums font-medium text-[var(--ed-texto)]">{v > 0 && c.min < 0 ? "+" : ""}{Math.round(v * 100)}</span>
                 </span>
                 <input
                   type="range"
@@ -170,14 +152,15 @@ export default function PainelFiltros({
                   // no celular é quase impossível.
                   onDoubleClick={() => aoAjuste(c.id, 0)}
                   disabled={desligado}
-                  className="mt-1 w-full accent-marca-coral"
+                  className="mt-1 w-full"
+                  style={{ "--pct": `${((v - c.min) / Math.max(1e-6, c.max - c.min)) * 100}%` } as React.CSSProperties}
                 />
               </label>
             );
           })}
-          <button type="button" onClick={aoZerar} disabled={desligado || mexidos === 0} className="justify-self-start text-xs text-neutral-500 underline disabled:opacity-30">
+          <BotaoEd variante="fantasma" tamanho="p" onClick={aoZerar} disabled={desligado || mexidos === 0} className="-ml-2 justify-self-start">
             Zerar os ajustes
-          </button>
+          </BotaoEd>
         </div>
       )}
     </div>

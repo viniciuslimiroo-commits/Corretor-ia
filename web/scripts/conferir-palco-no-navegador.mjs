@@ -45,6 +45,9 @@ const user = await fetch(`${SUPA}/auth/v1/user`, { headers: { apikey: env.NEXT_P
 const sessao = { access_token, refresh_token: p.get("refresh_token"), expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, token_type: "bearer", user };
 
 const c = await abrirChrome();
+// O selo "N" do modo de desenvolvimento fica em cima da primeira ferramenta do celular: some da
+// tela (continua lá, e o erroNaTela ainda lê o que ele mostra).
+await c.cdp("Page.addScriptToEvaluateOnNewDocument", { source: "document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = 'nextjs-portal{visibility:hidden!important}'; document.head.appendChild(st); });" });
 const shot = async (nome) => {
   const { data } = await c.cdp("Page.captureScreenshot", { format: "png" });
   fs.writeFileSync(path.join(SAIDA, `${nome}.png`), Buffer.from(data, "base64"));
@@ -52,7 +55,7 @@ const shot = async (nome) => {
 const toque = (pontos, tipo) => c.cdp("Input.dispatchTouchEvent", { type: tipo, touchPoints: pontos.map(([x, y], id) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 })) });
 const caixa = (sel) =>
   c.avaliar(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }; })()`);
-const TEXTO = "[data-palco] [role=button][title*='arraste para mover']";
+const TEXTO = "[data-palco] [data-texto-palco]";
 const editando = () => c.avaliar("!!document.querySelector('[data-palco] input')");
 const menuAberto = () => c.avaliar("(() => { const m = document.querySelector('[role=menu]'); if (!m) return null; const r = m.getBoundingClientRect(); return { topo: Math.round(r.top), base: Math.round(r.bottom), itens: m.querySelectorAll('[role=menuitem]').length, rola: m.scrollHeight > m.clientHeight }; })()");
 const tecla = async (key) => {
@@ -63,7 +66,15 @@ const tecla = async (key) => {
 try {
   await c.abrir(`${BASE}/login`, { largura: 375, altura: 812, celular: true });
   await c.avaliar(`localStorage.setItem("sb-${REF}-auth-token", ${JSON.stringify(JSON.stringify(sessao))})`);
-  await c.abrir(`${BASE}/editor/video`, { largura: 375, altura: 812, celular: true, pronto: "[...document.querySelectorAll('select option')].some(o => /^[0-9a-f-]{36}$/.test(o.value))" });
+  await c.abrir(`${BASE}/editor/video`, { largura: 375, altura: 812, celular: true, pronto: "!!document.querySelector('[data-editor]')" });
+  // No celular o painel é uma folha que abre fechada: a ferramenta Mídia abre.
+  const botaoMidia = await c.avaliar("(() => { const b = [...document.querySelectorAll('nav button')].find(b => b.innerText.trim() === 'Mídia'); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+  if (botaoMidia) {
+    await toque([[botaoMidia.x, botaoMidia.y]], "touchStart");
+    await esperar(60);
+    await toque([], "touchEnd");
+  }
+  for (let i = 0; i < 60 && !(await c.avaliar("[...document.querySelectorAll('select option')].some(o => /^[0-9a-f-]{36}$/.test(o.value))")); i++) await esperar(250);
   // As fotos aparecem por imóvel: tenta um por um até achar um com foto pronta.
   const ids = await c.avaliar("(() => { const s = [...document.querySelectorAll('select')].find(x => [...x.options].some(o => /^[0-9a-f-]{36}$/.test(o.value))); s.setAttribute('data-imoveis', ''); return [...s.options].map(o => o.value).filter(v => /^[0-9a-f-]{36}$/.test(v)); })()");
   for (const id of ids) {
@@ -81,9 +92,26 @@ try {
   conferir(temFoto, "editor: a conta tem foto pra pôr no vídeo");
   if (!temFoto) throw new Error("sem foto na conta");
   await esperar(1500);
-  // "À venda" é etiqueta (coral no vídeo): é o estilo que a prévia pintava de escuro.
-  const pos = await c.avaliar("(() => { const b = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'À venda'); if (!b) return false; b.click(); return 'À venda'; })()");
-  await esperar(800);
+  // A folha da Mídia fecha; tocar na cena mostra a barra com Ajustes, e os Ajustes da cena
+  // (na folha) têm as etiquetas. "À venda" é etiqueta (coral no vídeo): é o estilo que a
+  // prévia pintava de escuro.
+  const tocarEm = async (sel) => {
+    const r = await c.avaliar(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    if (!r) return false;
+    await toque([[r.x, r.y]], "touchStart");
+    await esperar(60);
+    await toque([], "touchEnd");
+    await esperar(450);
+    return true;
+  };
+  await tocarEm('[data-folha] button[aria-label="Fechar"]');
+  await tocarEm('[data-area="linha"] [data-alvo="bloco"][data-chave="cenas:0"]');
+  await tocarEm('[data-area="barra"] [data-acao="ajustes_cena"]');
+  const pos = await c.avaliar("(() => { const b = [...document.querySelectorAll('[data-folha] button')].find(b => b.innerText.trim() === 'À venda'); if (!b) return false; b.click(); return 'À venda'; })()");
+  await esperar(500);
+  await tocarEm('[data-folha] button[aria-label="Fechar"]');
+  await tocarEm('[data-area="barra"] button[data-fechar="1"]');
+  await esperar(500);
   const alvo = await caixa(TEXTO);
   conferir(!!alvo, "palco: a etiqueta aparece em cima da foto", String(pos));
   if (!alvo) throw new Error("texto não apareceu no palco");

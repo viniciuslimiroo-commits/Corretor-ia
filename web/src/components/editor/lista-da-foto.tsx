@@ -25,16 +25,16 @@ function ListaDaFoto({ titulo, itens, selecao, aoEscolher, aoFechar }: Props) {
   return (
     <div
       data-lista="1"
-      className="fixed left-1/2 z-40 w-[calc(100%-32px)] max-w-[343px] -translate-x-1/2 overflow-hidden rounded-xl bg-[#0d1e3a] text-[var(--letra-editor,#e9eef7)] shadow-[0_6px_24px_rgba(0,0,0,.45)] ring-1 ring-white/10"
-      style={{ bottom: "calc(var(--altura-linha, 0px) + 8px)" }}
+      className="ed-subir fixed left-1/2 z-40 w-[calc(100%-32px)] max-w-[360px] -translate-x-1/2 overflow-hidden rounded-2xl bg-[rgb(20_35_65/0.97)] p-1.5 text-[var(--ed-texto,#eef2f8)] shadow-[0_24px_60px_-12px_rgb(0_0_0/0.75)] ring-1 ring-white/10 backdrop-blur-xl"
+      style={{ bottom: "calc(var(--acima-da-linha, var(--altura-linha, 0px)) + 10px)" }}
     >
-      <div className="flex h-8 items-center justify-between pl-3 text-[11px] font-semibold text-[var(--letra-fraca,#94a6c4)]">
+      <div className="flex h-10 items-center justify-between pl-2.5 text-[12px] font-semibold text-[var(--ed-texto-2,#a9b7d0)]">
         <span className="truncate">{titulo}</span>
-        <button type="button" onClick={aoFechar} aria-label="Fechar a lista" className="grid h-8 w-11 place-items-center">
+        <button type="button" onClick={aoFechar} aria-label="Fechar a lista" className="grid h-10 w-10 place-items-center rounded-xl hover:bg-white/[0.08]">
           <Icone nome="fechar" className="h-4 w-4" />
         </button>
       </div>
-      <ul className="max-h-[132px] overflow-y-auto">
+      <ul className="max-h-[176px] overflow-y-auto">
         {itens.map((it, i) => {
           const sel = mesmoRef(it.ref, selecao);
           return (
@@ -43,7 +43,7 @@ function ListaDaFoto({ titulo, itens, selecao, aoEscolher, aoFechar }: Props) {
                 type="button"
                 data-item-lista="1"
                 onClick={() => aoEscolher(it.ref)}
-                className={`flex h-11 w-full items-center gap-2 px-3 text-left text-[13px] ${sel ? "bg-[rgb(240_107_79/.16)] text-[var(--marca-coral,#f06b4f)]" : ""}`}
+                className={`flex h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-[13.5px] transition ${sel ? "bg-[rgb(240_107_79/.16)] text-[var(--marca-coral,#f06b4f)]" : "hover:bg-white/[0.07]"}`}
               >
                 <Icone nome={it.icone} className="h-4 w-4 shrink-0" />
                 <span className="truncate">{it.rotulo}</span>

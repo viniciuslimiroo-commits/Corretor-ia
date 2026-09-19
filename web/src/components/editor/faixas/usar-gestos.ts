@@ -18,6 +18,10 @@ import type { MotorDeRolagem } from "./usar-rolagem";
 //   alça                             apara início/fim.
 //   segundo dedo                     cancela arraste e segurar (vira pinça, no motor da
 //                                    rolagem).
+//   régua (mouse)                    apertar e arrastar passeia o cursor pelo vídeo.
+//   fundo vazio (mouse)              além de tirar a seleção, leva o cursor pro ponto --
+//                                    como clicar na linha de qualquer editor de vídeo.
+//   botão dentro da linha (o +)      não é gesto: o clique vai pro botão.
 //
 // Durante o arraste, cada movimento pede `simularGesto` ao dono (a conta é da biblioteca
 // pura, sobre o estado do COMEÇO do gesto) e desenha um fantasma e a guia de encaixe
@@ -175,6 +179,7 @@ export function criarMotorDeGestos(): MotorDeGestos {
       case "faixa-vazia":
       case "cenas-fundo":
         o.aoSelecionar(null);
+        if (a.tipoPonteiro === "mouse") mr.irPara(mr.tempoNoX(clientX, conteudo));
         return;
       case "regua":
         mr.irPara(mr.tempoNoX(clientX, conteudo));
@@ -193,6 +198,7 @@ export function criarMotorDeGestos(): MotorDeGestos {
       return;
     }
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    if ((e.target as HTMLElement | null)?.closest("button")) return;
     const alvoEl = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-alvo]");
     if (!alvoEl || !conteudo.contains(alvoEl)) return;
     const alvo = alvoEl.dataset.alvo as Alvo;
@@ -233,6 +239,12 @@ export function criarMotorDeGestos(): MotorDeGestos {
         o.aoMenu(a.bloco.ref, a.x0, a.y0);
       }, SEGURAR_MS);
     }
+    // Régua no mouse: apertou, o cursor já vai; arrastando, ele acompanha (aoMover).
+    if (alvo === "regua" && mouse && mr) {
+      mr.irPara(mr.tempoNoX(e.clientX, conteudo));
+      podeArrastar = true;
+      a.podeArrastar = true;
+    }
     if (podeArrastar) {
       try {
         (e.target as Element).setPointerCapture(e.pointerId);
@@ -256,6 +268,11 @@ export function criarMotorDeGestos(): MotorDeGestos {
         if (a.elBloco) a.elBloco.style.opacity = "0.4";
       }
     }
+    if (a.arrastando && a.alvo === "regua") {
+      e.preventDefault();
+      if (mr && conteudo) mr.irPara(mr.tempoNoX(e.clientX, conteudo));
+      return;
+    }
     if (a.arrastando) {
       e.preventDefault();
       desenhar(a, e.clientX);
@@ -266,6 +283,10 @@ export function criarMotorDeGestos(): MotorDeGestos {
   function aoSoltar(e: PointerEvent) {
     const a = ativo;
     if (!a || e.pointerId !== a.id) return;
+    if (a.arrastando && a.alvo === "regua") {
+      encerrar();
+      return;
+    }
     if (a.arrastando) {
       const g = a.gesto;
       const ref = a.bloco?.ref;

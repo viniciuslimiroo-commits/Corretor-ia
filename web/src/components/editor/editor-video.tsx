@@ -37,7 +37,6 @@ import {
   textosDaCena,
   gradeDaCena,
   temVideoCorrendo,
-  vozDeIA,
   type AnimacaoId,
   type AnimacaoTexto,
   type Apresentador,
@@ -71,7 +70,8 @@ import { useAvisos } from "@/components/editor/aviso-desfazer";
 import ListaDaFoto from "@/components/editor/lista-da-foto";
 import LegendaNoPalco from "@/components/editor/legenda-no-palco";
 import { useHistorico } from "@/components/editor/usar-historico";
-import { usePreviaDeAudio } from "@/components/editor/usar-previa-de-audio";
+import { usePreviaDeAudio, type RelogioDaPrevia } from "@/components/editor/usar-previa-de-audio";
+import { useTempoAoVivo } from "@/components/editor/usar-tempo-ao-vivo";
 import { decodificarPicos, type PicosDaFaixa } from "@/lib/picos-audio";
 import BibliotecaAudio from "@/components/editor/biblioteca-audio";
 import GaleriaTexto from "@/components/editor/galeria-texto";
@@ -86,8 +86,16 @@ import FotoComCor from "@/components/editor/foto-com-cor";
 import { AJUSTES_NEUTROS, type Ajustes } from "@/lib/filtros";
 import { COR_ELEMENTO_PADRAO, type IconeFicha } from "@/lib/elementos";
 import { lerLegenda } from "@/lib/legenda-arquivo";
-import Compartilhar from "@/components/compartilhar";
-import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { Icone } from "@/components/ui";
+import { Alternar, BotaoEd, BotaoIcone, CartaoOpcao, Deslizante, Divisor, Nota, Pilula, Secao, Segmentado, Vazio, areaEd, campoEd, seletorEd } from "@/components/editor/ui-editor";
+import Folha from "@/components/editor/folha";
+import CabecalhoEditor from "@/components/editor/cabecalho-editor";
+import TrilhoFerramentas from "@/components/editor/trilho-ferramentas";
+import ModalVideoPronto from "@/components/editor/modal-video-pronto";
+import PainelVideos, { type VideoDaLista } from "@/components/editor/painel-videos";
+import VideoNoPalco from "@/components/editor/video-no-palco";
+import { useMidia } from "@/components/editor/usar-midia";
+import { continuaNaProxima, partesDoClipe } from "@/lib/clipes-do-editor";
 import { useResumoEdicao } from "@/components/editor/usar-resumo-edicao";
 import {
   acoesDaSelecao,
@@ -169,10 +177,15 @@ type CenaUI = {
   /** Cena animada cujo clipe já existe no servidor: gerar de novo com o mesmo movimento
    *  e a mesma duração não custa crédito. Vem do servidor ao editar um vídeo pronto. */
   animacaoGuardada?: { animacao: AnimacaoId; duracao: number } | null;
+  /** Clipe: um endereço que o navegador toca (o arquivo local enviado, ou o assinado do
+   *  servidor). É o que faz o palco mostrar o vídeo de verdade. */
+  videoUrl?: string | null;
+  /** Clipe: quanto dura o arquivo inteiro (limita o "Começar em"). */
+  duracaoArquivo?: number;
 };
 
 /** O que o servidor devolve por cena, ao lado do espec, pra reabrir um vídeo pronto. */
-type EdicaoCena = { miniatura: string | null; rotulo: string; temAntes: boolean; ehClipe: boolean; animacaoGuardada: { animacao: AnimacaoId; duracao: number } | null };
+type EdicaoCena = { miniatura: string | null; rotulo: string; temAntes: boolean; ehClipe: boolean; animacaoGuardada: { animacao: AnimacaoId; duracao: number } | null; clipeUrl?: string | null };
 
 /**
  * Quanto tempo a geração costuma levar.
@@ -228,9 +241,47 @@ async function formatoDaFoto(f: File): Promise<Formato> {
   }
 }
 
+/**
+ * Duração e um quadro de miniatura de um vídeo do aparelho, antes de subir. Sem isso o clipe
+ * entrava com 6s fixos (fosse de 2s ou de 40s) e sem imagem nenhuma na linha do tempo.
+ */
+function lerVideoLocal(f: File): Promise<{ url: string; duracao: number; miniatura: string | null }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(f);
+    const v = document.createElement("video");
+    let feito = false;
+    const fim = (duracao: number, miniatura: string | null) => {
+      if (feito) return;
+      feito = true;
+      v.removeAttribute("src");
+      resolve({ url, duracao: Number.isFinite(duracao) ? duracao : 0, miniatura });
+    };
+    v.preload = "metadata";
+    v.muted = true;
+    v.playsInline = true;
+    v.onloadedmetadata = () => {
+      v.currentTime = Math.min(0.5, (v.duration || 1) / 3);
+    };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = 320;
+        c.height = Math.max(1, Math.round((320 * v.videoHeight) / Math.max(1, v.videoWidth)));
+        c.getContext("2d")?.drawImage(v, 0, 0, c.width, c.height);
+        fim(v.duration, c.toDataURL("image/jpeg", 0.72));
+      } catch {
+        fim(v.duration, null);
+      }
+    };
+    v.onerror = () => fim(0, null);
+    setTimeout(() => fim(v.duration, null), 8000);
+    v.src = url;
+  });
+}
+
 type VideoResumo = { id: string; titulo: string; formato: string; status: string; criadoEm: string; duracao: number | null; miniatura: string | null; compartilhado: boolean; erro: string | null };
 
-type Resultado = { videoId: string; url: string; miniatura: string | null; duracao: number | null; avisos: string[]; formato: string };
+type Resultado = { videoId: string; url: string; miniatura: string | null; duracao: number | null; avisos: string[]; formato: string; titulo?: string; doEditor?: boolean };
 
 let contador = 0;
 const chave = () => `c${Date.now()}-${contador++}`;
@@ -272,6 +323,7 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
     // catálogo. Normalizar aqui é o que impede o chip de aparecer em branco.
     transicao: c.transicao ? ehTransicao(c.transicao) : undefined,
     animacaoGuardada: info[i]?.animacaoGuardada ?? null,
+    videoUrl: info[i]?.clipeUrl ?? null,
   }));
 }
 
@@ -285,30 +337,32 @@ function cenasDoEspec(e: EspecVideo, info: EdicaoCena[]): CenaUI[] {
  * texto, você, cor e enquadramento. "Vídeos" fica por último porque é arquivo, não edição.
  */
 const ABAS = [
-  { id: "midia", rotulo: "Mídia", icone: "materiais", dica: "As fotos e os clipes deste imóvel" },
+  { id: "midia", rotulo: "Mídia", icone: "materiais", dica: "Fotos do imóvel e arquivos do seu aparelho" },
+  { id: "videos", rotulo: "Vídeos", icone: "video", dica: "Seus vídeos prontos: toque pra pôr na linha do tempo" },
   { id: "modelos", rotulo: "Modelos", icone: "lote", dica: "Um ponto de partida por tipo de imóvel" },
   { id: "audio", rotulo: "Áudio", icone: "som", dica: "Músicas e efeitos sonoros, com prévia" },
   { id: "texto", rotulo: "Texto", icone: "editar_prompt", dica: "Modelos de texto e efeitos de entrada" },
   { id: "elementos", rotulo: "Elementos", icone: "elementos", dica: "Ficha do imóvel, selos, setas, molduras e contato" },
-  { id: "legendas", rotulo: "Legendas", icone: "compartilhar", dica: "Narração e legenda automática" },
+  { id: "legendas", rotulo: "Legendas", icone: "legenda", dica: "Narração e legenda automática" },
   { id: "transicoes", rotulo: "Transições", icone: "converter_hd", dica: "Como uma cena vira a outra" },
   { id: "voce", rotulo: "Você", icone: "equipe", dica: "Você no vídeo: aparecendo, ou só a sua voz" },
   { id: "cor", rotulo: "Filtros", icone: "magica", dica: "Filtros e ajustes de luz e cor, vendo na foto" },
-  { id: "formato", rotulo: "Formato", icone: "planta", dica: "Reels, feed, quadrado ou horizontal" },
-  { id: "marca", rotulo: "Marca", icone: "marca", dica: "Logo, cor e contato que entram no vídeo" },
-  { id: "videos", rotulo: "Vídeos", icone: "historico", dica: "Os vídeos que você já fez" },
+  { id: "ajustes", rotulo: "Ajustes", icone: "configuracoes", dica: "Formato, título, capa, tela final e marca" },
 ] as const;
 
 type AbaId = (typeof ABAS)[number]["id"];
 
 /** A proporção de cada formato, pro palco mostrar o quadro certo. */
 const PROPORCAO: Record<FormatoId, string> = { "9:16": "9 / 16", "16:9": "16 / 9", "1:1": "1 / 1", "4:5": "4 / 5" };
-/** Altura do quadro por unidade de largura (o inverso da proporção), pro palco caber no computador. */
-const ALTO_POR_LARGO: Record<FormatoId, number> = { "9:16": 16 / 9, "16:9": 9 / 16, "1:1": 1, "4:5": 5 / 4 };
 const PROPORCAO_NUM: Record<FormatoId, number> = { "9:16": 9 / 16, "16:9": 16 / 9, "1:1": 1, "4:5": 4 / 5 };
 
-function dataCurta(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+/**
+ * Um pedaço do palco que precisa do segundo exato ENQUANTO toca (legenda, Você): ele assina o
+ * relógio e redesenha sozinho, sem o editor inteiro redesenhar junto.
+ */
+function AoVivo({ relogio, tempo, tocando, children }: { relogio: RelogioDaPrevia; tempo: number; tocando: boolean; children: (t: number) => React.ReactNode }) {
+  const t = useTempoAoVivo(relogio, tempo, tocando);
+  return <>{children(t)}</>;
 }
 
 /**
@@ -418,7 +472,23 @@ export default function EditorDeVideo() {
   const [escrevendo, setEscrevendo] = useState(false);
   const [enviando, setEnviando] = useState(0);
   /** Aba aberta na trilha de ferramentas. Uma de cada vez, como em qualquer editor. */
-  const [aba, setAba] = useState<AbaId>("midia");
+  const [aba, setAbaCrua] = useState<AbaId>("midia");
+  /** O painel da ferramenta está à vista (computador: a coluna; celular: a folha). */
+  const [painelAberto, setPainelAberto] = useState(() => !(typeof window !== "undefined" && window.matchMedia("(max-width: 767.98px)").matches));
+  /** Celular: a folha mostra os ajustes da cena, em vez de uma ferramenta. */
+  const [inspetorNaFolha, setInspetorNaFolha] = useState(false);
+  /** Ir pra uma aba sempre MOSTRA o painel dela (quem chama quer que a pessoa veja). */
+  const setAba = useCallback((a: AbaId) => {
+    setAbaCrua(a);
+    setPainelAberto(true);
+    setInspetorNaFolha(false);
+  }, []);
+  /** Vídeos da lista sendo buscados pra entrar na linha do tempo. */
+  const [videosEntrando, setVideosEntrando] = useState<Set<string>>(() => new Set());
+  /** Clipes enviados do aparelho nesta sessão: dá pra pôr de novo sem enviar de novo. */
+  const [enviados, setEnviados] = useState<{ chave: string; arquivo: string; url: string; miniatura: string | null; duracao: number; nome: string }[]>([]);
+  /** Depois de pôr uma cena: o cursor vai até ela (o palco mostra o que entrou). */
+  const [irPara, setIrPara] = useState<string | null>(null);
   // Texto escolhido na aba Texto ANTES de existir foto. Ele pediu que as opções de texto
   // aparecessem "independente de ter imagem": a galeria fica sempre à vista, e o texto
   // tocado sem cena espera aqui e entra na primeira cena que aparecer.
@@ -430,8 +500,6 @@ export default function EditorDeVideo() {
   const [textoEmDigitacao, setTextoEmDigitacao] = useState<string>("");
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const palcoRef = useRef<HTMLDivElement | null>(null);
-  /** Se o painel desta aba aparece agora: um de cada vez, escolhido na trilha. */
-  const mostrarAba = (id: AbaId) => aba === id;
   /** Onde o cabeçote está, em segundos (100ms de folga; o quadro a quadro vem do relógio da prévia). */
   const [tempo, setTempo] = useState(0);
   /** Zoom da linha do tempo, em pixels por segundo. */
@@ -594,6 +662,9 @@ export default function EditorDeVideo() {
     if (m.abrir) setUltimaFaixa(m.abrir);
     if (m.aviso) avisar(m.aviso, { desfazer: () => historico.desfazer() });
     resumoEdicao.registrarEdicao("musica", "botao");
+    // No celular a folha desce: a música aparece selecionada na linha do tempo, com a barra
+    // de cortar à mão (como no CapCut, que volta pra linha depois de "Usar").
+    if (celular && m.abrir) setPainelAberto(false);
   }
 
   function aplicarTemplate(t: TemplateVideo) {
@@ -609,21 +680,15 @@ export default function EditorDeVideo() {
       atuais.map((s, i) => {
         const c = novo.cenas[i];
         if (!c) return s;
-        return { ...s, efeito: c.efeito ?? s.efeito, duracao: c.duracao ?? s.duracao, textos: c.textos, legenda: "", transicao: undefined, filtro: undefined, luz: undefined };
+        // Partes seguidas do mesmo vídeo não mudam de duração nem de emenda: é o que as mantém
+        // emendando sem soluço (lib/clipes-do-editor.ts).
+        const parte = continuaNaProxima(atuais, i) || (i > 0 && continuaNaProxima(atuais, i - 1));
+        return { ...s, efeito: c.efeito ?? s.efeito, duracao: parte ? s.duracao : c.duracao ?? s.duracao, textos: c.textos, legenda: "", transicao: continuaNaProxima(atuais, i) ? s.transicao : undefined, filtro: undefined, luz: undefined };
       })
     );
     setTemplateAberto(null);
   }
 
-  const resumoDosAjustes = [
-    FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato,
-    MUSICAS.find((m) => m.id === musica)?.rotulo ?? musica,
-    TRANSICOES.find((t) => t.id === transicao)?.rotulo ?? transicao,
-    titulo ? `“${titulo}”` : null,
-    espec.narracao ? (vozDeIA(espec.narracao) ? `narrado (${VOZES.find((v) => v.id === voz)?.rotulo ?? voz})` : "com a sua voz") : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   // Cena animada reaberta de um vídeo pronto, com o mesmo movimento e duração: o clipe já
   // existe e o servidor não cobra (ele confere por conta própria; isto só mostra a conta).
@@ -793,12 +858,16 @@ export default function EditorDeVideo() {
    */
   function adicionarGeracao(g: Geracao, antes?: string) {
     if (cenas.length >= LIMITES.cenasMax) {
-      setErro(`No máximo ${LIMITES.cenasMax} cenas por vídeo.`);
+      avisar(`No máximo ${LIMITES.cenasMax} cenas por vídeo`);
       return;
     }
+    const k = chave();
+    historico.novoPasso();
+    setIrPara(k);
+    avisar(antes ? "Foto posta no lugar" : "Foto adicionada no fim", { desfazer: () => historico.desfazer() });
     setCenas((lista) => {
       const nova: CenaUI = {
-        chave: chave(),
+        chave: k,
         tipo: "foto",
         jobId: g.id,
         miniatura: g.depois,
@@ -840,7 +909,9 @@ export default function EditorDeVideo() {
           .filter(Boolean)
           .join(" ")
       );
+    let vagas = cabem;
     for (const f of midias) {
+      if (vagas <= 0) break;
       setEnviando((n) => n + 1);
       try {
         const r = await fetch("/api/video/upload", {
@@ -853,9 +924,19 @@ export default function EditorDeVideo() {
         const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, f, { contentType: f.type });
         if (error) throw new Error(error.message);
         const ehVideo = !!d.ehVideo;
-        const formato = ehVideo ? "comum" : await formatoDaFoto(f);
+        if (ehVideo) {
+          // Clipe: com a duração e a imagem de verdade, em partes de até 8s se for longo.
+          const local = await lerVideoLocal(f);
+          const nome = f.name.replace(/\.[^.]+$/, "");
+          setEnviados((l) => [{ chave: chave(), arquivo: d.caminho, url: local.url, miniatura: local.miniatura, duracao: local.duracao, nome }, ...l]);
+          const n = inserirClipe({ arquivo: d.caminho, url: local.url, miniatura: local.miniatura, duracao: local.duracao, nome }, vagas);
+          vagas -= n;
+          continue;
+        }
+        const formato = await formatoDaFoto(f);
         const eh360 = formato === "esferica";
         const ehPanoramica = formato === "panoramica";
+        vagas -= 1;
         setCenas((lista) => [
           ...lista,
           {
@@ -1194,6 +1275,14 @@ export default function EditorDeVideo() {
         arrastando.current = null;
         return;
       }
+      const videoId = ev.dataTransfer?.getData("text/encena-video");
+      if (videoId) {
+        ev.preventDefault();
+        const v = (videos ?? []).find((x) => x.id === videoId);
+        if (v) adicionarVideoPronto(v, alvo === "fim" ? undefined : alvo);
+        arrastando.current = null;
+        return;
+      }
       const jobId = ev.dataTransfer?.getData("text/encena-foto");
       if (jobId) {
         ev.preventDefault();
@@ -1218,6 +1307,102 @@ export default function EditorDeVideo() {
     });
   }
 
+  /**
+   * Um arquivo de vídeo entrando na linha do tempo como clipe: em partes de até 8s que
+   * emendam sem soluço (lib/clipes-do-editor.ts), no fim ou antes da cena `antes`. Devolve
+   * quantas cenas entraram. O cursor vai até a primeira, e o aviso diz o que aconteceu.
+   */
+  function inserirClipe(c: { arquivo: string; url: string | null; miniatura: string | null; duracao: number; nome: string }, vagas: number, antes?: string): number {
+    const { partes, sobrou } = partesDoClipe(c.duracao || LIMITES.duracaoPadrao, vagas);
+    if (!partes.length) {
+      avisar(`No máximo ${LIMITES.cenasMax} cenas por vídeo`);
+      return 0;
+    }
+    const novas: CenaUI[] = partes.map((pt, i) => ({
+      chave: chave(),
+      tipo: "clipe",
+      arquivo: c.arquivo,
+      miniatura: c.miniatura,
+      videoUrl: c.url,
+      duracaoArquivo: c.duracao || undefined,
+      rotulo: partes.length > 1 ? `${c.nome} · parte ${i + 1} de ${partes.length}` : c.nome,
+      temAntes: false,
+      ehClipe: true,
+      eh360: false,
+      efeito: "aproximar",
+      animacao: "caminhar",
+      movimento: "olhar_volta",
+      legenda: "",
+      duracao: pt.duracao,
+      inicio: pt.inicio > 0 ? pt.inicio : undefined,
+      transicao: pt.transicao,
+      melhorar: false,
+    }));
+    historico.novoPasso();
+    setCenas((lista) => {
+      const i = antes ? lista.findIndex((s) => s.chave === antes) : -1;
+      if (i < 0) return [...lista, ...novas];
+      return [...lista.slice(0, i), ...novas, ...lista.slice(i)];
+    });
+    setIrPara(novas[0].chave);
+    resumoEdicao.registrarEdicao("cenas", "botao");
+    const extra = sobrou >= 1 ? ` · ${Math.round(sobrou)}s ficaram de fora (limite de ${LIMITES.cenasMax} cenas)` : "";
+    avisar(partes.length > 1 ? `Vídeo adicionado em ${partes.length} partes${extra}` : `Vídeo adicionado${extra}`, { desfazer: () => historico.desfazer(), ms: 5000 });
+    return partes.length;
+  }
+
+  /** Um vídeo que a pessoa já fez, da aba Vídeos, entrando como clipe. */
+  async function adicionarVideoPronto(v: VideoResumo | VideoDaLista, antes?: string) {
+    if (gerando || videosEntrando.has(v.id)) return;
+    const vagas = LIMITES.cenasMax - cenas.length;
+    if (vagas <= 0) {
+      avisar(`No máximo ${LIMITES.cenasMax} cenas por vídeo`);
+      return;
+    }
+    setVideosEntrando((s) => new Set(s).add(v.id));
+    try {
+      const rr = await fetch(`/api/video/${v.id}`, { headers: { Authorization: `Bearer ${await token()}` } });
+      const dd = await rr.json();
+      if (!rr.ok || dd.status !== "concluido" || !dd.arquivo) throw new Error(dd.error ?? "Esse vídeo ainda não está pronto.");
+      // A miniatura da lista primeiro: ela já está carregada na tela (a do servidor é outro
+      // link assinado, e o bloco ficava escuro até baixar de novo).
+      inserirClipe({ arquivo: dd.arquivo, url: dd.url ?? null, miniatura: v.miniatura ?? dd.miniatura ?? null, duracao: Number(dd.duracao ?? v.duracao) || LIMITES.duracaoPadrao, nome: v.titulo || "Vídeo" }, vagas, antes);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : "Não consegui pôr esse vídeo na linha do tempo");
+    } finally {
+      setVideosEntrando((s) => {
+        const n = new Set(s);
+        n.delete(v.id);
+        return n;
+      });
+    }
+  }
+
+  /** O "⋯" de um vídeo da lista: pôr na linha, assistir, reabrir o projeto, apagar. */
+  function abrirMaisDoVideo(v: VideoDaLista, x: number, y: number) {
+    const pronto = v.status === "concluido";
+    menu.abrir(x, y, [
+      { rotulo: "Pôr na linha do tempo", icone: "mais", desligado: !pronto || gerando, aoEscolher: () => adicionarVideoPronto(v) },
+      { rotulo: "Assistir", icone: "play", desligado: !pronto, aoEscolher: () => abrirVideo(v as VideoResumo) },
+      { rotulo: "Editar este projeto", icone: "editar_prompt", dica: "Troca o que está no editor pelas cenas dele (dá pra desfazer)", desligado: !pronto || gerando, aoEscolher: () => editarVideo(v.id) },
+      { divisor: true },
+      {
+        rotulo: "Apagar vídeo…",
+        icone: "lixeira",
+        perigo: true,
+        aoEscolher: () =>
+          setTimeout(
+            () =>
+              menu.abrir(x, y, [
+                { rotulo: "Apagar de vez", icone: "lixeira", perigo: true, dica: "Sai o arquivo e a miniatura. As fotos continuam em Materiais.", aoEscolher: () => apagarVideo(v.id) },
+                { rotulo: "Cancelar", icone: "fechar" },
+              ]),
+            0
+          ),
+      },
+    ]);
+  }
+
   async function escreverRoteiro() {
     setEscrevendo(true);
     setErro(null);
@@ -1239,11 +1424,18 @@ export default function EditorDeVideo() {
   }
 
   // O resumo da edição vai junto com o pedido (lib/resumo-edicao.ts). Celular = layout max-md.
-  const [celular, setCelular] = useState(false);
+  // Acompanha a tela (girar o celular, redimensionar a janela), não só a do primeiro instante.
+  const celular = useMidia("(max-width: 767.98px)");
+  /** Tela larga: os ajustes da cena ganham uma coluna à direita do palco. */
+  const largo = useMidia("(min-width: 1200px)");
+  // No celular o editor abre com a folha fechada (o palco e a linha do tempo à vista); virar
+  // a tela ou redimensionar a janela entre os dois tamanhos também troca.
+  const celularAntes = useRef(celular);
   useEffect(() => {
-    const m = window.matchMedia("(max-width: 767.98px)").matches;
-    Promise.resolve().then(() => setCelular(m));
-  }, []);
+    if (celularAntes.current === celular) return;
+    celularAntes.current = celular;
+    Promise.resolve().then(() => setPainelAberto(!celular));
+  }, [celular]);
   const resumoEdicao = useResumoEdicao(celular);
 
   /**
@@ -1295,7 +1487,7 @@ export default function EditorDeVideo() {
         }
         tropecos = 0;
         if (dd.status === "concluido" && dd.url) {
-          setResultado({ videoId: id, url: dd.url, miniatura: dd.miniatura ?? null, duracao: dd.duracao ?? null, avisos: dd.avisos ?? [], formato: dd.formato ?? formato });
+          setResultado({ videoId: id, url: dd.url, miniatura: dd.miniatura ?? null, duracao: dd.duracao ?? null, avisos: dd.avisos ?? [], formato: dd.formato ?? formato, titulo: titulo || undefined, doEditor: true });
           setProgresso(null);
           carregarVideos().then(setVideos).catch(() => {});
           return;
@@ -1318,9 +1510,8 @@ export default function EditorDeVideo() {
     const rr = await fetch(`/api/video/${v.id}`, { headers: { Authorization: `Bearer ${await token()}` } });
     const dd = await rr.json();
     if (rr.ok && dd.status === "concluido") {
-      setResultado({ videoId: v.id, url: dd.url, miniatura: dd.miniatura, duracao: dd.duracao, avisos: dd.avisos ?? [], formato: dd.formato });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+      setResultado({ videoId: v.id, url: dd.url, miniatura: dd.miniatura, duracao: dd.duracao, avisos: dd.avisos ?? [], formato: dd.formato, titulo: v.titulo });
+    } else avisar(dd.error ?? "Não consegui abrir esse vídeo agora");
   }
 
   /**
@@ -1336,6 +1527,8 @@ export default function EditorDeVideo() {
       if (!rr.ok || dd.status !== "concluido" || !dd.espec) throw new Error(dd.error ?? "Esse vídeo ainda não pode ser editado.");
       const e = dd.espec as EspecVideo;
       const novas = cenasDoEspec(e, (dd.edicao?.cenas ?? []) as EdicaoCena[]);
+      // Trocar o que está no editor pelo projeto reaberto é um passo de desfazer como outro.
+      historico.novoPasso();
       setImovelId(dd.edicao?.imovelId ?? null);
       setCenas(novas);
       setFormato(e.formato);
@@ -1367,7 +1560,7 @@ export default function EditorDeVideo() {
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
       setResultado(null);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      avisar("Projeto reaberto: gerar cria um vídeo novo", { desfazer: () => historico.desfazer() });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não consegui abrir o vídeo pra editar.");
     }
@@ -1457,16 +1650,27 @@ export default function EditorDeVideo() {
   useEffect(() => {
     prepararPrevia([...itensPrevia.map((i) => i.fonte), ...marcasPrevia.map((m) => m.fonte)]);
   }, [prepararPrevia, itensPrevia, marcasPrevia]);
-  // O tempo da tela anda com o relógio da prévia, de 100 em 100ms (o quadro a quadro é da linha).
+  // O tempo da tela e o relógio da prévia. TOCANDO, o editor só redesenha quando a CENA no ar
+  // muda: o cursor da linha anda sozinho (usar-rolagem.ts), e quem precisa do segundo exato
+  // (o relógio da barra, a legenda e o Você no palco) assina o relógio por conta própria
+  // (usar-tempo-ao-vivo.ts). Antes o editor inteiro redesenhava a cada 100ms enquanto tocava.
+  // Parado (busca, pausa, fim), todo instante vale.
   useEffect(() => {
-    let ultimo = 0;
+    let cenaNoAr = -2;
     return relogioDaPrevia.assinar((t) => {
-      const agora = performance.now();
-      if (agora - ultimo < 100) return;
-      ultimo = agora;
-      setTempo(Math.round(t * 100) / 100);
+      const r = Math.round(t * 100) / 100;
+      if (!relogioDaPrevia.tocando?.()) {
+        cenaNoAr = -2;
+        setTempo(r);
+        return;
+      }
+      let i = -1;
+      for (let k = 0; k < iniciosDasCenas.length; k++) if (t >= iniciosDasCenas[k]) i = k;
+      if (i === cenaNoAr) return;
+      cenaNoAr = i;
+      setTempo(r);
     });
-  }, [relogioDaPrevia]);
+  }, [relogioDaPrevia, iniciosDasCenas]);
   // A forma de onda de cada música (gerada no build: public/musica/picos.json).
   useEffect(() => {
     let vivo = true;
@@ -1516,6 +1720,19 @@ export default function EditorDeVideo() {
     [estadoLinha, medidas]
   );
   const historico = useHistorico(docEdicao, restaurar);
+  // Depois de pôr uma cena (foto, vídeo), o cursor vai até ela: o palco mostra o que entrou.
+  useEffect(() => {
+    if (!irPara) return;
+    const i = cenas.findIndex((s) => s.chave === irPara);
+    if (i < 0 || iniciosDasCenas[i] === undefined) return;
+    const t = Math.round((iniciosDasCenas[i] + 0.05) * 100) / 100;
+    Promise.resolve().then(() => {
+      setIrPara(null);
+      previa.buscar(t);
+      setTempo(t);
+    });
+  }, [irPara, cenas, iniciosDasCenas, previa]);
+
   // Só em desenvolvimento: os testes de navegador leem o pedido que SERIA mandado, sem gerar.
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -1947,6 +2164,10 @@ export default function EditorDeVideo() {
   /** O botão da barra da seleção (ou o item do menu) com o nome `id`, sobre o item `ref`. */
   function executarAcao(id: string, ref: RefItem | null = selecao) {
     if (!ref) return;
+    if (id === "ajustes_cena") {
+      setInspetorNaFolha(true);
+      return;
+    }
     const t = tempo;
     const f = ref.faixa;
     // --- sub-barras: abrem (ou fecham) presas ao item ---
@@ -1980,7 +2201,7 @@ export default function EditorDeVideo() {
     if (id === "apagar") {
       const r = apagarDaLinha(ctxLinha, ref);
       const extra = r.legendasApagadas && f === "voz" ? ` · ${r.legendasApagadas} legenda${r.legendasApagadas > 1 ? "s" : ""} junto` : "";
-      const nome = f === "musica" ? "Música apagada" : f === "voz" ? `Voz apagada${extra}${r.narracaoDesligada ? " · narração desligada" : ""}` : f === "voce" ? "Você tirado" : f === "legendas" ? "Legenda apagada" : f === "cenas" ? "Foto apagada" : "Apagado";
+      const nome = f === "musica" ? "Música apagada" : f === "voz" ? `Voz apagada${extra}${r.narracaoDesligada ? " · narração desligada" : ""}` : f === "voce" ? "Você tirado" : f === "legendas" ? "Legenda apagada" : f === "cenas" ? "Cena apagada" : "Apagado";
       if (f === "cenas") return naCena(() => remover(ref.chave), nome);
       if (f === "telaFinal") return naCena(() => setTelaFinal(false), "Tela final tirada");
       return void aplicarLinha({ ...r, mudou: true }, ref, nome);
@@ -2011,16 +2232,16 @@ export default function EditorDeVideo() {
     }
     if (f === "cenas") {
       const k = ref.chave;
-      if (id === "dividir") return naCena(() => dividirNoCabecote(k), "Foto dividida");
+      if (id === "dividir") return naCena(() => dividirNoCabecote(k), "Cena dividida");
       if (id === "aparar_inicio") return naCena(() => apararNoCabecote(k, "inicio"), "Início aparado");
       if (id === "aparar_fim") return naCena(() => apararNoCabecote(k, "fim"), "Fim aparado");
       if (id === "girar") return naCena(() => girarCena(k));
       if (id === "espelhar") return naCena(() => espelharCena(k));
       if (id === "congelar") return naCena(() => congelarCena(k));
-      if (id === "duplicar") return naCena(() => duplicar(k), "Foto duplicada");
+      if (id === "duplicar") return naCena(() => duplicar(k), "Cena duplicada");
       if (id === "mover_esq") return naCena(() => mover(k, -1));
       if (id === "mover_dir") return naCena(() => mover(k, 1));
-      if (id === "capa") return naCena(() => setCapa(k), "Esta foto é a capa");
+      if (id === "capa") return naCena(() => setCapa(k), "Esta cena virou a capa");
     }
   }
 
@@ -2029,7 +2250,7 @@ export default function EditorDeVideo() {
     const n = (chave: string) => cenas.findIndex((x) => x.chave === chave) + 1;
     switch (r.faixa) {
       case "cenas":
-        return `Foto ${n(r.chave)}`;
+        return `${cenas.find((x) => x.chave === r.chave)?.ehClipe ? "Vídeo" : "Foto"} ${n(r.chave)}`;
       case "musica": {
         const a = audios.find((x) => x.id === r.id);
         return `Música · ${a && a.fonte.tipo === "musica" ? (MUSICAS.find((m) => m.id === (a.fonte as { id: MusicaId }).id)?.rotulo ?? "") : ""}`;
@@ -2178,14 +2399,21 @@ export default function EditorDeVideo() {
     if (!raizEditor) return;
     const linha = raizEditor.querySelector<HTMLElement>('[data-area="linha"]');
     const palco = raizEditor.querySelector<HTMLElement>("[data-palco]");
-    const ro = new ResizeObserver(() => {
-      if (linha) raizEditor.style.setProperty("--altura-linha", `${linha.offsetHeight}px`);
+    const medir = () => {
+      if (linha) {
+        raizEditor.style.setProperty("--altura-linha", `${linha.offsetHeight}px`);
+        // Do pé da tela até o topo da linha do tempo (no celular inclui a fileira de
+        // ferramentas): os avisos e a lista da foto abrem logo ACIMA disso.
+        raizEditor.style.setProperty("--acima-da-linha", `${Math.max(0, window.innerHeight - linha.getBoundingClientRect().top)}px`);
+      }
       if (palco) setAlturaPalco(palco.offsetHeight);
-    });
+    };
+    const ro = new ResizeObserver(medir);
     if (linha) ro.observe(linha);
     if (palco) ro.observe(palco);
+    ro.observe(raizEditor);
     return () => ro.disconnect();
-  }, [raizEditor, cenas.length]);
+  }, [raizEditor, cenas.length, celular, painelAberto, largo]);
 
   /**
    * Que cena está no ar no segundo do cabeçote.
@@ -2200,7 +2428,7 @@ export default function EditorDeVideo() {
     return i;
   }, [tempo, iniciosDasCenas]);
 
-  if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
+  if (c.checando) return <main className="editor-escuro fixed inset-0 z-30 grid place-items-center text-sm text-[var(--ed-texto-2)]">Abrindo o editor…</main>;
   if (!c.user || !c.conta) {
     return (
       <main className="p-12">
@@ -2209,127 +2437,137 @@ export default function EditorDeVideo() {
     );
   }
 
-  const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
-  // A cena aberta no painel. Sem escolha, é a primeira: editor sem nada selecionado é
-  // uma tela que não responde ao que a pessoa clica.
-  // Tocando, manda o tempo; parado, manda a seleção (se ela for de uma foto); sem seleção, o cursor.
+  // A cena aberta no palco e nos ajustes. Tocando, manda o tempo; parado, manda a seleção
+  // (se ela for de uma foto); sem seleção, o cursor. Editor sem nada escolhido é uma tela
+  // que não responde ao que a pessoa clica.
   const chaveDaSelecao = selecao && (selecao.faixa === "cenas" || selecao.faixa === "textos" || selecao.faixa === "adesivos") ? selecao.chave : null;
   const indiceSelecionado = chaveDaSelecao ? cenas.findIndex((s) => s.chave === chaveDaSelecao) : -1;
   const indiceAtual = tocando || indiceSelecionado < 0 ? indiceDoCabecote : indiceSelecionado;
   const cenaAtual: CenaUI | null = cenas[indiceAtual] ?? null;
   const semSaldo = (c.conta.creditos ?? 0) < custo;
-  const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
+  const nomeDaAba = ABAS.find((a) => a.id === aba)?.rotulo ?? "";
+  const proporcao = PROPORCAO_NUM[formato];
+  const nomeDoFormato = FORMATOS.find((f) => f.id === formato)?.rotulo ?? formato;
+  // Quantas vezes cada vídeo pronto já entrou na linha (a primeira parte de cada entrada).
+  const usadosPorVideo: Record<string, number> = {};
+  for (const s of cenas) {
+    const m = s.arquivo?.match(/\/videos\/([0-9a-f-]{36})\.mp4$/);
+    if (m && !s.inicio) usadosPorVideo[m[1]] = (usadosPorVideo[m[1]] ?? 0) + 1;
+  }
+  const podeGerar = !gerando && cenas.length > 0 && !semSaldo && enviando === 0;
+  const motivoNaoGerar = cenas.length === 0 ? "Ponha pelo menos uma foto ou vídeo na linha do tempo" : semSaldo ? "Faltam créditos pra este vídeo" : enviando > 0 ? "Esperando os arquivos terminarem de subir" : undefined;
+  const metaDoCabecalho = `${cenas.length} ${cenas.length === 1 ? "cena" : "cenas"} · ${Math.round(duracao)} s · ${nomeDoFormato}`;
 
-  // ---------- O EDITOR É UM APLICATIVO, NÃO UMA PÁGINA ----------
-  //
-  // Tela inteira, sem o cabeçalho nem o menu do site. Não é enfeite: numa página do site
-  // sobravam 300px de altura pro palco depois do menu, do título e das margens, e a linha
-  // do tempo caía abaixo da dobra. A pessoa abria o editor e via um retângulo preto sem
-  // nenhuma ferramenta à vista. A saída é pela seta no canto.
-  return (
-    <div
-      ref={setRaizEditor}
-      className="editor-escuro fixed inset-0 z-30 flex flex-col"
-      style={
-        {
-          "--altura-fileira": selecao && celular ? "44px" : "68.5px",
-          "--painel-min": todasAbertas ? "0px" : "96px",
-          "--altura-palco": "min(39svh, calc(100svh - 57px - var(--altura-fileira) - var(--altura-linha, 198px) - var(--painel-min)))",
-        } as React.CSSProperties
-      }
-    >
-      {/* ---------- barra do editor ---------- */}
-      <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-3 py-2">
-        <Link href="/editor" title="Sair do editor" className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100">
-          <Icone nome="cima" className="h-4 w-4 -rotate-90" />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold">{editandoDe?.titulo || titulo || "Vídeo do imóvel"}</h1>
-          <p className="truncate text-[11px] text-neutral-500">
-            {cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s · {resumoDosAjustes}
-            {custo === 0 ? " · sem crédito" : ` · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
-          </p>
-        </div>
-        <span className="hidden shrink-0 text-xs text-neutral-500 sm:inline">{c.conta.creditos ?? "…"} cr.</span>
-        <Botao onClick={() => gerar()} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="shrink-0 px-3 py-2">
-          <Icone nome="play" className="h-4 w-4" />
-          {gerando ? progresso?.mensagem ?? "Gerando…" : "Gerar vídeo"}
-        </Botao>
-      </header>
+  /** Tocar numa ferramenta abre o painel dela; tocar de novo na aberta fecha. */
+  function escolherFerramenta(id: string) {
+    const a = id as AbaId;
+    if (aba === a && painelAberto && !inspetorNaFolha) setPainelAberto(false);
+    else setAba(a);
+  }
 
-      {/* ---------- miolo: trilha · painel · palco ---------- */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {/* ---------- trilha de ferramentas ---------- */}
-        {celular && selecao && (
-          <div className="order-2 shrink-0 border-t border-neutral-200 md:hidden">
-            <BarraDaSelecao
-              titulo={tituloDaSelecao(selecao)}
-              preso={selecao.faixa === "textos" || selecao.faixa === "adesivos"}
-              acoes={acoesDaSelecao(ctxLinha, selecao, tempo, gerando)}
-              aoAcao={(id) => executarAcao(id)}
-              aoFechar={() => setSelecao(null)}
-              aoMotivo={(t) => avisar(t)}
-              subBarra={subBarraDaSelecao()}
-            />
-          </div>
-        )}
-        <nav className={"order-2 flex shrink-0 gap-1 overflow-x-auto border-neutral-200 px-2 py-1 md:order-1 md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:px-1 md:py-2 " + (celular && selecao ? "max-md:hidden" : "")}>
-          {ABAS.map((a) => {
-            const ativa = aba === a.id;
-            return (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => setAba(a.id)}
-                title={a.dica}
-                aria-pressed={ativa}
-                className={
-                  "flex min-w-[64px] shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[11px] transition lg:w-full " +
-                  (ativa ? "bg-marca-indigo/10 text-marca-indigo" : "text-neutral-500 hover:bg-neutral-100")
-                }
-              >
-                <Icone nome={a.icone} className="h-5 w-5" />
-                {a.rotulo}
-              </button>
-            );
-          })}
-        </nav>
+  /** Trocar a transição do vídeo zera a de cada cena -- menos as emendas entre partes do mesmo vídeo. */
+  function transicaoDoVideo(t: TransicaoId) {
+    historico.novoPasso();
+    setTransicao(t);
+    setCenas((lista) => lista.map((s, i) => (continuaNaProxima(lista, i) ? s : { ...s, transicao: undefined })));
+  }
 
-        {/* ---------- painel da aba ---------- */}
-        <div className={"order-3 flex min-h-0 flex-col gap-3 overflow-y-auto border-neutral-200 p-3 max-md:flex-1 md:order-2 md:w-[300px] md:shrink-0 md:border-r lg:w-[340px] " + (todasAbertas ? "max-md:hidden" : "")}>
-          {mostrarAba("midia") && (
-          <Cartao>
-            <Rotulo>Mídia</Rotulo>
+  const gravandoLinha = (texto: string, parar: () => void) => (
+    <div className="flex items-center gap-3 rounded-2xl bg-[rgb(255_90_70/0.12)] p-3 ring-1 ring-inset ring-[rgb(255_90_70/0.3)]">
+      <span className="relative flex h-3 w-3 shrink-0">
+        <span className="absolute h-full w-full animate-ping rounded-full bg-red-500/60" />
+        <span className="relative h-3 w-3 rounded-full bg-red-500" />
+      </span>
+      <span className="min-w-0 flex-1 text-[14px] font-semibold tabular-nums text-[#ffb3a5]">{texto}</span>
+      <BotaoEd tamanho="p" onClick={parar}>
+        Parar
+      </BotaoEd>
+    </div>
+  );
+
+  // ================= O PAINEL DE CADA FERRAMENTA =================
+  // O mesmo conteúdo no computador (coluna à esquerda) e no celular (folha que sobe).
+  function painelDaAba(): React.ReactNode {
+    switch (aba) {
+      case "midia":
+        return (
+          <div className="flex flex-col gap-6">
             {textoPendente && (
-              <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-marca-coral/40 bg-marca-coral/10 px-2.5 py-2 text-xs text-neutral-700">
-                <span>
-                  Escolha a foto: o texto <strong>“{textoPendente.texto}”</strong> entra nela.
-                </span>
-                <button type="button" onClick={() => setTextoPendente(null)} className="shrink-0 text-[11px] text-neutral-500 underline">
+              <Nota>
+                Escolha a foto: o texto <strong className="font-semibold">“{textoPendente.texto}”</strong> entra nela.{" "}
+                <button type="button" onClick={() => setTextoPendente(null)} className="font-semibold underline">
                   Cancelar
                 </button>
-              </div>
+              </Nota>
             )}
-            <div className="flex flex-wrap items-center gap-3">
+            <Secao titulo="Imóvel">
               <SeletorImovel token={token} valor={imovelId} onChange={setImovelId} disabled={gerando} />
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400">
-                <Icone nome="mais" className="h-4 w-4" />
-                {enviando > 0 ? `Enviando ${enviando}…` : "Enviar fotos ou clipes"}
-                <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple className="hidden" onChange={(e) => enviarArquivos(e.target.files)} disabled={gerando} />
-              </label>
-            </div>
-            {imovelId && geracoes.length === 0 && <p className="mt-3 text-sm text-neutral-500">Este imóvel ainda não tem fotos prontas. Envie fotos ou edite algumas primeiro.</p>}
+            </Secao>
+            <label
+              data-enviar="1"
+              className={
+                "group flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-[var(--ed-linha-forte)] px-4 py-3.5 transition hover:border-[var(--ed-acento)] hover:bg-[var(--ed-acento-suave)] " +
+                (gerando ? "pointer-events-none opacity-50" : "")
+              }
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ed-elevado-2)] text-[var(--ed-texto)] transition group-hover:bg-[var(--ed-acento)] group-hover:text-white">
+                <Icone nome="mais" className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-semibold text-[var(--ed-texto)]">{enviando > 0 ? `Enviando ${enviando}…` : "Enviar fotos ou vídeos"}</span>
+                <span className="block text-[12px] text-[var(--ed-texto-2)]">Do computador ou do celular · JPG, PNG, MP4, MOV</span>
+              </span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  enviarArquivos(e.target.files);
+                  e.target.value = "";
+                }}
+                disabled={gerando}
+              />
+            </label>
+            {enviados.length > 0 && (
+              <Secao titulo="Vídeos enviados agora" descricao="Toque pra pôr de novo no fim da linha do tempo.">
+                <ul className="grid grid-cols-2 gap-2.5 max-md:grid-cols-3">
+                  {enviados.map((e) => (
+                    <li key={e.chave}>
+                      <button
+                        type="button"
+                        onClick={() => inserirClipe({ arquivo: e.arquivo, url: e.url, miniatura: e.miniatura, duracao: e.duracao, nome: e.nome }, LIMITES.cenasMax - cenas.length)}
+                        disabled={gerando}
+                        title={`${e.nome} · pôr no fim da linha do tempo`}
+                        className="group relative block aspect-[4/3] w-full overflow-hidden rounded-xl bg-[var(--ed-elevado)] ring-1 ring-inset ring-[var(--ed-linha)] transition hover:ring-2 hover:ring-[var(--ed-acento)]"
+                      >
+                        {e.miniatura ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={e.miniatura} alt="" className="h-full w-full object-cover" draggable={false} />
+                        ) : (
+                          <span className="grid h-full place-items-center text-[var(--ed-texto-3)]">
+                            <Icone nome="video" className="h-6 w-6" />
+                          </span>
+                        )}
+                        <span className="absolute right-1.5 bottom-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-white">{Math.round(e.duracao)}s</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Secao>
+            )}
+            {imovelId && geracoes.length === 0 && <Vazio icone="foto" titulo="Nenhuma foto pronta neste imóvel" texto="Envie fotos acima, ou edite algumas no Encena primeiro." />}
+            {!imovelId && geracoes.length === 0 && <Nota>Escolha um imóvel pra ver as fotos prontas dele, ou envie arquivos do aparelho.</Nota>}
             {geracoes.length > 0 && (
-              <>
-                <p className="mt-3 text-xs text-neutral-500">Toque numa foto pra adicionar como cena. Fotos com original guardada podem virar &quot;antes e depois&quot;.</p>
-                <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+              <Secao titulo="Fotos do imóvel" descricao={celular ? "Toque numa foto pra pôr no fim do vídeo." : "Clique pra pôr no fim, ou arraste pro ponto certo da linha do tempo."}>
+                <ul className="grid grid-cols-2 gap-2.5 max-md:grid-cols-3">
                   {geracoes.map((g) => {
-                    const usada = cenas.some((s) => s.jobId === g.id);
+                    const n = cenas.filter((s) => s.jobId === g.id).length;
                     return (
                       <li key={g.id}>
-                        {/* Arrastável: solta num ponto da linha do tempo e a foto entra
-                            ALI. Clicar continua mandando pro fim -- é o gesto de quem
-                            está montando na ordem, e não se perde por causa do arraste. */}
+                        {/* Arrastável: solta num ponto da linha do tempo e a foto entra ALI.
+                            Clicar continua mandando pro fim -- é o gesto de quem está montando
+                            na ordem, e não se perde por causa do arraste. */}
                         <button
                           type="button"
                           draggable={!gerando}
@@ -2339,77 +2577,84 @@ export default function EditorDeVideo() {
                           }}
                           onClick={() => adicionarGeracao(g)}
                           disabled={gerando}
-                          className={"relative block w-full overflow-hidden rounded-lg border-2 " + (usada ? "border-marca-coral" : "border-transparent hover:border-neutral-400")}
+                          className="group relative block aspect-[4/3] w-full overflow-hidden rounded-xl bg-[var(--ed-elevado)] ring-1 ring-inset ring-[var(--ed-linha)] transition hover:ring-2 hover:ring-[var(--ed-acento)] active:scale-[0.98]"
                           title={`${g.acao} · clique pra pôr no fim, arraste pra escolher o lugar`}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={g.depois ?? ""} alt="" className="aspect-[4/3] w-full object-cover" loading="lazy" />
-                          {usada && <span className="absolute top-1 right-1 rounded-full bg-marca-coral px-1.5 text-[10px] font-semibold text-white">{cenas.filter((s) => s.jobId === g.id).length}×</span>}
-                          {g.antes && <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 text-[10px] text-white">antes/depois</span>}
+                          <img src={g.depois ?? ""} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]" loading="lazy" draggable={false} />
+                          {n > 0 && <span className="absolute top-1.5 right-1.5 rounded-full bg-[var(--ed-acento)] px-1.5 py-0.5 text-[10.5px] font-bold text-white shadow">{n}×</span>}
+                          {g.antes && <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10.5px] font-medium text-white backdrop-blur-sm">antes/depois</span>}
+                          <span className="absolute inset-0 grid place-items-center bg-black/25 opacity-0 transition group-hover:opacity-100 max-md:hidden">
+                            <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--ed-acento)] text-white shadow-lg">
+                              <Icone nome="mais" className="h-5 w-5" />
+                            </span>
+                          </span>
                         </button>
                       </li>
                     );
                   })}
                 </ul>
-              </>
+              </Secao>
             )}
-          </Cartao>
-          )}
+          </div>
+        );
 
-          {mostrarAba("modelos") && (
-          <Cartao>
-            <Rotulo>Modelos</Rotulo>
-            <p className="-mt-1 mb-3 text-xs text-neutral-500">
-              Um ponto de partida por tipo de imóvel: ritmo, música, transição e os dados do imóvel já nas cenas. Depois é só ajustar.
+      case "videos":
+        return (
+          <div className="flex flex-col gap-4">
+            <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">
+              {celular ? "Toque num vídeo pra pôr no fim da linha do tempo." : "Clique num vídeo pra pôr no fim da linha do tempo, ou arraste pro ponto certo."} Vídeo longo entra em partes de até 8s, emendadas sem corte.
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <PainelVideos videos={videos as VideoDaLista[] | null} entrando={videosEntrando} usados={usadosPorVideo} gerando={gerando} aoAdicionar={(v) => adicionarVideoPronto(v)} aoMais={abrirMaisDoVideo} />
+          </div>
+        );
+
+      case "modelos":
+        return (
+          <div className="flex flex-col gap-5">
+            <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">Um ponto de partida por tipo de imóvel: ritmo, música, transição e os dados do imóvel já nas cenas. Depois é só ajustar.</p>
+            {cenas.length === 0 && <Nota tipo="atencao">Escolha as fotos primeiro — o modelo se aplica às cenas.</Nota>}
+            <div className="grid grid-cols-2 gap-2.5">
               {TEMPLATES_VIDEO.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={gerando || cenas.length === 0}
-                  onClick={() => setTemplateAberto((a) => (a?.id === t.id ? null : t))}
-                  className={
-                    "rounded-xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-40 " +
-                    (templateAberto?.id === t.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
-                  }
-                >
-                  <span className="font-medium">{t.nome}</span>
-                  <span className="block text-xs text-neutral-500">{t.para}</span>
-                </button>
+                <CartaoOpcao key={t.id} ativo={templateAberto?.id === t.id} disabled={gerando || cenas.length === 0} onClick={() => setTemplateAberto((a) => (a?.id === t.id ? null : t))} titulo={t.nome} descricao={t.para} />
               ))}
             </div>
-            {cenas.length === 0 && <p className="mt-2 text-xs text-neutral-500">Escolha as fotos primeiro — o modelo se aplica às cenas.</p>}
             {templateAberto && (
-              <div className="mt-3 rounded-xl border border-marca-indigo/30 bg-marca-indigo/5 p-3">
-                <p className="text-xs text-neutral-600">{templateAberto.descricao}</p>
-                <ul className="mt-2 space-y-1">
+              <div className="ed-subir flex flex-col gap-3 rounded-2xl bg-[var(--ed-elevado)] p-4 ring-1 ring-inset ring-[var(--ed-linha)]">
+                <p className="text-[14px] font-semibold text-[var(--ed-texto)]">{templateAberto.nome}</p>
+                <p className="-mt-1.5 text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">{templateAberto.descricao}</p>
+                <ul className="flex flex-col gap-1.5">
                   {mudancasDoTemplate(templateAberto, pecas).map((m) => (
-                    <li key={m} className="flex gap-1.5 text-xs text-neutral-700">
-                      <span className="text-marca-coral">•</span>
+                    <li key={m} className="flex gap-2 text-[12.5px] text-[var(--ed-texto)]">
+                      <Icone nome="check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--ed-acento)]" />
                       <span>{m}</span>
                     </li>
                   ))}
                 </ul>
-                {templateVaiApagarTexto(espec) && (
-                  <p className="mt-2 text-xs text-marca-coral">Os textos que você escreveu nas cenas vão ser trocados pelos do modelo.</p>
-                )}
-                <div className="mt-3 flex gap-2">
-                  <Botao onClick={() => aplicarTemplate(templateAberto)} className="px-3 py-1.5">
+                {templateVaiApagarTexto(espec) && <Nota tipo="atencao">Os textos que você escreveu nas cenas vão ser trocados pelos do modelo.</Nota>}
+                <div className="flex gap-2">
+                  <BotaoEd
+                    variante="primaria"
+                    onClick={() => {
+                      historico.novoPasso();
+                      aplicarTemplate(templateAberto);
+                      avisar("Modelo aplicado", { desfazer: () => historico.desfazer() });
+                    }}
+                  >
                     Aplicar modelo
-                  </Botao>
-                  <Botao variante="discreta" onClick={() => setTemplateAberto(null)} className="px-3 py-1.5">
+                  </BotaoEd>
+                  <BotaoEd variante="fantasma" onClick={() => setTemplateAberto(null)}>
                     Agora não
-                  </Botao>
+                  </BotaoEd>
                 </div>
               </div>
             )}
-          </Cartao>
-          )}
+          </div>
+        );
 
-          {mostrarAba("audio") && (
-          <Cartao>
-            <Rotulo>Música</Rotulo>
+      case "audio":
+        return (
+          <div className="flex flex-col gap-5">
             <BibliotecaAudio
               escolhida={selecao?.faixa === "musica" ? (() => { const a = audios.find((x) => x.id === selecao.id); return a && a.fonte.tipo === "musica" ? a.fonte.id : musica; })() : musica}
               aoEscolher={(id) => escolherMusicaDaBiblioteca(id)}
@@ -2419,381 +2664,42 @@ export default function EditorDeVideo() {
               desabilitado={gerando}
             />
             {musica !== "nenhuma" && (
-              <label className="mt-3 block text-xs text-neutral-600">
-                Volume da música · {Math.round((musicaDoPrimeiroTrecho?.volume ?? musicaVolume) * 100)}%
-                <input
-                  type="range"
+              <div className="flex flex-col gap-2 rounded-2xl bg-[var(--ed-elevado)] p-4">
+                <Deslizante
+                  rotulo="Volume da música"
+                  valor={musicaDoPrimeiroTrecho?.volume ?? musicaVolume}
                   min={0}
                   max={1}
-                  step={0.05}
-                  value={musicaDoPrimeiroTrecho?.volume ?? musicaVolume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
+                  passo={0.05}
+                  formatar={(v) => `${Math.round(v * 100)}%`}
+                  aoMudar={(v) => {
                     setMusicaVolume(v);
                     setAudios((l) => volumeDaMusica(l, v));
                   }}
-                  className="mt-1 w-full accent-marca-coral"
                 />
-                {espec.narracao && (
-                  <span className="mt-1 block text-[11px] text-neutral-500">
-                    Com voz no vídeo, a música abaixa sozinha enquanto você fala e volta no silêncio.
-                  </span>
-                )}
-              </label>
-            )}
-          </Cartao>
-          )}
-
-          {/* ---------- transições ----------
-               Cada cartão DESENHA o que a emenda faz: dois quadros e o jeito como um vira
-               o outro. "Dissolver" e "Deslizar" são palavras que só querem dizer alguma
-               coisa depois de ver -- e o vídeo inteiro muda de ritmo com essa escolha. */}
-          {mostrarAba("transicoes") && (
-          <Cartao>
-            <Rotulo>Transições</Rotulo>
-            <p className="-mt-1 mb-3 text-xs text-neutral-500">
-              Como uma cena vira a outra. Vale pro vídeo inteiro; uma cena pode sair da linha no painel dela.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {TRANSICOES.map((t) => {
-                const ativa = transicao === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    disabled={gerando}
-                    onClick={() => { setTransicao(t.id); setCenas((lista) => lista.map((s) => ({ ...s, transicao: undefined }))); }}
-                    title={`${t.rotulo} · ${t.segundos}s de emenda`}
-                    className={
-                      "overflow-hidden rounded-lg border-2 p-2 text-left transition disabled:opacity-40 " +
-                      (ativa ? "border-marca-coral" : "border-neutral-200 hover:border-neutral-400")
-                    }
-                  >
-                    <span className="flex h-9 items-center gap-0.5 overflow-hidden rounded bg-neutral-800">
-                      <span className="h-full flex-1 bg-marca-indigo/70" />
-                      <span
-                        className="h-full shrink-0 bg-gradient-to-r from-marca-indigo/70 to-marca-coral/80"
-                        style={{ width: t.id === "corte" ? 2 : t.id === "desfoque" ? 26 : 18, filter: t.id === "desfoque" ? "blur(3px)" : undefined }}
-                      />
-                      <span className="h-full flex-1 bg-marca-coral/80" />
-                    </span>
-                    <span className={"mt-1 block text-xs " + (ativa ? "text-marca-indigo" : "text-neutral-600")}>{t.rotulo}</span>
-                    <span className="block text-[10px] text-neutral-500">{t.segundos}s</span>
-                  </button>
-                );
-              })}
-            </div>
-          </Cartao>
-          )}
-
-          {mostrarAba("legendas") && (
-          <Cartao>
-            <Rotulo>Voz e legendas</Rotulo>
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
-              <input type="checkbox" checked={narrar} onChange={(e) => setNarrar(e.target.checked)} className="accent-marca-coral" />
-              Falar por cima do vídeo
-            </label>
-
-            {narrar && (
-              <div className="mt-3">
-                {/* Três origens, e só uma delas cobra. A voz da pessoa não passa por
-                    modelo nenhum -- é ffmpeg misturando o arquivo dela. */}
-                <div className="flex flex-wrap gap-2">
-                  <Chip ativo={origemVoz === "ia"} onClick={() => setOrigemVoz("ia")} title="A IA lê o texto que você escrever">
-                    Voz de IA (+{CREDITOS.narracao})
-                  </Chip>
-                  <Chip ativo={origemVoz === "gravada"} onClick={() => setOrigemVoz("gravada")} title="Grave aqui mesmo, pelo microfone. Não gasta crédito.">
-                    🎙 Gravar minha voz
-                  </Chip>
-                  <Chip ativo={origemVoz === "enviada"} onClick={() => setOrigemVoz("enviada")} title="MP3, M4A ou WAV que você já tem. Não gasta crédito.">
-                    Enviar áudio
-                  </Chip>
-                </div>
-
-                {origemVoz === "ia" ? (
-                  <div className="mt-3">
-                    <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={4} maxLength={LIMITES.roteiroMax} placeholder="Escreva o texto da narração ou peça pra IA escrever a partir do título, preço, local e legendas." className={campo + " resize-none"} />
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Botao variante="secundaria" onClick={escreverRoteiro} disabled={escrevendo || gerando} className="px-3 py-1.5 text-xs">
-                        <Icone nome="magica" className="h-4 w-4" />
-                        {escrevendo ? "Escrevendo…" : "Escrever com IA"}
-                      </Botao>
-                      <span className="text-xs text-neutral-500">{roteiro.length}/{LIMITES.roteiroMax}</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {VOZES.map((v) => (
-                        <Chip key={v.id} ativo={voz === v.id} onClick={() => setVoz(v.id)}>{v.rotulo} · {v.genero}</Chip>
-                      ))}
-                    </div>
-                    {roteiro.trim().length < 10 && <p className="mt-2 text-xs text-amber-700">Escreva pelo menos uma frase pra narração entrar.</p>}
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    {origemVoz === "gravada" ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        {gravando ? (
-                          <>
-                            <Botao variante="secundaria" onClick={pararGravacao} className="px-3 py-1.5 text-xs">
-                              ⏹ Parar
-                            </Botao>
-                            <span className="inline-flex items-center gap-1.5 text-sm tabular-nums text-red-600">
-                              <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
-                              {relogio(segundosGravando)}
-                            </span>
-                          </>
-                        ) : (
-                          <Botao variante="secundaria" onClick={gravarVoz} disabled={enviandoVoz || gerando} className="px-3 py-1.5 text-xs">
-                            🎙 {enviandoVoz ? "Guardando…" : vozArquivo ? "Gravar de novo" : "Gravar"}
-                          </Botao>
-                        )}
-                        {!gravando && !vozArquivo && <span className="text-xs text-neutral-500">O navegador vai pedir o microfone.</span>}
-                      </div>
-                    ) : (
-                      <label className={"inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400 " + (enviandoVoz ? "pointer-events-none opacity-50" : "")}>
-                        <Icone nome="mais" className="h-4 w-4" />
-                        {enviandoVoz ? "Enviando…" : vozArquivo ? "Trocar o áudio" : "Escolher áudio"}
-                        <input
-                          type="file"
-                          accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,.mp3,.m4a,.wav"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) usarAudio(f, f.name);
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
-                    )}
-
-                    {vozArquivo && (
-                      <div className="mt-2 rounded-lg border border-marca-coral/30 bg-marca-coral/5 p-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-semibold text-neutral-800">
-                            🎙 {vozArquivo.nome} (ativa na timeline)
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVozArquivo(null);
-                            }}
-                            className="text-[11px] text-neutral-500 hover:text-red-600 underline"
-                          >
-                            Desativar
-                          </button>
-                        </div>
-                        <audio src={vozArquivo.url} controls className="mt-1.5 h-8 w-full" />
-                      </div>
-                    )}
-
-                    {gravacoesVoz.length > 0 && (
-                      <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
-                        <p className="text-xs font-medium text-neutral-700">Minhas gravações de áudio ({gravacoesVoz.length})</p>
-                        <p className="text-[11px] text-neutral-500">Áudios gravados ou enviados para usar na timeline como narração:</p>
-                        <ul className="mt-2 space-y-2">
-                          {gravacoesVoz.map((g) => {
-                            const estaAtivo = vozArquivo?.caminho === g.caminho;
-                            return (
-                              <li key={g.id} className={"flex flex-col gap-1.5 rounded-lg border p-2 transition " + (estaAtivo ? "border-marca-coral bg-white shadow-sm" : "border-neutral-200 bg-white")}>
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate text-xs font-medium text-neutral-800">{g.nome}</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setVozArquivo({ caminho: g.caminho, url: g.url, nome: g.nome });
-                                        setNarrar(true);
-                                        const m = vozNova(audios);
-                                        historico.novoPasso();
-                                        setAudios(m.audios);
-                                        setSelecao(m.selecao);
-                                        setUltimaFaixa("voz");
-                                        if (m.aviso) avisar(m.aviso, { desfazer: () => historico.desfazer() });
-                                      }}
-                                      className={"min-h-10 rounded px-2 text-xs font-semibold transition sm:min-h-0 sm:py-0.5 " + (estaAtivo ? "bg-marca-coral text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")}
-                                    >
-                                      {estaAtivo ? "✓ Em uso" : "Usar esta"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        // Tirar da lista a que está EM USO tirava só da lista: ela
-                                        // continuava indo pro vídeo.
-                                        if (estaAtivo) setVozArquivo(null);
-                                        URL.revokeObjectURL(g.url);
-                                        setGravacoesVoz((lista) => lista.filter((item) => item.id !== g.id));
-                                      }}
-                                      className="flex min-h-10 min-w-10 items-center justify-center rounded text-neutral-400 hover:bg-red-50 hover:text-red-600 sm:min-h-0 sm:min-w-0 sm:p-1"
-                                      title="Tirar da lista"
-                                      aria-label={`Tirar ${g.nome} da lista`}
-                                    >
-                                      <Icone nome="lixeira" className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-                                <audio src={g.url} controls className="h-7 w-full" />
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    )}
-                    {!vozArquivo && gravacoesVoz.length === 0 && <p className="mt-2 text-xs text-amber-700">Sem áudio, o vídeo sai sem voz.</p>}
-                    {legendas && legendasDaVoz && vozArquivo && vozArquivo.caminho !== legendasDaVoz && (
-                      <p className="mt-2 text-xs text-amber-700">As legendas são da outra gravação: gere de novo pra acompanhar esta voz.</p>
-                    )}
-                  </div>
-                )}
-
-                {/* ---------- legendas ----------
-                     Reel de imóvel circula com o som desligado. As legendas saem do
-                     áudio da VOZ (nunca da música) e ficam editáveis: transcrição erra
-                     nome de bairro e de rua, que é o que o vídeo está anunciando. */}
-                {/* Três caminhos pra ter legenda, porque as pessoas chegam de três jeitos:
-                    quem gravou a voz aqui transcreve; quem já legendou noutro lugar traz o
-                    arquivo; e quem não tem voz nenhuma escreve na mão -- Reel de imóvel
-                    circula com o som desligado, então legenda sem voz também vale. */}
-                {!legendas && (
-                  <div className="mt-3 grid gap-1.5">
-                    <button
-                      type="button"
-                      onClick={gerarLegendas}
-                      disabled={!vozArquivo || transcrevendo}
-                      className="rounded-lg border border-neutral-200 p-2.5 text-left transition hover:border-marca-coral disabled:opacity-40"
-                    >
-                      <span className="flex items-center gap-1.5 text-sm font-medium">
-                        <Icone nome="magica" className="h-4 w-4" />
-                        Legendas automáticas
-                        <span className="rounded bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">Grátis</span>
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-neutral-500">
-                        {vozArquivo ? "Ouve a sua voz e escreve sozinho. Dá pra corrigir depois." : "Grave ou envie a voz aqui em cima primeiro."}
-                      </span>
-                    </button>
-
-                    <label className="cursor-pointer rounded-lg border border-neutral-200 p-2.5 transition hover:border-marca-coral">
-                      <span className="flex items-center gap-1.5 text-sm font-medium">
-                        <Icone nome="download" className="h-4 w-4" />
-                        Carregar arquivo de legenda
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-neutral-500">Formatos aceitos: .srt e .vtt</span>
-                      <input
-                        type="file"
-                        accept=".srt,.vtt,text/plain"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          if (!f) return;
-                          const lido = lerLegenda(await f.text());
-                          if (lido.trechos) setLegendas({ estilo: "faixa", trechos: lido.trechos });
-                          else setErro(lido.erro);
-                        }}
-                      />
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={() => setLegendas({ estilo: "faixa", trechos: [{ inicio: 0, fim: 3, texto: "" }] })}
-                      className="rounded-lg border border-neutral-200 p-2.5 text-left transition hover:border-marca-coral"
-                    >
-                      <span className="flex items-center gap-1.5 text-sm font-medium">
-                        <Icone nome="editar_prompt" className="h-4 w-4" />
-                        Escrever na mão
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-neutral-500">Você digita cada trecho e o tempo dele. Não precisa de voz.</span>
-                    </button>
-                  </div>
-                )}
-
-                <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-neutral-600">Legendas</span>
-                    {legendas ? (
-                      <button onClick={() => setLegendas(null)} className="text-xs text-neutral-500 underline">Tirar</button>
-                    ) : (
-                      <Botao variante="secundaria" onClick={gerarLegendas} disabled={!vozArquivo || transcrevendo} className="px-2.5 py-1 text-xs">
-                        <Icone nome="magica" className="h-3.5 w-3.5" />
-                        {transcrevendo ? "Ouvindo…" : "Gerar legendas"}
-                      </Botao>
-                    )}
-                  </div>
-
-                  {!vozArquivo && !legendas && (
-                    <p className="mt-1 text-[11px] text-neutral-500">
-                      {origemVoz === "ia"
-                        ? "Com voz de IA, gere o vídeo uma vez — depois, ao editar, as legendas saem da narração que ficou gravada."
-                        : "Grave ou envie o áudio primeiro: a legenda sai da fala."}
-                    </p>
-                  )}
-
-                  {legendas && (
-                    <>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {ESTILOS_LEGENDA.map((e) => (
-                          <Chip key={e.id} ativo={(legendas.estilo ?? "faixa") === e.id} onClick={() => setLegendas({ ...legendas, estilo: e.id })} title={e.dica}>
-                            {e.rotulo}
-                          </Chip>
-                        ))}
-                        <Chip ativo={(legendas.posicao ?? "base") === "base"} onClick={() => setLegendas({ ...legendas, posicao: "base" })}>Embaixo</Chip>
-                        <Chip ativo={legendas.posicao === "centro"} onClick={() => setLegendas({ ...legendas, posicao: "centro" })}>No meio</Chip>
-                      </div>
-                      <p className="mt-2 text-[11px] text-neutral-500">{legendas.trechos.length} trechos · corrija o que a transcrição errou</p>
-                      <ul className="mt-1 max-h-52 space-y-1 overflow-y-auto">
-                        {legendas.trechos.map((t, i) => (
-                          <li key={i} className="flex items-center gap-1.5">
-                            <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-neutral-400">{t.inicio.toFixed(1)}s</span>
-                            <input
-                              type="text"
-                              value={t.texto}
-                              onChange={(e) => mudarTrecho(i, e.target.value)}
-                              maxLength={LIMITES.trechoMax}
-                              className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs focus:border-marca-indigo focus:outline-none"
-                            />
-                            <button onClick={() => removerTrecho(i)} className="shrink-0 rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600" title="Tirar este trecho">
-                              <Icone nome="fechar" className="h-3.5 w-3.5" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </div>
-
-                {/* Ajuste fino da voz: só aparece quando existe voz pra ajustar. */}
-                {espec.narracao && (
-                  <div className="mt-3 grid gap-2 rounded-lg bg-neutral-50 p-2.5 sm:grid-cols-2">
-                    <label className="text-xs text-neutral-600">
-                      Volume da voz · {Math.round(vozVolume * 100)}%
-                      <input type="range" min={0.2} max={2} step={0.05} value={vozVolume} onChange={(e) => setVozVolume(Number(e.target.value))} className="mt-1 w-full accent-marca-coral" />
-                    </label>
-                    <label className="text-xs text-neutral-600">
-                      Começa em {vozInicio.toFixed(1)}s
-                      <input type="range" min={0} max={LIMITES.vozInicioMax} step={0.1} value={vozInicio} onChange={(e) => setVozInicio(Number(e.target.value))} className="mt-1 w-full accent-marca-coral" />
-                    </label>
-                  </div>
-                )}
+                {espec.narracao && <p className="text-[12px] text-[var(--ed-texto-3)]">Com voz no vídeo, a música abaixa sozinha enquanto você fala e volta no silêncio.</p>}
               </div>
             )}
-          </Cartao>
-          )}
+          </div>
+        );
 
-          {/* A galeria vem ANTES dos campos de marca: o que a pessoa abre a aba Texto
-              pra fazer é por uma frase na cena, não preencher título do vídeo. */}
-          {/* A galeria aparece SEMPRE, com ou sem foto (pedido dele). Sem cena, tocar num
-              texto guarda a escolha e leva pra Mídia: a primeira foto escolhida já sai com ele. */}
-          {mostrarAba("texto") && (
-          <Cartao>
-            <Rotulo>{cenaAtual ? `Texto na cena ${indiceAtual + 1}` : "Texto"}</Rotulo>
-            {!cenaAtual && (
-              <p className="mb-2 rounded-lg bg-neutral-100 px-2.5 py-2 text-[11px] text-neutral-600">
-                Ainda não tem foto no vídeo. Toque num texto: você escolhe a foto em seguida e ele já entra nela.
+      case "texto":
+        return (
+          <div className="flex flex-col gap-4">
+            {cenaAtual ? (
+              <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">
+                Toque num modelo e ele entra na <strong className="font-semibold text-[var(--ed-texto)]">cena {indiceAtual + 1}</strong>. Pra mudar as palavras, toque no texto em cima do vídeo.
               </p>
+            ) : (
+              <Nota>Ainda não tem foto no vídeo. Toque num texto: você escolhe a foto em seguida e ele já entra nela.</Nota>
             )}
             <GaleriaTexto
               pecas={pecas}
               aoAdicionar={(t) => {
                 if (cenaAtual) {
+                  historico.novoPasso();
                   adicionarTexto(cenaAtual.chave, t);
+                  avisar(`Texto posto na cena ${indiceAtual + 1}`, { desfazer: () => historico.desfazer() });
                   return;
                 }
                 setTextoPendente(t);
@@ -2808,1181 +2714,1293 @@ export default function EditorDeVideo() {
               cheio={(cenaAtual?.textos ?? []).length >= LIMITES.textosPorCena}
               desabilitado={gerando}
             />
-          </Cartao>
-          )}
+          </div>
+        );
 
-          {mostrarAba("texto") && (
-          <Cartao>
-            <Rotulo>Textos e marca</Rotulo>
-            <div className="grid gap-2">
-              <input value={titulo} onChange={(e) => setTitulo(e.target.value)} maxLength={LIMITES.tituloMax} placeholder="Título (ex.: Apto 302 · Setor Bueno)" className={campo} />
-              <div className="grid grid-cols-2 gap-2">
-                <input value={preco} onChange={(e) => setPreco(e.target.value)} maxLength={30} placeholder="Preço (ex.: R$ 690.000)" className={campo} />
-                <input value={local} onChange={(e) => setLocal(e.target.value)} maxLength={50} placeholder="Bairro · Cidade" className={campo} />
-              </div>
-              {/* A capa é o que aparece ANTES de alguém tocar no play -- no feed, no
-                  WhatsApp, na lista. Quadro cru vende o cômodo; capa montada vende o
-                  anúncio, e é o único lugar em que o preço é lido por quem ainda não
-                  decidiu assistir. Só oferecida quando há o que escrever nela. */}
-              {(titulo.trim() || preco.trim()) && (
-                <label className="flex items-start gap-2 text-sm text-neutral-700">
-                  <input type="checkbox" checked={capaMontada} onChange={(e) => setCapaMontada(e.target.checked)} className="mt-0.5 accent-marca-coral" />
-                  <span>
-                    Capa com o nome e o preço escritos
-                    <span className="block text-xs text-neutral-500">
-                      A imagem que aparece antes de tocar o vídeo. Sem isso, a capa é o quadro cru da cena escolhida.
-                    </span>
-                  </span>
-                </label>
-              )}
-              <label className="flex items-start gap-2 text-sm text-neutral-700">
-                <input type="checkbox" checked={telaFinal} onChange={(e) => setTelaFinal(e.target.checked)} className="mt-0.5 accent-marca-coral" />
-                <span>
-                  Tela final com meu contato
-                  <span className="block text-xs text-neutral-500">
-                    Nome, CRECI, WhatsApp e logo de <Link href="/marca" className="underline">Minha marca</Link>.
-                  </span>
-                </span>
-              </label>
-              {telaFinal && (
-                <div className="rounded-lg bg-neutral-50 p-2.5">
-                  <p className="text-xs text-neutral-500">Frase da tela final</p>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {/* "Chame no WhatsApp" some quando a marca não tem número: a tela
-                        final monta o contato a partir de Minha marca, e sem número a
-                        frase manda o cliente pra lugar nenhum. */}
-                    {CHAMADAS.filter((f) => marca?.whatsapp || !/whatsapp/i.test(f)).map((f) => (
-                      <Chip key={f} ativo={chamada === f} onClick={() => setChamada(f)}>{f}</Chip>
-                    ))}
-                    <Chip ativo={chamada === ""} onClick={() => setChamada("")}>Sem frase</Chip>
-                  </div>
-                  <input value={chamada} onChange={(e) => setChamada(e.target.value)} maxLength={LIMITES.chamadaMax} placeholder="Ou escreva a sua" className={campo + " mt-2"} aria-label="Frase da tela final" />
-                </div>
-              )}
-              {fichaResumo && (
-                <label className="flex items-start gap-2 text-sm text-neutral-700">
-                  <input
-                    type="checkbox"
-                    checked={cenas.length > 0 && cenas[0].legenda === fichaResumo}
-                    disabled={cenas.length === 0 || gerando}
-                    onChange={(e) => {
-                      const primeira = cenas[0];
-                      if (primeira) mudarCena(primeira.chave, { legenda: e.target.checked ? fichaResumo : "" });
-                    }}
-                    className="mt-0.5 accent-marca-coral"
-                  />
-                  <span>
-                    Dados do imóvel na primeira cena
-                    <span className="block text-xs text-neutral-500">“{fichaResumo}” — vem da ficha do imóvel, sem digitar de novo.</span>
-                  </span>
-                </label>
-              )}
-            </div>
-          </Cartao>
-          )}
-
-          {/* ---------- elementos ----------
-               As peças gráficas que entram por cima da cena. A primeira categoria é a
-               FICHA DO IMÓVEL, e é por ela que a aba existe: adesivo bonito qualquer
-               editor tem; "3 quartos · 2 vagas · 120 m²" desenhado, certo e preenchido do
-               cadastro é o que um corretor não monta sozinho no celular. */}
-          {mostrarAba("elementos") && (
-          <Cartao>
-            <Rotulo>Elementos</Rotulo>
-            {/* A prateleira aparece SEMPRE, mesmo sem cena escolhida: quem abre a aba
-                quer ver o que existe. Sem cena, o que fica desligado é o clique -- e o
-                aviso diz por quê, em vez de a aba parecer vazia. */}
-            {!cenaAtual && <p className="mb-2 text-xs text-neutral-500">Escolha uma cena pra pôr uma peça nela.</p>}
+      case "elementos":
+        return (
+          <div className="flex flex-col gap-4">
+            {cenaAtual ? (
+              <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">
+                As peças entram na <strong className="font-semibold text-[var(--ed-texto)]">cena {indiceAtual + 1}</strong>. No vídeo, arraste pra mudar de lugar.
+              </p>
+            ) : (
+              <Nota>Escolha uma cena pra pôr uma peça nela.</Nota>
+            )}
             <GaleriaElementos
               elementos={cenaAtual?.elementos ?? []}
               itensDaFicha={itensDaFicha}
               cor={corDaMarca}
               podeMais={!!cenaAtual && (cenaAtual.elementos?.length ?? 0) < LIMITES.elementosPorCena}
-              aoAdicionar={(e) => cenaAtual && adicionarElemento(cenaAtual.chave, e)}
+              aoAdicionar={(e) => {
+                if (!cenaAtual) return;
+                historico.novoPasso();
+                adicionarElemento(cenaAtual.chave, e);
+                avisar(`Peça posta na cena ${indiceAtual + 1}`, { desfazer: () => historico.desfazer() });
+              }}
               buscarClipes={buscarClipes}
               aoMudar={(i, m) => cenaAtual && mudarElemento(cenaAtual.chave, i, m)}
               aoTirar={(i) => cenaAtual && removerElemento(cenaAtual.chave, i)}
             />
-          </Cartao>
-          )}
+          </div>
+        );
 
-          {/* ---------- apresentador ----------
-               Você aparecendo no próprio vídeo. Anúncio com rosto é anúncio com gente por
-               trás, e é a peça que mais falta nas ferramentas genéricas -- porque exige
-               gravar, cortar e sobrepor sem sair da tela. */}
-          {mostrarAba("voce") && (
-          <Cartao>
-            <Rotulo>Você no vídeo</Rotulo>
-
-            {camera ? (
-              <div>
-                <video ref={previaCamera} autoPlay muted playsInline className="w-full rounded-xl bg-black" />
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {gravandoVideo ? (
-                    <>
-                      <Botao variante="secundaria" onClick={() => gravadorVideo.current?.stop()} className="px-3 py-1.5 text-xs">⏹ Parar</Botao>
-                      <span className="inline-flex items-center gap-1.5 text-sm tabular-nums text-red-600">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
-                        {relogio(segundosVideo)}
-                      </span>
-                    </>
+      case "legendas":
+        return (
+          <div className="flex flex-col gap-6">
+            <Secao titulo="Narração">
+              <Alternar ligado={narrar} aoMudar={setNarrar} titulo="Falar por cima do vídeo" descricao="Uma voz apresentando o imóvel. A música abaixa sozinha enquanto a voz fala." />
+              {narrar && (
+                <div className="flex flex-col gap-4">
+                  {/* Três origens, e só uma delas cobra. A voz da pessoa não passa por modelo
+                      nenhum -- é ffmpeg misturando o arquivo dela. */}
+                  <Segmentado
+                    rotulo="De onde vem a voz"
+                    opcoes={[
+                      { id: "ia", rotulo: `Voz de IA · ${CREDITOS.narracao} cr`, dica: "A IA lê o texto que você escrever" },
+                      { id: "gravada", rotulo: "Gravar", icone: "microfone", dica: "Grave aqui mesmo, pelo microfone. Não gasta crédito." },
+                      { id: "enviada", rotulo: "Enviar", dica: "MP3, M4A ou WAV que você já tem. Não gasta crédito." },
+                    ]}
+                    valor={origemVoz}
+                    aoMudar={(v) => setOrigemVoz(v as OrigemVoz)}
+                  />
+                  {origemVoz === "ia" ? (
+                    <div className="flex flex-col gap-3">
+                      <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={5} maxLength={LIMITES.roteiroMax} placeholder="Escreva o texto da narração, ou peça pra IA escrever a partir do título, preço, local e legendas." className={areaEd} aria-label="Texto da narração" />
+                      <div className="flex items-center justify-between gap-2">
+                        <BotaoEd icone="magica" tamanho="p" onClick={escreverRoteiro} disabled={escrevendo || gerando}>
+                          {escrevendo ? "Escrevendo…" : "Escrever com IA"}
+                        </BotaoEd>
+                        <span className="text-[12px] tabular-nums text-[var(--ed-texto-3)]">
+                          {roteiro.length}/{LIMITES.roteiroMax}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Voz</p>
+                        <div className="flex flex-wrap gap-2">
+                          {VOZES.map((v) => (
+                            <Pilula key={v.id} ativo={voz === v.id} onClick={() => setVoz(v.id)}>
+                              {v.rotulo} · {v.genero}
+                            </Pilula>
+                          ))}
+                        </div>
+                      </div>
+                      {roteiro.trim().length < 10 && <Nota tipo="atencao">Escreva pelo menos uma frase pra narração entrar.</Nota>}
+                    </div>
                   ) : (
-                    <>
-                      <Botao onClick={gravarVideo} className="px-3 py-1.5 text-xs">● Gravar</Botao>
-                      <Botao variante="discreta" onClick={fecharCamera} className="px-3 py-1.5 text-xs">Fechar a câmera</Botao>
-                    </>
+                    <div className="flex flex-col gap-3">
+                      {origemVoz === "gravada" ? (
+                        gravando ? (
+                          gravandoLinha(`Gravando · ${relogio(segundosGravando)}`, pararGravacao)
+                        ) : (
+                          <BotaoEd icone="microfone" onClick={gravarVoz} disabled={enviandoVoz || gerando} className="w-full">
+                            {enviandoVoz ? "Guardando…" : vozArquivo ? "Gravar de novo" : "Gravar minha voz"}
+                          </BotaoEd>
+                        )
+                      ) : (
+                        <label className={"inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--ed-elevado)] text-[13.5px] font-semibold text-[var(--ed-texto)] ring-1 ring-inset ring-[var(--ed-linha)] transition hover:bg-[var(--ed-elevado-2)] " + (enviandoVoz ? "pointer-events-none opacity-50" : "")}>
+                          <Icone nome="mais" className="h-[18px] w-[18px]" />
+                          {enviandoVoz ? "Enviando…" : vozArquivo ? "Trocar o áudio" : "Escolher áudio"}
+                          <input
+                            type="file"
+                            accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,.mp3,.m4a,.wav"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) usarAudio(f, f.name);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                      {!gravando && !vozArquivo && origemVoz === "gravada" && <p className="text-[12px] text-[var(--ed-texto-3)]">O navegador vai pedir o microfone.</p>}
+                      {vozArquivo && (
+                        <div className="flex flex-col gap-2 rounded-2xl bg-[var(--ed-acento-suave)] p-3 ring-1 ring-inset ring-[rgb(240_107_79/0.35)]">
+                          <div className="flex items-center gap-2">
+                            <Icone nome="microfone" className="h-4 w-4 shrink-0 text-[var(--ed-acento-forte)]" />
+                            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--ed-texto)]">{vozArquivo.nome}</span>
+                            <BotaoEd variante="fantasma" tamanho="p" onClick={() => setVozArquivo(null)}>
+                              Tirar
+                            </BotaoEd>
+                          </div>
+                          <audio src={vozArquivo.url} controls className="h-9 w-full" />
+                        </div>
+                      )}
+                      {gravacoesVoz.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-[12.5px] font-medium text-[var(--ed-texto-2)]">Suas gravações ({gravacoesVoz.length})</p>
+                          <ul className="flex flex-col gap-2">
+                            {gravacoesVoz.map((g) => {
+                              const estaAtivo = vozArquivo?.caminho === g.caminho;
+                              return (
+                                <li key={g.id} className={"flex flex-col gap-2 rounded-2xl p-3 ring-1 ring-inset transition " + (estaAtivo ? "bg-[var(--ed-elevado)] ring-[var(--ed-acento)]" : "bg-[var(--ed-elevado)] ring-[var(--ed-linha)]")}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--ed-texto)]">{g.nome}</span>
+                                    <Pilula
+                                      ativo={estaAtivo}
+                                      onClick={() => {
+                                        setVozArquivo({ caminho: g.caminho, url: g.url, nome: g.nome });
+                                        setNarrar(true);
+                                        const m = vozNova(audios);
+                                        historico.novoPasso();
+                                        setAudios(m.audios);
+                                        setSelecao(m.selecao);
+                                        setUltimaFaixa("voz");
+                                        if (m.aviso) avisar(m.aviso, { desfazer: () => historico.desfazer() });
+                                      }}
+                                    >
+                                      {estaAtivo ? "Em uso" : "Usar esta"}
+                                    </Pilula>
+                                    <BotaoIcone
+                                      rotulo={`Tirar ${g.nome} da lista`}
+                                      icone="lixeira"
+                                      perigo
+                                      tamanho="p"
+                                      onClick={() => {
+                                        // Tirar da lista a que está EM USO tirava só da lista: ela
+                                        // continuava indo pro vídeo.
+                                        if (estaAtivo) setVozArquivo(null);
+                                        URL.revokeObjectURL(g.url);
+                                        setGravacoesVoz((lista) => lista.filter((item) => item.id !== g.id));
+                                      }}
+                                    />
+                                  </div>
+                                  <audio src={g.url} controls className="h-9 w-full" />
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                      {!vozArquivo && gravacoesVoz.length === 0 && <Nota tipo="atencao">Sem áudio, o vídeo sai sem voz.</Nota>}
+                      {legendas && legendasDaVoz && vozArquivo && vozArquivo.caminho !== legendasDaVoz && <Nota tipo="atencao">As legendas são da outra gravação: gere de novo pra acompanhar esta voz.</Nota>}
+                    </div>
                   )}
                 </div>
-              </div>
-            ) : apresentador ? (
-              <div>
-                {apreUrl && <video src={apreUrl} controls playsInline className="w-full rounded-xl bg-black" />}
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {FORMATOS_APRESENTADOR.map((f) => (
-                    <Chip key={f.id} ativo={apresentador.formato === f.id} onClick={() => setApresentador({ ...apresentador, formato: f.id })} title={f.dica}>
-                      {f.rotulo}
-                    </Chip>
+              )}
+            </Secao>
+
+            <Divisor />
+
+            {/* Legenda não depende de narração: quem não tem voz escreve na mão -- Reel de
+                imóvel circula com o som desligado, então legenda sem voz também vale. */}
+            <Secao
+              titulo="Legendas"
+              descricao={legendas ? `${legendas.trechos.length} trechos · corrija o que a transcrição errou` : "Reel de imóvel circula sem som: a legenda faz a mensagem chegar."}
+              acao={
+                legendas ? (
+                  <BotaoEd variante="fantasma" tamanho="p" onClick={() => setLegendas(null)}>
+                    Tirar
+                  </BotaoEd>
+                ) : undefined
+              }
+            >
+              {!legendas ? (
+                <div className="flex flex-col gap-2">
+                  {[
+                    {
+                      id: "auto",
+                      icone: "magica",
+                      titulo: transcrevendo ? "Ouvindo a voz…" : "Legendas automáticas",
+                      extra: "Grátis",
+                      texto: vozArquivo ? "Ouve a sua voz e escreve sozinho. Dá pra corrigir depois." : origemVoz === "ia" && narrar ? "Com voz de IA, gere o vídeo uma vez — ao editar depois, a legenda sai da narração guardada." : "Grave ou envie a voz primeiro: a legenda sai da fala.",
+                      desligado: !vozArquivo || transcrevendo,
+                      acao: gerarLegendas,
+                    },
+                    { id: "mao", icone: "editar_prompt", titulo: "Escrever na mão", texto: "Você digita cada trecho. Não precisa de voz.", acao: () => setLegendas({ estilo: "faixa", trechos: [{ inicio: 0, fim: 3, texto: "" }] }) },
+                  ].map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={o.acao}
+                      disabled={o.desligado}
+                      className="flex items-start gap-3 rounded-2xl bg-[var(--ed-elevado)] p-3.5 text-left ring-1 ring-inset ring-transparent transition hover:bg-[var(--ed-elevado-2)] hover:ring-[var(--ed-linha-forte)] disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--ed-elevado-2)] text-[var(--ed-texto)]">
+                        <Icone nome={o.icone} className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-2 text-[13.5px] font-semibold text-[var(--ed-texto)]">
+                          {o.titulo}
+                          {o.extra && <span className="rounded-full bg-[rgb(44_177_163/0.15)] px-2 py-0.5 text-[10.5px] font-semibold text-[#7fd6cb]">{o.extra}</span>}
+                        </span>
+                        <span className="mt-0.5 block text-[12px] leading-relaxed text-[var(--ed-texto-2)]">{o.texto}</span>
+                      </span>
+                    </button>
                   ))}
-                </div>
-                {apresentador.formato !== "rodape" && (
-                  <>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {CANTOS_APRESENTADOR.map((c) => (
-                        <Chip key={c.id} ativo={(apresentador.canto ?? "inferior_direito") === c.id} onClick={() => setApresentador({ ...apresentador, canto: c.id })}>
-                          {c.rotulo}
-                        </Chip>
-                      ))}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {TAMANHOS_APRESENTADOR.map((t) => (
-                        <Chip key={t.id} ativo={(apresentador.tamanho ?? "medio") === t.id} onClick={() => setApresentador({ ...apresentador, tamanho: t.id })}>
-                          {t.rotulo}
-                        </Chip>
-                      ))}
-                    </div>
-                  </>
-                )}
-                <div className="mt-2 grid gap-2 rounded-lg bg-neutral-50 p-2.5 sm:grid-cols-2">
-                  <label className="text-xs text-neutral-600">
-                    Entra em {(apresentador.entra ?? 0).toFixed(1)}s
-                    <input type="range" min={0} max={Math.max(1, Math.round(duracao))} step={0.5} value={apresentador.entra ?? 0} onChange={(e) => setApresentador({ ...apresentador, entra: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
-                  </label>
-                  <label className="text-xs text-neutral-600">
-                    Volume da sua voz · {Math.round((apresentador.volume ?? 1) * 100)}%
-                    <input type="range" min={0} max={2} step={0.05} value={apresentador.volume ?? 1} onChange={(e) => setApresentador({ ...apresentador, volume: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
-                  </label>
-                  <label className="text-xs text-neutral-600 sm:col-span-2">
-                    Começar o clipe em {(apresentador.inicio ?? 0).toFixed(1)}s
-                    <input type="range" min={0} max={30} step={0.5} value={apresentador.inicio ?? 0} onChange={(e) => setApresentador({ ...apresentador, inicio: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
-                  </label>
-                </div>
-                <button
-                  onClick={() => {
-                    setApresentador(null);
-                    setApreUrl(null);
-                  }}
-                  className="mt-2 text-xs text-neutral-500 underline"
-                >
-                  Tirar do vídeo
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <Botao variante="secundaria" onClick={abrirCamera} disabled={enviandoApre || gerando} className="px-3 py-1.5 text-xs">
-                  📹 {enviandoApre ? "Guardando…" : "Gravar com a câmera"}
-                </Botao>
-                <label className={"inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm hover:border-neutral-400 " + (enviandoApre ? "pointer-events-none opacity-50" : "")}>
-                  <Icone nome="mais" className="h-4 w-4" />
-                  Enviar vídeo
-                  <input
-                    type="file"
-                    accept="video/mp4,video/quicktime,video/webm"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) usarVideoApresentador(f, f.name);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <span className="basis-full text-xs text-neutral-500">Não gasta crédito. A câmera só é pedida depois do clique.</span>
-              </div>
-            )}
-
-            {/* ---------- só a voz ----------
-                 Aparecer no vídeo e narrar o vídeo são a mesma vontade -- "quero que
-                 seja MINHA voz, meu jeito" -- e estavam em duas abas diferentes.
-                 Quem não quer aparecer grava só a voz, aqui, no mesmo lugar.
-
-                 É a MESMA gravação da aba de voz, não uma segunda: mesmos botões,
-                 mesmo estado, mesmo arquivo. Dois gravadores dariam dois áudios e a
-                 pergunta "qual deles entrou no vídeo?". */}
-            <div className="mt-4 border-t border-neutral-200 pt-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {gravando ? (
-                  <>
-                    <Botao variante="secundaria" onClick={pararGravacao} className="px-3 py-1.5 text-xs">
-                      ⏹ Parar
-                    </Botao>
-                    <span className="inline-flex items-center gap-1.5 text-sm tabular-nums text-red-600">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" />
-                      {relogio(segundosGravando)}
+                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-[var(--ed-elevado)] p-3.5 ring-1 ring-inset ring-transparent transition hover:bg-[var(--ed-elevado-2)] hover:ring-[var(--ed-linha-forte)]">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--ed-elevado-2)] text-[var(--ed-texto)]">
+                      <Icone nome="download" className="h-[18px] w-[18px]" />
                     </span>
-                  </>
-                ) : (
-                  <Botao
-                    variante="secundaria"
-                    onClick={() => {
-                      // Liga a narração e escolhe "gravada" antes de pedir o microfone:
-                      // sem isso o áudio seria guardado e o vídeo sairia sem ele.
-                      setNarrar(true);
-                      setOrigemVoz("gravada");
-                      gravarVoz();
-                    }}
-                    disabled={enviandoVoz || gerando}
-                    className="px-3 py-1.5 text-xs"
-                  >
-                    🎙 {enviandoVoz ? "Guardando…" : vozArquivo ? "Gravar a voz de novo" : "Gravar só a voz"}
-                  </Botao>
-                )}
-                {vozArquivo && !gravando && (
-                  <span className="truncate text-xs text-neutral-500">Sua voz está no vídeo · {vozArquivo.nome}</span>
-                )}
-                {!vozArquivo && !gravando && (
-                  <span className="basis-full text-xs text-neutral-500">
-                    Sem aparecer: você narra e o vídeo mostra o imóvel. Não gasta crédito.
-                  </span>
-                )}
-              </div>
-            </div>
-          </Cartao>
-          )}
-
-          {mostrarAba("cor") && (
-          <Cartao>
-            <Rotulo>Filtros</Rotulo>
-            {/* A miniatura de cada filtro é a FOTO da cena aberta passando pela mesma
-                tabela de cor que vira LUT no servidor -- não um CSS parecido. O que se
-                escolhe olhando é o que sai no vídeo. */}
-            {(() => {
-              const naCena = escopoCor === "cena" && !!cenaAtual;
-              const cenaTemCor = !!cenaAtual && (!!cenaAtual.filtro || !!cenaAtual.ajustes);
-              const filtroAtual = naCena ? cenaAtual!.filtro ?? filtro : filtro;
-              const intensidadeAtual = naCena ? (cenaAtual!.filtro ? cenaAtual!.intensidade ?? 1 : intensidadeFiltro) : intensidadeFiltro;
-              const ajustesAtuais: Ajustes = { ...AJUSTES_NEUTROS, ...(naCena ? cenaAtual!.ajustes ?? ajustesVideo : ajustesVideo) };
-              return (
-                <PainelFiltros
-                  escopo={escopoCor}
-                  temCena={!!cenaAtual}
-                  cenaTemCorPropria={cenaTemCor}
-                  filtro={filtroAtual}
-                  intensidade={intensidadeAtual}
-                  ajustes={ajustesAtuais}
-                  desligado={gerando}
-                  aoEscopo={setEscopoCor}
-                  aoFiltro={(id) => {
-                    if (naCena) mudarCena(cenaAtual!.chave, { filtro: id, intensidade: 1 });
-                    else {
-                      setFiltro(id);
-                      setIntensidadeFiltro(1);
-                    }
-                  }}
-                  aoIntensidade={(v) => {
-                    // Mexer na intensidade da cena sem filtro próprio cria o filtro próprio
-                    // com o do vídeo: senão o controle andaria e nada mudaria.
-                    if (naCena) mudarCena(cenaAtual!.chave, { filtro: cenaAtual!.filtro ?? filtro, intensidade: v });
-                    else setIntensidadeFiltro(v);
-                  }}
-                  aoAjuste={(k, v) => {
-                    const novo = { ...ajustesAtuais, [k]: v };
-                    const limpo = Object.fromEntries(Object.entries(novo).filter(([, x]) => x)) as Partial<Ajustes>;
-                    const valor = Object.keys(limpo).length ? limpo : undefined;
-                    if (naCena) mudarCena(cenaAtual!.chave, { ajustes: valor ?? {} });
-                    else setAjustesVideo(valor);
-                  }}
-                  aoZerar={() => {
-                    if (naCena) mudarCena(cenaAtual!.chave, { ajustes: {} });
-                    else setAjustesVideo(undefined);
-                  }}
-                  aoVoltarProVideo={() => cenaAtual && mudarCena(cenaAtual.chave, { filtro: undefined, intensidade: undefined, ajustes: undefined, luz: undefined })}
-                />
-              );
-            })()}
-          </Cartao>
-          )}
-
-          {mostrarAba("formato") && (
-          <Cartao>
-            <Rotulo>Formato</Rotulo>
-            <div className="grid grid-cols-2 gap-2">
-              {FORMATOS.map((f) => (
-                <button key={f.id} type="button" onClick={() => setFormato(f.id)} disabled={gerando} className={"rounded-xl border px-3 py-2 text-left text-sm transition " + (formato === f.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")}>
-                  <span className="font-medium">{f.rotulo} · {f.id}</span>
-                  <span className="block text-xs text-neutral-500">{f.dica}</span>
-                </button>
-              ))}
-            </div>
-          </Cartao>
-          )}
-
-          {/* ---------- kit de marca ----------
-               Não é um formulário: é o ESPELHO do que já está em Minha marca, mostrando o
-               que vai entrar no vídeo sem ninguém pedir. Editar é lá -- a marca vale pro
-               produto inteiro, e ter dois lugares que a mudam é ter duas verdades. */}
-          {mostrarAba("marca") && (
-          <Cartao>
-            <Rotulo>Kit de marca</Rotulo>
-            <p className="-mt-1 mb-3 text-xs text-neutral-500">
-              Entra sozinho na tela final, na capa e nos carimbos. Mexer aqui é em <Link href="/marca" className="underline">Minha marca</Link>, e vale pro produto inteiro.
-            </p>
-            <div className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3">
-              <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-neutral-200 bg-white">
-                {marca?.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={marca.logo} alt="" className="h-full w-full object-contain p-1" />
-                ) : (
-                  <Icone nome="marca" className="h-5 w-5 text-neutral-400" />
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{marca?.nome || "Sem nome cadastrado"}</p>
-                <p className="truncate text-xs text-neutral-500">
-                  {[marca?.creci ? `CRECI ${marca.creci}` : null, marca?.whatsapp, marca?.instagram].filter(Boolean).join(" · ") || "Sem CRECI nem contato"}
-                </p>
-              </div>
-              <span className="h-8 w-8 shrink-0 rounded-lg border border-neutral-200" style={{ background: marca?.cor || "#0f2d5b" }} title={`Cor da marca: ${marca?.cor || "#0f2d5b"}`} />
-            </div>
-
-            <ul className="mt-3 flex flex-col gap-1.5 text-xs text-neutral-600">
-              {[
-                ["Tela final", telaFinal ? "ligada" : "desligada"],
-                ["Capa do vídeo", capaMontada && (titulo.trim() || preco.trim()) ? "com nome e preço" : "quadro cru"],
-                ["Cor dos textos", "sai da cor da marca"],
-              ].map(([o, q]) => (
-                <li key={o} className="flex items-baseline justify-between gap-2 border-b border-neutral-100 pb-1">
-                  <span>{o}</span>
-                  <span className="text-neutral-400">{q}</span>
-                </li>
-              ))}
-            </ul>
-
-            {!marca?.nome && !marca?.whatsapp && !marca?.logo && (
-              <p className="mt-3 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] text-amber-700">
-                Sem nome, WhatsApp ou logo, o vídeo sai sem tela final. <Link href="/marca" className="underline">Preencher agora</Link>.
-              </p>
-            )}
-          </Cartao>
-          )}
-
-          {mostrarAba("videos") && (
-          <Cartao>
-            <Rotulo>Seus vídeos</Rotulo>
-            <p className="-mt-1 mb-3 text-xs text-neutral-500">
-              Vídeos que você já produziu. Toque pra assistir; <strong>Abrir projeto</strong> reabre as cenas e os ajustes.
-            </p>
-            {videos === null ? (
-              <p className="text-sm text-neutral-500">Carregando…</p>
-            ) : videos.length === 0 ? (
-              <p className="text-sm text-neutral-500">Nenhum ainda.</p>
-            ) : (
-              <ul className="divide-y divide-neutral-100">
-                {videos.map((v) => {
-                  return (
-                    <li key={v.id} className="py-2.5">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => abrirVideo(v)}
-                          className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900 shadow-sm transition hover:ring-2 hover:ring-marca-coral"
-                          title="Assistir"
-                        >
-                          {v.miniatura ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={v.miniatura} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <Icone nome="play" className="h-6 w-6 text-white/70" />
-                          )}
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{v.titulo}</p>
-                          <p className="text-xs text-neutral-500">
-                            {dataCurta(v.criadoEm)} · {v.formato}
-                            {v.duracao ? ` · ${Math.round(v.duracao)} s` : ""}
-                            {v.status === "gerando" && " · gerando"}
-                            {v.status === "falhou" && " · falhou"}
-                          </p>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            {/* "Usar este vídeo na linha do tempo" saiu por enquanto: o servidor não sabe
-                                montar um vídeo do Encena como clipe (recusava na hora de gerar). */}
-                            {v.status === "concluido" && (
-                              <button
-                                type="button"
-                                onClick={() => editarVideo(v.id)}
-                                disabled={gerando}
-                                className="inline-flex items-center gap-1 rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600 hover:bg-neutral-200 disabled:opacity-40"
-                                title="Reabre todas as cenas e os ajustes originais deste vídeo"
-                              >
-                                <Icone nome="editar_prompt" className="h-3 w-3" />
-                                Abrir projeto
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <BotaoConfirma
-                          pergunta="Apagar este vídeo?"
-                          detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."
-                          aoConfirmar={() => apagarVideo(v.id)}
-                          className="p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                          title="Apagar vídeo"
-                        >
-                          <Icone nome="lixeira" className="h-4 w-4" />
-                        </BotaoConfirma>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Cartao>
-          )}
-
-        </div>
-
-        {/* ---------- palco e painel da cena ---------- */}
-        {/* No celular o palco tem ALTURA PRÓPRIA (46vh) e o painel fica com o resto, rolando por
-            dentro. Antes os dois dividiam por conteúdo: com a galeria de Texto ou de Elementos
-            aberta (comprida), o painel levava tudo e o palco encolhia pra 24px -- a pessoa
-            escolhia um efeito e não via a foto. Visto em 375x812. */}
-        <section className="palco order-1 flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 max-md:h-[var(--altura-palco)] max-md:flex-none max-md:p-2 md:order-3">
-      {erro && (
-        <div className="mx-auto w-full max-w-2xl text-sm">
-          <Aviso tipo="erro">{erro}</Aviso>
-        </div>
-      )}
-
-      {editandoDe && (
-        <div className="mx-auto w-full max-w-2xl text-sm">
-          <Aviso tipo="info">
-            Editando <strong>{editandoDe.titulo}</strong>. Gerar cria um vídeo novo — o atual continua em Seus vídeos. Cena animada que não mudou não custa de novo.{" "}
-            <button type="button" onClick={comecarDoZero} className="underline">Começar do zero</button>
-          </Aviso>
-        </div>
-      )}
-
-      {resultado && (
-        <Cartao className="mx-auto w-full max-w-3xl">
-          <div className="grid gap-5 lg:grid-cols-12">
-            <div className={"lg:col-span-5 " + (vertical ? "mx-auto w-full max-w-[280px]" : "lg:col-span-7")}>
-              <video key={resultado.url} src={resultado.url} poster={resultado.miniatura ?? undefined} controls playsInline className="w-full rounded-xl bg-black" />
-            </div>
-            <div className={vertical ? "lg:col-span-7" : "lg:col-span-5"}>
-              <Rotulo>Seu vídeo está pronto</Rotulo>
-              <p className="text-sm text-neutral-600">
-                {resultado.duracao ? `${Math.round(resultado.duracao)} segundos · ` : ""}
-                {FORMATOS.find((f) => f.id === resultado.formato)?.rotulo ?? resultado.formato}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <a href={resultado.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
-                  <Icone nome="download" className="h-4 w-4" />
-                  Baixar MP4
-                </a>
-                <Botao variante="secundaria" onClick={() => editarVideo(resultado.videoId)} title="Reabre as cenas e os ajustes deste vídeo. Gerar de novo cria outro vídeo.">
-                  <Icone nome="editar_prompt" className="h-4 w-4" />
-                  Editar
-                </Botao>
-                <Botao variante="discreta" onClick={() => setResultado(null)}>Fechar</Botao>
-              </div>
-              {/* Adaptar pra outro formato.
-                  O mesmo vídeo serve pro Reels e pro feed, e refazer tudo à mão pra
-                  trocar o enquadramento era o passo que mandava a pessoa pro CapCut.
-                  As cenas, os textos e o áudio são os mesmos; muda o quadro. Não custa
-                  crédito: o clipe animado já existe e é reaproveitado. */}
-              {cenas.length > 0 && (
-                <div className="mt-3 rounded-lg bg-neutral-50 p-2.5">
-                  <p className="text-xs text-neutral-500">Fazer também em</p>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {FORMATOS.filter((f) => f.id !== resultado.formato).map((f) => (
-                      <Chip key={f.id} ativo={false} onClick={() => gerar({ formato: f.id })} disabled={gerando} title={f.dica}>
-                        {f.rotulo} · {f.id}
-                      </Chip>
+                    <span className="min-w-0">
+                      <span className="block text-[13.5px] font-semibold text-[var(--ed-texto)]">Carregar arquivo de legenda</span>
+                      <span className="mt-0.5 block text-[12px] text-[var(--ed-texto-2)]">Formatos .srt e .vtt</span>
+                    </span>
+                    <input
+                      type="file"
+                      accept=".srt,.vtt,text/plain"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!f) return;
+                        const lido = lerLegenda(await f.text());
+                        if (lido.trechos) setLegendas({ estilo: "faixa", trechos: lido.trechos });
+                        else setErro(lido.erro);
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    {ESTILOS_LEGENDA.map((e) => (
+                      <Pilula key={e.id} ativo={(legendas.estilo ?? "faixa") === e.id} onClick={() => setLegendas({ ...legendas, estilo: e.id })} title={e.dica}>
+                        {e.rotulo}
+                      </Pilula>
                     ))}
+                    <Pilula ativo={(legendas.posicao ?? "base") === "base"} onClick={() => setLegendas({ ...legendas, posicao: "base" })}>
+                      Embaixo
+                    </Pilula>
+                    <Pilula ativo={legendas.posicao === "centro"} onClick={() => setLegendas({ ...legendas, posicao: "centro" })}>
+                      No meio
+                    </Pilula>
                   </div>
+                  <ul className="ed-rolagem flex max-h-72 flex-col gap-1.5 overflow-y-auto pr-1">
+                    {legendas.trechos.map((t, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <span className="w-11 shrink-0 text-right text-[11.5px] tabular-nums text-[var(--ed-texto-3)]">{t.inicio.toFixed(1)}s</span>
+                        <input type="text" value={t.texto} onChange={(e) => mudarTrecho(i, e.target.value)} maxLength={LIMITES.trechoMax} className={campoEd + " h-10 text-[13px]"} aria-label={`Legenda ${i + 1}`} />
+                        <BotaoIcone rotulo="Tirar este trecho" icone="fechar" perigo tamanho="p" onClick={() => removerTrecho(i)} />
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-              <div className="mt-3">
-                <Compartilhar token={token} videoId={resultado.videoId} texto="Olha o vídeo do imóvel:" />
-              </div>
-              {resultado.avisos.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-1 text-xs text-amber-700">
-                  {resultado.avisos.map((a, i) => (
-                    <li key={i}>⚠ {a}</li>
-                  ))}
-                </ul>
-              )}
-              <p className="mt-3 text-xs text-neutral-500">No celular, toque em Baixar e depois em compartilhar para mandar pelo WhatsApp ou postar no Instagram.</p>
+            </Secao>
+
+            {/* Ajuste fino da voz: só aparece quando existe voz pra ajustar. */}
+            {espec.narracao && (
+              <>
+                <Divisor />
+                <Secao titulo="Ajuste da voz">
+                  <Deslizante rotulo="Volume da voz" valor={vozVolume} min={0.2} max={2} passo={0.05} formatar={(v) => `${Math.round(v * 100)}%`} aoMudar={setVozVolume} />
+                  <Deslizante rotulo="Começa em" valor={vozInicio} min={0} max={LIMITES.vozInicioMax} passo={0.1} formatar={(v) => `${v.toFixed(1)}s`} aoMudar={setVozInicio} />
+                </Secao>
+              </>
+            )}
+          </div>
+        );
+
+      case "transicoes":
+        return (
+          <div className="flex flex-col gap-4">
+            <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">Como uma cena vira a outra. Vale pro vídeo inteiro; nos ajustes de cada cena dá pra escolher outra emenda.</p>
+            {/* Cada cartão DESENHA o que a emenda faz: dois quadros e o jeito como um vira o
+                outro. "Dissolver" e "Deslizar" só querem dizer alguma coisa depois de ver. */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {TRANSICOES.map((t) => (
+                <CartaoOpcao key={t.id} ativo={transicao === t.id} disabled={gerando} onClick={() => transicaoDoVideo(t.id)} title={`${t.rotulo} · ${t.segundos}s de emenda`} titulo={t.rotulo} descricao={`${t.segundos}s de emenda`}>
+                  <span className="flex h-10 items-center gap-0.5 overflow-hidden rounded-lg bg-[var(--ed-fundo)]">
+                    <span className="h-full flex-1 bg-[#34518a]" />
+                    <span className="h-full shrink-0 bg-gradient-to-r from-[#34518a] to-[var(--ed-acento)]" style={{ width: t.id === "corte" ? 2 : t.id === "desfoque" ? 26 : 18, filter: t.id === "desfoque" ? "blur(3px)" : undefined }} />
+                    <span className="h-full flex-1 bg-[var(--ed-acento)]/85" />
+                  </span>
+                </CartaoOpcao>
+              ))}
             </div>
           </div>
-        </Cartao>
-      )}
+        );
 
-          {/* ---------- palco ----------
-               A cena escolhida no tamanho e na proporção em que ela vai sair, com o
-               título e a legenda por cima. Não é o vídeo tocando -- é o quadro. Ver o
-               enquadramento antes de gastar crédito é metade do trabalho do editor. */}
-          <Cartao className="relative p-3 sm:p-4">
-            {/* Lembrete de que dá pra se gravar (opção B, escolhida por ele), no espaço vazio
-                ao lado do celular. Só onde esse espaço existe: vídeo em pé e tela de 1400px ou
-                mais (medido: em 1280 o lembrete encostava no celular, 1px de folga; em 1440
-                sobram 81px). Some quando já há gravação ou voz. */}
-            {!apresentador && !vozArquivo && (formato === "9:16" || formato === "4:5") && (
-              <div className="pointer-events-none absolute inset-y-0 left-5 z-10 hidden items-center min-[1400px]:flex">
-                <div className="pointer-events-auto">
-                  <LembreteGravar aoGravar={() => setAba("voce")} />
-                </div>
-              </div>
-            )}
-            {/* O palco tem TETO DE ALTURA nas telas pequenas.
-                Um vídeo 9:16 numa largura de 360 dá 640 de altura: sozinho, ele comia a
-                tela inteira do celular e empurrava a trilha de ferramentas e a linha do
-                tempo pra fora da vista. A pessoa abria o editor e via um retângulo preto.
-                Com altura fixa em 34vh (o palco inteiro tem 46vh) e largura derivada da proporção, o quadro continua
-                exato e sobra tela pro resto. No computador manda o MENOR entre a largura da coluna
-                e a altura que sobra acima da linha do tempo: num notebook de 800px de altura o
-                9:16 pela largura dava 640px e o pé do quadro ficava escondido atrás da linha. */}
-            <div className="mx-auto w-full [container-type:inline-size]" style={{ maxWidth: formato === "16:9" ? 680 : formato === "1:1" ? 440 : 360 }}>
-              <div
-                ref={palcoRef}
-                data-palco
-                className="relative mx-auto h-[calc(var(--altura-palco)-42px)] w-auto overflow-hidden rounded-xl bg-neutral-900 md:h-[var(--alto-palco-pc)]"
-                style={
-                  {
-                    aspectRatio: PROPORCAO[formato],
-                    // 90px = folga do palco (p-3) + do cartão (p-4, borda) + a legenda "Cena N de M".
-                    "--alto-palco-pc": `min(calc(100cqw * ${ALTO_POR_LARGO[formato]}), calc(100svh - 57px - var(--altura-linha, 198px) - 90px))`,
-                  } as React.CSSProperties
-                }
-                // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer
-                // com a cena. Os textos por cima têm o menu DELES e param o evento aqui,
-                // senão apagar um texto viraria apagar a cena inteira.
-                onContextMenu={cenaAtual ? (ev) => abrirMenuDaCena(ev, cenaAtual) : undefined}
-              >
-                {cenaAtual?.miniatura ? (
-                  // O palco mostra a foto COM a cor que vai sair: filtro, intensidade,
-                  // ajustes e vinheta, na mesma conta do servidor. Antes o palco mostrava
-                  // a foto crua e o filtro só existia na miniatura da aba.
-                  <FotoComCor
-                    src={cenaAtual.miniatura}
-                    grade={gradeDaCena(cenaAtual, { filtro, intensidadeFiltro, ajustes: ajustesVideo })}
-                    proporcao={PROPORCAO_NUM[formato]}
-                    lado={640}
-                    className="h-full w-full"
-                  />
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-neutral-500">
-                    <Icone nome={cenaAtual ? "video" : "foto"} className="h-9 w-9" />
-                    <span className="px-6 text-center text-xs">{cenaAtual ? "Clipe — aparece no vídeo montado" : "Escolha as fotos em Mídia"}</span>
-                  </div>
-                )}
-                {titulo && (
-                  <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
-                    {editandoTitulo ? (
-                      <input
-                        autoFocus
-                        defaultValue={titulo}
-                        maxLength={LIMITES.tituloMax}
-                        onBlur={(e) => {
-                          setTitulo(e.target.value.trim());
-                          setEditandoTitulo(false);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.currentTarget.blur();
-                          if (e.key === "Escape") setEditandoTitulo(false);
-                        }}
-                        className="pointer-events-auto w-full max-w-[85%] rounded-lg border border-white/40 bg-neutral-950/90 px-2.5 py-1 text-center text-[11px] font-semibold text-white shadow-xl backdrop-blur-md outline-none ring-2 ring-white/60"
-                      />
-                    ) : (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setEditandoTitulo(true)}
-                        onKeyDown={(e) => e.key === "Enter" && setEditandoTitulo(true)}
-                        {...menu.gatilho([
-                          { rotulo: "Editar o título", icone: "editar_prompt", aoEscolher: () => setEditandoTitulo(true) },
-                          { rotulo: "Tirar o título do vídeo", icone: "lixeira", perigo: true, dica: "A faixa some do topo de todas as cenas", aoEscolher: () => setTitulo("") },
-                        ])}
-                        title="Clique pra editar · botão direito pra mais"
-                        className="pointer-events-auto cursor-pointer truncate rounded-md bg-neutral-950/80 px-2 py-1 text-[11px] font-semibold text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
-                      >
-                        {titulo}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {/* Os textos da cena, no lugar em que vão sair. Suporta posição livre ou ancorada. */}
-                {cenaAtual &&
-                  textosDaCena({ legenda: cenaAtual.legenda || undefined, textos: cenaAtual.textos }).map((t, i) => {
-                    const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"];
-                    const pos = t.posicao ?? "base";
-                    const ehLegenda = !!cenaAtual.legenda && i === 0;
-                    const indice = ehLegenda ? -1 : i - (cenaAtual.legenda ? 1 : 0);
-                    const emEdicao = editando?.chave === cenaAtual.chave && editando.indice === indice;
-                    const comEfeito = !!t.arte && IDS_EFEITOS_TEXTO.has(t.arte);
-                    const estiloLivre = typeof t.x === "number" && typeof t.y === "number";
-
-                    const wrapperClasses = estiloLivre
-                      ? "pointer-events-none absolute z-20 flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
-                      : "pointer-events-none absolute inset-x-0 z-20 flex justify-center " +
-                        (comEfeito
-                          ? pos === "topo"
-                            ? titulo
-                              ? "top-[19%]"
-                              : "top-[8%]"
-                            : pos === "centro"
-                              ? "top-1/2 -translate-y-1/2"
-                              : "bottom-[9%]"
-                          : "px-3 " + (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]"));
-
-                    const wrapperStyle: React.CSSProperties = estiloLivre
-                      ? { left: `${t.x}%`, top: `${t.y}%` }
-                      : {};
-
-                    return (
-                      <span key={i} className={wrapperClasses} style={wrapperStyle}>
-                        {comEfeito ? (
-                          <div className="relative flex flex-col items-center">
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
-                              onPointerDown={(e) => tocarTextoDoPalco(e, cenaAtual.chave, indice, t.texto || "", emEdicao)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
-                                }
-                              }}
-                              title="Clique e arraste para mover · clique para editar"
-                              className="pointer-events-auto flex cursor-grab touch-none active:cursor-grabbing justify-center select-none transition hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)]"
-                            >
-                              <TextoComEfeito
-                                efeito={t.arte as string}
-                                texto={emEdicao ? (textoEmDigitacao || t.texto || "Texto") : (t.texto || "Texto")}
-                                formato={formato}
-                                n={i}
-                                movimento={t.movimento}
-                              />
-                            </span>
-                            {emEdicao && (
-                              // Na metade de baixo, o campo abre por cima: embaixo ele sai do palco
-                              // (que corta o que passa da borda) e a pessoa digita sem ver.
-                              <div className={`pointer-events-auto absolute z-30 flex flex-col items-center gap-1 ${(estiloLivre ? (t.y as number) > 55 : pos !== "topo") ? "bottom-full mb-2" : "top-full mt-2"}`}>
-                                <input
-                                  autoFocus
-                                  value={textoEmDigitacao}
-                                  onChange={(e) => setTextoEmDigitacao(e.target.value)}
-                                  maxLength={ehLegenda ? LIMITES.legendaMax : LIMITES.textoMax}
-                                  onBlur={() => salvarTextoDoPalco(cenaAtual.chave, indice, textoEmDigitacao)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") e.currentTarget.blur();
-                                    if (e.key === "Escape") setEditando(null);
-                                  }}
-                                  className="w-56 rounded-xl border border-white/40 bg-neutral-950/90 px-3 py-1.5 text-center text-sm font-semibold text-white shadow-2xl backdrop-blur-md outline-none ring-2 ring-white/60 focus:border-white focus:ring-white transition"
-                                  placeholder="Digite o texto..."
-                                />
-                                <span className="rounded bg-black/80 px-2 py-0.5 text-[9px] text-white/90 backdrop-blur-sm">
-                                  Enter para salvar · Esc para cancelar
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ) : emEdicao ? (
-                          <input
-                            autoFocus
-                            value={textoEmDigitacao}
-                            onChange={(e) => setTextoEmDigitacao(e.target.value)}
-                            maxLength={ehLegenda ? LIMITES.legendaMax : LIMITES.textoMax}
-                            onBlur={() => salvarTextoDoPalco(cenaAtual.chave, indice, textoEmDigitacao)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                              if (e.key === "Escape") setEditando(null);
-                            }}
-                            className="pointer-events-auto w-full max-w-[90%] rounded-lg border border-white/40 bg-neutral-950/90 px-2.5 py-1 text-center font-medium text-white shadow-2xl backdrop-blur-md outline-none ring-2 ring-white/60 transition"
-                            style={{ fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12 }}
-                          />
-                        ) : (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
-                            onPointerDown={(e) => tocarTextoDoPalco(e, cenaAtual.chave, indice, t.texto || "", emEdicao)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
-                              }
-                            }}
-                            title="Clique e arraste para mover · clique para editar"
-                            className="pointer-events-auto max-w-full cursor-grab touch-none active:cursor-grabbing truncate select-none rounded-md px-2.5 py-1 text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
-                            style={{
-                              // As cores do vídeo (video.ts, ESTILOS_TEXTO): etiqueta é coral lá, então é aqui.
-                              background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
-                              fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
-                              fontWeight: est.id === "destaque" ? 700 : 500,
-                            }}
-                          >
-                            {t.texto || "texto"}
-                          </span>
-                        )}
-                      </span>
-                    );
-                  })}
-                {/* As peças (adesivos, ficha, contato, moldura) no lugar em que saem no
-                    vídeo: mesma função de posição que o servidor usa. */}
-                {cenaAtual && (cenaAtual.elementos?.length ?? 0) > 0 && (
-                  <ElementosNoPalco
-                    elementos={cenaAtual.elementos ?? []}
-                    proporcao={PROPORCAO_NUM[formato]}
-                    topoOcupado={!!titulo}
-                    cor={corDaMarca}
-                    itensDaFicha={itensDaFicha}
-                    gatilho={menu.gatilho}
-                    aoMudar={(i, m) => mudarElemento(cenaAtual.chave, i, m)}
-                    aoTirar={(i) => removerElemento(cenaAtual.chave, i)}
-                    aoDuplicar={(i) => {
-                      const el = cenaAtual.elementos?.[i];
-                      if (el) adicionarElemento(cenaAtual.chave, { ...el });
-                    }}
-                    aoMoverCamada={(i, direcao) => moverCamadaElemento(cenaAtual.chave, i, direcao)}
-                  />
-                )}
-                {/* Você por cima da foto, no lugar e no tamanho em que sai no vídeo. */}
-                {apresentador && apreUrl && (
-                  <ApresentadorNoPalco
-                    apresentador={apresentador}
-                    url={apreUrl}
-                    proporcao={PROPORCAO_NUM[formato]}
-                    aoMudar={setApresentador}
-                    tempo={tempo}
-                    tocando={tocando}
-                    selecionado={selecao?.faixa === "voce"}
-                    aoSelecionar={() => setSelecao({ faixa: "voce" })}
-                    aoMedirDuracao={(d) => setSegundosDoVoce(Math.round(d * 100) / 100)}
-                  />
-                )}
-                {/* A legenda de agora, no lugar e no tamanho em que sai no vídeo. */}
-                <LegendaNoPalco
-                  legendas={legendas}
-                  tempo={tempo}
-                  alturaPalco={alturaPalco}
-                  apresentadorNoPe={apresentador?.formato === "rodape"}
-                  selecionado={selecao?.faixa === "legendas" ? selecao.indice : null}
-                  aoSelecionar={(i) => setSelecao({ faixa: "legendas", indice: i })}
-                />
-              </div>
-              {/* No celular o palco tem altura contada ao pixel (o quadro ocupa tudo): a legenda
-                  ficava meio cortada embaixo. Lá a linha do tempo já mostra em que cena se está. */}
-              <p className="mt-2 truncate text-center text-xs text-neutral-500 max-md:hidden">
-                {cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}
-              </p>
-            </div>
-          </Cartao>
-          {/* ---------- painel da cena ----------
-               Tudo que dá pra mexer na cena escolhida, num lugar só. Antes cada cena
-               carregava os próprios controles na lista, e a lista virava uma parede de
-               chips: doze cenas, doze cópias de tudo. */}
-          {cenaAtual && (
-            <Cartao>
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <Rotulo>Cena {indiceAtual + 1}</Rotulo>
-                  <p className="-mt-1 truncate text-xs text-neutral-500">{cenaAtual.rotulo}</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {/* Arrastar reordena na linha do tempo; estas setas fazem o mesmo pra
-                      quem está no teclado ou no celular, onde arrastar não vai bem. */}
-                  <button onClick={() => mover(cenaAtual.chave, -1)} disabled={gerando || indiceAtual === 0} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Mover pra trás">
-                    <Icone nome="cima" className="h-4 w-4 -rotate-90" />
-                  </button>
-                  <button onClick={() => mover(cenaAtual.chave, 1)} disabled={gerando || indiceAtual === cenas.length - 1} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Mover pra frente">
-                    <Icone nome="cima" className="h-4 w-4 rotate-90" />
-                  </button>
-                  <button onClick={() => dividirNoCabecote(cenaAtual.chave)} disabled={gerando || cenaAtual.tipo === "animada" || cenas.length >= LIMITES.cenasMax || cenaAtual.duracao < LIMITES.duracaoMin * 2} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title={cenaAtual.tipo === "animada" ? "Cena animada não se divide" : "Dividir em duas"}>
-                    <Icone nome="corrigir_perspectiva" className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => duplicar(cenaAtual.chave)} disabled={gerando || cenas.length >= LIMITES.cenasMax} className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-30" title="Duplicar">
-                    <Icone nome="copiar" className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => remover(cenaAtual.chave)} disabled={gerando} className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600" title="Remover">
-                    <Icone nome="lixeira" className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Chip ativo={(capa ?? cenas[0]?.chave) === cenaAtual.chave} onClick={() => setCapa(cenaAtual.chave)} title="A miniatura do vídeo (o que aparece antes do play) sai desta cena.">
-                  ★ Capa
-                </Chip>
-                {cenaAtual.tipo === "animada" && cenaAtual.animacaoGuardada && cenaAtual.animacaoGuardada.animacao === cenaAtual.animacao && cenaAtual.animacaoGuardada.duracao === cenaAtual.duracao && (
-                  <span className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal" title="O clipe desta animação já foi gerado num vídeo anterior. Com o mesmo movimento e duração, não custa de novo.">
-                    animação já feita · grátis
-                  </span>
-                )}
-                {cenaAtual.ehPanoramica && (
-                  <span className="rounded-full bg-marca-teal/15 px-2.5 py-1 text-xs font-medium text-marca-teal" title="Panorâmica não cabe parada no quadro do vídeo: mostrada assim, as pontas seriam cortadas. Já deixei no efeito que desliza.">
-                    panorâmica · deslizando
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {!cenaAtual.ehClipe && !cenaAtual.eh360 && (
-                  <>
-                    <Chip ativo={cenaAtual.tipo === "foto"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "foto" })}>Foto</Chip>
-                    {cenaAtual.temAntes && <Chip ativo={cenaAtual.tipo === "antes_depois"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "antes_depois" })}>Antes e depois</Chip>}
-                    <Chip ativo={cenaAtual.tipo === "animada"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "animada" })} title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`}>
-                      ✨ Mover a câmera (+{CREDITOS.animada})
-                    </Chip>
-                  </>
-                )}
-                {cenaAtual.eh360 && (
-                  <>
-                    <Chip ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Sua foto 360 (ou panorâmica) vira passeio: a câmera anda dentro dela de verdade, sem IA e sem crédito.">🧭 Passear na sua 360</Chip>
-                    <Chip ativo={cenaAtual.tipo === "foto"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "foto" })}>Foto comum</Chip>
-                  </>
-                )}
-                {cenaAtual.ehClipe && (
-                  <>
-                    <Chip ativo={cenaAtual.tipo === "clipe"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "clipe" })}>Clipe</Chip>
-                    <Chip ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(cenaAtual.chave, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Passear na sua 360</Chip>
-                  </>
-                )}
-              </div>
-
-              <div className="mt-3 grid gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  {cenaAtual.tipo === "foto" && (
-                    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                      Movimento
-                      <select
-                        value={cenaAtual.efeito}
-                        onChange={(e) => mudarCena(cenaAtual.chave, { efeito: e.target.value as EfeitoId })}
-                        title={EFEITOS.find((e) => e.id === cenaAtual.efeito)?.dica}
-                        className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm"
-                      >
-                        {EFEITOS.map((e) => (
-                          <option key={e.id} value={e.id} title={e.dica}>{e.rotulo}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  {cenaAtual.tipo === "animada" && (
-                    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                      Câmera
-                      <select value={cenaAtual.animacao} onChange={(e) => mudarCena(cenaAtual.chave, { animacao: e.target.value as AnimacaoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" title={ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao}>
-                        {ANIMACOES.map((a) => (
-                          <option key={a.id} value={a.id}>{a.rotulo}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  {cenaAtual.tipo === "tour360" && (
-                    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                      Passeio
-                      <select value={cenaAtual.movimento} onChange={(e) => mudarCena(cenaAtual.chave, { movimento: e.target.value as Movimento360Id })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" title={MOVIMENTOS_360.find((m) => m.id === cenaAtual.movimento)?.descricao}>
-                        {MOVIMENTOS_360.map((m) => (
-                          <option key={m.id} value={m.id}>{m.rotulo}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                    Duração
-                    <select value={cenaAtual.duracao} onChange={(e) => mudarCena(cenaAtual.chave, { duracao: Number(e.target.value) })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm">
-                      {/* Dividir e aparar deixam durações fora da lista (7s, 2s...). Sem a
-                          opção, o seletor mostrava a primeira da lista e mentia. */}
-                      {(() => {
-                        const lista = DURACOES_CENA[cenaAtual.tipo === "tour360" ? "tour360" : cenaAtual.tipo === "animada" ? "animada" : "foto"];
-                        return (lista.includes(cenaAtual.duracao) ? lista : [...lista, cenaAtual.duracao].sort((a, b) => a - b)).map((d) => (
-                          <option key={d} value={d}>{d} s</option>
-                        ));
-                      })()}
-                    </select>
-                  </label>
-                  {/* Acabamento DESTA cena. "Igual ao vídeo" é o estado normal: o
-                      acabamento é do vídeo inteiro, e a cena só sai da linha quando a
-                      pessoa quer -- a foto da fachada em preto e branco no meio de um
-                      vídeo claro, por exemplo. */}
-                  <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                    Cor
-                    <select
-                      value={cenaAtual.filtro ?? ""}
-                      onChange={(e) => mudarCena(cenaAtual.chave, { filtro: (e.target.value || undefined) as FiltroId | undefined })}
-                      className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm"
-                    >
-                      <option value="">Igual ao vídeo</option>
-                      {FILTROS.map((f) => (
-                        <option key={f.id} value={f.id}>{f.rotulo}</option>
-                      ))}
-                    </select>
-                  </label>
-                  {cenaAtual.ehClipe && cenaAtual.tipo === "clipe" && (
-                    <label className="flex items-center gap-1.5 text-xs text-neutral-700">
-                      <input type="checkbox" checked={cenaAtual.melhorar} onChange={(e) => mudarCena(cenaAtual.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
-                      Melhorar cor
-                    </label>
-                  )}
-                </div>
-
-                {cenaAtual.tipo === "animada" && (
-                  <p className="text-[11px] leading-relaxed text-neutral-500">
-                    {ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao} <strong className="font-medium text-neutral-700">Só a câmera se move</strong> — o imóvel fica
-                    como está, e não entra pessoa, bicho nem móvel novo. Leva <strong className="font-medium text-neutral-700">alguns minutos</strong>.
-                  </p>
-                )}
-
-                {/* Aparar: o começo do clipe é onde a pessoa ainda estava acertando o celular. */}
-                {cenaAtual.ehClipe && (
-                  <label className="text-xs text-neutral-600">
-                    Começar o clipe em {(cenaAtual.inicio ?? 0).toFixed(1)}s
-                    <input type="range" min={0} max={30} step={0.5} value={cenaAtual.inicio ?? 0} onChange={(e) => mudarCena(cenaAtual.chave, { inicio: Number(e.target.value) })} className="mt-1 w-full accent-marca-coral" />
-                  </label>
-                )}
-
-                {/* Luz: o único número solto do editor, e ele está aqui porque é o
-                    único defeito que toda foto de imóvel tem de vez em quando -- o
-                    cômodo saiu escuro. O resto de cor vem com nome. */}
-                <label className="block text-xs text-neutral-600">
-                  Luz {cenaAtual.luz ? (cenaAtual.luz > 0 ? `+${Math.round(cenaAtual.luz * 100)}%` : `${Math.round(cenaAtual.luz * 100)}%`) : "normal"}
-                  <input
-                    type="range"
-                    min={-LIMITES.luzMax}
-                    max={LIMITES.luzMax}
-                    step={0.01}
-                    value={cenaAtual.luz ?? 0}
-                    onChange={(e) => mudarCena(cenaAtual.chave, { luz: Number(e.target.value) || undefined })}
-                    className="mt-1 w-full accent-marca-coral"
-                  />
-                </label>
-
-                <input
-                  type="text"
-                  value={cenaAtual.legenda}
-                  onChange={(e) => mudarCena(cenaAtual.chave, { legenda: e.target.value })}
-                  maxLength={LIMITES.legendaMax}
-                  placeholder="Legenda (ex.: Sala de estar · 32 m²)"
-                  className={campo}
-                />
-
-                {/* ---------- textos da cena ----------
-                     Etiquetas prontas e as PEÇAS do imóvel: ninguém abre um editor pra
-                     digitar "Lançamento" nem pra escrever de novo um preço que já está
-                     no cadastro. Três posições e três estilos, porque posição livre num
-                     vídeo de celular quase sempre sai torta.
- */}
-                <div className="rounded-lg bg-neutral-50 p-2.5">
-                  <p className="text-xs font-medium text-neutral-600">Textos nesta cena</p>
-
-                  {(cenaAtual.textos ?? []).map((t, i) => (
-                    <div key={i} className="mt-2 rounded-lg border border-neutral-200 bg-white p-2">
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={t.texto}
-                          onChange={(e) => mudarTexto(cenaAtual.chave, i, { texto: e.target.value })}
-                          maxLength={LIMITES.textoMax}
-                          placeholder="Escreva o texto"
-                          className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-2 py-1 text-sm focus:border-marca-indigo focus:outline-none"
-                        />
-                        <button onClick={() => removerTexto(cenaAtual.chave, i)} className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600" title="Tirar este texto">
-                          <Icone nome="fechar" className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <select value={t.posicao ?? "base"} onChange={(e) => mudarTexto(cenaAtual.chave, i, { posicao: e.target.value as PosicaoTexto })} className="rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs" aria-label="Posição do texto">
-                          {POSICOES_TEXTO.map((p) => (
-                            <option key={p.id} value={p.id}>{p.rotulo}</option>
-                          ))}
-                        </select>
-                        <select value={t.estilo ?? "faixa"} onChange={(e) => mudarTexto(cenaAtual.chave, i, { estilo: e.target.value as EstiloTexto })} className="rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs" aria-label="Estilo do texto" title={ESTILOS_TEXTO.find((x) => x.id === (t.estilo ?? "faixa"))?.dica}>
-                          {ESTILOS_TEXTO.map((x) => (
-                            <option key={x.id} value={x.id}>{x.rotulo}</option>
-                          ))}
-                        </select>
-                        <select value={t.animacao ?? "nenhuma"} onChange={(e) => mudarTexto(cenaAtual.chave, i, { animacao: e.target.value as AnimacaoTexto })} className="rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-xs" aria-label="Entrada do texto">
-                          {ANIMACOES_TEXTO.map((a) => (
-                            <option key={a.id} value={a.id}>{a.rotulo}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-
-                  {(cenaAtual.textos ?? []).length < LIMITES.textosPorCena ? (
-                    <div className="mt-2">
-                      {pecas.length > 0 && (
-                        <>
-                          <p className="text-[11px] text-neutral-500">Do imóvel — já preenchido</p>
-                          <div className="mt-1 flex flex-wrap gap-1.5">
-                            {pecas.map((p) => (
-                              <Chip
-                                key={p.id}
-                                ativo={false}
-                                onClick={() => adicionarTexto(cenaAtual.chave, { texto: p.texto, estilo: p.id === "preco" ? "destaque" : "faixa", posicao: "base", animacao: "surgir" })}
-                                title={`${p.rotulo}: ${p.texto}`}
-                              >
-                                + {p.rotulo}
-                              </Chip>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                      <p className="mt-2 text-[11px] text-neutral-500">Etiquetas</p>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
-                        {SELOS_IMOVEL.map((s) => (
-                          <Chip key={s.id} ativo={false} onClick={() => adicionarTexto(cenaAtual.chave, { texto: s.texto, estilo: s.estilo, posicao: s.posicao, animacao: "surgir" })}>
-                            {s.texto}
-                          </Chip>
-                        ))}
-                        <Chip ativo={false} onClick={() => adicionarTexto(cenaAtual.chave, { texto: "", estilo: "faixa", posicao: "centro", animacao: "nenhuma" })}>
-                          + Escrever
-                        </Chip>
-                      </div>
-                    </div>
+      case "voce":
+        return (
+          <div className="flex flex-col gap-6">
+            <Secao titulo="Aparecer no vídeo" descricao="Você num canto, em círculo ou no pé do vídeo. Não gasta crédito.">
+              {camera ? (
+                <div className="flex flex-col gap-3">
+                  <video ref={previaCamera} autoPlay muted playsInline className="w-full rounded-2xl bg-black" />
+                  {gravandoVideo ? (
+                    gravandoLinha(`Gravando · ${relogio(segundosVideo)}`, () => gravadorVideo.current?.stop())
                   ) : (
-                    <p className="mt-2 text-[11px] text-neutral-500">Três textos já é o limite desta cena.</p>
+                    <div className="flex gap-2">
+                      <BotaoEd variante="primaria" onClick={gravarVideo} className="flex-1">
+                        <span className="h-3 w-3 rounded-full bg-[#ffffff]" />
+                        Gravar
+                      </BotaoEd>
+                      <BotaoEd variante="fantasma" onClick={fecharCamera}>
+                        Fechar a câmera
+                      </BotaoEd>
+                    </div>
                   )}
                 </div>
-
-                {indiceAtual < cenas.length - 1 && (
+              ) : apresentador ? (
+                <div className="flex flex-col gap-4">
+                  {apreUrl && <video src={apreUrl} controls playsInline className="w-full rounded-2xl bg-black" />}
                   <div>
-                    <p className="text-xs text-neutral-500">Emenda com a cena {indiceAtual + 2}</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {TRANSICOES.map((t) => (
-                        <Chip key={t.id} ativo={(cenaAtual.transicao ?? transicao) === t.id} onClick={() => mudarCena(cenaAtual.chave, { transicao: t.id })}>
-                          {t.rotulo}
-                        </Chip>
+                    <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Jeito</p>
+                    <div className="flex flex-wrap gap-2">
+                      {FORMATOS_APRESENTADOR.map((f) => (
+                        <Pilula key={f.id} ativo={apresentador.formato === f.id} onClick={() => setApresentador({ ...apresentador, formato: f.id })} title={f.dica}>
+                          {f.rotulo}
+                        </Pilula>
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
-            </Cartao>
-          )}
-          {/* Status: só aparece quando tem o que dizer. Cartão vazio é caixa à toa. */}
-          {(cenas.length === 0 || gerando || semSaldo || custo === 0) && (
-          <Cartao>
-            {cenas.length === 0 && !gerando && (
-              <p className="text-center text-xs text-neutral-500">Escolha as fotos em Mídia, na trilha da esquerda. O resto já vem pronto.</p>
-            )}
-            {custo === 0 && !gerando && cenas.length > 0 && (
-              <p className="text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e voz de IA ({CREDITOS.narracao}).</p>
-            )}
-            {gerando && progresso && (
-              <div className="mt-3">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
-                  <div className="h-full rounded-full bg-marca-coral transition-all" style={{ width: `${Math.max(6, Math.round((progresso.feitas / Math.max(1, progresso.total)) * 100))}%` }} />
+                  {apresentador.formato !== "rodape" && (
+                    <>
+                      <div>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Canto</p>
+                        <div className="flex flex-wrap gap-2">
+                          {CANTOS_APRESENTADOR.map((cn) => (
+                            <Pilula key={cn.id} ativo={(apresentador.canto ?? "inferior_direito") === cn.id} onClick={() => setApresentador({ ...apresentador, canto: cn.id })}>
+                              {cn.rotulo}
+                            </Pilula>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Tamanho</p>
+                        <div className="flex flex-wrap gap-2">
+                          {TAMANHOS_APRESENTADOR.map((t) => (
+                            <Pilula key={t.id} ativo={(apresentador.tamanho ?? "medio") === t.id} onClick={() => setApresentador({ ...apresentador, tamanho: t.id })}>
+                              {t.rotulo}
+                            </Pilula>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex flex-col gap-3 rounded-2xl bg-[var(--ed-elevado)] p-4">
+                    <Deslizante rotulo="Entra em" valor={apresentador.entra ?? 0} min={0} max={Math.max(1, Math.round(duracao))} passo={0.5} formatar={(v) => `${v.toFixed(1)}s`} aoMudar={(v) => setApresentador({ ...apresentador, entra: v })} />
+                    <Deslizante rotulo="Volume da sua voz" valor={apresentador.volume ?? 1} min={0} max={2} passo={0.05} formatar={(v) => `${Math.round(v * 100)}%`} aoMudar={(v) => setApresentador({ ...apresentador, volume: v })} />
+                    <Deslizante rotulo="Começar o clipe em" valor={apresentador.inicio ?? 0} min={0} max={30} passo={0.5} formatar={(v) => `${v.toFixed(1)}s`} aoMudar={(v) => setApresentador({ ...apresentador, inicio: v })} />
+                  </div>
+                  <BotaoEd
+                    variante="perigo"
+                    icone="lixeira"
+                    onClick={() => {
+                      historico.novoPasso();
+                      setApresentador(null);
+                      setApreUrl(null);
+                      avisar("Você saiu do vídeo", { desfazer: () => historico.desfazer() });
+                    }}
+                    className="self-start"
+                  >
+                    Tirar do vídeo
+                  </BotaoEd>
                 </div>
-                <p className="mt-2 text-xs text-neutral-500">
-                  {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Mantenha esta aba aberta.
-                </p>
-                <p className="mt-1 text-xs text-neutral-400">
-                  {relogio(segundosGerando)} de {esperaTotal <= 60 ? "menos de 1 min" : `cerca de ${Math.round(esperaTotal / 60)} min`} esperados.
-                </p>
-                {segundosGerando > esperaTotal * 2 && (
-                  <p className="mt-1 text-xs text-amber-600">
-                    Está demorando mais que o normal. A fila da IA às vezes engarrafa — costuma sair. Se passar de 15 minutos, feche e tente de novo: o
-                    crédito de uma cena que não voltou é devolvido.
-                  </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <BotaoEd icone="video" onClick={abrirCamera} disabled={enviandoApre || gerando} className="w-full">
+                    {enviandoApre ? "Guardando…" : "Gravar com a câmera"}
+                  </BotaoEd>
+                  <label className={"inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--ed-elevado)] text-[13.5px] font-semibold text-[var(--ed-texto)] ring-1 ring-inset ring-[var(--ed-linha)] transition hover:bg-[var(--ed-elevado-2)] max-md:h-11 " + (enviandoApre ? "pointer-events-none opacity-50" : "")}>
+                    <Icone nome="mais" className="h-[18px] w-[18px]" />
+                    Enviar um vídeo seu
+                    <input
+                      type="file"
+                      accept="video/mp4,video/quicktime,video/webm"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) usarVideoApresentador(f, f.name);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <p className="text-[12px] text-[var(--ed-texto-3)]">A câmera só é pedida depois do clique.</p>
+                </div>
+              )}
+            </Secao>
+            <Divisor />
+            {/* Aparecer no vídeo e narrar são a mesma vontade -- "quero que seja MINHA voz".
+                É a MESMA gravação da aba Legendas, não uma segunda: dois gravadores dariam
+                dois áudios e a pergunta "qual deles entrou no vídeo?". */}
+            <Secao titulo="Só a sua voz" descricao="Sem aparecer: você narra e o vídeo mostra o imóvel. Não gasta crédito.">
+              {gravando ? (
+                gravandoLinha(`Gravando · ${relogio(segundosGravando)}`, pararGravacao)
+              ) : (
+                <BotaoEd
+                  icone="microfone"
+                  onClick={() => {
+                    // Liga a narração e escolhe "gravada" antes de pedir o microfone: sem isso
+                    // o áudio seria guardado e o vídeo sairia sem ele.
+                    setNarrar(true);
+                    setOrigemVoz("gravada");
+                    gravarVoz();
+                  }}
+                  disabled={enviandoVoz || gerando}
+                  className="w-full"
+                >
+                  {enviandoVoz ? "Guardando…" : vozArquivo ? "Gravar a voz de novo" : "Gravar só a voz"}
+                </BotaoEd>
+              )}
+              {vozArquivo && !gravando && <p className="text-[12px] text-[var(--ed-texto-2)]">Sua voz está no vídeo · {vozArquivo.nome}</p>}
+            </Secao>
+          </div>
+        );
+
+      case "cor": {
+        // A miniatura de cada filtro é a FOTO da cena aberta passando pela mesma tabela de
+        // cor que vira LUT no servidor -- não um CSS parecido.
+        const naCenaCor = escopoCor === "cena" && !!cenaAtual;
+        const cenaTemCor = !!cenaAtual && (!!cenaAtual.filtro || !!cenaAtual.ajustes);
+        const filtroAtual = naCenaCor ? cenaAtual!.filtro ?? filtro : filtro;
+        const intensidadeAtual = naCenaCor ? (cenaAtual!.filtro ? cenaAtual!.intensidade ?? 1 : intensidadeFiltro) : intensidadeFiltro;
+        const ajustesAtuais: Ajustes = { ...AJUSTES_NEUTROS, ...(naCenaCor ? cenaAtual!.ajustes ?? ajustesVideo : ajustesVideo) };
+        return (
+          <PainelFiltros
+            escopo={escopoCor}
+            temCena={!!cenaAtual}
+            cenaTemCorPropria={cenaTemCor}
+            filtro={filtroAtual}
+            intensidade={intensidadeAtual}
+            ajustes={ajustesAtuais}
+            desligado={gerando}
+            aoEscopo={setEscopoCor}
+            aoFiltro={(id) => {
+              if (naCenaCor) mudarCena(cenaAtual!.chave, { filtro: id, intensidade: 1 });
+              else {
+                setFiltro(id);
+                setIntensidadeFiltro(1);
+              }
+            }}
+            aoIntensidade={(v) => {
+              // Mexer na intensidade da cena sem filtro próprio cria o filtro próprio com o do
+              // vídeo: senão o controle andaria e nada mudaria.
+              if (naCenaCor) mudarCena(cenaAtual!.chave, { filtro: cenaAtual!.filtro ?? filtro, intensidade: v });
+              else setIntensidadeFiltro(v);
+            }}
+            aoAjuste={(k, v) => {
+              const novo = { ...ajustesAtuais, [k]: v };
+              const limpo = Object.fromEntries(Object.entries(novo).filter(([, x]) => x)) as Partial<Ajustes>;
+              const valor = Object.keys(limpo).length ? limpo : undefined;
+              if (naCenaCor) mudarCena(cenaAtual!.chave, { ajustes: valor ?? {} });
+              else setAjustesVideo(valor);
+            }}
+            aoZerar={() => {
+              if (naCenaCor) mudarCena(cenaAtual!.chave, { ajustes: {} });
+              else setAjustesVideo(undefined);
+            }}
+            aoVoltarProVideo={() => cenaAtual && mudarCena(cenaAtual.chave, { filtro: undefined, intensidade: undefined, ajustes: undefined, luz: undefined })}
+          />
+        );
+      }
+
+      case "ajustes":
+        return (
+          <div className="flex flex-col gap-6">
+            <Secao titulo="Formato">
+              <div className="grid grid-cols-2 gap-2.5">
+                {FORMATOS.map((f) => (
+                  <CartaoOpcao key={f.id} ativo={formato === f.id} disabled={gerando} onClick={() => setFormato(f.id)} titulo={`${f.rotulo} · ${f.id}`} descricao={f.dica}>
+                    <span className="grid h-12 place-items-center text-[var(--ed-texto-2)]">
+                      <span className="rounded-[5px] border-2 border-current" style={{ height: f.id === "16:9" ? 24 : 40, aspectRatio: PROPORCAO[f.id] }} />
+                    </span>
+                  </CartaoOpcao>
+                ))}
+              </div>
+            </Secao>
+            <Divisor />
+            <Secao titulo="Título e dados" descricao="O título aparece no alto do vídeo; preço e local entram nos textos prontos.">
+              <input value={titulo} onChange={(e) => setTitulo(e.target.value)} maxLength={LIMITES.tituloMax} placeholder="Título (ex.: Apto 302 · Setor Bueno)" className={campoEd} aria-label="Título do vídeo" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={preco} onChange={(e) => setPreco(e.target.value)} maxLength={30} placeholder="Preço" className={campoEd} aria-label="Preço" />
+                <input value={local} onChange={(e) => setLocal(e.target.value)} maxLength={50} placeholder="Bairro · Cidade" className={campoEd} aria-label="Bairro e cidade" />
+              </div>
+            </Secao>
+            <Divisor />
+            <Secao titulo="Capa e tela final">
+              {/* A capa é o que aparece ANTES de alguém tocar no play -- no feed, no WhatsApp,
+                  na lista. Só oferecida quando há o que escrever nela. */}
+              {(titulo.trim() || preco.trim()) && <Alternar ligado={capaMontada} aoMudar={setCapaMontada} titulo="Capa com nome e preço" descricao="A imagem que aparece antes de tocar o vídeo. Sem isso, a capa é o quadro cru da cena escolhida." />}
+              <Alternar ligado={telaFinal} aoMudar={setTelaFinal} titulo="Tela final com seu contato" descricao="Nome, CRECI, WhatsApp e logo da sua marca." />
+              {telaFinal && (
+                <div className="flex flex-col gap-2.5 rounded-2xl bg-[var(--ed-elevado)] p-3.5">
+                  <p className="text-[12.5px] font-medium text-[var(--ed-texto-2)]">Frase da tela final</p>
+                  <div className="flex flex-wrap gap-2">
+                    {/* "Chame no WhatsApp" some quando a marca não tem número: sem número a
+                        frase manda o cliente pra lugar nenhum. */}
+                    {CHAMADAS.filter((f) => marca?.whatsapp || !/whatsapp/i.test(f)).map((f) => (
+                      <Pilula key={f} ativo={chamada === f} onClick={() => setChamada(f)}>
+                        {f}
+                      </Pilula>
+                    ))}
+                    <Pilula ativo={chamada === ""} onClick={() => setChamada("")}>
+                      Sem frase
+                    </Pilula>
+                  </div>
+                  <input value={chamada} onChange={(e) => setChamada(e.target.value)} maxLength={LIMITES.chamadaMax} placeholder="Ou escreva a sua" className={campoEd} aria-label="Frase da tela final" />
+                </div>
+              )}
+              {fichaResumo && (
+                <Alternar
+                  ligado={cenas.length > 0 && cenas[0].legenda === fichaResumo}
+                  disabled={cenas.length === 0 || gerando}
+                  aoMudar={(v) => {
+                    const primeira = cenas[0];
+                    if (primeira) mudarCena(primeira.chave, { legenda: v ? fichaResumo : "" });
+                  }}
+                  titulo="Dados do imóvel na primeira cena"
+                  descricao={`“${fichaResumo}” — vem da ficha do imóvel.`}
+                />
+              )}
+            </Secao>
+            <Divisor />
+            {/* Não é um formulário: é o ESPELHO de Minha marca. Mexer é lá -- a marca vale pro
+                produto inteiro, e dois lugares que a mudam são duas verdades. */}
+            <Secao titulo="Sua marca" descricao={<>Entra sozinha na tela final, na capa e nos carimbos. Pra mudar, vá em <Link href="/marca" className="font-medium text-[var(--ed-texto)] underline">Minha marca</Link>.</>}>
+              <div className="flex items-center gap-3 rounded-2xl bg-[var(--ed-elevado)] p-3">
+                <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#ffffff]">
+                  {marca?.logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={marca.logo} alt="" className="h-full w-full object-contain p-1" />
+                  ) : (
+                    <Icone nome="marca" className="h-5 w-5 text-[#7687a8]" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-semibold text-[var(--ed-texto)]">{marca?.nome || "Sem nome cadastrado"}</p>
+                  <p className="truncate text-[12px] text-[var(--ed-texto-2)]">{[marca?.creci ? `CRECI ${marca.creci}` : null, marca?.whatsapp, marca?.instagram].filter(Boolean).join(" · ") || "Sem CRECI nem contato"}</p>
+                </div>
+                <span className="h-8 w-8 shrink-0 rounded-lg ring-2 ring-white/10" style={{ background: marca?.cor || "#0f2d5b" }} title={`Cor da marca: ${marca?.cor || "#0f2d5b"}`} />
+              </div>
+              {!marca?.nome && !marca?.whatsapp && !marca?.logo && (
+                <Nota tipo="atencao">
+                  Sem nome, WhatsApp ou logo, o vídeo sai sem tela final.{" "}
+                  <Link href="/marca" className="font-semibold underline">
+                    Preencher agora
+                  </Link>
+                </Nota>
+              )}
+            </Secao>
+          </div>
+        );
+    }
+  }
+
+  // ================= OS AJUSTES DA CENA =================
+  // Tudo que dá pra mexer na cena aberta, num lugar só: a coluna da direita (tela larga),
+  // embaixo do palco (tela média) ou a folha (celular, pelo botão Ajustes da barra).
+  function inspetorDaCena(): React.ReactNode {
+    if (!cenaAtual) return <Vazio icone="foto" titulo="Nenhuma cena ainda" texto="Ponha fotos ou vídeos na linha do tempo: os ajustes de cada cena aparecem aqui." />;
+    const k = cenaAtual.chave;
+    const ehCapa = (capa ?? cenas[0]?.chave) === k;
+    const noCursor = cabecoteDentroDe(k) !== null;
+    const podeDividir = !gerando && cenaAtual.tipo !== "animada" && cenas.length < LIMITES.cenasMax && cenaAtual.duracao >= LIMITES.duracaoMin * 2;
+    const listaDuracoes = DURACOES_CENA[cenaAtual.tipo === "tour360" ? "tour360" : cenaAtual.tipo === "animada" ? "animada" : "foto"];
+    // Dividir e aparar deixam durações fora da lista (7s, 2s...). Sem a opção, o seletor
+    // mostrava a primeira da lista e mentia.
+    const duracoes = listaDuracoes.includes(cenaAtual.duracao) ? listaDuracoes : [...listaDuracoes, cenaAtual.duracao].sort((a, b) => a - b);
+    const rotuloCampo = "mb-1.5 block text-[12.5px] font-medium text-[var(--ed-texto-2)]";
+    return (
+      <div className="flex flex-col gap-5" data-inspetor="1">
+        <div className="flex items-center gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-[var(--ed-elevado)] text-[var(--ed-texto-3)] ring-1 ring-inset ring-[var(--ed-linha)]">
+            {cenaAtual.miniatura ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={cenaAtual.miniatura} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <Icone nome={cenaAtual.ehClipe ? "video" : "foto"} className="h-5 w-5" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold text-[var(--ed-texto)]">
+              Cena {indiceAtual + 1} <span className="font-normal text-[var(--ed-texto-3)]">de {cenas.length}</span>
+            </p>
+            <p className="truncate text-[12px] text-[var(--ed-texto-2)]">{cenaAtual.rotulo}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-0.5 rounded-2xl bg-[var(--ed-elevado)] p-1" role="toolbar" aria-label="Ações da cena">
+          <BotaoIcone rotulo="Mover pra trás" icone="seta_esq" tamanho="p" disabled={gerando || indiceAtual === 0} onClick={() => naCena(() => mover(k, -1), "Cena movida")} />
+          <BotaoIcone rotulo="Mover pra frente" icone="seta_dir" tamanho="p" disabled={gerando || indiceAtual === cenas.length - 1} onClick={() => naCena(() => mover(k, 1), "Cena movida")} />
+          <BotaoIcone rotulo={cenaAtual.tipo === "animada" ? "Cena animada não se divide" : noCursor ? "Dividir no cursor" : "Dividir no meio"} icone="dividir" tamanho="p" disabled={!podeDividir} onClick={() => naCena(() => dividirNoCabecote(k), "Cena dividida")} />
+          <BotaoIcone rotulo="Duplicar" icone="copiar" tamanho="p" disabled={gerando || cenas.length >= LIMITES.cenasMax} onClick={() => naCena(() => duplicar(k), "Cena duplicada")} />
+          <BotaoIcone rotulo={ehCapa ? "Esta cena é a capa" : "Usar como capa do vídeo"} icone="estrela" tamanho="p" ativo={ehCapa} onClick={() => !ehCapa && naCena(() => setCapa(k), "Esta cena virou a capa")} />
+          <span className="flex-1" />
+          <BotaoIcone rotulo="Apagar a cena" icone="lixeira" perigo tamanho="p" disabled={gerando} onClick={() => naCena(() => remover(k), "Cena apagada")} />
+        </div>
+
+        {(cenaAtual.tipo === "animada" && cenaAtual.animacaoGuardada && cenaAtual.animacaoGuardada.animacao === cenaAtual.animacao && cenaAtual.animacaoGuardada.duracao === cenaAtual.duracao) || cenaAtual.ehPanoramica ? (
+          <div className="flex flex-wrap gap-2">
+            {cenaAtual.tipo === "animada" && cenaAtual.animacaoGuardada && cenaAtual.animacaoGuardada.animacao === cenaAtual.animacao && cenaAtual.animacaoGuardada.duracao === cenaAtual.duracao && (
+              <span className="rounded-full bg-[rgb(44_177_163/0.15)] px-2.5 py-1 text-[12px] font-medium text-[#7fd6cb]" title="O clipe desta animação já foi gerado num vídeo anterior. Com o mesmo movimento e duração, não custa de novo.">
+                animação já feita · grátis
+              </span>
+            )}
+            {cenaAtual.ehPanoramica && (
+              <span className="rounded-full bg-[rgb(44_177_163/0.15)] px-2.5 py-1 text-[12px] font-medium text-[#7fd6cb]" title="Panorâmica não cabe parada no quadro: as pontas seriam cortadas. Já deixei no efeito que desliza.">
+                panorâmica · deslizando
+              </span>
+            )}
+          </div>
+        ) : null}
+
+        <div>
+          <span className={rotuloCampo}>Tipo de cena</span>
+          <div className="flex flex-wrap gap-2">
+            {!cenaAtual.ehClipe && !cenaAtual.eh360 && (
+              <>
+                <Pilula ativo={cenaAtual.tipo === "foto"} onClick={() => mudarCena(k, { tipo: "foto" })}>
+                  Foto
+                </Pilula>
+                {cenaAtual.temAntes && (
+                  <Pilula ativo={cenaAtual.tipo === "antes_depois"} onClick={() => mudarCena(k, { tipo: "antes_depois" })}>
+                    Antes e depois
+                  </Pilula>
                 )}
-              </div>
+                <Pilula ativo={cenaAtual.tipo === "animada"} onClick={() => mudarCena(k, { tipo: "animada" })} title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`} icone="magica">
+                  Mover a câmera · {CREDITOS.animada} cr
+                </Pilula>
+              </>
             )}
-            {semSaldo && !gerando && (
-              <div className="mt-3">
-                <Aviso tipo="atencao">
-                  Faltam créditos pra este vídeo. <Link href="/planos" className="underline">Veja os planos e pacotes.</Link>
-                </Aviso>
-              </div>
+            {cenaAtual.eh360 && (
+              <>
+                <Pilula ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(k, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Sua foto 360 vira passeio: a câmera anda dentro dela de verdade, sem IA e sem crédito.">
+                  Passear na 360
+                </Pilula>
+                <Pilula ativo={cenaAtual.tipo === "foto"} onClick={() => mudarCena(k, { tipo: "foto" })}>
+                  Foto comum
+                </Pilula>
+              </>
             )}
-          </Cartao>
+            {cenaAtual.ehClipe && (
+              <>
+                <Pilula ativo={cenaAtual.tipo === "clipe"} onClick={() => mudarCena(k, { tipo: "clipe" })}>
+                  Vídeo
+                </Pilula>
+                <Pilula ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(k, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">
+                  Passear na 360
+                </Pilula>
+              </>
+            )}
+          </div>
+          {cenaAtual.tipo === "animada" && (
+            <p className="mt-2 text-[12px] leading-relaxed text-[var(--ed-texto-2)]">
+              {ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao} <strong className="font-medium text-[var(--ed-texto)]">Só a câmera se move</strong> — o imóvel fica como está. Leva <strong className="font-medium text-[var(--ed-texto)]">alguns minutos</strong>.
+            </p>
           )}
-        </section>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {cenaAtual.tipo === "foto" && (
+            <label className="col-span-2 block">
+              <span className={rotuloCampo}>Movimento</span>
+              <select value={cenaAtual.efeito} onChange={(e) => mudarCena(k, { efeito: e.target.value as EfeitoId })} title={EFEITOS.find((e) => e.id === cenaAtual.efeito)?.dica} className={seletorEd}>
+                {EFEITOS.map((e) => (
+                  <option key={e.id} value={e.id} title={e.dica}>
+                    {e.rotulo}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {cenaAtual.tipo === "animada" && (
+            <label className="col-span-2 block">
+              <span className={rotuloCampo}>Câmera</span>
+              <select value={cenaAtual.animacao} onChange={(e) => mudarCena(k, { animacao: e.target.value as AnimacaoId })} className={seletorEd} title={ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao}>
+                {ANIMACOES.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.rotulo}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {cenaAtual.tipo === "tour360" && (
+            <label className="col-span-2 block">
+              <span className={rotuloCampo}>Passeio</span>
+              <select value={cenaAtual.movimento} onChange={(e) => mudarCena(k, { movimento: e.target.value as Movimento360Id })} className={seletorEd} title={MOVIMENTOS_360.find((m) => m.id === cenaAtual.movimento)?.descricao}>
+                {MOVIMENTOS_360.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.rotulo}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="block">
+            <span className={rotuloCampo}>Duração</span>
+            <select value={cenaAtual.duracao} onChange={(e) => mudarCena(k, { duracao: Number(e.target.value) })} className={seletorEd}>
+              {duracoes.map((d) => (
+                <option key={d} value={d}>
+                  {d} s
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* Acabamento DESTA cena. "Igual ao vídeo" é o normal: a cena só sai da linha quando
+              a pessoa quer -- a fachada em preto e branco no meio de um vídeo claro. */}
+          <label className="block">
+            <span className={rotuloCampo}>Cor</span>
+            <select value={cenaAtual.filtro ?? ""} onChange={(e) => mudarCena(k, { filtro: (e.target.value || undefined) as FiltroId | undefined })} className={seletorEd}>
+              <option value="">Igual ao vídeo</option>
+              {FILTROS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.rotulo}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {cenaAtual.ehClipe && (
+          <div className="flex flex-col gap-3 rounded-2xl bg-[var(--ed-elevado)] p-4">
+            {/* Aparar: o começo do clipe é onde a pessoa ainda estava acertando o celular. */}
+            <Deslizante
+              rotulo="Começa no segundo"
+              valor={cenaAtual.inicio ?? 0}
+              min={0}
+              max={Math.max(0.5, Math.min(LIMITES.aparaMax, (cenaAtual.duracaoArquivo ?? 30) - 1))}
+              passo={0.5}
+              formatar={(v) => `${v.toFixed(1)}s`}
+              aoMudar={(v) => mudarCena(k, { inicio: v || undefined })}
+            />
+            {cenaAtual.tipo === "clipe" && <Alternar ligado={cenaAtual.melhorar} aoMudar={(v) => mudarCena(k, { melhorar: v })} titulo="Melhorar a cor do vídeo" descricao="Um pouco mais de contraste, cor e nitidez." />}
+          </div>
+        )}
+
+        {/* Luz: o único número solto, porque é o único defeito que toda foto de imóvel tem de
+            vez em quando -- o cômodo saiu escuro. O resto de cor vem com nome. */}
+        <Deslizante
+          rotulo="Luz"
+          valor={cenaAtual.luz ?? 0}
+          min={-LIMITES.luzMax}
+          max={LIMITES.luzMax}
+          passo={0.01}
+          formatar={(v) => (v ? (v > 0 ? `+${Math.round(v * 100)}%` : `${Math.round(v * 100)}%`) : "normal")}
+          aoMudar={(v) => mudarCena(k, { luz: v || undefined })}
+        />
+
+        <label className="block">
+          <span className={rotuloCampo}>Legenda da cena</span>
+          <input type="text" value={cenaAtual.legenda} onChange={(e) => mudarCena(k, { legenda: e.target.value })} maxLength={LIMITES.legendaMax} placeholder="Ex.: Sala de estar · 32 m²" className={campoEd} />
+        </label>
+
+        {/* Textos da cena: etiquetas prontas e as PEÇAS do imóvel -- ninguém abre um editor
+            pra digitar de novo um preço que já está no cadastro. */}
+        <Secao titulo="Textos nesta cena">
+          {(cenaAtual.textos ?? []).map((t, i) => (
+            <div key={i} className="flex flex-col gap-2 rounded-2xl bg-[var(--ed-elevado)] p-3">
+              <div className="flex items-center gap-1.5">
+                <input type="text" value={t.texto} onChange={(e) => mudarTexto(k, i, { texto: e.target.value })} maxLength={LIMITES.textoMax} placeholder="Escreva o texto" className={campoEd + " h-10"} aria-label={`Texto ${i + 1}`} />
+                <BotaoIcone rotulo="Tirar este texto" icone="lixeira" perigo tamanho="p" onClick={() => naCena(() => removerTexto(k, i), "Texto tirado")} />
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <select value={t.posicao ?? "base"} onChange={(e) => mudarTexto(k, i, { posicao: e.target.value as PosicaoTexto })} className={seletorEd + " h-10 px-2 text-[12.5px]"} aria-label="Posição do texto">
+                  {POSICOES_TEXTO.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.rotulo}
+                    </option>
+                  ))}
+                </select>
+                <select value={t.estilo ?? "faixa"} onChange={(e) => mudarTexto(k, i, { estilo: e.target.value as EstiloTexto })} className={seletorEd + " h-10 px-2 text-[12.5px]"} aria-label="Estilo do texto" title={ESTILOS_TEXTO.find((x) => x.id === (t.estilo ?? "faixa"))?.dica}>
+                  {ESTILOS_TEXTO.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.rotulo}
+                    </option>
+                  ))}
+                </select>
+                <select value={t.animacao ?? "nenhuma"} onChange={(e) => mudarTexto(k, i, { animacao: e.target.value as AnimacaoTexto })} className={seletorEd + " h-10 px-2 text-[12.5px]"} aria-label="Entrada do texto">
+                  {ANIMACOES_TEXTO.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ))}
+          {(cenaAtual.textos ?? []).length < LIMITES.textosPorCena ? (
+            <div className="flex flex-col gap-2">
+              {pecas.length > 0 && (
+                <>
+                  <p className="text-[12px] text-[var(--ed-texto-3)]">Do imóvel — já preenchido</p>
+                  <div className="flex flex-wrap gap-2">
+                    {pecas.map((p) => (
+                      <Pilula key={p.id} icone="mais" onClick={() => naCena(() => adicionarTexto(k, { texto: p.texto, estilo: p.id === "preco" ? "destaque" : "faixa", posicao: "base", animacao: "surgir" }), "Texto posto")} title={`${p.rotulo}: ${p.texto}`}>
+                        {p.rotulo}
+                      </Pilula>
+                    ))}
+                  </div>
+                </>
+              )}
+              <p className="text-[12px] text-[var(--ed-texto-3)]">Etiquetas</p>
+              <div className="flex flex-wrap gap-2">
+                {SELOS_IMOVEL.map((s) => (
+                  <Pilula key={s.id} onClick={() => naCena(() => adicionarTexto(k, { texto: s.texto, estilo: s.estilo, posicao: s.posicao, animacao: "surgir" }), "Texto posto")}>
+                    {s.texto}
+                  </Pilula>
+                ))}
+                <Pilula icone="editar_prompt" onClick={() => naCena(() => adicionarTexto(k, { texto: "", estilo: "faixa", posicao: "centro", animacao: "nenhuma" }))}>
+                  Escrever
+                </Pilula>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[12px] text-[var(--ed-texto-3)]">Três textos já é o limite desta cena.</p>
+          )}
+        </Secao>
+
+        {indiceAtual < cenas.length - 1 && (
+          <Secao titulo={`Emenda com a cena ${indiceAtual + 2}`}>
+            <div className="flex flex-wrap gap-2">
+              {TRANSICOES.map((t) => (
+                <Pilula key={t.id} ativo={(cenaAtual.transicao ?? transicao) === t.id} onClick={() => mudarCena(k, { transicao: t.id })}>
+                  {t.rotulo}
+                </Pilula>
+              ))}
+            </div>
+          </Secao>
+        )}
+      </div>
+    );
+  }
+
+  // ================= O PALCO =================
+  // A cena no tamanho e na proporção em que ela vai sair, com o título, os textos, as
+  // peças, o Você e a legenda por cima. O quadro é sempre o MAIOR que cabe na área (largura
+  // e altura), centrado -- no computador e no celular, em qualquer formato.
+  const quadroDoPalco = (
+    <div
+      ref={palcoRef}
+      data-palco
+      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-[#0b1426] shadow-[var(--ed-sombra-3)] ring-1 ring-white/[0.06]"
+      style={{ width: `min(calc(100cqw - ${celular ? 24 : 48}px), calc((100cqh - ${celular ? 16 : 32}px) * ${proporcao}))`, aspectRatio: PROPORCAO[formato] }}
+      // Botão direito (ou dedo segurado) em cima do quadro: o que dá pra fazer com a cena. Os
+      // textos por cima têm o menu DELES e param o evento aqui.
+      onContextMenu={cenaAtual ? (ev) => abrirMenuDaCena(ev, cenaAtual) : undefined}
+    >
+      {cenaAtual?.ehClipe && cenaAtual.videoUrl ? (
+        <VideoNoPalco
+          key={cenaAtual.chave}
+          url={cenaAtual.videoUrl}
+          cena={cenaAtual}
+          inicioDaCena={iniciosDasCenas[indiceAtual] ?? 0}
+          tempo={tempo}
+          tocando={tocando}
+          relogio={previa.relogio}
+          largura={alturaPalco * proporcao}
+          altura={alturaPalco}
+          miniatura={cenaAtual.miniatura}
+        />
+      ) : cenaAtual?.miniatura ? (
+        // O palco mostra a foto COM a cor que vai sair: filtro, intensidade, ajustes e
+        // vinheta, na mesma conta do servidor.
+        <FotoComCor src={cenaAtual.miniatura} grade={gradeDaCena(cenaAtual, { filtro, intensidadeFiltro, ajustes: ajustesVideo })} proporcao={proporcao} lado={640} className="h-full w-full" />
+      ) : cenaAtual ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--ed-texto-3)]">
+          <Icone nome="video" className="h-9 w-9" />
+          <span className="px-6 text-center text-xs">Clipe — aparece no vídeo montado</span>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-5 text-center" data-palco-vazio="1">
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/[0.06] text-[var(--ed-texto-2)]">
+            <Icone nome="video" className="h-7 w-7" />
+          </span>
+          <p className="text-[15px] font-semibold text-[var(--ed-texto)]">Monte o vídeo do imóvel</p>
+          {alturaPalco > 330 && <p className="max-w-[230px] text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">Comece pelas fotos prontas do imóvel, por um vídeo seu ou por arquivos do aparelho.</p>}
+          <div className="mt-1 flex w-full max-w-[220px] flex-col gap-2">
+            <BotaoEd variante="primaria" icone="foto" onClick={() => setAba("midia")}>
+              Fotos e arquivos
+            </BotaoEd>
+            <BotaoEd icone="video" onClick={() => setAba("videos")}>
+              Seus vídeos
+            </BotaoEd>
+          </div>
+        </div>
+      )}
+      {titulo && cenaAtual && (
+        <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
+          {editandoTitulo ? (
+            <input
+              autoFocus
+              defaultValue={titulo}
+              maxLength={LIMITES.tituloMax}
+              onBlur={(e) => {
+                setTitulo(e.target.value.trim());
+                setEditandoTitulo(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setEditandoTitulo(false);
+              }}
+              className="pointer-events-auto w-full max-w-[85%] rounded-lg border border-white/40 bg-neutral-950/90 px-2.5 py-1 text-center text-[12px] font-semibold text-white shadow-xl outline-none ring-2 ring-white/60 backdrop-blur-md"
+            />
+          ) : (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => setEditandoTitulo(true)}
+              onKeyDown={(e) => e.key === "Enter" && setEditandoTitulo(true)}
+              {...menu.gatilho([
+                { rotulo: "Editar o título", icone: "editar_prompt", aoEscolher: () => setEditandoTitulo(true) },
+                { rotulo: "Tirar o título do vídeo", icone: "lixeira", perigo: true, dica: "A faixa some do topo de todas as cenas", aoEscolher: () => setTitulo("") },
+              ])}
+              title="Clique pra editar · botão direito pra mais"
+              className="pointer-events-auto cursor-pointer truncate rounded-md bg-neutral-950/80 px-2 py-1 text-[11px] font-semibold text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70"
+            >
+              {titulo}
+            </span>
+          )}
+        </span>
+      )}
+      {/* Os textos da cena, no lugar em que vão sair. Suporta posição livre ou ancorada. */}
+      {cenaAtual &&
+        textosDaCena({ legenda: cenaAtual.legenda || undefined, textos: cenaAtual.textos }).map((t, i) => {
+          const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"];
+          const pos = t.posicao ?? "base";
+          const ehLegenda = !!cenaAtual.legenda && i === 0;
+          const indice = ehLegenda ? -1 : i - (cenaAtual.legenda ? 1 : 0);
+          const emEdicao = editando?.chave === cenaAtual.chave && editando.indice === indice;
+          const comEfeito = !!t.arte && IDS_EFEITOS_TEXTO.has(t.arte);
+          const estiloLivre = typeof t.x === "number" && typeof t.y === "number";
+          const wrapperClasses = estiloLivre
+            ? "pointer-events-none absolute z-20 flex items-center justify-center -translate-x-1/2 -translate-y-1/2"
+            : "pointer-events-none absolute inset-x-0 z-20 flex justify-center " +
+              (comEfeito
+                ? pos === "topo"
+                  ? titulo
+                    ? "top-[19%]"
+                    : "top-[8%]"
+                  : pos === "centro"
+                    ? "top-1/2 -translate-y-1/2"
+                    : "bottom-[9%]"
+                : "px-3 " + (pos === "topo" ? "top-[7%]" : pos === "centro" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]"));
+          const wrapperStyle: React.CSSProperties = estiloLivre ? { left: `${t.x}%`, top: `${t.y}%` } : {};
+          const campoNoPalco = (
+            <input
+              autoFocus
+              value={textoEmDigitacao}
+              onChange={(e) => setTextoEmDigitacao(e.target.value)}
+              maxLength={ehLegenda ? LIMITES.legendaMax : LIMITES.textoMax}
+              onBlur={() => salvarTextoDoPalco(cenaAtual.chave, indice, textoEmDigitacao)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setEditando(null);
+              }}
+              placeholder="Digite o texto…"
+              className="pointer-events-auto w-56 max-w-[90%] rounded-xl border border-white/40 bg-neutral-950/90 px-3 py-1.5 text-center text-[15px] font-semibold text-white shadow-2xl outline-none ring-2 ring-white/60 backdrop-blur-md"
+            />
+          );
+          return (
+            <span key={i} className={wrapperClasses} style={wrapperStyle}>
+              {comEfeito ? (
+                <div className="relative flex flex-col items-center">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
+                    onPointerDown={(e) => tocarTextoDoPalco(e, cenaAtual.chave, indice, t.texto || "", emEdicao)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
+                      }
+                    }}
+                    title="Arraste pra mover · toque pra editar"
+                  data-texto-palco="1"
+                    data-texto-palco="1"
+                    className="pointer-events-auto flex cursor-grab touch-none select-none justify-center transition hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)] active:cursor-grabbing"
+                  >
+                    <TextoComEfeito efeito={t.arte as string} texto={emEdicao ? textoEmDigitacao || t.texto || "Texto" : t.texto || "Texto"} formato={formato} n={i} movimento={t.movimento} />
+                  </span>
+                  {emEdicao && (
+                    // Na metade de baixo, o campo abre por cima: embaixo ele sai do palco.
+                    <div className={`pointer-events-auto absolute z-30 flex flex-col items-center gap-1 ${(estiloLivre ? (t.y as number) > 55 : pos !== "topo") ? "bottom-full mb-2" : "top-full mt-2"}`}>
+                      {campoNoPalco}
+                      <span className="rounded bg-black/80 px-2 py-0.5 text-[10px] text-white/90">Enter pra salvar · Esc pra cancelar</span>
+                    </div>
+                  )}
+                </div>
+              ) : emEdicao ? (
+                campoNoPalco
+              ) : (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  {...menu.gatilho(itensDoTexto(cenaAtual, indice, t))}
+                  onPointerDown={(e) => tocarTextoDoPalco(e, cenaAtual.chave, indice, t.texto || "", emEdicao)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
+                    }
+                  }}
+                  title="Arraste pra mover · toque pra editar"
+                  data-texto-palco="1"
+                  className="pointer-events-auto max-w-full cursor-grab touch-none select-none truncate rounded-md px-2.5 py-1 text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70 active:cursor-grabbing"
+                  style={{
+                    // As cores do vídeo (video.ts, ESTILOS_TEXTO): etiqueta é coral lá, então é aqui.
+                    background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
+                    fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
+                    fontWeight: est.id === "destaque" ? 700 : 500,
+                  }}
+                >
+                  {t.texto || "texto"}
+                </span>
+              )}
+            </span>
+          );
+        })}
+      {/* As peças (adesivos, ficha, contato, moldura) no lugar em que saem no vídeo. */}
+      {cenaAtual && (cenaAtual.elementos?.length ?? 0) > 0 && (
+        <ElementosNoPalco
+          elementos={cenaAtual.elementos ?? []}
+          proporcao={proporcao}
+          topoOcupado={!!titulo}
+          cor={corDaMarca}
+          itensDaFicha={itensDaFicha}
+          gatilho={menu.gatilho}
+          aoMudar={(i, m) => mudarElemento(cenaAtual.chave, i, m)}
+          aoTirar={(i) => removerElemento(cenaAtual.chave, i)}
+          aoDuplicar={(i) => {
+            const el = cenaAtual.elementos?.[i];
+            if (el) adicionarElemento(cenaAtual.chave, { ...el });
+          }}
+          aoMoverCamada={(i, direcao) => moverCamadaElemento(cenaAtual.chave, i, direcao)}
+        />
+      )}
+      {/* Você por cima da foto, no lugar e no tamanho em que sai no vídeo. */}
+      {apresentador && apreUrl && (
+        <AoVivo relogio={previa.relogio} tempo={tempo} tocando={tocando}>
+          {(t) => (
+            <ApresentadorNoPalco
+              apresentador={apresentador}
+              url={apreUrl}
+              proporcao={proporcao}
+              aoMudar={setApresentador}
+              tempo={t}
+              tocando={tocando}
+              selecionado={selecao?.faixa === "voce"}
+              aoSelecionar={() => setSelecao({ faixa: "voce" })}
+              aoMedirDuracao={(d) => setSegundosDoVoce(Math.round(d * 100) / 100)}
+            />
+          )}
+        </AoVivo>
+      )}
+      {/* A legenda de agora, no lugar e no tamanho em que sai no vídeo. */}
+      <AoVivo relogio={previa.relogio} tempo={tempo} tocando={tocando}>
+        {(t) => (
+          <LegendaNoPalco
+            legendas={legendas}
+            tempo={t}
+            alturaPalco={alturaPalco}
+            apresentadorNoPe={apresentador?.formato === "rodape"}
+            selecionado={selecao?.faixa === "legendas" ? selecao.indice : null}
+            aoSelecionar={(i) => setSelecao({ faixa: "legendas", indice: i })}
+          />
+        )}
+      </AoVivo>
+    </div>
+  );
+
+  // Gerando: o que está acontecendo, em cima do palco (e não um cartão empurrando o quadro).
+  const avisoGerando = gerando && progresso && (
+    <div className="ed-subir pointer-events-none absolute inset-x-3 top-3 z-20 flex justify-center">
+      <div className="pointer-events-auto max-w-[520px] rounded-2xl bg-[rgb(10_21_41/0.92)] px-4 py-3 text-[12.5px] text-[var(--ed-texto-2)] shadow-[var(--ed-sombra-2)] ring-1 ring-[var(--ed-linha)] backdrop-blur">
+        <p className="font-semibold text-[var(--ed-texto)]">
+          {progresso.mensagem} <span className="font-normal text-[var(--ed-texto-2)]">· etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}</span>
+        </p>
+        <p className="mt-0.5">
+          {relogio(segundosGerando)} de {esperaTotal <= 60 ? "menos de 1 min" : `cerca de ${Math.round(esperaTotal / 60)} min`} esperados · mantenha esta aba aberta
+        </p>
+        {segundosGerando > esperaTotal * 2 && <p className="mt-1 text-[#f1c86a]">Está demorando mais que o normal. A fila da IA às vezes engarrafa — costuma sair. Se passar de 15 minutos, feche e tente de novo: o crédito de uma cena que não voltou é devolvido.</p>}
+      </div>
+    </div>
+  );
+
+  const avisoErro = erro && (
+    <div className="ed-subir absolute inset-x-3 top-3 z-30 flex justify-center" role="alert">
+      <div className="flex max-w-[560px] items-start gap-2 rounded-2xl bg-[rgb(70_22_18/0.95)] py-2 pr-2 pl-4 text-[13px] text-[#ffc2b6] shadow-[var(--ed-sombra-2)] ring-1 ring-[rgb(255_110_90/0.35)] backdrop-blur">
+        <span className="min-w-0 flex-1 py-1.5">{erro}</span>
+        <BotaoIcone rotulo="Fechar o aviso" icone="fechar" tamanho="p" onClick={() => setErro(null)} />
+      </div>
+    </div>
+  );
+
+  // A barra da seleção: no celular ela troca a fileira de ferramentas; no computador entra
+  // na barra da linha do tempo. "Ajustes" (só celular) abre os ajustes da cena na folha.
+  const acoesDaBarra = selecao ? acoesDaSelecao(ctxLinha, selecao, tempo, gerando) : [];
+  const barraDaSelecao = (compacta: boolean) =>
+    selecao ? (
+      <BarraDaSelecao
+        compacta={compacta}
+        titulo={tituloDaSelecao(selecao)}
+        preso={selecao.faixa === "textos" || selecao.faixa === "adesivos"}
+        acoes={!compacta && selecao.faixa === "cenas" ? [{ id: "ajustes_cena", rotulo: "Ajustes", icone: "configuracoes", ativo: true }, ...acoesDaBarra] : acoesDaBarra}
+        aoAcao={(id) => executarAcao(id)}
+        aoFechar={() => setSelecao(null)}
+        aoMotivo={(t) => avisar(t)}
+        subBarra={subBarraDaSelecao()}
+      />
+    ) : null;
+  const barraNoCelular = celular && selecao && !painelAberto && !inspetorNaFolha;
+
+  // ---------- O EDITOR É UM APLICATIVO, NÃO UMA PÁGINA ----------
+  // Tela inteira, sem o cabeçalho nem o menu do site: numa página sobravam 300px pro palco.
+  // Computador: ferramentas na coluna da esquerda (altura inteira), painel da ferramenta,
+  // palco no meio, ajustes da cena à direita (tela larga), linha do tempo embaixo.
+  // Celular: palco em cima, linha do tempo, ferramentas no pé; o painel sobe como folha.
+  return (
+    <div
+      ref={setRaizEditor}
+      className="editor-escuro fixed inset-0 z-30 flex flex-col"
+      data-editor="1"
+      // Com a folha aberta no celular, o aviso sobe pra cima dela (senão cobria o que a pessoa
+      // estava escolhendo).
+      style={celular && (painelAberto || inspetorNaFolha) ? ({ "--aviso-base": "calc(68px + min(60svh, 560px) + 10px)" } as React.CSSProperties) : undefined}
+    >
+      <CabecalhoEditor
+        titulo={editandoDe?.titulo || titulo || "Vídeo do imóvel"}
+        meta={metaDoCabecalho}
+        creditos={c.conta.creditos ?? null}
+        custo={custo}
+        semSaldo={semSaldo}
+        gerando={gerando}
+        progresso={progresso}
+        podeGerar={podeGerar}
+        motivo={motivoNaoGerar}
+        editandoDe={editandoDe}
+        celular={celular}
+        aoGerar={() => gerar()}
+        aoComecarDoZero={comecarDoZero}
+      />
+
+      <div className="flex min-h-0 flex-1">
+        {!celular && <TrilhoFerramentas ferramentas={ABAS} ativa={painelAberto ? aba : null} celular={false} aoEscolher={escolherFerramenta} />}
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1">
+            {!celular && painelAberto && (
+              <aside className="ed-surgir flex w-[336px] shrink-0 flex-col border-r border-[var(--ed-linha)] bg-[var(--ed-painel)] lg:w-[360px]" data-painel="1" aria-label={nomeDaAba}>
+                <div className="flex h-14 shrink-0 items-center justify-between gap-2 pr-3 pl-5">
+                  <h2 className="text-[16px] font-semibold text-[var(--ed-texto)]">{nomeDaAba}</h2>
+                  <BotaoIcone rotulo="Fechar o painel" icone="fechar" tamanho="p" onClick={() => setPainelAberto(false)} />
+                </div>
+                <div className="ed-rolagem min-h-0 flex-1 overflow-y-auto px-5 pb-10">{painelDaAba()}</div>
+              </aside>
+            )}
+
+            <section className={`palco relative flex min-h-0 min-w-0 flex-1 flex-col ${!celular && !largo ? "ed-rolagem overflow-y-auto" : ""}`}>
+              <div className={`relative flex min-h-0 flex-col ${!celular && !largo ? "h-full shrink-0" : "flex-1"}`}>
+                {/* Lembrete de que dá pra se gravar, no espaço vazio ao lado do vídeo em pé. */}
+                {!celular && !apresentador && !vozArquivo && cenas.length > 0 && (formato === "9:16" || formato === "4:5") && (
+                  <div className="pointer-events-none absolute inset-y-0 left-5 z-10 hidden items-center min-[1500px]:flex">
+                    <div className="pointer-events-auto">
+                      <LembreteGravar aoGravar={() => setAba("voce")} />
+                    </div>
+                  </div>
+                )}
+                <div className="relative min-h-0 flex-1 [container-type:size]">{quadroDoPalco}</div>
+                {!celular && (
+                  <div className="flex h-11 shrink-0 items-center justify-center gap-2 text-[12.5px] text-[var(--ed-texto-3)]">
+                    <span className="truncate">{cenaAtual ? `Cena ${indiceAtual + 1} de ${cenas.length} · ${cenaAtual.rotulo}` : "Nenhuma cena ainda"}</span>
+                    <button type="button" onClick={() => setAba("ajustes")} title="Trocar o formato do vídeo" className="shrink-0 rounded-full bg-[var(--ed-elevado)] px-3 py-1 font-medium text-[var(--ed-texto-2)] transition hover:bg-[var(--ed-elevado-2)] hover:text-[var(--ed-texto)]">
+                      {nomeDoFormato} · {formato}
+                    </button>
+                  </div>
+                )}
+                {avisoGerando}
+                {avisoErro}
+              </div>
+              {!celular && !largo && cenas.length > 0 && <div className="shrink-0 border-t border-[var(--ed-linha)] bg-[var(--ed-painel)] px-5 py-5">{inspetorDaCena()}</div>}
+            </section>
+
+            {!celular && largo && (
+              <aside className="flex w-[320px] shrink-0 flex-col border-l border-[var(--ed-linha)] bg-[var(--ed-painel)]" data-inspetor-coluna="1" aria-label="Ajustes da cena">
+                <div className="flex h-14 shrink-0 items-center px-5">
+                  <h2 className="text-[16px] font-semibold text-[var(--ed-texto)]">Ajustes da cena</h2>
+                </div>
+                <div className="ed-rolagem min-h-0 flex-1 overflow-y-auto px-5 pb-10">{inspetorDaCena()}</div>
+              </aside>
+            )}
+          </div>
+
+          {/* ---------- linha do tempo com faixas ----------
+               Fotos, Você, voz, música, textos, adesivos e legendas, cada um na sua faixa
+               (components/editor/faixas). Toque seleciona, a barra mostra o que dá pra fazer. */}
+          <LinhaDeFaixas
+            faixas={faixas}
+            total={faixas.total}
+            relogio={previa.relogio}
+            tempo={tempo}
+            tocando={tocando}
+            zoom={zoomLinha}
+            selecao={selecao}
+            faixaAberta={qualFaixaAbre({ selecao, aba, ultima: ultimaFaixa, faixas })}
+            todasAbertas={todasAbertas}
+            podeDesfazer={historico.podeDesfazer}
+            podeRefazer={historico.podeRefazer}
+            gerando={gerando}
+            celular={celular}
+            picos={picos}
+            miniaturas={Object.fromEntries(cenas.map((x) => [x.chave, x.miniatura]))}
+            clipes={new Set(cenas.filter((x) => x.ehClipe).map((x) => x.chave))}
+            capa={capa ?? cenas[0]?.chave ?? null}
+            semSom={new Set(itensPrevia.filter((i) => previa.semSom.has(i.fonte.chave)).map((i) => i.id))}
+            animadas={new Set(cenas.filter((x) => x.tipo === "animada").map((x) => x.chave))}
+            modoTrecho={!!selecao && subBarra?.tipo === "trecho" && subBarra.de === chaveDoRef(selecao)}
+            barra={!celular ? barraDaSelecao(true) ?? undefined : undefined}
+            simularGesto={(ref: RefItem, g: Gesto) => aplicarGesto(ctxLinha, ref, g, { pontos: pontosDeEncaixe(ctxLinha, ref, tempo), limiarSeg: 10 / zoomLinha }) as never}
+            aoConfirmarGesto={(ref: RefItem, g: Gesto) => {
+              const r = aplicarGesto(ctxLinha, ref, g, { pontos: pontosDeEncaixe(ctxLinha, ref, tempo), limiarSeg: 10 / zoomLinha });
+              if (r.mudou) {
+                historico.novoPasso();
+                aplicarEstadoLinha(r.estado);
+                resumoEdicao.registrarEdicao(ref.faixa, "arraste");
+              }
+              setSelecao(r.selecao);
+            }}
+            aoTocar={(t) => {
+              if (t === tocando) return;
+              alternarTocar();
+            }}
+            aoBuscar={(t) => {
+              previa.buscar(t);
+              setTempo(Math.round(t * 100) / 100);
+            }}
+            aoZoom={setZoomLinha}
+            aoAjustar={() => setZoomLinha(zoomParaAjustar(faixas.total, raizEditor?.querySelector<HTMLElement>("[data-rolagem]")?.clientWidth ?? 375))}
+            aoAlternarFaixas={() => setTodasAbertas((v) => !v)}
+            aoAbrirFaixa={(f) => {
+              setUltimaFaixa(f);
+              setSelecao(null);
+            }}
+            aoSelecionar={setSelecao}
+            aoAbrirLista={(grupo) => setListaAberta(grupo)}
+            aoMenu={(ref, x, y) => {
+              setSelecao(ref);
+              menu.abrir(
+                x,
+                y,
+                acoesDaSelecao(ctxLinha, ref, tempo, gerando).map((a) => ({ rotulo: a.rotulo, icone: a.icone, desligado: !a.ativo, dica: a.motivo, perigo: a.perigo, aoEscolher: () => executarAcao(a.id, ref) }))
+              );
+            }}
+            aoDesfazer={() => historico.desfazer() && resumoEdicao.registrar({ tipo: "desfazer" } as never)}
+            aoRefazer={() => historico.refazer() && resumoEdicao.registrar({ tipo: "refazer" } as never)}
+            aoSoltarFoto={(chaveAlvo, ev) => soltarEm(chaveAlvo ?? "fim", ev)}
+            aoAdicionarMidia={() => setAba(videos && videos.length > 0 && geracoes.length === 0 ? "videos" : "midia")}
+          />
+
+          {celular && (barraNoCelular ? <div className="shrink-0 border-t border-[var(--ed-linha)] bg-[var(--ed-base)]">{barraDaSelecao(false)}</div> : <TrilhoFerramentas ferramentas={ABAS} ativa={painelAberto && !inspetorNaFolha ? aba : null} celular aoEscolher={escolherFerramenta} />)}
+        </div>
       </div>
 
-      {/* ---------- linha do tempo com faixas ----------
-           Fotos, Você, voz, música, textos, adesivos e legendas, cada um na sua faixa
-           (components/editor/faixas). Toque seleciona, a barra mostra o que dá pra fazer. */}
-      <LinhaDeFaixas
-        faixas={faixas}
-        total={faixas.total}
-        relogio={previa.relogio}
-        tempo={tempo}
-        tocando={tocando}
-        zoom={zoomLinha}
-        selecao={selecao}
-        faixaAberta={qualFaixaAbre({ selecao, aba, ultima: ultimaFaixa, faixas })}
-        todasAbertas={todasAbertas}
-        podeDesfazer={historico.podeDesfazer}
-        podeRefazer={historico.podeRefazer}
-        gerando={gerando}
-        celular={celular}
-        picos={picos}
-        miniaturas={Object.fromEntries(cenas.map((x) => [x.chave, x.miniatura]))}
-        capa={capa ?? cenas[0]?.chave ?? null}
-        semSom={new Set(itensPrevia.filter((i) => previa.semSom.has(i.fonte.chave)).map((i) => i.id))}
-        animadas={new Set(cenas.filter((x) => x.tipo === "animada").map((x) => x.chave))}
-        modoTrecho={!!selecao && subBarra?.tipo === "trecho" && subBarra.de === chaveDoRef(selecao)}
-        barra={
-          !celular && selecao ? (
-            <BarraDaSelecao
-              compacta
-              titulo={tituloDaSelecao(selecao)}
-              preso={selecao.faixa === "textos" || selecao.faixa === "adesivos"}
-              acoes={acoesDaSelecao(ctxLinha, selecao, tempo, gerando)}
-              aoAcao={(id) => executarAcao(id)}
-              aoFechar={() => setSelecao(null)}
-              aoMotivo={(t) => avisar(t)}
-              subBarra={subBarraDaSelecao()}
-            />
-          ) : undefined
-        }
-        simularGesto={(ref: RefItem, g: Gesto) => aplicarGesto(ctxLinha, ref, g, { pontos: pontosDeEncaixe(ctxLinha, ref, tempo), limiarSeg: 10 / zoomLinha }) as never}
-        aoConfirmarGesto={(ref: RefItem, g: Gesto) => {
-          const r = aplicarGesto(ctxLinha, ref, g, { pontos: pontosDeEncaixe(ctxLinha, ref, tempo), limiarSeg: 10 / zoomLinha });
-          if (r.mudou) {
-            historico.novoPasso();
-            aplicarEstadoLinha(r.estado);
-            resumoEdicao.registrarEdicao(ref.faixa, "arraste");
-          }
-          setSelecao(r.selecao);
-        }}
-        aoTocar={(t) => {
-          if (t === tocando) return;
-          alternarTocar();
-        }}
-        aoBuscar={(t) => {
-          previa.buscar(t);
-          setTempo(Math.round(t * 100) / 100);
-        }}
-        aoZoom={setZoomLinha}
-        aoAjustar={() => setZoomLinha(zoomParaAjustar(faixas.total, raizEditor?.querySelector<HTMLElement>("[data-rolagem]")?.clientWidth ?? 375))}
-        aoAlternarFaixas={() => setTodasAbertas((v) => !v)}
-        aoAbrirFaixa={(f) => {
-          setUltimaFaixa(f);
-          setSelecao(null);
-        }}
-        aoSelecionar={setSelecao}
-        aoAbrirLista={(grupo) => setListaAberta(grupo)}
-        aoMenu={(ref, x, y) => {
-          setSelecao(ref);
-          menu.abrir(
-            x,
-            y,
-            acoesDaSelecao(ctxLinha, ref, tempo, gerando).map((a) => ({ rotulo: a.rotulo, icone: a.icone, desligado: !a.ativo, dica: a.motivo, perigo: a.perigo, aoEscolher: () => executarAcao(a.id, ref) }))
-          );
-        }}
-        aoDesfazer={() => historico.desfazer() && resumoEdicao.registrar({ tipo: "desfazer" } as never)}
-        aoRefazer={() => historico.refazer() && resumoEdicao.registrar({ tipo: "refazer" } as never)}
-        aoSoltarFoto={(chaveAlvo, ev) => soltarEm(chaveAlvo ?? "fim", ev)}
-      />
+      {celular && (
+        <Folha
+          aberta={painelAberto || inspetorNaFolha}
+          titulo={inspetorNaFolha ? (cenaAtual ? `Cena ${indiceAtual + 1}` : "Cena") : nomeDaAba}
+          aoFechar={() => {
+            setPainelAberto(false);
+            setInspetorNaFolha(false);
+          }}
+          base={68}
+        >
+          {inspetorNaFolha ? inspetorDaCena() : painelDaAba()}
+        </Folha>
+      )}
 
       {/* Uma foto com vários textos ou adesivos: escolhe qual. */}
       {listaAberta?.itens && (
@@ -4006,9 +4024,29 @@ export default function EditorDeVideo() {
       {/* Os avisos com Desfazer (acima da linha do tempo). */}
       {avisos}
 
-      {/* O menu do botão direito. Um só, no fim, porque é `position: fixed` -- dentro do
-          palco ele seria cortado pelo `overflow-hidden` do quadro. */}
-      <MenuContexto aberto={menu.aberto} aoFechar={menu.fechar} />
+      {/* O menu do botão direito (no celular, uma folha de ações). Um só, no fim, porque é
+          `position: fixed` -- dentro do palco ele seria cortado pelo `overflow-hidden`. */}
+      <MenuContexto aberto={menu.aberto} aoFechar={menu.fechar} celular={celular} />
+
+      {resultado && (
+        <ModalVideoPronto
+          video={resultado}
+          token={token}
+          gerando={gerando}
+          podeOutroFormato={cenas.length > 0 && !!resultado.doEditor}
+          aoFechar={() => setResultado(null)}
+          aoEditar={(id) => editarVideo(id)}
+          aoOutroFormato={(f) => {
+            setResultado(null);
+            gerar({ formato: f });
+          }}
+          aoUsarNaLinha={() => {
+            const v = (videos ?? []).find((x) => x.id === resultado.videoId) ?? { id: resultado.videoId, titulo: resultado.titulo ?? "Vídeo", formato: resultado.formato, status: "concluido", criadoEm: new Date().toISOString(), duracao: resultado.duracao, miniatura: resultado.miniatura, compartilhado: false, erro: null };
+            setResultado(null);
+            adicionarVideoPronto(v);
+          }}
+        />
+      )}
     </div>
   );
 }

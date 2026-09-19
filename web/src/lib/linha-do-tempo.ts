@@ -296,7 +296,10 @@ export function blocosDoEstado(ctx: Ctx<CenaBase>): FaixasDaLinha {
 
   s.cenas.forEach((c, k) => {
     const { de, ate } = spanDaCena(r, k);
-    trilhas.cenas.push({ ref: { faixa: "cenas", chave: c.chave }, trilha: "cenas", de, ate, rotulo: `Foto ${k + 1}`, alcas: semAlca, movel: true });
+    // As bordas da cena se arrastam (aparaCena). Cena animada não: cada duração é outro
+    // pedido ao modelo -- ela muda pelo seletor de duração, que mostra as que existem.
+    const alcas = c.tipo === "animada" ? semAlca : { inicio: true, fim: true };
+    trilhas.cenas.push({ ref: { faixa: "cenas", chave: c.chave }, trilha: "cenas", de, ate, rotulo: `Foto ${k + 1}`, alcas, movel: true });
   });
   if (s.telaFinal && r.clipes.length > s.cenas.length) {
     trilhas.cenas.push({ ref: { faixa: "telaFinal" }, trilha: "cenas", de: r.clipes[s.cenas.length].inicio, ate: total, rotulo: "Tela final", alcas: semAlca, movel: false });
@@ -626,6 +629,7 @@ export function aplicarGesto<C extends CenaBase>(ctx: Ctx<C>, ref: RefItem, gest
   }
   if (ref.faixa === "voce") return gestoNoVoce(ctx, gesto, opcoes);
   if (ref.faixa === "legendas") return gestoNaLegenda(ctx, ref.indice, gesto, opcoes);
+  if (ref.faixa === "cenas" && (gesto.tipo === "aparaInicio" || gesto.tipo === "aparaFim")) return aparaCena(ctx, ref.chave, gesto);
   if (ref.faixa === "cenas" && gesto.tipo === "reordenar") {
     const lista = ctx.estado.cenas;
     const i = lista.findIndex((c) => c.chave === ref.chave);
@@ -640,6 +644,46 @@ export function aplicarGesto<C extends CenaBase>(ctx: Ctx<C>, ref: RefItem, gest
   }
   // Textos, adesivos, título e tela final não têm gesto na Entrega 1.
   return semMudanca(ctx, ref);
+}
+
+/**
+ * Arrastar a BORDA de uma cena, como no CapCut: a de trás muda até onde a cena vai; a da
+ * frente tira (ou devolve) tempo do começo -- no clipe, o arquivo passa a começar mais tarde,
+ * então o que some é mesmo o começo do vídeo. A cena continua começando onde a anterior
+ * termina (a linha das fotos não tem buraco), e as seguintes andam junto.
+ *
+ * Durações inteiras (o pedido arredonda), entre o mínimo e o teto do tipo. Na emenda, a
+ * cena vai além do começo da seguinte (a transição sobrepõe as duas): a borda que a pessoa
+ * arrasta é a VISÍVEL, e a duração é ela mais a emenda.
+ */
+function aparaCena<C extends CenaBase>(ctx: Ctx<C>, chave: string, gesto: { tipo: "aparaInicio" | "aparaFim"; para: number }): ResultadoGesto<C> {
+  const ref: RefItem = { faixa: "cenas", chave };
+  const lista = ctx.estado.cenas;
+  const i = lista.findIndex((c) => c.chave === chave);
+  if (i < 0) return semMudanca(ctx, ref);
+  const c = lista[i];
+  const { de, ate } = spanDaCena(ctx.relogio, i);
+  const teto = c.tipo === "tour360" ? LIMITES.duracaoMax360 : LIMITES.duracaoMax;
+  const dur = Math.min(Math.max(c.duracao ?? LIMITES.duracaoPadrao, LIMITES.duracaoMin), teto);
+  const emenda = Math.max(0, de + dur - ate);
+  const video = temVideoCorrendo(c.tipo) && c.tipo !== "animada";
+  const vel = c.velocidade ?? 1;
+  let nova: number;
+  let inicio = c.inicio;
+  if (gesto.tipo === "aparaFim") {
+    nova = limitar(Math.round(gesto.para - de + emenda), LIMITES.duracaoMin, teto);
+  } else {
+    const tirar = Math.round(gesto.para - de);
+    // Devolver tempo no começo de um clipe só até o começo do arquivo.
+    const podeDevolver = video ? Math.floor(((c.inicio ?? 0) / vel) + 1e-6) : Infinity;
+    nova = limitar(dur - Math.max(tirar, -podeDevolver), LIMITES.duracaoMin, teto);
+    if (video) inicio = Math.round(Math.min(LIMITES.aparaMax, Math.max(0, (c.inicio ?? 0) + (dur - nova) * vel)) * 10) / 10 || undefined;
+  }
+  if (nova === dur && (inicio ?? 0) === (c.inicio ?? 0)) return { ...semMudanca(ctx, ref, de, ate), parouNaBorda: true };
+  const cenas = lista.map((x, k) => (k === i ? { ...x, duracao: nova, inicio: video ? inicio : x.inicio } : x));
+  const estado = { ...ctx.estado, cenas };
+  const r = relogioDoEspec({ cenas, telaFinal: estado.telaFinal, transicao: estado.transicao });
+  return { estado, selecao: ref, ...spanDaCena(r, i), guia: null, parouNaBorda: nova === LIMITES.duracaoMin || nova === teto, mudou: true };
 }
 
 /** Os botões "Início aqui", "Fim aqui" e "−/+": o mesmo gesto, sem encaixe. */
@@ -747,8 +791,8 @@ export function moverParaFoto<C extends CenaBase>(ctx: Ctx<C>, ref: RefItem, dir
   const k = s.cenas.findIndex((c) => c.chave === ref.chave);
   const j = k + direcao;
   if (k < 0) return nada("A foto não existe mais");
-  if (j < 0) return nada("Esta já é a primeira foto");
-  if (j >= s.cenas.length) return nada("Esta já é a última foto");
+  if (j < 0) return nada("Esta já é a primeira cena");
+  if (j >= s.cenas.length) return nada("Esta já é a última cena");
   const origem = s.cenas[k];
   const alvo = s.cenas[j];
   const qual = direcao > 0 ? "seguinte" : "anterior";
@@ -1027,8 +1071,8 @@ export function acoesDaSelecao(ctx: Ctx<CenaBase>, ref: RefItem, t: number, gera
     { id: "congelar", rotulo: "Congelar", icone: "congelar", motivo: temVideo ? null : semVideo },
     { id: "velocidade", rotulo: "Velocidade", icone: "velocidade", motivo: temVideo ? null : semVideo },
     { id: "duplicar", rotulo: "Duplicar", icone: "copiar", motivo: cheio ? `No máximo ${LIMITES.cenasMax} fotos` : null },
-    { id: "mover_esq", rotulo: "Mover ←", icone: "seta_esq", motivo: k === 0 ? "Esta já é a primeira foto" : null },
-    { id: "mover_dir", rotulo: "Mover →", icone: "seta_dir", motivo: k === s.cenas.length - 1 ? "Esta já é a última foto" : null },
+    { id: "mover_esq", rotulo: "Mover ←", icone: "seta_esq", motivo: k === 0 ? "Esta já é a primeira cena" : null },
+    { id: "mover_dir", rotulo: "Mover →", icone: "seta_dir", motivo: k === s.cenas.length - 1 ? "Esta já é a última cena" : null },
     { id: "capa", rotulo: "Capa", icone: "estrela" },
     apagarAcao,
   ]);

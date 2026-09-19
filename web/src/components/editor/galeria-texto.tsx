@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ANIMACOES_TEXTO, MODELOS_TEXTO, type TextoCena } from "@/lib/video";
 import { IDS_EFEITOS_TEXTO, LISTA_EFEITOS_TEXTO, urlDoCartaoDeEfeito } from "@/lib/efeitos-texto/lista";
 import TextoComEfeito from "@/components/editor/texto-com-efeito";
+import { BotaoEd, CartaoOpcao, Nota, Pilula, Segmentado } from "@/components/editor/ui-editor";
 import type { CategoriaEfeito } from "@/lib/efeitos-texto/nucleo";
 import { MOVIMENTOS, type MovimentoId } from "@/lib/movimentos";
 
@@ -109,67 +110,47 @@ export default function GaleriaTexto({
   // Nasce no meio e ENTRA: título parado desde o primeiro quadro parece carimbado na foto.
   const porEfeito = (id: string, amostra: string) => aoAdicionar({ texto: amostra, arte: id, posicao: "centro", animacao: "surgir" });
 
+  const tituloDaPrateleira = "text-[13px] font-semibold text-[var(--ed-texto)]";
+  const cartaoDeEfeito = "group flex flex-col overflow-hidden rounded-xl bg-[#0b1426] ring-1 ring-inset ring-white/[0.06] transition hover:ring-2 hover:ring-[var(--ed-acento)] active:scale-[0.98] disabled:opacity-40";
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-1 border-b border-neutral-200">
-        {(["efeitos", "animacao"] as const).map((a) => (
-          <button
-            key={a}
-            type="button"
-            onClick={() => setAba(a)}
-            className={
-              "-mb-px border-b-2 px-3 py-1.5 text-sm transition " +
-              (aba === a ? "border-marca-coral font-medium text-marca-indigo" : "border-transparent text-neutral-500 hover:text-neutral-700")
-            }
-          >
-            {a === "efeitos" ? "Efeitos de texto" : "Animação"}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-5">
+      <Segmentado
+        rotulo="Efeitos ou animação"
+        opcoes={[
+          { id: "efeitos", rotulo: "Efeitos de texto" },
+          { id: "animacao", rotulo: "Animação" },
+        ]}
+        valor={aba}
+        aoMudar={setAba}
+      />
 
       {aba === "efeitos" ? (
         <>
-          {cheio && <p className="rounded-lg bg-neutral-100 px-2.5 py-2 text-[11px] text-neutral-500">Três textos já é o limite desta cena. Tire um pra pôr outro.</p>}
+          {cheio && <Nota tipo="atencao">Três textos já é o limite desta cena. Tire um pra pôr outro.</Nota>}
 
           {/* ---------- básico ---------- */}
-          <div className="grid gap-1.5">
-            <button
-              type="button"
-              disabled={bloqueado}
-              onClick={() => aoAdicionar({ texto: "Seu título", estilo: "gigante", posicao: "centro", animacao: "surgir" })}
-              className="rounded-lg bg-neutral-100 px-3 py-2.5 text-base font-bold text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-40"
-            >
+          <div className="flex flex-col gap-2">
+            <BotaoEd tamanho="g" disabled={bloqueado} onClick={() => aoAdicionar({ texto: "Seu título", estilo: "gigante", posicao: "centro", animacao: "surgir" })} className="w-full text-[17px] font-bold">
               Adicionar título
-            </button>
-            <button
-              type="button"
-              disabled={bloqueado}
-              onClick={() => aoAdicionar({ texto: "Seu texto", estilo: "faixa", posicao: "base", animacao: "nenhuma" })}
-              className="rounded-lg bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-40"
-            >
+            </BotaoEd>
+            <BotaoEd disabled={bloqueado} onClick={() => aoAdicionar({ texto: "Seu texto", estilo: "faixa", posicao: "base", animacao: "nenhuma" })} className="w-full">
               Adicionar texto
-            </button>
-            <p className="text-[11px] text-neutral-500">Depois de pôr, toque no texto no palco pra escrever.</p>
+            </BotaoEd>
+            <p className="text-[12px] text-[var(--ed-texto-3)]">Depois de pôr, toque no texto em cima do vídeo pra escrever.</p>
           </div>
 
           {/* ---------- do imóvel ----------
                Primeiro das prateleiras, porque é o que nenhum editor genérico tem: já vem
                preenchido do cadastro, e ninguém digita o preço duas vezes. */}
           {pecas.length > 0 && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold text-neutral-700">Do imóvel · já preenchido</p>
-              <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-col gap-2.5">
+              <p className={tituloDaPrateleira}>Do imóvel · já preenchido</p>
+              <div className="flex flex-wrap gap-2">
                 {pecas.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={bloqueado}
-                    onClick={() => aoAdicionar({ texto: p.texto, estilo: p.id === "preco" ? "gigante" : "faixa", posicao: "base", animacao: p.id === "preco" ? "no_fim" : "subir" })}
-                    title={p.rotulo}
-                    className="rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-700 transition hover:border-marca-coral disabled:opacity-40"
-                  >
+                  <Pilula key={p.id} icone="mais" disabled={bloqueado} onClick={() => aoAdicionar({ texto: p.texto, estilo: p.id === "preco" ? "gigante" : "faixa", posicao: "base", animacao: p.id === "preco" ? "no_fim" : "subir" })} title={p.rotulo}>
                     {p.texto}
-                  </button>
+                  </Pilula>
                 ))}
               </div>
             </div>
@@ -178,12 +159,12 @@ export default function GaleriaTexto({
           {/* ---------- texto animado ----------
                Antes das prateleiras de efeito parado: é o que mais se parece com os
                textos-GIF que ele mostrou do CapCut. */}
-          <div>
-            <div className="mb-1.5 flex items-baseline justify-between">
-              <p className="text-xs font-semibold text-neutral-700">Texto animado</p>
-              <span className="text-[10px] text-neutral-500">se mexe sem parar, como GIF</span>
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className={tituloDaPrateleira}>Texto animado</p>
+              <span className="text-[11.5px] text-[var(--ed-texto-3)]">se mexe sem parar, como GIF</span>
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-2">
               {TEXTOS_ANIMADOS.map((t) => (
                 <button
                   key={`${t.efeito}-${t.texto}`}
@@ -191,7 +172,7 @@ export default function GaleriaTexto({
                   disabled={bloqueado}
                   onClick={() => aoAdicionar({ texto: t.texto, arte: t.efeito, posicao: "centro", animacao: "surgir", movimento: t.movimento })}
                   aria-label={`Pôr texto animado ${t.texto}`}
-                  className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900 p-2 transition hover:border-marca-coral disabled:opacity-40"
+                  className={cartaoDeEfeito + " aspect-square items-center justify-center p-2"}
                 >
                   <TextoComEfeito efeito={t.efeito} texto={t.texto} formato="9:16" n={0} movimento={t.movimento} caber />
                 </button>
@@ -199,19 +180,11 @@ export default function GaleriaTexto({
             </div>
           </div>
 
-          <div className="-mx-1 flex gap-1 overflow-x-auto px-1">
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {([{ id: "todos", rotulo: "Todos" }, ...presentes] as { id: CategoriaEfeito | "todos"; rotulo: string }[]).map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setCategoria(c.id)}
-                className={
-                  "shrink-0 rounded-full border px-2.5 py-1 text-xs transition " +
-                  (categoria === c.id ? "border-marca-indigo bg-marca-indigo/10 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
-                }
-              >
+              <Pilula key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
                 {c.rotulo}
-              </button>
+              </Pilula>
             ))}
           </div>
 
@@ -221,12 +194,13 @@ export default function GaleriaTexto({
             const aberta = categoria !== "todos" || abertas.has(c.id);
             const mostrados = aberta ? todos : todos.slice(0, NA_PRATELEIRA);
             return (
-              <div key={c.id}>
-                <div className="mb-1.5 flex items-baseline justify-between">
-                  <p className="text-xs font-semibold text-neutral-700">{c.rotulo}</p>
+              <div key={c.id} className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className={tituloDaPrateleira}>{c.rotulo}</p>
                   {categoria === "todos" && todos.length > NA_PRATELEIRA && (
-                    <button
-                      type="button"
+                    <BotaoEd
+                      variante="fantasma"
+                      tamanho="p"
                       onClick={() =>
                         setAbertas((s) => {
                           const n = new Set(s);
@@ -235,26 +209,17 @@ export default function GaleriaTexto({
                           return n;
                         })
                       }
-                      className="text-[11px] text-neutral-500 hover:text-neutral-700"
                     >
                       {aberta ? "Ver menos" : `Ver todos (${todos.length})`}
-                    </button>
+                    </BotaoEd>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-2">
                   {mostrados.map((e) => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      disabled={bloqueado}
-                      onClick={() => porEfeito(e.id, e.amostra)}
-                      title={e.rotulo}
-                      aria-label={`Pôr texto ${e.rotulo}`}
-                      className="group flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900 transition hover:border-marca-coral disabled:opacity-40"
-                    >
+                    <button key={e.id} type="button" disabled={bloqueado} onClick={() => porEfeito(e.id, e.amostra)} title={e.rotulo} aria-label={`Pôr texto ${e.rotulo}`} className={cartaoDeEfeito}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={urlDoCartaoDeEfeito(e.id)} alt="" loading="lazy" className="aspect-square w-full object-contain p-1" draggable={false} />
-                      <span className="truncate px-1 pb-1 text-[10px] text-neutral-400 group-hover:text-neutral-200">{e.rotulo}</span>
+                      <img src={urlDoCartaoDeEfeito(e.id)} alt="" loading="lazy" className="aspect-square w-full object-contain p-1.5" draggable={false} />
+                      <span className="truncate px-1.5 pb-1.5 text-[11px] text-[var(--ed-texto-3)] group-hover:text-[var(--ed-texto)]">{e.rotulo}</span>
                     </button>
                   ))}
                 </div>
@@ -265,72 +230,48 @@ export default function GaleriaTexto({
           {/* ---------- frases prontas ----------
                Fechado: é atalho de TEXTO (o que escrever), não de efeito. Aberto, empurraria
                as prateleiras pra baixo da dobra no celular. */}
-          <details className="rounded-lg border border-neutral-200 px-2.5 py-2">
-            <summary className="cursor-pointer text-xs font-semibold text-neutral-700">Frases prontas de anúncio</summary>
-            <div className="mt-2 flex flex-wrap gap-1.5">
+          <details className="group rounded-2xl bg-[var(--ed-elevado)] px-3.5 py-1">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-[13px] font-semibold text-[var(--ed-texto)]">
+              Frases prontas de anúncio
+              <svg viewBox="0 0 24 24" className="h-4 w-4 text-[var(--ed-texto-3)] transition group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div className="flex flex-wrap gap-2 pb-3">
               {MODELOS_TEXTO.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  disabled={bloqueado}
-                  onClick={() => aoAdicionar({ texto: m.texto, estilo: m.estilo, posicao: m.posicao, animacao: m.animacao, visual: m.visual })}
-                  className="rounded-full border border-neutral-200 px-2.5 py-1 text-xs text-neutral-700 transition hover:border-marca-coral disabled:opacity-40"
-                >
+                <Pilula key={m.id} disabled={bloqueado} onClick={() => aoAdicionar({ texto: m.texto, estilo: m.estilo, posicao: m.posicao, animacao: m.animacao, visual: m.visual })}>
                   {m.texto}
-                </button>
+                </Pilula>
               ))}
             </div>
           </details>
         </>
       ) : (
         <>
-          <p className="text-[11px] text-neutral-500">
-            {temTextoSelecionado ? (indiceAlvo !== undefined ? "Vale pro texto escolhido." : "Vale pro último texto posto nesta cena.") : "Ponha um texto na cena primeiro."}
-          </p>
-          <p className="text-xs font-semibold text-neutral-700">Entrada</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {ANIMACOES_TEXTO.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                disabled={!temTextoSelecionado || desabilitado}
-                onClick={() => (indiceAlvo !== undefined ? aoTrocarAnimacao(a.id, indiceAlvo) : aoTrocarAnimacao(a.id))}
-                title={a.dica}
-                className={
-                  "rounded-lg border px-2 py-2.5 text-left text-xs transition disabled:opacity-40 " +
-                  (animacaoAtual === a.id ? "border-marca-indigo bg-marca-indigo/10 text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
-                }
-              >
-                <span className="block font-medium">{a.rotulo}</span>
-                <span className="block text-[10px] leading-tight text-neutral-500">{a.dica}</span>
-              </button>
-            ))}
+          <Nota>{temTextoSelecionado ? (indiceAlvo !== undefined ? "Vale pro texto escolhido." : "Vale pro último texto posto nesta cena.") : "Ponha um texto na cena primeiro."}</Nota>
+          <div className="flex flex-col gap-2.5">
+            <p className={tituloDaPrateleira}>Entrada</p>
+            <div className="grid grid-cols-2 gap-2">
+              {ANIMACOES_TEXTO.map((a) => (
+                <CartaoOpcao key={a.id} ativo={animacaoAtual === a.id} disabled={!temTextoSelecionado || desabilitado} onClick={() => (indiceAlvo !== undefined ? aoTrocarAnimacao(a.id, indiceAlvo) : aoTrocarAnimacao(a.id))} title={a.dica} titulo={a.rotulo} descricao={a.dica} />
+              ))}
+            </div>
           </div>
 
           {/* ---------- em laço ----------
                Depois de entrar, fica se mexendo: é o que faz o texto parecer GIF. Só pra
                texto com efeito, que entra no vídeo como imagem -- o texto simples é
                desenhado letra por letra pelo ffmpeg, que não gira nem cresce. */}
-          <p className="mt-1 text-xs font-semibold text-neutral-700">Em laço, como GIF</p>
-          {temTextoSelecionado && !ultimoTemEfeito && (
-            <p className="-mt-1 text-[11px] text-neutral-500">Escolha um efeito de texto pra ele poder se mexer.</p>
-          )}
-          <div className="grid grid-cols-3 gap-1.5">
-            {MOVIMENTOS.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                disabled={!temTextoSelecionado || !ultimoTemEfeito || desabilitado}
-                onClick={() => (indiceAlvo !== undefined ? aoTrocarMovimento(m.id, indiceAlvo) : aoTrocarMovimento(m.id))}
-                title={m.dica}
-                className={
-                  "rounded-lg border px-2 py-2 text-center text-xs transition disabled:opacity-40 " +
-                  (movimentoAtual === m.id ? "border-marca-indigo bg-marca-indigo/10 font-medium text-marca-indigo" : "border-neutral-200 hover:border-neutral-400")
-                }
-              >
-                {m.rotulo}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2.5">
+            <p className={tituloDaPrateleira}>Em laço, como GIF</p>
+            {temTextoSelecionado && !ultimoTemEfeito && <p className="-mt-1 text-[12px] text-[var(--ed-texto-3)]">Escolha um efeito de texto pra ele poder se mexer.</p>}
+            <div className="flex flex-wrap gap-2">
+              {MOVIMENTOS.map((m) => (
+                <Pilula key={m.id} ativo={movimentoAtual === m.id} disabled={!temTextoSelecionado || !ultimoTemEfeito || desabilitado} onClick={() => (indiceAlvo !== undefined ? aoTrocarMovimento(m.id, indiceAlvo) : aoTrocarMovimento(m.id))} title={m.dica}>
+                  {m.rotulo}
+                </Pilula>
+              ))}
+            </div>
           </div>
         </>
       )}

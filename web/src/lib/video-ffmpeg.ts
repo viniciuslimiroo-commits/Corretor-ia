@@ -591,7 +591,7 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[] }): string[] {
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[]; semPouso?: boolean }): string[] {
   // Velocidade é `setpts`, e vem ANTES do `fps`: primeiro os carimbos de tempo mudam,
   // depois o ffmpeg reamostra pra taxa fixa. Na ordem inversa o vídeo fica aos trancos,
   // porque a reamostragem acontece contra um relógio que ainda vai mudar.
@@ -606,7 +606,10 @@ export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: n
   // A 2x, encher 4 segundos de cena consome 8 segundos de arquivo. Sem esta conta o
   // clipe acelerado acaba na metade e o `tpad` congela o resto -- que é como "velocidade"
   // vira "o vídeo travou".
-  const corte = Math.max(0.5, (o.duracao - Math.min(SEGUNDOS_DE_POUSO, o.duracao * 0.25)) * vel);
+  // Sem pouso quando o clipe CONTINUA na cena seguinte (mesmo arquivo, corte seco:
+  // `clipeContinua`): ali não há emenda pra pousar, e o quadro parado viraria um soluço
+  // no meio do vídeo a cada parte.
+  const corte = Math.max(0.5, (o.duracao - (o.semPouso ? 0 : Math.min(SEGUNDOS_DE_POUSO, o.duracao * 0.25))) * vel);
   // `-ss` ANTES do `-i`: o ffmpeg pula direto pro ponto em vez de decodificar tudo e
   // descartar. É o "aparar o começo" -- o pedaço em que a pessoa ainda estava acertando
   // o celular não entra no vídeo.

@@ -29,6 +29,11 @@ function regexDaVozGuardada(userId: string): RegExp {
   return new RegExp(`^uploads/${userId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/voz-[0-9a-f-]{36}\\.mp3$`);
 }
 
+/** `<usuário>/videos/<uuid>.mp4` -- onde o pipeline grava o vídeo pronto (caminhoVideoFinal). */
+function regexDoVideoPronto(userId: string): RegExp {
+  return new RegExp(`^${userId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/videos/([0-9a-f-]{36}\\.mp4)$`);
+}
+
 /**
  * A voz de IA que volta REAPROVEITADA custa 0 crédito (`custoDoVideo`), então ela é o único
  * campo do espec em que uma string inventada vira dinheiro. Duas conferências, nesta ordem:
@@ -84,7 +89,13 @@ export async function prepararPedidoDeVideo(corpo: unknown, userId: string, deps
     }
   }
   for (const cena of espec.cenas) {
-    if (cena.arquivo && !cena.arquivo.startsWith(`uploads/${userId}/`)) return { ok: false, status: 400, error: "Arquivo enviado não reconhecido." };
+    if (!cena.arquivo || cena.arquivo.startsWith(`uploads/${userId}/`)) continue;
+    // Um vídeo que a pessoa JÁ FEZ no Encena entrando como clipe de outro vídeo: o arquivo
+    // final dele, na pasta dela, e só como clipe. Tem que existir -- senão o vídeo novo
+    // falharia no meio da montagem, depois de a pessoa esperar.
+    const pronto = regexDoVideoPronto(userId).exec(cena.arquivo);
+    if (!pronto || cena.tipo !== "clipe") return { ok: false, status: 400, error: "Arquivo enviado não reconhecido." };
+    if (!(await deps.existeNoBucket(`${userId}/videos`, pronto[1]))) return { ok: false, status: 400, error: "Um dos vídeos usados como cena não existe mais. Tire ele da linha do tempo." };
   }
   // A voz própria é um arquivo do bucket como qualquer outro: tem que ser DELA.
   if (espec.narracao?.arquivo && !espec.narracao.arquivo.startsWith(`uploads/${userId}/`)) {

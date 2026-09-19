@@ -15,7 +15,7 @@ import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import type { ResumoEdicao } from "./resumo-edicao";
-import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, VOZES, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
 import { resolverAudiosDaMontagem } from "./audio-montagem";
 import { estornoDaNarracao } from "./pedido-video";
 import type { AudioNaMontagem } from "./video-ffmpeg";
@@ -329,7 +329,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           return rodarFfmpeg(argsCenaFoto({ foto: parado, saida, W, H, duracao: dur, efeito: "parado", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, cor, artes, ...forma , pecas }));
         }
         return rodarFfmpeg(
-          argsCenaClipe({ clipe, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, cor, inicio: cena.inicio, artes, pecas, ...forma, velocidade: cena.velocidade, ...extras })
+          argsCenaClipe({ clipe, saida, W, H, duracao: dur, textos: textosDaCena(cena), topoOcupado: !!espec.titulo, cor, inicio: cena.inicio, artes, pecas, ...forma, velocidade: cena.velocidade, semPouso: clipeContinua(espec, i), ...extras })
         );
       }
 

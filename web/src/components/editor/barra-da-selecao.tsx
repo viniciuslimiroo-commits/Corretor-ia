@@ -1,14 +1,15 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import { Icone } from "@/components/ui";
 import type { AcaoBarra } from "@/lib/linha-do-tempo";
 
 // A BARRA DA SELEÇÃO (docs/planos/linha-do-tempo-spec.md, D5; pacote P6).
 //
-// No celular ela toma o lugar da fileira de abas enquanto há algo selecionado: 44px, o ✕
-// fixo à esquerda (tira a seleção) e os botões do tipo selecionado rolando de lado quando
-// não cabem. Cada botão tem 44 de altura e 56 de largura mínima -- é dedo, não mouse.
+// No celular ela toma o lugar da fileira de ferramentas enquanto há algo selecionado, com a
+// MESMA altura (68px) e o mesmo desenho (ícone de 22px sobre o nome): o ✕ redondo à
+// esquerda tira a seleção, o nome do selecionado vem em seguida, e os botões do tipo rolam
+// de lado quando não cabem. Cada botão tem 64px de largura mínima -- é dedo, não mouse.
 //
 // Botão apagado NÃO é `disabled`: continua tocável e diz o porquê (`aoMotivo`). "Leve o
 // cursor para dentro da música" ensina o gesto; um botão cinza calado só frustra.
@@ -33,18 +34,20 @@ type Props = {
 
 function BarraDaSelecao({ titulo, preso, acoes, aoAcao, aoFechar, aoMotivo, subBarra, compacta }: Props) {
   return (
-    <div data-area="barra" className="flex h-11 w-full min-w-0 items-stretch" role="toolbar" aria-label={`Ações: ${titulo}`}>
+    <div data-area="barra" className={`flex w-full min-w-0 items-stretch ${compacta ? "h-11" : "h-[68px]"}`} role="toolbar" aria-label={`Ações: ${titulo}`}>
       {!compacta && (
-        <button
-          type="button"
-          onClick={aoFechar}
-          aria-label="Tirar a seleção"
-          title="Tirar a seleção"
-          data-fechar="1"
-          className="grid w-11 shrink-0 place-items-center border-r border-[var(--borda-editor)] text-[var(--letra-editor)]"
-        >
-          <Icone nome="fechar" className="h-5 w-5" />
-        </button>
+        <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-r border-[var(--ed-linha)] px-1.5">
+          <button
+            type="button"
+            onClick={aoFechar}
+            aria-label="Tirar a seleção"
+            title="Tirar a seleção"
+            data-fechar="1"
+            className="grid h-11 w-11 place-items-center rounded-full bg-[var(--ed-elevado)] text-[var(--ed-texto)] transition active:scale-95"
+          >
+            <Icone nome="fechar" className="h-5 w-5" />
+          </button>
+        </div>
       )}
       <div data-rolagem-barra="1" className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {subBarra ? (
@@ -54,14 +57,27 @@ function BarraDaSelecao({ titulo, preso, acoes, aoAcao, aoFechar, aoMotivo, subB
         ) : (
           <>
             {!compacta && (
-              <div className="flex shrink-0 items-center gap-1 pl-2 pr-1 text-[11px] font-semibold text-[var(--letra-fraca)]">
+              <div className="flex max-w-[7.5rem] shrink-0 flex-col justify-center gap-0.5 pr-1 pl-2.5">
+                <span className="flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wide text-[var(--ed-texto-3)]">
+                  {preso && (
+                    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-label="Preso à foto">
+                      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+                    </svg>
+                  )}
+                  Selecionado
+                </span>
+                <span className="truncate text-[12.5px] font-semibold text-[var(--ed-texto)]">{titulo}</span>
+              </div>
+            )}
+            {compacta && (
+              <span className="flex shrink-0 items-center gap-1.5 pr-2 pl-1 text-[12.5px] font-semibold text-[var(--ed-texto)]">
                 {preso && (
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-label="Preso à foto">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[var(--ed-texto-3)]" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-label="Preso à foto">
                     <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
                   </svg>
                 )}
-                <span className="max-w-[9rem] truncate">{titulo}</span>
-              </div>
+                <span className="max-w-[10rem] truncate">{titulo}</span>
+              </span>
             )}
             {acoes.map((a) => (
               <button
@@ -71,11 +87,13 @@ function BarraDaSelecao({ titulo, preso, acoes, aoAcao, aoFechar, aoMotivo, subB
                 aria-disabled={!a.ativo || undefined}
                 title={a.motivo ?? a.rotulo}
                 onClick={() => (a.ativo ? aoAcao(a.id) : a.motivo && aoMotivo?.(a.motivo))}
-                className={`flex min-w-14 shrink-0 flex-col items-center justify-center gap-0.5 px-1.5 text-[10px] leading-none transition ${
-                  a.ativo ? (a.perigo ? "text-[#ff9a84]" : "text-[var(--letra-editor)]") : "text-[var(--letra-fraca)] opacity-45"
-                }`}
+                className={`group flex shrink-0 flex-col items-center justify-center leading-none transition ${
+                  compacta ? "min-w-[52px] gap-1 rounded-lg px-1.5 text-[10.5px] hover:bg-[var(--ed-elevado)]" : "min-w-16 gap-1 px-1 text-[11px]"
+                } ${a.ativo ? (a.perigo ? "text-[#ff9480]" : "text-[var(--ed-texto)]") : "text-[var(--ed-texto-3)] opacity-50"}`}
               >
-                <Icone nome={a.icone} className="h-5 w-5" />
+                <span className={compacta ? "" : `grid h-8 w-8 place-items-center rounded-lg transition ${a.ativo ? "group-active:bg-[var(--ed-elevado-2)]" : ""}`}>
+                  <Icone nome={a.icone} className={compacta ? "h-[18px] w-[18px]" : "h-[22px] w-[22px]"} />
+                </span>
                 <span className="whitespace-nowrap">{a.rotulo}</span>
               </button>
             ))}
@@ -100,7 +118,8 @@ export function DeslizanteDaSubBarra({ rotulo, valor, min, max, passo, formatar,
         step={passo}
         value={valor}
         onChange={(e) => aoMudar(Number(e.target.value))}
-        className="h-11 min-w-0 flex-1 accent-[var(--marca-coral)]"
+        className="h-11 min-w-0 flex-1"
+        style={{ "--pct": `${max > min ? ((valor - min) / (max - min)) * 100 : 0}%` } as CSSProperties}
       />
       <span className="w-10 shrink-0 text-right tabular-nums text-[var(--letra-editor)]">{formatar(valor)}</span>
     </label>

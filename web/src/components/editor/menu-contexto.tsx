@@ -88,7 +88,7 @@ export function useMenuContexto() {
   return { aberto, fechar, gatilho, abrir };
 }
 
-export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | null; aoFechar: () => void }) {
+export default function MenuContexto({ aberto, aoFechar, celular = false }: { aberto: Aberto | null; aoFechar: () => void; celular?: boolean }) {
   const caixa = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -99,27 +99,84 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
       aoFechar();
     };
     // `scroll` na captura: o menu fica preso à tela, então rolar a página deixaria ele
-    // apontando pro lugar errado.
+    // apontando pro lugar errado. (Na folha do celular, rolar a própria folha não fecha.)
+    const aoRolar = (ev: Event) => {
+      if (caixa.current?.contains(ev.target as Node)) return;
+      aoFechar();
+    };
     document.addEventListener("pointerdown", foraOuEsc);
     document.addEventListener("keydown", foraOuEsc);
-    window.addEventListener("scroll", foraOuEsc, true);
+    window.addEventListener("scroll", aoRolar, true);
     window.addEventListener("resize", foraOuEsc);
     return () => {
       document.removeEventListener("pointerdown", foraOuEsc);
       document.removeEventListener("keydown", foraOuEsc);
-      window.removeEventListener("scroll", foraOuEsc, true);
+      window.removeEventListener("scroll", aoRolar, true);
       window.removeEventListener("resize", foraOuEsc);
     };
   }, [aberto, aoFechar]);
 
   if (!aberto) return null;
 
-  // Encosta na borda em vez de vazar. 232px de largura e ~42px por linha é a medida real.
-  // O menu da cena de clipe tem ~20 itens: sem teto, passava da altura do celular e "Capa"
-  // e "Apagar" ficavam fora da tela. Com teto, ele rola por dentro.
-  const largura = 232;
-  const teto = Math.min(380, (typeof window !== "undefined" ? window.innerHeight : 800) - 16);
-  const altura = Math.min(aberto.itens.length * 42 + 20, teto);
+  const linha = (item: ItemMenu, i: number) => {
+    if (item.divisor && !item.rotulo) return <div key={i} className="my-1 h-px bg-[var(--ed-linha,rgb(255_255_255/0.1))]" />;
+    return (
+      <div key={i}>
+        {item.divisor && <div className="my-1 h-px bg-[var(--ed-linha,rgb(255_255_255/0.1))]" />}
+        <button
+          type="button"
+          role="menuitem"
+          disabled={item.desligado}
+          onClick={() => {
+            item.aoEscolher?.();
+            aoFechar();
+          }}
+          className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 text-left transition disabled:opacity-35 ${celular ? "min-h-[52px] py-2 text-[15px]" : "min-h-10 py-1.5 text-[13.5px]"} ${
+            item.perigo ? "text-[#ff9480] hover:bg-[rgb(255_110_90/0.14)]" : "text-[var(--ed-texto,#eef2f8)] hover:bg-white/[0.07]"
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            {item.icone ? (
+              <Icone nome={item.icone} className={`shrink-0 ${celular ? "h-5 w-5" : "h-[18px] w-[18px]"} ${item.perigo ? "text-[#ff9480]" : "text-[var(--ed-texto-2,#a9b7d0)]"}`} />
+            ) : (
+              <span className={`shrink-0 ${celular ? "w-5" : "w-[18px]"}`} />
+            )}
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{item.rotulo}</span>
+              {item.dica ? <span className={`block leading-snug text-[var(--ed-texto-3,#7687a8)] ${celular ? "text-[12.5px]" : "text-[11.5px]"}`}>{item.dica}</span> : null}
+            </span>
+          </div>
+          {item.atalho && <span className="shrink-0 font-mono text-[11px] tracking-wider text-[var(--ed-texto-3,#7687a8)]">{item.atalho}</span>}
+        </button>
+      </div>
+    );
+  };
+
+  // No celular, o menu é uma FOLHA DE AÇÕES que sobe de baixo: linhas de 52px, o polegar
+  // alcança todas, e "Cancelar" no pé. Um menu flutuante perto do dedo ficava embaixo dele.
+  if (celular) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/45" role="presentation">
+        <div ref={caixa} role="menu" className="ed-folha absolute inset-x-0 bottom-0 max-h-[78svh] overflow-y-auto overscroll-contain rounded-t-[22px] bg-[var(--ed-painel,#0e1b33)] px-2 pt-2 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-18px_48px_-12px_rgb(0_0_0/0.7)] ring-1 ring-white/10">
+          <div className="mb-1 flex justify-center">
+            <span className="h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />
+          </div>
+          {aberto.itens.map(linha)}
+          <div className="my-1 h-px bg-white/10" />
+          <button type="button" onClick={aoFechar} className="min-h-[52px] w-full rounded-xl text-[15px] font-semibold text-[var(--ed-texto,#eef2f8)] hover:bg-white/[0.07]">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Encosta na borda em vez de vazar. 248px de largura e ~42px por linha é a medida real.
+  // O menu da cena de clipe tem ~20 itens: sem teto, passava da altura da tela e "Capa" e
+  // "Apagar" ficavam fora. Com teto, ele rola por dentro.
+  const largura = 248;
+  const teto = Math.min(420, (typeof window !== "undefined" ? window.innerHeight : 800) - 16);
+  const altura = Math.min(aberto.itens.length * 42 + 16, teto);
   const x = Math.max(8, Math.min(aberto.x, (typeof window !== "undefined" ? window.innerWidth : 400) - largura - 8));
   const y = Math.max(8, Math.min(aberto.y, (typeof window !== "undefined" ? window.innerHeight : 800) - altura - 8));
 
@@ -128,47 +185,9 @@ export default function MenuContexto({ aberto, aoFechar }: { aberto: Aberto | nu
       ref={caixa}
       role="menu"
       style={{ left: x, top: y, width: largura, maxHeight: teto }}
-      className="fixed z-50 overflow-y-auto overscroll-contain rounded-xl border border-neutral-700/80 bg-neutral-900/95 py-1.5 text-neutral-200 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+      className="ed-surgir fixed z-50 overflow-y-auto overscroll-contain rounded-2xl bg-[rgb(20_35_65/0.96)] p-1.5 shadow-[0_24px_60px_-12px_rgb(0_0_0/0.75)] ring-1 ring-white/10 backdrop-blur-xl"
     >
-      {aberto.itens.map((item, i) => {
-        if (item.divisor && !item.rotulo) {
-          return <div key={i} className="my-1 border-t border-neutral-800" />;
-        }
-        return (
-          <div key={i}>
-            {item.divisor && <div className="my-1 border-t border-neutral-800" />}
-            <button
-              type="button"
-              role="menuitem"
-              disabled={item.desligado}
-              onClick={() => {
-                item.aoEscolher?.();
-                aoFechar();
-              }}
-              className={`flex min-h-10 w-full items-center justify-between gap-2.5 px-3 py-2 text-left text-xs transition disabled:opacity-30 sm:min-h-0 ${
-                item.perigo
-                  ? "text-red-400 hover:bg-red-500/20 hover:text-red-300"
-                  : "text-neutral-200 hover:bg-neutral-800/90 hover:text-white"
-              }`}
-            >
-              <div className="flex min-w-0 items-center gap-2.5">
-                {item.icone ? (
-                  <Icone nome={item.icone} className={`h-4 w-4 shrink-0 ${item.perigo ? "text-red-400" : "text-neutral-400"}`} />
-                ) : (
-                  <span className="w-4 shrink-0" />
-                )}
-                <span className="min-w-0">
-                  <span className="block font-medium truncate">{item.rotulo}</span>
-                  {item.dica ? <span className="block text-[10px] leading-tight text-neutral-400 truncate">{item.dica}</span> : null}
-                </span>
-              </div>
-              {item.atalho && (
-                <span className="shrink-0 text-[10px] text-neutral-500 font-mono tracking-wider">{item.atalho}</span>
-              )}
-            </button>
-          </div>
-        );
-      })}
+      {aberto.itens.map(linha)}
     </div>
   );
 }

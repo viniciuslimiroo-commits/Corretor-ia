@@ -45,70 +45,215 @@
    genérico. É o que faz a tela ser reconhecidamente Encena e não uma cópia -- mesma
    lógica de layout, identidade nossa. A seleção é o coral, que no claro já quer dizer
    "isto está ativo".
-   Escopo fechado em `.editor-escuro`. Nada aqui vaza pro resto do site, e os cartões e
-   controles que já existem continuam sendo os mesmos componentes -- o que muda é a cor
-   que eles vestem dentro do editor. Sem isso, cada campo precisaria de uma variante
-   escura própria, e seriam trinta arquivos em vez de um bloco. */
+
+   2026-09 (revisão do editor): a tela era CAIXA DENTRO DE CAIXA -- cartão com borda e
+   sombra dentro de painel com borda, chips de 26px, rótulos em caixa alta de 11px. Agora
+   são camadas de profundidade (fundo < base < painel < elevado) separadas por espaço e
+   por linhas quase invisíveis, não por molduras; controles de 36px no computador e 44px
+   no celular. Os tokens `--ed-*` são a fonte; os nomes antigos (`--painel-editor`...)
+   continuam valendo, apontando pra eles, porque a linha do tempo e as galerias os usam.
+
+   Escopo fechado em `.editor-escuro`. Nada aqui vaza pro resto do site, e os componentes
+   que já existem continuam sendo os mesmos -- o que muda é a cor que eles vestem dentro
+   do editor. Sem isso, cada campo precisaria de uma variante escura própria. */
 .editor-escuro {
   color-scheme: dark;
-  --fundo-editor: #081227;
-  --painel-editor: #112744;
-  --borda-editor: #1e3a67;
-  --letra-editor: #e9eef7;
-  --letra-fraca: #94a6c4;
+  /* profundidade: do fundo (atrás do palco) ao elevado (cartão, campo, chip) */
+  --ed-fundo: #060d1c;
+  --ed-base: #0a1529;
+  --ed-painel: #0e1b33;
+  --ed-elevado: #142341;
+  --ed-elevado-2: #1b2d52;
+  --ed-linha: rgb(165 185 225 / 0.1);
+  --ed-linha-forte: rgb(165 185 225 / 0.18);
+  --ed-texto: #edf2fb;
+  --ed-texto-2: #a9b7d0;
+  --ed-texto-3: #7687a8;
+  --ed-acento: #f06b4f;
+  --ed-acento-forte: #ff7c60;
+  --ed-acento-suave: rgb(240 107 79 / 0.15);
+  --ed-sombra-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --ed-sombra-2: 0 12px 32px -12px rgb(0 0 0 / 0.65);
+  --ed-sombra-3: 0 28px 64px -16px rgb(0 0 0 / 0.75);
+  /* os nomes antigos, apontando pros novos */
+  --fundo-editor: var(--ed-fundo);
+  --painel-editor: var(--ed-base);
+  --borda-editor: var(--ed-linha);
+  --letra-editor: var(--ed-texto);
+  --letra-fraca: var(--ed-texto-3);
+  background-color: var(--ed-base);
+  color: var(--ed-texto);
+  -webkit-font-smoothing: antialiased;
 }
-.editor-escuro,
+/* Componentes do resto do site que entram no editor (galerias, biblioteca de áudio): o
+   branco vira a camada elevada, as bordas viram linha fina, os cinzas viram o texto
+   secundário. É o que tira a cara de "janela antiga" sem reescrever cada galeria. */
 .editor-escuro .bg-white {
-  background-color: var(--painel-editor);
-  color: var(--letra-editor);
+  background-color: var(--ed-elevado);
+  color: var(--ed-texto);
 }
 .editor-escuro .bg-neutral-50,
 .editor-escuro .bg-neutral-100 {
-  background-color: #1a3159;
+  background-color: rgb(165 185 225 / 0.06);
+}
+.editor-escuro .hover\:bg-neutral-50:hover,
+.editor-escuro .hover\:bg-neutral-100:hover,
+.editor-escuro .hover\:bg-neutral-200:hover {
+  background-color: var(--ed-elevado-2);
 }
 .editor-escuro .border-neutral-100,
 .editor-escuro .border-neutral-200,
 .editor-escuro .border-neutral-300 {
-  border-color: var(--borda-editor);
+  border-color: var(--ed-linha);
+}
+.editor-escuro .hover\:border-neutral-400:hover {
+  border-color: var(--ed-linha-forte);
+}
+.editor-escuro .divide-neutral-100 > :not(:last-child) {
+  border-color: var(--ed-linha);
 }
 .editor-escuro .text-neutral-800,
 .editor-escuro .text-neutral-700,
 .editor-escuro .text-neutral-900 {
-  color: var(--letra-editor);
+  color: var(--ed-texto);
 }
 .editor-escuro .text-neutral-600,
-.editor-escuro .text-neutral-500,
+.editor-escuro .text-neutral-500 {
+  color: var(--ed-texto-2);
+}
 .editor-escuro .text-neutral-400 {
-  color: var(--letra-fraca);
+  color: var(--ed-texto-3);
+}
+.editor-escuro .shadow-sm {
+  box-shadow: none;
 }
 /* O índigo é a cor da marca sobre BRANCO. No escuro ele some, então a seleção passa a
    ser o coral -- a outra cor da casa, e a que já quer dizer "isto está ativo". */
 .editor-escuro .text-marca-indigo {
-  color: var(--marca-coral);
+  color: var(--ed-acento);
 }
 .editor-escuro .bg-marca-indigo\/5,
 .editor-escuro .bg-marca-indigo\/10 {
-  background-color: rgb(240 107 79 / 0.16);
+  background-color: var(--ed-acento-suave);
 }
 .editor-escuro .border-marca-indigo {
-  border-color: var(--marca-coral);
+  border-color: var(--ed-acento);
 }
 /* O coral cheio continua coral, com letra branca: é o botão de gerar. */
 .editor-escuro .bg-marca-indigo {
-  background-color: var(--marca-coral);
+  background-color: var(--ed-acento);
 }
-.editor-escuro input,
+.editor-escuro input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
 .editor-escuro select,
 .editor-escuro textarea {
-  background-color: #0d1e3a;
-  color: var(--letra-editor);
+  background-color: var(--ed-elevado);
+  color: var(--ed-texto);
+  border-color: var(--ed-linha-forte);
+}
+/* Seletor de lista com alvo de dedo (o seletor de imóvel vem do resto do site com 34px). */
+.editor-escuro select {
+  min-height: 40px;
+  border-radius: 12px;
+}
+@media (max-width: 767.98px) {
+  .editor-escuro select {
+    min-height: 44px;
+  }
+}
+.editor-escuro input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus,
+.editor-escuro select:focus,
+.editor-escuro textarea:focus {
+  border-color: var(--ed-acento);
+  outline: none;
 }
 .editor-escuro ::placeholder {
-  color: #6d82a5;
+  color: var(--ed-texto-3);
+}
+/* Foco de teclado visível e na cor da casa (o azul do navegador some no escuro). */
+.editor-escuro :focus-visible {
+  outline: 2px solid var(--ed-acento);
+  outline-offset: 2px;
 }
 /* O palco é o mais escuro de tudo: é o que faz a foto saltar. */
 .editor-escuro .palco {
-  background-color: var(--fundo-editor);
+  background-color: var(--ed-fundo);
+}
+/* Barra de rolagem fina, que aparece sem pesar. */
+.editor-escuro .ed-rolagem {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(165 185 225 / 0.22) transparent;
+}
+.editor-escuro .ed-rolagem::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.editor-escuro .ed-rolagem::-webkit-scrollbar-thumb {
+  background: rgb(165 185 225 / 0.22);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+/* Controle deslizante: trilho fino, bolinha branca com anel coral, área de toque alta. */
+.editor-escuro input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+.editor-escuro input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--ed-acento) var(--pct, 0%), rgb(165 185 225 / 0.22) var(--pct, 0%));
+}
+.editor-escuro input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(165 185 225 / 0.22);
+}
+.editor-escuro input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ed-acento);
+}
+.editor-escuro input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--ed-acento), 0 2px 6px rgb(0 0 0 / 0.4);
+}
+.editor-escuro input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--ed-acento), 0 2px 6px rgb(0 0 0 / 0.4);
+}
+/* Entrada curta de folha, menu e aviso: 160ms, sem quique. */
+@keyframes ed-subir {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ed-surgir {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ed-folha {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+.editor-escuro .ed-subir { animation: ed-subir 0.16s ease-out both; }
+.editor-escuro .ed-surgir { animation: ed-surgir 0.14s ease-out both; }
+.editor-escuro .ed-folha { animation: ed-folha 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .editor-escuro .ed-subir,
+  .editor-escuro .ed-surgir,
+  .editor-escuro .ed-folha { animation: none; }
 }
 
 /* ---------- PAINEL DO CLIENTE (CRM) ----------
@@ -169,5 +314,5 @@ body {
   --faixa-adesivos: #d08be8;
   --faixa-legendas: #8fd19e;
   --linha-guia: #f06b4f;
-  --trilho-faixa: #0d1e3a;
+  --trilho-faixa: rgb(165 185 225 / 0.05);
 }

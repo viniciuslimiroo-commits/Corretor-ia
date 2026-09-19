@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icone } from "@/components/ui";
+import { Pilula, Segmentado } from "./ui-editor";
 import { CATEGORIAS_MUSICA, MUSICAS, type CategoriaMusica, type MusicaId } from "@/lib/video";
 
 // A BIBLIOTECA DE ÁUDIO: ouvir antes de escolher.
@@ -138,41 +139,25 @@ export default function BibliotecaAudio({
   const marcado = aba === "musicas" ? escolhida : efeito;
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* abas */}
-      <div className="flex gap-1 border-b border-neutral-200">
-        {(["musicas", "efeitos"] as const).map((a) => (
-          <button
-            key={a}
-            type="button"
-            onClick={() => setAba(a)}
-            className={
-              "-mb-px border-b-2 px-3 py-1.5 text-sm transition " +
-              (aba === a ? "border-marca-coral font-medium text-marca-indigo" : "border-transparent text-neutral-500 hover:text-neutral-700")
-            }
-          >
-            {a === "musicas" ? "Músicas" : "Efeitos sonoros"}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-4">
+      <Segmentado
+        rotulo="Músicas ou efeitos"
+        opcoes={[
+          { id: "musicas", rotulo: "Músicas" },
+          { id: "efeitos", rotulo: "Efeitos sonoros" },
+        ]}
+        valor={aba}
+        aoMudar={(v) => setAba(v as typeof aba)}
+      />
 
       {aba === "musicas" && (
-        <div className="-mx-1 flex gap-1 overflow-x-auto px-1">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(["todas", ...CATEGORIAS_MUSICA.map((c) => c.id)] as const).map((id) => {
             const def = CATEGORIAS_MUSICA.find((c) => c.id === id);
             return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setCategoria(id as CategoriaMusica | "todas")}
-                title={def?.para}
-                className={
-                  "shrink-0 rounded-full border px-2.5 py-1 text-xs transition " +
-                  (categoria === id ? "border-marca-indigo bg-marca-indigo/10 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
-                }
-              >
+              <Pilula key={id} ativo={categoria === id} onClick={() => setCategoria(id as CategoriaMusica | "todas")} title={def?.para}>
                 {id === "todas" ? "Todas" : def?.rotulo}
-              </button>
+              </Pilula>
             );
           })}
         </div>
@@ -180,27 +165,23 @@ export default function BibliotecaAudio({
 
       {/* "sem" é a primeira linha das duas listas: tirar a música é uma escolha, não a
           ausência de uma -- e vídeo narrado muitas vezes fica melhor sem trilha. */}
-      <ul className="flex flex-col gap-1">
+      <ul className="-mx-2 flex flex-col gap-0.5">
         <li>
           <button
             type="button"
             disabled={desabilitado}
             onClick={() => (aba === "musicas" ? aoEscolher("nenhuma") : aoEscolherEfeito("nenhum"))}
             className={
-              "flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition disabled:opacity-40 " +
-              (marcado === (aba === "musicas" ? "nenhuma" : "nenhum")
-                ? "border-marca-indigo bg-marca-indigo/10 text-marca-indigo"
-                : "border-neutral-200 hover:border-neutral-400")
+              "flex min-h-14 w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition disabled:opacity-40 " +
+              (marcado === (aba === "musicas" ? "nenhuma" : "nenhum") ? "bg-[var(--ed-acento-suave)] ring-1 ring-inset ring-[rgb(240_107_79/0.45)]" : "hover:bg-[var(--ed-elevado)]")
             }
           >
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-neutral-100 text-neutral-400">
-              <Icone nome="fechar" className="h-3.5 w-3.5" />
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-[var(--ed-elevado-2)] text-[var(--ed-texto-2)]">
+              <Icone nome="fechar" className="h-4 w-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate">{aba === "musicas" ? "Sem música" : "Sem efeito"}</span>
-              <span className="block truncate text-[11px] text-neutral-500">
-                {aba === "musicas" ? "Só a sua voz, ou silêncio" : "Nenhum som nas viradas"}
-              </span>
+              <span className="block truncate text-[14px] font-medium text-[var(--ed-texto)]">{aba === "musicas" ? "Sem música" : "Sem efeito"}</span>
+              <span className="block truncate text-[12px] text-[var(--ed-texto-2)]">{aba === "musicas" ? "Só a sua voz, ou silêncio" : "Nenhum som nas viradas"}</span>
             </span>
           </button>
         </li>
@@ -210,49 +191,50 @@ export default function BibliotecaAudio({
           const nesta = tocando === m.id;
           return (
             <li key={m.id}>
-              <div
-                className={
-                  "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition " +
-                  (ativo ? "border-marca-indigo bg-marca-indigo/10" : "border-neutral-200 hover:border-neutral-400")
-                }
-              >
+              <div className={"flex min-h-14 items-center gap-3 rounded-xl px-2 py-1.5 transition " + (ativo ? "bg-[var(--ed-acento-suave)] ring-1 ring-inset ring-[rgb(240_107_79/0.45)]" : "hover:bg-[var(--ed-elevado)]")}>
                 {/* Ouvir é um botão SEPARADO de escolher: a pessoa passa a lista inteira
                     ouvindo antes de se decidir, e cada prévia não pode mexer no vídeo. */}
                 <button
                   type="button"
                   onClick={() => ouvir(m, pasta)}
                   title={nesta ? "Parar" : "Ouvir"}
-                  className="group relative grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md transition"
+                  aria-label={nesta ? `Parar ${m.rotulo}` : `Ouvir ${m.rotulo}`}
+                  className="group relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg transition"
                 >
                   <CapaFaixa id={m.id} categoria={(m as { categoria?: string }).categoria ?? "efeito"} />
-                  {/* O play cobre a capa: a arte diz QUAL faixa é, o botão diz o que ele faz.
-                      Some quando não se aponta pra ele, e fica sempre visível na que toca. */}
-                  <span
-                    className={
-                      "absolute inset-0 grid place-items-center bg-black/45 text-white transition " +
-                      (nesta ? "opacity-100" : "opacity-0 group-hover:opacity-100")
-                    }
-                  >
-                    <Icone nome={nesta ? "fechar" : "play"} className="h-3 w-3" />
+                  {/* O play cobre a capa: a arte diz QUAL faixa é, o botão diz o que ele faz. No
+                      toque (sem "passar o mouse") o selo de play fica sempre à vista. */}
+                  <span className={"absolute inset-0 grid place-items-center bg-black/45 text-white transition " + (nesta ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+                    <Icone nome={nesta ? "pausa" : "play"} className="h-4 w-4" />
                   </span>
+                  {!nesta && (
+                    <span className="absolute right-0.5 bottom-0.5 grid h-4 w-4 place-items-center rounded-full bg-black/60 text-white group-hover:opacity-0" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" className="ml-px h-2.5 w-2.5" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </span>
+                  )}
                 </button>
-                <button
-                  type="button"
-                  disabled={desabilitado}
-                  onClick={() => (aba === "musicas" ? aoEscolher(m.id as MusicaId) : aoEscolherEfeito(m.id))}
-                  className="min-w-0 flex-1 text-left disabled:opacity-40"
-                >
-                  <span className={"block truncate text-sm " + (ativo ? "text-marca-indigo" : "")}>{m.rotulo}</span>
-                  <span className="block truncate text-[11px] text-neutral-500">{m.descricao}</span>
+                <button type="button" disabled={desabilitado} onClick={() => (aba === "musicas" ? aoEscolher(m.id as MusicaId) : aoEscolherEfeito(m.id))} className="flex min-h-11 min-w-0 flex-1 flex-col justify-center text-left disabled:opacity-40">
+                  <span className={"block truncate text-[14px] font-medium " + (ativo ? "text-[var(--ed-acento-forte)]" : "text-[var(--ed-texto)]")}>{m.rotulo}</span>
+                  <span className="block truncate text-[12px] text-[var(--ed-texto-2)]">{m.descricao}</span>
                 </button>
-                {ativo && <Icone nome="check" className="h-4 w-4 shrink-0 text-marca-coral" />}
+                {nesta ? (
+                  <span className="flex h-4 shrink-0 items-end gap-0.5 pr-1" aria-label="Tocando">
+                    {[0, 1, 2].map((i) => (
+                      <span key={i} className="w-1 animate-pulse rounded-full bg-[var(--ed-acento)]" style={{ height: `${[60, 100, 40][i]}%`, animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </span>
+                ) : (
+                  ativo && <Icone nome="check" className="mr-1 h-5 w-5 shrink-0 text-[var(--ed-acento)]" />
+                )}
               </div>
             </li>
           );
         })}
       </ul>
 
-      <p className="text-[11px] text-neutral-400">
+      <p className="text-[12px] leading-relaxed text-[var(--ed-texto-3)]">
         Todas as faixas são da Encena, feitas pra isto. Nenhuma tem dono de fora, então o seu anúncio não corre risco de derrubada por direito autoral.
       </p>
     </div>

@@ -48,6 +48,8 @@ export type PropsLinhaDeFaixas = {
   celular: boolean;
   picos: Partial<Record<MusicaId, PicosDaFaixa>>;
   miniaturas: Record<string, string | null>;
+  /** Chaves das cenas que são vídeo (▶ no bloco). */
+  clipes?: Set<string>;
   capa: string | null;
   semSom: Set<string>;
   /** Chaves das cenas animadas (✨). */
@@ -71,6 +73,8 @@ export type PropsLinhaDeFaixas = {
   aoDesfazer(): void;
   aoRefazer(): void;
   aoSoltarFoto?(chaveAlvo: string | null, ev: React.DragEvent): void;
+  /** O + depois da última cena: abre as fotos e os vídeos. */
+  aoAdicionarMidia?(): void;
 };
 
 export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
@@ -128,15 +132,18 @@ export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
   const faixas = ORDEM_DAS_FAIXAS.filter((f) => p.faixas.trilhas[f].length > 0);
   const aberta = (f: FaixaId) => (p.celular ? p.todasAbertas || p.faixaAberta === f : true);
   const altura = alturaDaLinha(m, faixas.map((f) => ({ aberta: aberta(f) })));
-  const larguraConteudo = p.celular ? `calc(var(--pxs) * ${p.total})` : `calc(var(--pxs) * ${p.total} + ${m.rotulos + 24}px)`;
+  // Folga depois do fim: o + da trilha das cenas mora ali.
+  const larguraConteudo = p.celular ? `calc(var(--pxs) * ${p.total} + 64px)` : `calc(var(--pxs) * ${p.total} + ${m.rotulos + 88}px)`;
   const estilo = { "--pxs": `${p.zoom}px`, height: altura, WebkitTouchCallout: "none", userSelect: "none", WebkitUserSelect: "none" } as CSSProperties;
 
   return (
-    <div ref={setRaiz} data-area="linha" data-altura={altura} className="relative flex shrink-0 flex-col bg-[var(--painel-editor)] shadow-[inset_0_1px_0_var(--borda-editor)]" style={estilo}>
+    <div ref={setRaiz} data-area="linha" data-altura={altura} className="relative flex shrink-0 flex-col border-t border-[var(--ed-linha)] bg-[var(--ed-base)]" style={estilo}>
       <Controles
         tocando={p.tocando}
         tempo={p.tempo}
+        relogio={p.relogio}
         total={p.total}
+        zoom={p.zoom}
         podeDesfazer={p.podeDesfazer}
         podeRefazer={p.podeRefazer}
         todasAbertas={p.todasAbertas}
@@ -147,6 +154,7 @@ export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
         aoDesfazer={p.aoDesfazer}
         aoRefazer={p.aoRefazer}
         aoAjustar={p.aoAjustar}
+        aoZoom={p.aoZoom}
         aoAlternarFaixas={p.aoAlternarFaixas}
       />
       <div
@@ -163,12 +171,16 @@ export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
               blocos={p.faixas.trilhas.cenas}
               marcas={p.faixas.marcasDeEfeito}
               medidas={m}
+              pxs={p.zoom}
+              total={p.total}
               selecao={p.selecao}
               miniaturas={p.miniaturas}
+              clipes={p.clipes}
               capa={p.capa}
               animadas={p.animadas}
               celular={p.celular}
               aoSoltarFoto={p.aoSoltarFoto}
+              aoAdicionarMidia={p.gerando ? undefined : p.aoAdicionarMidia}
             />
             <div className="flex flex-col" style={{ gap: m.entre }}>
               {faixas.map((f) => (
@@ -189,7 +201,7 @@ export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
             <div
               ref={setFantasma}
               data-fantasma="1"
-              className="pointer-events-none absolute z-30 rounded-md border-2 border-dashed border-marca-coral bg-marca-coral/15 data-[borda=1]:border-solid"
+              className="pointer-events-none absolute z-30 rounded-[10px] border-2 border-dashed border-marca-coral bg-marca-coral/15 shadow-[0_8px_24px_-8px_rgb(240_107_79/0.6)] data-[borda=1]:border-solid"
               style={{ display: "none" }}
             />
             <div
@@ -205,8 +217,8 @@ export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
                 className="pointer-events-none absolute top-0 bottom-0 left-0 z-40 w-0"
                 style={{ transform: `translateX(${origemX + p.tempo * p.zoom}px)` }}
               >
-                <div className="absolute -left-px top-0 bottom-0 w-[2px] bg-marca-coral" />
-                <div className="absolute -left-[5px] -top-px h-0 w-0 border-x-[5px] border-t-[7px] border-x-transparent border-t-marca-coral" />
+                <div className="absolute -left-px top-0 bottom-0 w-[2px] bg-marca-coral shadow-[0_0_8px_rgb(240_107_79/0.6)]" />
+                <div className="absolute -left-[6px] top-0.5 h-4 w-3 rounded-[4px] bg-marca-coral shadow-[0_2px_6px_rgb(0_0_0/0.5)]" />
               </div>
             )}
           </div>
@@ -215,8 +227,8 @@ export default function LinhaDeFaixas(p: PropsLinhaDeFaixas) {
       </div>
       {p.celular && (
         <div data-cabecote="1" className="pointer-events-none absolute left-1/2 z-40 w-0" style={{ top: m.controles, bottom: 0 }} aria-hidden="true">
-          <div className="absolute -left-px top-0 bottom-0 w-[2px] bg-marca-coral" />
-          <div className="absolute -left-[5px] -top-px h-0 w-0 border-x-[5px] border-t-[7px] border-x-transparent border-t-marca-coral" />
+          <div className="absolute -left-px top-0 bottom-0 w-[2px] bg-marca-coral shadow-[0_0_8px_rgb(240_107_79/0.6)]" />
+          <div className="absolute -left-[6px] top-0.5 h-4 w-3 rounded-[4px] bg-marca-coral shadow-[0_2px_6px_rgb(0_0_0/0.5)]" />
         </div>
       )}
     </div>

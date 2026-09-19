@@ -59,7 +59,12 @@ export type { FontePrevia, ItemPrevia, MarcaPrevia } from "@/lib/previa-audio";
 export type MotivoSemSom = "contexto" | "decodificar" | "elemento";
 
 /** O que a linha do tempo lê pra desenhar o cabeçote sem redesenhar o editor inteiro. */
-export type RelogioDaPrevia = { agora(): number; assinar(fn: (t: number) => void): () => void };
+export type RelogioDaPrevia = {
+  agora(): number;
+  assinar(fn: (t: number) => void): () => void;
+  /** Se está tocando AGORA (sem esperar o React): quem assina decide o que fazer com cada instante. */
+  tocando?(): boolean;
+};
 
 export type EstadoDaFonte = "ausente" | "carregando" | "pronta" | "elemento" | "falhou";
 
@@ -375,6 +380,9 @@ function criarMotorDePrevia() {
     assinar(fn) {
       assinantesDoRelogio.add(fn);
       return () => assinantesDoRelogio.delete(fn);
+    },
+    tocando() {
+      return tocando;
     },
   };
 

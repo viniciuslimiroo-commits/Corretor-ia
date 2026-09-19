@@ -60,9 +60,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         const j = c.jobId ? porId.get(c.jobId) : undefined;
         const ehClipe = c.tipo === "clipe" || /\.(mp4|mov)$/i.test(c.arquivo ?? "");
         const fonte = j?.output_path ?? c.arquivo ?? null;
+        // Clipe que é um vídeo do Encena: a miniatura dele mora ao lado (mesmo nome, .jpg).
+        const deVideoPronto = ehClipe && !!c.arquivo && /\/videos\/[0-9a-f-]{36}\.mp4$/.test(c.arquivo);
         return {
-          miniatura: fonte && !ehClipe ? await assinar(db, fonte).catch(() => null) : null,
-          rotulo: j ? rotuloDoTipo(j.tipo) : ehClipe ? "Clipe enviado" : c.tipo === "tour360" ? "Foto 360 enviada" : "Foto enviada",
+          miniatura: fonte && !ehClipe ? await assinar(db, fonte).catch(() => null) : deVideoPronto ? await assinar(db, c.arquivo!.replace(/\.mp4$/, ".jpg")).catch(() => null) : null,
+          // O arquivo do clipe, tocável: o palco mostra o vídeo de verdade ao reabrir.
+          clipeUrl: ehClipe && c.arquivo ? await assinar(db, c.arquivo).catch(() => null) : null,
+          rotulo: j ? rotuloDoTipo(j.tipo) : deVideoPronto ? "Vídeo do Encena" : ehClipe ? "Clipe enviado" : c.tipo === "tour360" ? "Foto 360 enviada" : "Foto enviada",
           temAntes: !!j?.input_path,
           ehClipe,
           // Se o clipe animado existe, gerar de novo com o mesmo movimento e duração é grátis.
@@ -74,6 +78,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       videoId: id,
       status: "concluido",
       url: await assinar(db, saida),
+      // O caminho do arquivo pronto: é o que o editor manda de volta pra usar ESTE vídeo como
+      // clipe de outro (pedido-video.ts confere que é dela e que existe).
+      arquivo: saida,
       miniatura: thumb ? await assinar(db, thumb).catch(() => null) : null,
       duracao,
       titulo: video!.titulo,
