@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!s) return NextResponse.json({ error: "STRIPE_SECRET_KEY não configurada." }, { status: 500 });
 
   const corpo = await req.json().catch(() => ({}));
-  const ofertaId: OfertaId = ehOfertaId(corpo?.oferta) ? corpo.oferta : corpo?.modo === "pacote" ? "pacote_80" : "pro_mensal";
+  const ofertaId: OfertaId = ehOfertaId(corpo?.oferta) ? corpo.oferta : corpo?.modo === "pacote" ? "pacote_60" : "pro_mensal";
   const oferta = OFERTAS_POR_ID[ofertaId];
 
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");

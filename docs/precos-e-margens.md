@@ -1,4 +1,4 @@
-# Preços, custos e margens (12/09/2026)
+# Preços, custos e margens (12/09/2026, revisto em 19/09/2026)
 
 Conta feita antes de fechar os planos de imobiliária. O que é **medido** veio de testes
 reais nesta data; o que é **estimado** está marcado. Rever a cada mudança de modelo,
@@ -27,23 +27,30 @@ Atenção: **Converter em HD** faz upscale até 2560 px. Se o upscaler cobrar po
 megapixel de saída, uma conversão pode custar mais que uma foto comum. Medir e, se
 passar de R$ 0,50, cobrar 2 créditos.
 
-## Margem por plano (mensal)
+## Margem por oferta (por mês)
 
 Taxas = Stripe + imposto. "Uso 100%" = cliente gasta todos os créditos; "uso 50%" é o
-caso típico de SaaS de créditos.
+caso típico de SaaS de créditos. No anual, receita e taxas estão divididas pelos 12
+meses. **A tabela é a saída de `web/scripts/testar-planos.ts`** (mesmas premissas, mesma
+conta): mudou preço ou premissa, roda o teste e cola de novo. Nada de calculadora.
 
-| Plano | Receita | Taxas | IA a 100% | Lucro 100% | Lucro 50% |
+| Oferta | Receita/mês | Taxas | IA 100% | Lucro 100% | Lucro 50% |
 |---|---|---|---|---|---|
-| Pro · R$ 69 · 80 cr · 1 pessoa | 69,00 | 7,28 | 20,00 | **41,7 (60%)** | 51,7 (75%) |
-| Equipe · R$ 249 · 400 cr · 5 pessoas | 249,00 | 25,27 | 100,00 | **123,7 (50%)** | 173,7 (70%) |
-| Imobiliária · R$ 599 · 1.200 cr · 15 pessoas | 599,00 | 60,23 | 300,00 | **238,8 (40%)** | 388,8 (65%) |
-| Pacote 20 · R$ 25 | 25,00 | 2,89 | 5,00 | 17,1 (68%) | — |
-| Pacote 80 · R$ 69 | 69,00 | 7,28 | 20,00 | 41,7 (60%) | — |
-| Pacote 200 · R$ 149 | 149,00 | 15,29 | 50,00 | 83,7 (56%) | — |
+| Pro mensal · R$ 69 | R$ 69 | R$ 7,28 | R$ 20 | **R$ 41,72 (60%)** | R$ 51,72 (75%) |
+| Pro anual · R$ 690 | R$ 57,50 | R$ 5,78 | R$ 20 | **R$ 31,72 (55%)** | R$ 41,72 (73%) |
+| Equipe mensal · R$ 249 | R$ 249 | R$ 25,27 | R$ 100 | **R$ 123,73 (50%)** | R$ 173,73 (70%) |
+| Equipe anual · R$ 2.490 | R$ 207,50 | R$ 20,76 | R$ 100 | **R$ 86,74 (42%)** | R$ 136,74 (66%) |
+| Imobiliária mensal · R$ 599 | R$ 599 | R$ 60,23 | R$ 300 | **R$ 238,77 (40%)** | R$ 388,77 (65%) |
+| Imobiliária anual · R$ 5.990 | R$ 499,17 | R$ 49,90 | R$ 300 | **R$ 149,27 (30%)** | R$ 299,27 (60%) |
+| 20 créditos · R$ 29 | R$ 29 | R$ 3,29 | R$ 5 | **R$ 20,71 (71%)** | — |
+| 60 créditos · R$ 79 | R$ 79 | R$ 8,28 | R$ 15 | **R$ 55,72 (71%)** | — |
+| 150 créditos · R$ 179 | R$ 179 | R$ 18,27 | R$ 37,50 | **R$ 123,23 (69%)** | — |
 
-**Anual:** paga 10 meses e recebe 12 de créditos, liberados mês a mês. Por mês
-equivalente: Pro R$ 57,50 (lucro a 100% de uso: 32,6 = 57%), Equipe R$ 207,50 (95,6 =
-46%), Imobiliária R$ 499 (187,2 = 38%). É o preço da fidelidade de um ano.
+**Correção de 19/09/2026:** a versão de 12/09 dava ao anual 57% (Pro), 46% (Equipe) e
+38% (Imobiliária) com uso total; a conta subestimava as taxas. O certo é 55%, 42% e
+**30%**. O Imobiliária anual é a oferta mais apertada da tabela. O custo por crédito
+(R$ 0,25) tem folga, porque o upscale caiu pra 1600 px depois da medição (ver
+`web/src/lib/custo.ts`), mas vale medir de novo com clientes reais.
 
 **Ponto de equilíbrio da infra fixa (R$ 250):** 5 Pro, ou 2 Equipe, ou 1 Imobiliária.
 
@@ -57,15 +64,42 @@ para R$ 89 e o Equipe para R$ 299 sem perder ninguém.
 
 ## Riscos e decisões
 
-1. **Uso pesado no Imobiliária** deixa 40% de margem. Aceitável, mas é o plano a
-   vigiar: se a média passar de 80% de uso, sobe pra R$ 699 ou cai pra 1.000 créditos.
+1. **Uso pesado no Imobiliária** deixa 40% de margem no mensal e 30% no anual.
+   Aceitável, mas é o plano a vigiar: se a média passar de 80% de uso, sobe pra R$ 699
+   ou cai pra 1.000 créditos.
 2. **Infra grátis não serve pra cobrar:** o plano Hobby da Vercel proíbe uso comercial e
    o Supabase grátis tem 2 GB de tráfego/mês (vídeos compartilhados estouram). Antes de
    cobrar de verdade: Vercel Pro e Supabase Pro.
 3. **fal é pré-pago.** Saldo em 12/09: US$ 0,42. Uma imobiliária cheia gasta ≈ US$ 55/mês
    de IA. Manter saldo para 2 meses e alerta em US$ 20.
-4. **Vídeo estático custa quase nada** e cobra 1 crédito. É a alavanca pra "vídeos
-   inclusos" num plano futuro, se a Pedra puxar por aí.
+4. **Vídeo montado custa quase nada** e hoje não cobra crédito (só a cena animada, 2, e
+   a narração de IA, 1). Custo que não aparece no crédito: armazenamento dos vídeos.
 5. **Boleto e nota fiscal** são condição pra fechar imobiliária média. Boleto liga no
    painel da Stripe; NF exige integração (enotas/NFE.io) -- fica pro lançamento.
 6. **Pix** continua indisponível na Stripe Brasil (só por convite).
+
+## Mudanças de 19/09/2026
+
+Pedidas pelo Vinicius ("faça esses ajustes que achar necessário") depois da análise de
+preço contra Pedra e Interior AI.
+
+1. **Pacotes avulsos passaram a custar mais por foto que a assinatura.** Antes: 20 por
+   R$ 25, 80 por R$ 69 (o preço do Pro, sem prazo nem compromisso) e 200 por R$ 149
+   (R$ 0,75 a foto, mais barato que o Pro). Quem fizesse a conta nunca assinava. Agora:
+   20 por R$ 29 (R$ 1,45), 60 por R$ 79 (R$ 1,32), 150 por R$ 179 (R$ 1,19). O pacote é
+   pra quem usa pouco ou pra completar o mês. `testar-planos.ts` falha se um pacote
+   ficar mais barato por foto que a assinatura.
+2. **Pro em preço de lançamento** (R$ 69 / R$ 690): quem assina agora mantém o valor
+   enquanto a assinatura estiver ativa (Termos, item 5). Com 20 assinantes Pro pagando,
+   subir pra R$ 89 nas assinaturas novas: muda o `preco` em `planos.ts`, publica e roda
+   `scripts/stripe-sincronizar-precos.ts --aplicar`. O script cria o preço novo, passa a
+   lookup_key pra ele e deixa as assinaturas antigas no preço antigo.
+3. **Termos:** vídeo montado não gasta crédito (dizia 1); cancelar o anual mantém os
+   créditos entrando até o fim do ano pago (dizia que interrompia, e o portal da Stripe
+   cancela no fim do período); mudança de preço em assinatura ativa com 30 dias de aviso.
+4. **Esperando dado, sem mudança:** plano de entrada (R$ 39 a 49, 25 a 30 créditos) pra
+   quem acha o Pro caro, depois do primeiro mês de uso real; Imobiliária (item 1 acima);
+   regra de armazenamento pra vídeo de conta grátis antigo.
+5. **Achado:** o portal da Stripe não deixa trocar de plano (mensal → anual, por
+   exemplo); quem quiser trocar tem que cancelar e assinar de novo. Ligar a troca é
+   configuração da conta Stripe, decisão do dono.

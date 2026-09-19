@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
-import { OFERTAS, formatarReais, rotuloDoPlano, type Oferta, type OfertaId } from "@/lib/planos";
+import { OFERTAS, OFERTAS_POR_ID, formatarReais, rotuloDoPlano, type Oferta, type OfertaId } from "@/lib/planos";
 import AppShell from "@/components/app-shell";
 import { Aviso, Botao, Icone } from "@/components/ui";
 import { Marca } from "@/components/marca";
@@ -20,7 +20,10 @@ function CartaoOferta({ o, atual, aoEscolher, ocupado, logado, bloqueado }: { o:
   return (
     <div className={"relative flex flex-col rounded-2xl border bg-white p-5 shadow-sm " + (o.destaque ? "border-marca-coral ring-2 ring-marca-coral/30" : "border-neutral-200")}>
       {o.destaque && <span className="absolute -top-3 left-5 rounded-full bg-marca-coral px-3 py-0.5 text-xs font-semibold text-white">2 meses grátis</span>}
-      <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">{o.rotulo}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">{o.rotulo}</p>
+        {o.lancamento && <span className="rounded-full bg-marca-teal/10 px-2.5 py-0.5 text-xs font-medium text-marca-teal">Preço de lançamento</span>}
+      </div>
       <p className="mt-2 text-3xl font-semibold text-neutral-900">
         {formatarReais(o.preco)}
         {o.periodo && <span className="text-base font-normal text-neutral-500">/{o.periodo}</span>}
@@ -54,8 +57,14 @@ function CartaoOferta({ o, atual, aoEscolher, ocupado, logado, bloqueado }: { o:
   );
 }
 
+/** Preço de uma foto na oferta, com o anual dividido pelos 12 meses que ele cobre. */
+const porFoto = (o: Oferta) => formatarReais(Math.round(o.preco / (o.periodo === "ano" ? 12 : 1) / o.creditos));
+const PACOTES_POR_PRECO = OFERTAS.filter((o) => o.tipo === "pacote").sort((a, b) => a.preco / a.creditos - b.preco / b.creditos);
+
 const PERGUNTAS = [
-  { p: "O que é um crédito?", r: "Uma geração: uma foto editada com uma ação (mobiliar, trocar piso, remover objeto…) ou um vídeo montado. Cena animada por IA no vídeo custa 2 e narração custa 1. Se o resultado ficar ruim, você pede o crédito de volta." },
+  { p: "O que é um crédito?", r: "Uma foto editada com uma ação (mobiliar, trocar piso, remover objeto…). Montar vídeo não gasta crédito: só a cena animada por IA (2) e a narração de IA (1). Se o resultado ficar ruim, você pede o crédito de volta." },
+  { p: "Pacote ou assinatura?", r: `Se você anuncia todo mês, assinar sai mais barato: no Pro cada foto custa ${porFoto(OFERTAS_POR_ID.pro_mensal)} (${porFoto(OFERTAS_POR_ID.pro_anual)} no anual); nos pacotes, de ${porFoto(PACOTES_POR_PRECO[0])} a ${porFoto(PACOTES_POR_PRECO[PACOTES_POR_PRECO.length - 1])}. O pacote é pra quem usa de vez em quando, ou pra completar o mês quando os créditos do plano acabam.` },
+  { p: "O preço pode mudar?", r: "O Pro está com preço de lançamento: quem assina agora mantém esse valor enquanto a assinatura estiver ativa. Nos outros planos, mudança de preço vale pra compras novas; se um dia mudar numa assinatura ativa, avisamos por e-mail com 30 dias de antecedência e você pode cancelar antes." },
   { p: "Como funciona o anual?", r: "Você paga 10 meses e usa 12. Os créditos entram mês a mês, na mesma data, durante o ano. Cancelar não devolve os meses já pagos, mas os créditos continuam entrando até o fim do período." },
   { p: "Preciso ter imobiliária ou CNPJ?", r: "Não. O plano Pro é de uma pessoa só e a maioria de quem usa trabalha sozinho — basta seu e-mail. A conta de equipe existe pra quando forem mais de um: corretor com assistente, dupla de corretores ou imobiliária. Cada um entra com o próprio e-mail, todos gastam dos mesmos créditos, e quem gerencia vê o uso de cada um." },
   { p: "Os créditos expiram?", r: "Os da assinatura valem enquanto ela estiver ativa; os do pacote não expiram. Ao cancelar, o que você já tem continua valendo até acabar." },
@@ -114,7 +123,10 @@ export default function Planos() {
 
       <section id="corretor" className="mt-8 scroll-mt-24">
         <h2 className="text-lg font-semibold">Você sozinho</h2>
-        <p className="mt-1 text-sm text-neutral-500">Uma pessoa, seu login, sua marca.</p>
+        <p className="mt-1 text-sm text-neutral-500">
+          Uma pessoa, seu login, sua marca.
+          {corretor.some((o) => o.lancamento) && " Preço de lançamento: quem assina agora mantém o valor enquanto a assinatura estiver ativa."}
+        </p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
           {corretor.map((o) => (
             <CartaoOferta key={o.id} o={o} atual={!org && assinante} aoEscolher={escolher} ocupado={c.ocupado} logado={!!c.user} bloqueado={bloqueioCorretor} />
@@ -139,7 +151,7 @@ export default function Planos() {
 
       <section id="pacotes" className="mt-10 scroll-mt-24">
         <h2 className="text-lg font-semibold">Pacotes avulsos</h2>
-        <p className="mt-1 text-sm text-neutral-500">Sem assinatura, pagamento único. Somam com o que você (ou a imobiliária) já tem.</p>
+        <p className="mt-1 text-sm text-neutral-500">Sem assinatura, pagamento único. Somam com o que você (ou a imobiliária) já tem. Se você usa todo mês, a assinatura sai mais barata por foto.</p>
         <div className="mt-4 grid gap-5 sm:grid-cols-3">
           {pacotes.map((o) => (
             <CartaoOferta key={o.id} o={o} atual={false} aoEscolher={escolher} ocupado={c.ocupado} logado={!!c.user} bloqueado={bloqueioPacote} />

@@ -55,6 +55,15 @@ Também feitos em 11/09/2026, a pedido:
 O que continua sendo só seu: ativar a conta Stripe (dados da empresa e conta bancária) e,
 quando for pra produção de verdade, repetir preço + webhook no modo live.
 
+**Preços no modo live (19/09/2026):** não se cria preço à mão. Com a `sk_live_` no
+ambiente, `node --import ./scripts/ts-direto.mjs scripts/stripe-sincronizar-precos.ts`
+(dentro de `web/`) mostra o que falta; `--aplicar --live` cria produtos e preços com as
+lookup_keys e o metadata de créditos de `src/lib/planos.ts`. O mesmo script, com a chave de
+teste, é o que aplica mudança de preço: rode `--aplicar` logo depois de publicar a mudança
+em `planos.ts`, senão a tela mostra um valor e o checkout cobra outro. As variáveis
+`STRIPE_PRICE_ID` e `STRIPE_PRICE_PACOTE_ID` não são mais lidas pelo código (o preço é
+achado pela lookup_key); podem sair da Vercel e do `.env.local` quando for conveniente.
+
 ---
 
 O app já está pronto pra publicar: build passa, rotas curtas (nenhuma passa de 6s),
@@ -81,8 +90,6 @@ Copie os valores do seu `web/.env.local`, **exceto** as duas marcadas:
 | `SUPABASE_SERVICE_ROLE_KEY` | igual ao local |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | igual ao local (teste) — troque pela `pk_live_` no lançamento |
 | `STRIPE_SECRET_KEY` | igual ao local (teste) — troque pela `sk_live_` no lançamento |
-| `STRIPE_PRICE_ID` | igual ao local — em produção, crie o preço de novo no modo live e use o id novo |
-| `STRIPE_PRICE_PACOTE_ID` | idem |
 | `STRIPE_WEBHOOK_SECRET` | **NÃO copie o local.** Vem do passo 4. |
 | `NEXT_PUBLIC_APP_URL` | a URL que a Vercel te der, ex. `https://corretor-ia.vercel.app` |
 

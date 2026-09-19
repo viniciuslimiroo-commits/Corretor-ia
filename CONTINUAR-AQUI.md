@@ -180,7 +180,8 @@ editar** (música, voz, Você, textos, adesivos, legendas, cenas), como nos edit
 ## 10. Armadilhas que já custaram caro
 
 - **Fim de linha:** o git converte pra CRLF no Windows. Teste que lê código-fonte com regex
-  tem que normalizar (`.replace(/\r\n/g, "\n")`).
+  tem que normalizar (`.replace(/\r\n/g, "\n")`). E o `grep`/`sed` do Git Bash leem em
+  modo texto e escondem o `\r`: "grep não achou \r" não prova que o arquivo é LF.
 - **Heredoc grande no terminal do Windows quebra calado:** escreva arquivo inteiro com a
   ferramenta de escrita, não com `cat <<EOF`.
 - **ffmpeg:** dentro de um filtro, vírgula separa filtros → escapar `\,` em `min()`,
@@ -208,6 +209,27 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
+
+- **19/09/2026 (noite) — Claude Code (ajuste de preços, mesmo branch `editor-2026`, NÃO
+  publicado):** ele pediu "faça esses ajustes que achar necessário" depois da análise de
+  preço. Detalhes e motivos em `docs/precos-e-margens.md` ("Mudanças de 19/09/2026").
+  - Pacotes: 20/R$ 29, 60/R$ 79, 150/R$ 179 (saíram 20/R$ 25, 80/R$ 69 e 200/R$ 149, que
+    tiravam o motivo de assinar). Pro com selo "Preço de lançamento" (tela de planos e
+    página inicial nos 3 idiomas). Termos, item 5: vídeo montado = 0 crédito, anual segue
+    até o fim do ano pago, preço de lançamento, 30 dias de aviso pra mudança de preço.
+  - Novos: `scripts/testar-planos.ts` (regras + tabela de margem), `scripts/stripe-
+    sincronizar-precos.ts` (Stripe = planos.ts; sem argumento só mostra),
+    `scripts/conferir-checkout-pacotes.mjs` (checkout de cada pacote conferido na Stripe e
+    expirado, sem cobrar).
+  - **Na Stripe (teste) já feito:** preços `encena_pacote_60` e `encena_pacote_150`
+    criados; metadata `plano=pro` no Pro anual. **Falta, e só DEPOIS de publicar:**
+    `node --import ./scripts/ts-direto.mjs scripts/stripe-sincronizar-precos.ts --aplicar`
+    (passa `encena_pacote_20` pra R$ 29, arquiva 80 e 200) e então
+    `BASE=https://corretor-ia-gilt.vercel.app node scripts/conferir-checkout-pacotes.mjs`.
+    Antes de publicar, não: a produção de hoje ainda mostra os pacotes de 80 e 200.
+  - Achado, decisão dele: o portal da Stripe não permite trocar de plano (mensal → anual).
+  - Armadilha nova: o `grep`/`sed` do Git Bash escondem o `\r` (modo texto): pra saber se
+    um arquivo é CRLF, perguntar ao Python (`b"\r\n" in open(f, "rb").read()`).
 
 - **19/09/2026 (tarde) — Claude Code (revisão do editor de vídeo, branch `editor-2026`, NÃO
   publicado ainda):** pedido dele: "clico num vídeo e tento pôr na timeline e não acontece

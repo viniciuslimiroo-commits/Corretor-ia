@@ -31,8 +31,9 @@ const PERGUNTAS = [1, 2, 3, 4, 5, 6, 7] as const;
 const CHECK = (cor: string) => <Icone nome="check" className={`mt-0.5 h-4 w-4 shrink-0 ${cor}`} />;
 
 export default function Landing() {
-  const { t } = useIdioma();
+  const { t, idioma } = useIdioma();
   const pro = OFERTAS.find((o) => o.id === "pro_mensal")!;
+  const pacotes = OFERTAS.filter((o) => o.tipo === "pacote");
   const equipe = OFERTAS.find((o) => o.id === "equipe_mensal")!;
   const imobiliaria = OFERTAS.find((o) => o.id === "imobiliaria_mensal")!;
   const acoes = ACOES.filter((a) => a.id !== "editar_prompt" && !a.oculta);
@@ -222,14 +223,17 @@ export default function Landing() {
             <p className="text-sm text-neutral-600">{t("landing.preco.gratis.d")}</p>
           </div>
           <div className="rounded-2xl border-2 border-marca-coral p-5">
-            <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">{pro.rotulo.replace(" mensal", "")}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">{pro.rotulo.replace(" mensal", "")}</p>
+              {pro.lancamento && <span className="rounded-full bg-marca-teal/10 px-2.5 py-0.5 text-xs font-medium text-marca-teal">{t("landing.preco.lancamento")}</span>}
+            </div>
             <p className="mt-1 text-3xl font-semibold">{formatarReais(pro.preco)}<span className="text-base font-normal text-neutral-500">{mes}</span></p>
             <p className="text-sm text-neutral-600">{t("landing.preco.pro.d", { n: pro.creditos })}</p>
           </div>
           <div className="rounded-2xl border border-neutral-200 p-5">
             <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">{t("landing.preco.pacotes")}</p>
-            <p className="mt-1 text-3xl font-semibold">{t("landing.preco.apartir")}</p>
-            <p className="text-sm text-neutral-600">{t("landing.preco.pacotes.d")}</p>
+            <p className="mt-1 text-3xl font-semibold">{t("landing.preco.apartir", { v: formatarReais(Math.min(...pacotes.map((o) => o.preco))) })}</p>
+            <p className="text-sm text-neutral-600">{t("landing.preco.pacotes.d", { lista: new Intl.ListFormat(idioma, { type: "disjunction" }).format(pacotes.map((o) => String(o.creditos))) })}</p>
           </div>
         </div>
         <Link href="/planos" className="mt-5 inline-block text-marca-indigo underline">{t("landing.preco.todos")}</Link>

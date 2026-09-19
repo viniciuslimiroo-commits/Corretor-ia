@@ -8,7 +8,13 @@
 // Plano anual paga 10 meses e libera os créditos MÊS A MÊS (metadata creditos_por_mes):
 // evita pagar, gastar tudo em uma semana e pedir reembolso nos 7 dias do CDC.
 //
-// Conta de custo e margem: docs/precos-e-margens.md. Sem segredo neste arquivo.
+// Pacote avulso custa SEMPRE mais por foto que a assinatura mais cara por foto (Pro
+// mensal, R$ 0,86). Até 19/09/2026 o pacote de 80 saía pelo preço do Pro sem prazo nem
+// compromisso, e o de 200 era mais barato por foto que a assinatura: quem fizesse a
+// conta nunca assinava. scripts/testar-planos.ts segura essa regra.
+//
+// Conta de custo e margem: docs/precos-e-margens.md. A Stripe segue esta lista pelo
+// scripts/stripe-sincronizar-precos.ts. Sem segredo neste arquivo.
 
 export type Segmento = "corretor" | "imobiliaria" | "pacote";
 export type PlanoId = "gratis" | "pro" | "equipe" | "imobiliaria";
@@ -20,8 +26,8 @@ export type OfertaId =
   | "imobiliaria_mensal"
   | "imobiliaria_anual"
   | "pacote_20"
-  | "pacote_80"
-  | "pacote_200";
+  | "pacote_60"
+  | "pacote_150";
 
 export type Oferta = {
   id: OfertaId;
@@ -38,6 +44,13 @@ export type Oferta = {
   /** Pessoas incluídas (conta de equipe). */
   pessoas?: number;
   destaque?: boolean;
+  /**
+   * Preço de lançamento: quem assina agora mantém o valor enquanto a assinatura estiver
+   * ativa (Termos, item 5). A Stripe já faz isso sozinha -- assinatura existente fica no
+   * preço antigo quando a lookup_key passa pra um preço novo. Plano: subir o Pro pra
+   * R$ 89 depois dos 20 primeiros assinantes (docs/precos-e-margens.md).
+   */
+  lancamento?: boolean;
   descricao: string;
   detalhes: string[];
 };
@@ -59,6 +72,7 @@ export const OFERTAS: Oferta[] = [
     creditos: 80,
     periodo: "mês",
     pessoas: 1,
+    lancamento: true,
     descricao: "80 fotos por mês, renovando sozinho.",
     detalhes: ["80 créditos todo mês", "Vídeos, tours 360 e terrenos ilimitados", "Imóveis, galeria e links de compartilhamento", "Cancele quando quiser"],
   },
@@ -74,8 +88,9 @@ export const OFERTAS: Oferta[] = [
     periodo: "ano",
     pessoas: 1,
     destaque: true,
+    lancamento: true,
     descricao: "Paga 10 meses, usa 12. Créditos entram mês a mês.",
-    detalhes: ["80 créditos por mês, por 12 meses", "Equivale a R$ 57,50 por mês", "Vídeos, tours 360 e terrenos ilimitados", "Imóveis, galeria e links de compartilhamento"],
+    detalhes: ["80 créditos por mês, por 12 meses", "Vídeos, tours 360 e terrenos ilimitados", "Imóveis, galeria e links de compartilhamento"],
   },
   {
     id: "equipe_mensal",
@@ -104,7 +119,7 @@ export const OFERTAS: Oferta[] = [
     pessoas: 5,
     destaque: true,
     descricao: "Paga 10 meses, usa 12. Créditos entram mês a mês.",
-    detalhes: ["400 créditos por mês, por 12 meses", "Até 5 pessoas", "Equivale a R$ 207,50 por mês", ...BASE_EQUIPE],
+    detalhes: ["400 créditos por mês, por 12 meses", "Até 5 pessoas", ...BASE_EQUIPE],
   },
   {
     id: "imobiliaria_mensal",
@@ -132,7 +147,7 @@ export const OFERTAS: Oferta[] = [
     periodo: "ano",
     pessoas: 15,
     descricao: "Paga 10 meses, usa 12. Créditos entram mês a mês.",
-    detalhes: ["1.200 créditos por mês, por 12 meses", "Até 15 pessoas", "Equivale a R$ 499 por mês", ...BASE_EQUIPE],
+    detalhes: ["1.200 créditos por mês, por 12 meses", "Até 15 pessoas", ...BASE_EQUIPE],
   },
   {
     id: "pacote_20",
@@ -140,32 +155,32 @@ export const OFERTAS: Oferta[] = [
     segmento: "pacote",
     tipo: "pacote",
     rotulo: "20 créditos",
-    preco: 2500,
+    preco: 2900,
     creditos: 20,
     descricao: "Pra um imóvel avulso.",
-    detalhes: ["R$ 1,25 por foto", "Não expira", "Sem renovação"],
+    detalhes: ["R$ 1,45 por foto", "Não expira", "Sem renovação"],
   },
   {
-    id: "pacote_80",
-    lookupKey: "encena_pacote_80",
+    id: "pacote_60",
+    lookupKey: "encena_pacote_60",
     segmento: "pacote",
     tipo: "pacote",
-    rotulo: "80 créditos",
-    preco: 6900,
-    creditos: 80,
-    descricao: "O mesmo que um mês do Pro, sem assinar.",
-    detalhes: ["R$ 0,86 por foto", "Não expira", "Sem renovação"],
+    rotulo: "60 créditos",
+    preco: 7900,
+    creditos: 60,
+    descricao: "Pra quem anuncia pouco e não quer assinar.",
+    detalhes: ["R$ 1,32 por foto", "Não expira", "Sem renovação"],
   },
   {
-    id: "pacote_200",
-    lookupKey: "encena_pacote_200",
+    id: "pacote_150",
+    lookupKey: "encena_pacote_150",
     segmento: "pacote",
     tipo: "pacote",
-    rotulo: "200 créditos",
-    preco: 14900,
-    creditos: 200,
-    descricao: "Pra lançamento ou mês cheio.",
-    detalhes: ["R$ 0,75 por foto", "Não expira", "Sem renovação"],
+    rotulo: "150 créditos",
+    preco: 17900,
+    creditos: 150,
+    descricao: "Pra lançamento ou pra completar o mês.",
+    detalhes: ["R$ 1,19 por foto", "Não expira", "Sem renovação"],
   },
 ];
 

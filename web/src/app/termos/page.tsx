@@ -11,7 +11,7 @@ import { EMAIL_SUPORTE } from "@/lib/contato";
 
 export const metadata: Metadata = { title: "Termos de uso", description: "Termos de uso do Encena." };
 
-const ATUALIZADO = "12 de setembro de 2026";
+const ATUALIZADO = "19 de setembro de 2026";
 
 export default function Termos() {
   return (
@@ -64,11 +64,13 @@ export default function Termos() {
 
       <Secao n="5" titulo="Créditos, planos e pagamento">
         <ul>
-          <li>Cada geração consome créditos: uma foto editada custa 1 crédito, um vídeo montado custa 1, uma cena animada por IA custa 2 e a narração custa 1.</li>
+          <li>Cada geração consome créditos: uma foto editada custa 1 crédito, uma cena animada por IA custa 2 e a narração de IA custa 1. Montar o vídeo não consome crédito.</li>
           <li>Contas novas recebem 5 créditos grátis, sem cartão.</li>
           <li>Planos mensais renovam sozinhos e podem ser cancelados a qualquer momento, com um clique, sem multa.</li>
-          <li>Planos anuais são pagos de uma vez e os créditos entram mês a mês, ao longo de doze meses. Cancelar interrompe as parcelas futuras de crédito.</li>
+          <li>Planos anuais são pagos de uma vez e os créditos entram mês a mês, ao longo de doze meses. Cancelar encerra a renovação: os créditos continuam entrando até o fim do ano já pago. Com reembolso, as parcelas que ainda não entraram são canceladas.</li>
           <li>Pacotes avulsos são pagamento único e os créditos não expiram enquanto a conta existir.</li>
+          <li>Preço de lançamento: quem assina o plano Pro enquanto ele está com preço de lançamento mantém esse valor enquanto a assinatura continuar ativa. Uma assinatura nova, feita depois de cancelar, segue o preço do momento.</li>
+          <li>Mudanças de preço valem para compras novas. Se o preço de uma assinatura ativa mudar, avisamos por e-mail com pelo menos 30 dias de antecedência, e você pode cancelar antes de a mudança valer.</li>
           <li>Os pagamentos são processados pela Stripe. Não temos acesso ao número do seu cartão.</li>
         </ul>
         <p>
