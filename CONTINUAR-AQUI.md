@@ -236,6 +236,14 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
   - **Limitação anotada, decisão dele:** vídeo posto na linha do tempo entra MUDO -- na
     prévia e no vídeo final (a montagem não leva o som do clipe). Se quiser o som do vídeo,
     é trabalho novo no ffmpeg (mixar o áudio do clipe com música e voz).
+  - **SEGUNDA causa, achada depois (b280588, obs. 0125):** ele continuou sem som no LINK DE
+    TESTE. Deploy de branch da Vercel é protegido por login, e o motor baixava os arquivos
+    com `credentials: "omit"`: sem cookie, 401, e a música nunca era decodificada. Medido
+    com o cookie na página: omit 401, same-origin 200. Trocado no HEAD e no GET (URL
+    assinada do Supabase é outra origem, então nada muda lá). `conferir-som-do-play.mjs
+    --com-login` sobe um portão que imita a Vercel: com o build antigo, nível 0 nos dois
+    Plays; com o novo, 0,107 no primeiro. **Lição: o ambiente dele (link protegido) não era
+    o meu (localhost); declarei resolvido antes de cobrir essa diferença.**
 
 - **19/09/2026 (noite) — Claude Code (ajuste de preços, mesmo branch `editor-2026`, NÃO
   publicado):** ele pediu "faça esses ajustes que achar necessário" depois da análise de
