@@ -21,7 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { ACOES_POR_ID, limparParametros } from "../src/lib/acoes.ts";
-import { comEstruturaPreservada, ESTRUTURA_FIXA, ESTRUTURA_FIXA_SALVO_PEDIDO } from "../src/lib/preservar.ts";
+import { comEstruturaPreservada, ESTRUTURA_FIXA_SALVO_PEDIDO } from "../src/lib/preservar.ts";
 import { consultar, corpoRequisicao, despachar, extrairImagem, resultado } from "../src/lib/fal.ts";
 import { aplicarSelo, textoDoSelo } from "../src/lib/selo.ts";
 
