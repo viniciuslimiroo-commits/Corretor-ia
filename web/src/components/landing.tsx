@@ -29,9 +29,9 @@ import { linkDeSuporte } from "@/lib/contato";
 // México ou dos EUA vê antes de decidir se entra.
 
 const EXEMPLOS = [
+  { id: "casa", chave: "landing.ex.casa", antes: "/exemplos/casa-antes.jpg", depois: "/exemplos/casa-depois.jpg" },
   { id: "jantar", chave: "landing.ex.jantar", antes: "/exemplos/jantar-antes.jpg", depois: "/exemplos/jantar-depois.jpg" },
   { id: "cozinha", chave: "landing.ex.cozinha", antes: "/exemplos/cozinha-antes.jpg", depois: "/exemplos/cozinha-depois.jpg" },
-  { id: "parede", chave: "landing.ex.parede", antes: "/exemplos/parede-antes.jpg", depois: "/exemplos/parede-depois.jpg" },
 ];
 
 /** O que sai de uma foto. Cada aba mostra UMA prova grande, não uma lista. */

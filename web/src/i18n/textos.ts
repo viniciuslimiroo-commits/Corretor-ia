@@ -164,6 +164,7 @@ const pt: Dicionario = {
 
   "landing.prova.h2": "Foto de celular, resultado de anúncio",
   "landing.prova.p": "Feito pela própria Encena, sem retoque manual. Toda imagem alterada sai identificada como ilustrativa.",
+  "landing.ex.casa": "Casa pronta · reforma contemporânea preservando a estrutura",
   "landing.ex.jantar": "Mobiliar cômodo · sala e jantar, estilo escandinavo",
   "landing.ex.cozinha": "Remover objeto · tirar a bagunça da bancada",
   "landing.ex.parede": "Mudar parede · terracota",
@@ -422,6 +423,7 @@ const es: Dicionario = {
 
   "landing.prova.h2": "Foto de celular, resultado de anuncio",
   "landing.prova.p": "Hecho por la propia Encena, sin retoque manual. Toda imagen alterada sale identificada como ilustrativa.",
+  "landing.ex.casa": "Casa terminada · reforma contemporánea conservando la estructura",
   "landing.ex.jantar": "Amueblar ambiente · sala y comedor, estilo escandinavo",
   "landing.ex.cozinha": "Quitar objeto · sacar el desorden de la mesada",
   "landing.ex.parede": "Cambiar pared · terracota",
@@ -679,6 +681,7 @@ const en: Dicionario = {
 
   "landing.prova.h2": "Phone photo, listing-grade result",
   "landing.prova.p": "Made by Encena itself, with no manual retouching. Every altered image is labelled as illustrative.",
+  "landing.ex.casa": "Finished house · contemporary renovation while preserving the structure",
   "landing.ex.jantar": "Furnish room · living and dining, Scandinavian style",
   "landing.ex.cozinha": "Remove object · clear the countertop",
   "landing.ex.parede": "Change wall · terracotta",

@@ -55,27 +55,35 @@ async function comoDataUri(arquivo: string): Promise<string> {
   return `data:image/jpeg;base64,${bytes.toString("base64")}`;
 }
 
-// A instrução escrita: diz o que melhorar E o que não pode mudar, no nome de cada peça.
-const INSTRUCAO =
-  "restore and finish this simple rural house so it looks ready to live in and well presented for a listing:" +
-  " repair and repaint the walls in a clean warm white, fix the plaster where the bricks show, clean and align the existing roof tiles," +
-  " fit simple new windows and a new front door INSIDE the existing openings, keeping each opening's exact size, shape and position," +
-  " mow the grass around the house to a short tidy lawn, remove the weeds and vines growing on the walls," +
-  " and light the scene with warm late-afternoon sun." +
-  " Keep the same roof shape and pitch, the same wall outline and proportions, the same three openings, the same fence posts and wire," +
-  " the same terrain, the same trees on the horizon and the same camera angle.";
+const INSTRUCAO_MODERNA =
+  "modernize and renovate this corner two-storey townhouse for an architectural real estate listing: " +
+  "repaint the facade in a clean, sophisticated off-white with an elegant dark graphite base trim at street level, " +
+  "install sleek modern matte-black aluminum window frames with clear glass inside each existing window opening, keeping the exact dimensions, position and number of windows, " +
+  "install modern matte-black architectural outdoor wall sconces with subtle up-and-down warm light accents on the facade, " +
+  "restore and align the ceramic roof tiles to look clean and neat, " +
+  "clean the sidewalk pavement completely and remove the street pedestrian and any trash on the corner, " +
+  "no wood cladding on the ground level street wall. Keep the exact same building footprint, wall angles, roof structure and pitch, same street wires and poles, same camera angle and framing.";
+
+const INSTRUCAO_CONTEMPORANEA =
+  "high-end contemporary architectural renovation of this Brazilian urban corner house: " +
+  "smooth light warm-grey and sand textured stucco on the exterior walls, with clean waterproof microcement finish on the ground floor base, " +
+  "replace old frames with contemporary minimalist black window frames fitted precisely inside the existing wall openings, " +
+  "clean and pressure-wash the roof tiles, " +
+  "add subtle modern facade lighting with warm architectural spotlights, " +
+  "clean up the corner sidewalk nicely, " +
+  "no wood panels on the lower exterior wall. Keep the exact building structure, same number and position of windows, same roofline, same perspective.";
 
 const VERSOES = [
   {
-    saida: "casa-depois-reforma",
-    acao: "renovar",
-    params: { tipo_espaco: "house facade with its yard, seen from the street", estilo: "brasileiro", faixa: "medio", criatividade: "alta", moveis: "auto" },
-    contrato: ESTRUTURA_FIXA,
+    saida: "casa-depois-moderna",
+    acao: "editar_prompt",
+    params: { instrucao: INSTRUCAO_MODERNA },
+    contrato: ESTRUTURA_FIXA_SALVO_PEDIDO,
   },
   {
-    saida: "casa-depois-descrito",
+    saida: "casa-depois-contemporanea",
     acao: "editar_prompt",
-    params: { instrucao: INSTRUCAO },
+    params: { instrucao: INSTRUCAO_CONTEMPORANEA },
     contrato: ESTRUTURA_FIXA_SALVO_PEDIDO,
   },
 ];

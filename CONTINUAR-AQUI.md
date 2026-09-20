@@ -214,6 +214,15 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **20/09/2026 — Antigravity (casa pronta com reforma contemporânea na página inicial, `antigravity`):**
+  executada a primeira tarefa pendente do dono (PASSAGEM-ANTIGRAVITY.md seção 3.1). Foto do sobrado de esquina salva em `docs/fotos-origem/casa.jpg`.
+  - Geradas versões preservando estritamente a construção e o terreno (`scripts/casa-pronta.ts`).
+  - Atendendo à observação do dono sobre ripado de madeira não ser prático em calçada de rua pública contra chuva/intempéries, gerou-se a versão de reforma contemporânea: textura elegante areia/fendi com friso branco separador, esquadrias pretas modernas, base impermeabilizada sem madeira de rua e calçada desobstruída.
+  - Aprovada a versão Contemporânea (`casa-depois-contemporanea.jpg` salva como `web/public/exemplos/casa-depois.jpg`).
+  - Integrada ao comparador da página inicial (`web/src/components/landing.tsx`, array `EXEMPLOS`) com a chave `landing.ex.casa`.
+  - Legendas adicionadas nos 3 idiomas em `web/src/i18n/textos.ts` (PT: "Casa pronta · reforma contemporânea preservando a estrutura").
+  - Verificado: `tsc --noEmit` 100% limpo, `testar-preservacao.ts` 100% verde.
+
 - **20/09/2026 (noite) — Claude Code (A ESTRUTURA DO IMÓVEL NÃO MUDA, `editor-2026`):**
   ele viu no exemplo da página uma parede e janelas alteradas num "mobiliar" e fixou a
   regra: a IA não cria, remove nem modifica janela, porta, parede, cômodo, telhado, piscina,
