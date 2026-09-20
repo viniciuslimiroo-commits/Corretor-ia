@@ -20,18 +20,19 @@ A pasta `.claude/worktrees/revisao-ag` é a cópia de trabalho antiga, no branch
 
 | | |
 |---|---|
-| Produção (o que está no ar) | branch `main`, commit `39953b6` — **nada do que segue abaixo está publicado** |
-| Onde está o trabalho novo | branch `antigravity` (esta pasta) e `editor-2026`, no mesmo commit |
+| Produção (o que está no ar) | branch `main`, commit `46bde3f` — **publicado em 20/09/2026** com aprovação do dono |
+| Onde está o trabalho novo | branch `antigravity` (esta pasta), alinhado com o `main` |
 | Link de teste (atualiza a cada push no branch) | https://corretor-ia-git-editor-2026-limiro-brasil.vercel.app |
 | Site oficial | corretor-ia-gilt.vercel.app |
 
-**No branch `editor-2026`, ainda não publicado:**
+**Publicado em produção (commit `46bde3f`):**
 
 1. **Revisão completa do editor de vídeo** (visual novo, vídeo entra na linha do tempo, Play sem travar).
-2. **Preços novos**: pacotes 20/R$ 29, 60/R$ 79, 150/R$ 179; Pro com selo "Preço de lançamento"; Termos corrigidos.
-3. **Som da prévia consertado** (duas causas: desistia em 300 ms; e no link de teste os arquivos vinham com 401).
+2. **Preços novos sincronizados na Stripe**: pacotes 20/R$ 29, 60/R$ 79, 150/R$ 179; Pro com selo "Preço de lançamento"; Termos corrigidos.
+3. **Som da prévia consertado** (áudio aquecido no 1º toque, suporte a credentials).
 4. **Página inicial refeita** em 11 seções, nos 3 idiomas, com fotos reais.
 5. **A estrutura do imóvel não muda** — regra nova da IA, em `web/src/lib/preservar.ts`.
+6. **Casa pronta contemporânea**: sobrado de esquina reformado e integrado à vitrine inicial.
 
 ## 2. As regras do dono (valem para qualquer ferramenta)
 
@@ -46,28 +47,14 @@ A pasta `.claude/worktrees/revisao-ag` é a cópia de trabalho antiga, no branch
 
 ## 3. O que está pendente, em ordem
 
-### 3.1 A casa dele (começado, falta o arquivo)
-Ele mandou a foto de uma casa simples abandonada no pasto e quer ela **pronta e bonita, preservando a construção e o terreno**, para entrar na página inicial ao lado do exemplo da sala.
+### 3.1 A casa dele — CONCLUÍDO (20/09/2026)
+A foto do sobrado de esquina foi processada com a nova regra de preservação, aprovada na versão de reforma contemporânea e integrada ao comparador da página inicial nos 3 idiomas (`landing.ex.casa`).
 
-1. A foto precisa estar em `docs/fotos-origem/` (qualquer nome). Ele vai salvar.
-2. Rodar, de dentro de `web/`:
-   ```bash
-   node --import ./scripts/ts-direto.mjs scripts/casa-pronta.ts
-   ```
-   Faz duas versões (ação "renovar" e "editar com texto"), carimba o selo de imagem ilustrativa e grava `public/exemplos/casa-antes.jpg` + `casa-depois-*.jpg`. **Não gasta crédito da conta** (fala direto com o fal, ~US$ 0,04 por versão); mostrar as duas pra ele escolher.
-3. Escolhida a melhor, apontar em `web/src/components/landing.tsx` (array `EXEMPLOS`) e escrever a legenda nos três idiomas em `web/src/i18n/textos.ts`.
-
-### 3.2 Publicar (só com o "sim" dele)
-```bash
-git checkout main && git merge antigravity && git push origin main
-```
-**Logo depois de publicar**, de dentro de `web/`:
-```bash
-node --import ./scripts/ts-direto.mjs scripts/stripe-sincronizar-precos.ts --aplicar
-BASE=https://corretor-ia-gilt.vercel.app node scripts/conferir-checkout-pacotes.mjs
-BASE=https://corretor-ia-gilt.vercel.app node scripts/conferir-video-clipes.mjs
-```
-O primeiro passa o pacote de 20 para R$ 29 e arquiva os de 80 e 200 na Stripe (sem isso a tela mostra um preço e o checkout cobra outro).
+### 3.2 Publicar — CONCLUÍDO (20/09/2026)
+Publicado em produção no commit `46bde3f` (`git checkout main && git merge antigravity && git push origin main`).
+- `stripe-sincronizar-precos.ts --aplicar`: 9 ofertas sincronizadas na Stripe.
+- `conferir-checkout-pacotes.mjs`: checagem em produção 100% verde (20/R$ 29, 60/R$ 79, 150/R$ 179).
+- `conferir-video-clipes.mjs`: renderização de vídeo e clipes em produção 100% verde.
 
 ### 3.3 Decisões que estão com ele
 - Repor crédito na conta de teste (0 hoje). Dá para comprar um pacote na própria tela de planos em modo teste, cartão `4242 4242 4242 4242`.
