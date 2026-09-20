@@ -1,0 +1,30 @@
+Você vai continuar o Encena (SaaS para corretores de imóveis). Responda SEMPRE em
+português do Brasil.
+
+Antes de qualquer coisa, leia nesta ordem:
+1. PASSAGEM-ANTIGRAVITY.md (raiz do projeto) — estado de hoje, o que está pendente com os
+   comandos prontos, e as regras que eu exijo.
+2. CONTINUAR-AQUI.md — histórico e armadilhas.
+
+O trabalho dos últimos dias está no branch `editor-2026`, dentro da cópia de trabalho
+`.claude/worktrees/revisao-ag` — é de lá que se trabalha. Nada disso foi publicado: a
+produção continua no commit 39953b6 do `main`.
+
+Regras que não se quebram:
+- `git push` no `main` publica em produção; só faça quando eu disser "sim".
+- A estrutura do imóvel não muda: a IA não cria, remove nem modifica janela, porta, parede,
+  cômodo, telhado, piscina, muro ou terreno, a não ser quando eu pedir. Já está implementado
+  em web/src/lib/preservar.ts; toda ferramenta nova de imagem tem que passar por
+  comEstruturaPreservada(), e scripts/testar-preservacao.ts falha se alguém esquecer.
+- Não gaste crédito de IA sem me perguntar. A conta de teste está com 0 crédito.
+- Nada de imagem com marca d'água de terceiro, e nenhum imóvel de cliente na página pública.
+
+Primeira tarefa: eu vou salvar a foto de uma casa simples abandonada em
+docs/fotos-origem/. Quando ela estiver lá, rode de dentro de web/:
+
+    node --import ./scripts/ts-direto.mjs scripts/casa-pronta.ts
+
+Ele gera duas versões da casa pronta preservando a construção e o terreno, me mostre as
+duas para eu escolher, e depois ponha a escolhida na página inicial
+(web/src/components/landing.tsx, array EXEMPLOS) com a legenda nos três idiomas
+(web/src/i18n/textos.ts).

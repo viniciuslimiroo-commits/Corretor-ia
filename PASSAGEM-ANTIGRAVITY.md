@@ -1,21 +1,27 @@
 # Passagem para o Antigravity — 20/09/2026
 
 Quem continua daqui: leia **este arquivo inteiro** e depois `CONTINUAR-AQUI.md` (estado do
-projeto, armadilhas e diário). O que está em `.claude/worktrees/revisao-ag` é uma cópia de
-trabalho do mesmo repositório, no branch `editor-2026` — **é lá que está tudo o que foi
-feito nos últimos dias** e é de lá que se trabalha.
+projeto, armadilhas e diário).
+
+**Tudo o que foi feito nos últimos dias já está NESTA pasta**, no branch `antigravity`, que
+em 20/09 foi adiantado para o mesmo ponto do `editor-2026` (32 commits, avanço direto, sem
+mesclagem). Trabalhe aqui, normalmente:
 
 ```bash
-cd ".claude/worktrees/revisao-ag"
+git branch --show-current    # antigravity
 git log --oneline -12        # o que entrou desde 19/09
+cd web && npm run dev
 ```
+
+A pasta `.claude/worktrees/revisao-ag` é a cópia de trabalho antiga, no branch
+`editor-2026`, apontando para o mesmo commit. **Não precisa dela** — se atrapalhar, ignore.
 
 ## 1. Onde o projeto está
 
 | | |
 |---|---|
 | Produção (o que está no ar) | branch `main`, commit `39953b6` — **nada do que segue abaixo está publicado** |
-| Onde está o trabalho novo | branch `editor-2026` (worktree `.claude/worktrees/revisao-ag`) |
+| Onde está o trabalho novo | branch `antigravity` (esta pasta) e `editor-2026`, no mesmo commit |
 | Link de teste (atualiza a cada push no branch) | https://corretor-ia-git-editor-2026-limiro-brasil.vercel.app |
 | Site oficial | corretor-ia-gilt.vercel.app |
 
@@ -53,8 +59,7 @@ Ele mandou a foto de uma casa simples abandonada no pasto e quer ela **pronta e 
 
 ### 3.2 Publicar (só com o "sim" dele)
 ```bash
-cd .claude/worktrees/revisao-ag
-git checkout main && git merge editor-2026 && git push origin main
+git checkout main && git merge antigravity && git push origin main
 ```
 **Logo depois de publicar**, de dentro de `web/`:
 ```bash
@@ -77,7 +82,7 @@ O primeiro passa o pacote de 20 para R$ 29 e arquiva os de 80 e 200 na Stripe (s
 ## 4. Como rodar e testar
 
 ```bash
-cd .claude/worktrees/revisao-ag/web
+cd web
 npm run dev -- -p 3002            # servidor de desenvolvimento
 npx tsc --noEmit -p .             # tipos (apague .next/dev antes se o build reclamar de routes.d.ts)
 npx next build                    # build de produção
