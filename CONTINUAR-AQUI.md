@@ -210,6 +210,27 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **20/09/2026 (noite) — Claude Code (A ESTRUTURA DO IMÓVEL NÃO MUDA, `editor-2026`):**
+  ele viu no exemplo da página uma parede e janelas alteradas num "mobiliar" e fixou a
+  regra: a IA não cria, remove nem modifica janela, porta, parede, cômodo, telhado, piscina,
+  muro ou terreno — só quando a pessoa pedir.
+  - `web/src/lib/preservar.ts`: três contratos (ESTRUTURA_FIXA, TERRENO_FIXO, PLANTA_FIXA)
+    + `comEstruturaPreservada()`, idempotente. Texto itemizado e com "same number of windows
+    and doors" — pedido genérico o modelo lê como estilo.
+  - Ligado nas QUATRO portas que mandam prompt pro modelo: `api/gerar`, `api/terreno/ia`,
+    `api/planta/humanizar` e a segunda tentativa em `api/job/[id]`. "Editar com texto" e
+    "Refinar" usam a versão com exceção (ali quem pede é a pessoa).
+  - **Achado:** a constante `PRESERVAR` já existia em `acoes.ts` e era usada em UMA ação
+    (mobiliar) de onze. Regra escrita e não propagada é regra que não existe.
+  - `scripts/testar-preservacao.ts` (novo): confere o contrato peça por peça, todas as ações
+    do catálogo, as rotas, e **varre `src/app/api/**/route.ts`** atrás de quem chama o modelo
+    sem passar pela função — foi essa varredura que achou o `job/[id]`.
+  - Na página inicial entrou o argumento: "A IA não inventa janela, porta nem parede".
+  - **PENDENTE, precisa de crédito:** os dois exemplos da página (herói e sala/jantar) foram
+    gerados ANTES da regra e têm alteração de estrutura — refazer com a regra ligada é
+    também a prova de que ela funciona. E a foto da casa dele (que ele quer "pronta e
+    bonita, preservando a casa real") precisa do arquivo salvo no projeto + 1 crédito.
+
 - **20/09/2026 (tarde) — Claude Code (página inicial refeita, `editor-2026`, NÃO
   publicado):** ele pediu análise da landing e depois "faça tudo que achar necessário".
   Análise em artefato (claude.ai/artifact/GSv2ZTnHm11Kx3tsEwzgwK) e a página reescrita no

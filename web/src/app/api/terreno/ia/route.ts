@@ -7,6 +7,7 @@ import { corpoRequisicao, despachar } from "@/lib/fal";
 import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, type Referencia } from "@/lib/terreno-ia";
 import { ETAPAS_OBRA, ETAPA_OBRA_POR_ID } from "@/lib/obra-etapas";
 import { limparFaixaDoSelo } from "@/lib/selo";
+import { comEstruturaPreservada, TERRENO_FIXO } from "@/lib/preservar";
 
 // Terreno com IA: limpar o mato, terraplanar, murar, construir a casa que a pessoa quer,
 // ou pedir por texto. Uma imagem de IA, 1 crédito -- as linhas e medidas do lote continuam
@@ -143,7 +144,8 @@ export async function POST(req: NextRequest) {
     }
 
     const modelo = "fal-ai/nano-banana/edit" as const;
-    const prompt = acao.prompt(parametros, urlReferencia ? tipoReferencia : "nenhuma");
+    // O lote é o que é: a casa pedida entra, o terreno e o que já está construído ficam.
+    const prompt = comEstruturaPreservada(acao.prompt(parametros, urlReferencia ? tipoReferencia : "nenhuma"), TERRENO_FIXO);
     const despacho = await despachar(modelo, corpoRequisicao(modelo, { prompt, imagemUrl: urlFoto, referenciaUrl: urlReferencia }), falKey);
 
     await db

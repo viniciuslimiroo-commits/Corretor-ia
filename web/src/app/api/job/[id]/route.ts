@@ -16,6 +16,7 @@ import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { ALVO_LARGURA_UPSCALE, saldoFal } from "@/lib/custo";
 import { ACOES_COM_CHECAGEM_DE_IGUALDADE, pareceIgual } from "@/lib/comparar";
 import { ACOES_POR_ID } from "@/lib/acoes";
+import { comEstruturaPreservada } from "@/lib/preservar";
 import { avaliarResultado } from "@/lib/avaliador";
 import { creditar } from "@/lib/cobranca";
 
@@ -195,7 +196,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const novo = await despachar(
       secundario,
       corpoRequisicao(secundario, {
-        prompt: p!.prompt ?? "",
+        // Idempotente: o prompt guardado já veio com o contrato do api/gerar. Passa por
+        // aqui de novo pra job criado ANTES da regra também sair com ela na segunda tentativa.
+        prompt: comEstruturaPreservada(p!.prompt ?? ""),
         imagemUrl: p!.urlFoto,
         mascaraUrl: p!.urlMascara ?? undefined,
         referenciaUrl: p!.urlReferencia ?? undefined,

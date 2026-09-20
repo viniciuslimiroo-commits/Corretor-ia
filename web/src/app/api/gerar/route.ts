@@ -7,6 +7,7 @@ import { idiomaDaRequisicao } from "@/i18n/idiomas";
 import { UPSCALER, corpoRequisicao, despachar } from "@/lib/fal";
 import { ACOES_POR_ID, limparParametros } from "@/lib/acoes";
 import { saldoFal } from "@/lib/custo";
+import { comEstruturaPreservada, ESTRUTURA_FIXA, ESTRUTURA_FIXA_SALVO_PEDIDO } from "@/lib/preservar";
 import { contaDe, creditar, debitar } from "@/lib/cobranca";
 
 // DESPACHANTE. Esta rota não espera a IA: ela valida, cobra o crédito, coloca o pedido
@@ -305,7 +306,9 @@ export async function POST(req: NextRequest) {
 
     const provedores = usaMascara && acao.provedoresComMascara ? acao.provedoresComMascara : acao.provedores;
     const [primario] = provedores;
-    const prompt = acao.prompt(parametros);
+    // A estrutura do imóvel não muda, em ação nenhuma (lib/preservar.ts). "Editar com
+    // texto" e "Refinar" ganham a versão com exceção: ali a pessoa é que está pedindo.
+    const prompt = comEstruturaPreservada(acao.prompt(parametros), acao.id === "editar_prompt" || acao.id === "refinar" ? ESTRUTURA_FIXA_SALVO_PEDIDO : ESTRUTURA_FIXA);
 
     const despacho = await despachar(
       primario,

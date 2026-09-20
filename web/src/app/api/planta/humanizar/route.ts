@@ -6,6 +6,7 @@ import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
 import { limparPlanta } from "@/lib/planta";
 import { plantaParaSvg } from "@/lib/planta-svg";
+import { comEstruturaPreservada, PLANTA_FIXA } from "@/lib/preservar";
 import { ESTILOS, trechoDaFaixa } from "@/lib/acoes";
 
 // Planta humanizada: a planta técnica que a pessoa desenhou vira uma vista de cima
@@ -185,7 +186,8 @@ export async function POST(req: NextRequest) {
     await guardarEAssinar(db, caminhoOrig, await sharp(Buffer.from(svgCheio)).png().toBuffer(), "image/png");
 
     const modelo = "fal-ai/nano-banana/edit" as const;
-    const prompt = VISTAS[vista].prompt(estiloOpcao.en, descreverComodos(planta), faixa);
+    // A planta humanizada é a MESMA planta: a decoração muda, a geometria não.
+    const prompt = comEstruturaPreservada(VISTAS[vista].prompt(estiloOpcao.en, descreverComodos(planta), faixa), PLANTA_FIXA);
     const despacho = await despachar(modelo, corpoRequisicao(modelo, { prompt, imagemUrl: urlPlanta }), falKey);
 
     await db

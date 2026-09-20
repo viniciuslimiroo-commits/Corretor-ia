@@ -217,7 +217,8 @@ const pt: Dicionario = {
 
   "landing.seguro.h2": "Feito para anunciar no Brasil, sem risco",
   "landing.seguro.p": "Imagem editada em anúncio é permitida quando fica claro que é ilustrativa. A Encena faz isso sozinha, em toda foto e em todo link.",
-  "landing.seguro.1": "O aviso de imagem ilustrativa sai gravado na foto e no link compartilhado",
+  "landing.seguro.1": "A IA não inventa janela, porta nem parede: a arquitetura do imóvel fica como está",
+  "landing.seguro.5": "O aviso de imagem ilustrativa sai gravado na foto e no link compartilhado",
   "landing.seguro.2": "Melhorar luz, HD e corrigir perspectiva não levam selo: não mudam o imóvel",
   "landing.seguro.3": "Nunca removemos marca d’água de terceiros",
   "landing.seguro.4": "Crédito de volta na hora se o resultado ficar ruim",
@@ -474,7 +475,8 @@ const es: Dicionario = {
 
   "landing.seguro.h2": "Hecho para anunciar sin riesgo",
   "landing.seguro.p": "La imagen editada en un anuncio se permite cuando queda claro que es ilustrativa. Encena lo hace solo, en cada foto y en cada enlace.",
-  "landing.seguro.1": "El aviso de imagen ilustrativa sale grabado en la foto y en el enlace compartido",
+  "landing.seguro.1": "La IA no inventa ventana, puerta ni pared: la arquitectura del inmueble queda como está",
+  "landing.seguro.5": "El aviso de imagen ilustrativa sale grabado en la foto y en el enlace compartido",
   "landing.seguro.2": "Mejorar luz, HD y corregir perspectiva no llevan sello: no cambian el inmueble",
   "landing.seguro.3": "Nunca quitamos marcas de agua de terceros",
   "landing.seguro.4": "Crédito de vuelta al instante si el resultado sale mal",
@@ -730,7 +732,8 @@ const en: Dicionario = {
 
   "landing.seguro.h2": "Built to advertise without risk",
   "landing.seguro.p": "An edited image is fine in a listing as long as it's clearly illustrative. Encena does that on its own, on every photo and every link.",
-  "landing.seguro.1": "The illustrative-image notice is burned into the photo and shown on the shared link",
+  "landing.seguro.1": "The AI invents no window, door or wall: the property’s architecture stays as it is",
+  "landing.seguro.5": "The illustrative-image notice is burned into the photo and shown on the shared link",
   "landing.seguro.2": "Light fixes, HD and perspective carry no label: they don't change the property",
   "landing.seguro.3": "We never remove someone else's watermark",
   "landing.seguro.4": "Credit back right away if the result is poor",

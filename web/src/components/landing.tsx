@@ -285,7 +285,7 @@ export default function Landing() {
         <h2 className="text-2xl font-semibold sm:text-3xl">{t("landing.seguro.h2")}</h2>
         <p className="mt-2 max-w-2xl text-neutral-600">{t("landing.seguro.p")}</p>
         <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-          {(["landing.seguro.1", "landing.seguro.2", "landing.seguro.3", "landing.seguro.4"] as const).map((k) => (
+          {(["landing.seguro.1", "landing.seguro.5", "landing.seguro.2", "landing.seguro.3", "landing.seguro.4"] as const).map((k) => (
             <li key={k} className="flex items-start gap-3 rounded-2xl border border-neutral-200 p-4 text-sm text-neutral-700">{CHECK("text-marca-teal")} {t(k)}</li>
           ))}
         </ul>
