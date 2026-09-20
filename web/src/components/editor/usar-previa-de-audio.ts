@@ -98,8 +98,18 @@ export type PreviaDeAudio = {
   medidorDaSaida: AnalyserNode | null;
 };
 
-/** Depois do Play, o contexto tem que estar tocando. Se não estiver, é relógio sem som. */
-const ESPERA_DO_CONTEXTO = 300;
+/**
+ * Quanto se espera o DISPOSITIVO de áudio abrir depois do Play, antes de desistir do som.
+ *
+ * Medido em 20/09/2026 (Chrome no Windows, o contexto nasce no carregamento da tela pra
+ * decodificar os arquivos e fica suspenso até o gesto): `resume()` leva ~1 s. O valor aqui
+ * era 300 ms e a prévia desistia PARANDO tudo que já tinha agendado -- o primeiro Play saía
+ * mudo, com o cabeçote andando, e só o segundo tinha som. Teto folgado, porque fone
+ * Bluetooth demora mais que caixa de som; e enquanto o contexto não roda, o `currentTime`
+ * dele não anda, então o que está agendado continua no lugar certo e o cabeçote espera
+ * junto: som e imagem entram no mesmo instante.
+ */
+const ESPERA_DO_CONTEXTO = 3000;
 /** Quanto o elemento pode descolar do relógio antes de ser recolocado. */
 const DERIVA_MAXIMA = 0.15;
 /** Silêncio nesse tempo, com o elemento tocando dentro da janela, é elemento mudo. */
@@ -207,9 +217,33 @@ function criarMotorDePrevia() {
   }
 
   function aoMudarEstadoDoContexto() {
+    if (!tocando || !ctx) return;
+    // Abriu DEPOIS de a prévia ter desistido (relógio de parede): o som volta, do ponto em
+    // que o cabeçote está. Sem isto, um atraso do dispositivo deixava a prévia muda até a
+    // pessoa apertar Play de novo.
+    if (ctx.state === "running" && semContextoDesde !== null) {
+      tempo = relogio.agora();
+      semContextoDesde = null;
+      t0 = tempo;
+      prepararSaida(ctx);
+      agendar(ctx);
+      return;
+    }
     // "interrupted" é do iOS (ligação, despertador). Pausa e guarda o tempo: retomar
     // sozinho depois de uma interrupção toca som que ninguém pediu.
-    if (tocando && ctx && ctx.state !== "running" && semContextoDesde === null) pausar();
+    if (ctx.state !== "running" && semContextoDesde === null) pausar();
+  }
+
+  /** Abre o dispositivo antes do Play (no primeiro toque na tela): assim o Play soa na hora. */
+  function aquecer() {
+    const c = contexto();
+    if (c && c.state === "suspended") void c.resume().catch(() => {});
+  }
+
+  /** A latência só existe de verdade com o dispositivo aberto; a base é o zero da agenda. */
+  function prepararSaida(c: AudioContext) {
+    latencia = Math.min(0.5, Math.max(0, c.outputLatency || c.baseLatency || 0));
+    base = c.currentTime + FOLGA;
   }
 
   function barramento(qual: "musica" | "voz"): GainNode | null {
@@ -564,7 +598,8 @@ function criarMotorDePrevia() {
   function tocar(t: number) {
     const c = contexto();
     // PRIMEIRA coisa depois de ter o contexto, e sem nenhum await antes: o iOS só libera o
-    // áudio dentro do gesto que chamou isto.
+    // áudio dentro do gesto que chamou isto. Quando o som pode sair é outra história: quem
+    // diz é o ESTADO do contexto, conferido em `esperarOAudioAbrir`.
     if (c) void c.resume().catch(() => {});
 
     pararNos();
@@ -581,18 +616,46 @@ function criarMotorDePrevia() {
       comecarSemSom();
       return;
     }
-    latencia = Math.min(0.5, Math.max(0, c.outputLatency || c.baseLatency || 0));
-    base = c.currentTime + FOLGA;
+    prepararSaida(c);
     agendar(c);
     tocando = true;
     mudou();
     comecarRelogio();
     notificar(t0);
-    temporizadores.push(
-      setTimeout(() => {
-        if (tocando && ctx && ctx.state !== "running") comecarSemSom();
-      }, ESPERA_DO_CONTEXTO),
-    );
+    if (c.state !== "running") esperarOAudioAbrir(c);
+  }
+
+  /**
+   * O primeiro Play espera o dispositivo abrir; só desiste se ele não abrir mesmo.
+   *
+   * Desistir quer dizer relógio de parede e aviso na tela (`comecarSemSom`), e é o caso do
+   * navegador que recusa o áudio. Não é o caso -- comum -- do dispositivo que leva um
+   * segundo pra abrir.
+   *
+   * A promessa do `resume` NÃO serve de sinal: medido em 20/09/2026, o navegador destrava o
+   * áudio por conta da ATIVAÇÃO do gesto e o contexto vira `running` sem a promessa ter
+   * resolvido (e ela pode resolver antes de o aparelho estar pronto). O que vale é o estado.
+   */
+  function esperarOAudioAbrir(c: AudioContext) {
+    const limite = performance.now() + ESPERA_DO_CONTEXTO;
+    // Quem decide é o ESTADO do contexto, não a promessa do `resume`: o navegador também
+    // destrava o áudio por conta do gesto, sem passar pela nossa promessa, e um aparelho
+    // pode demorar a abrir depois de ela resolver. Olhar de 100 em 100 ms cobre os dois.
+    const olhar = () => {
+      if (!tocando || ctx !== c) return;
+      if (c.state === "running") {
+        // Abriu: a latência real já dá pra ler, e o que foi agendado com o contexto parado
+        // continua valendo (o relógio dele não andou nesse meio-tempo).
+        latencia = Math.min(0.5, Math.max(0, c.outputLatency || c.baseLatency || 0));
+        return;
+      }
+      if (performance.now() >= limite) {
+        comecarSemSom();
+        return;
+      }
+      temporizadores.push(setTimeout(olhar, 100));
+    };
+    temporizadores.push(setTimeout(olhar, 100));
   }
 
   /** O relógio de parede: a linha do tempo anda, o som não sai, e a pessoa é avisada. */
@@ -700,6 +763,7 @@ function criarMotorDePrevia() {
     pausar,
     buscar,
     preparar,
+    aquecer,
     duracaoDe,
     configurar,
     desligar,
@@ -733,6 +797,20 @@ export function usePreviaDeAudio(o: OpcoesDaPrevia): PreviaDeAudio {
     const parar = () => motor.pausar();
     window.addEventListener("encena:parar-previa", parar);
     return () => window.removeEventListener("encena:parar-previa", parar);
+  }, [motor]);
+
+  // O dispositivo de áudio abre no PRIMEIRO toque na tela, não no Play: abrir leva perto de
+  // um segundo (medido), e esse segundo apareceria como "apertei Play e demorou". Qualquer
+  // toque serve -- escolher a foto, abrir um painel --, e é sempre dentro de um gesto, que
+  // é o que o navegador exige. Depois que o contexto está rodando, isto não faz mais nada.
+  useEffect(() => {
+    const aquecer = () => motor.aquecer();
+    window.addEventListener("pointerdown", aquecer, { capture: true });
+    window.addEventListener("keydown", aquecer, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", aquecer, { capture: true });
+      window.removeEventListener("keydown", aquecer, { capture: true });
+    };
   }, [motor]);
 
   useEffect(() => () => motor.desligar(), [motor]);

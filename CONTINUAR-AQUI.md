@@ -210,6 +210,33 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **20/09/2026 — Claude Code (som da prévia, mesmo branch `editor-2026`, NÃO publicado):**
+  relato dele: "coloco um áudio na linha do tempo, aperto Play e não escuto nada".
+  - **Causa, medida:** o motor da prévia desistia do som em 300 ms (`ESPERA_DO_CONTEXTO`)
+    enquanto o DISPOSITIVO de áudio levava ~1 s pra abrir no primeiro Play (medido três
+    vezes com a placa fria: 1019, 974 e 1028 ms). Ao desistir ele PARAVA tudo que tinha
+    agendado e seguia só com o relógio de parede: cabeçote andando, silêncio, aviso
+    "Prévia sem som — toque em Play de novo". O segundo Play tocava (contexto já aberto).
+  - **Conserto** (`components/editor/usar-previa-de-audio.ts`): o Play espera o ESTADO do
+    contexto virar `running` (olhando de 100 em 100 ms, teto de 3 s) em vez de desistir por
+    prazo; se o dispositivo abrir depois da desistência, o som volta sozinho do ponto do
+    cabeçote (`statechange`); e o áudio é aquecido no PRIMEIRO toque da tela (pointerdown/
+    keydown), não no Play, pra o Play soar na hora.
+  - **Provas:** `scripts/conferir-som-do-play.mjs` (novo) mede RMS de verdade com um
+    analisador no destino do contexto, com a montagem por clique de programa e o Play como
+    primeiro toque: som no 1º Play em 1280×900 (pico 0,10) e em 375×812 no dedo (0,095),
+    sem aviso, pausa cala, 2º Play toca. Sem regressão em `conferir-previa-no-navegador`,
+    `conferir-editor-faixas` e `testar-previa-audio` (com regras novas). `next build` ok.
+  - **Armadilha (obs. 0124):** `conferir-previa-no-navegador.mjs` roda o Chrome com
+    `--autoplay-policy=no-user-gesture-required`, então o contexto já nasce tocando e o
+    caminho quebrado nunca acontecia lá. E NÃO adianta simular a lentidão atrasando o
+    `resume`: o navegador destrava o áudio pelo gesto, sem esperar a nossa chamada.
+  - `rm -rf .next/dev` antes do `next build` se o servidor de desenvolvimento tiver sido
+    parado no meio: o `routes.d.ts` fica truncado e o build falha em arquivo gerado.
+  - **Limitação anotada, decisão dele:** vídeo posto na linha do tempo entra MUDO -- na
+    prévia e no vídeo final (a montagem não leva o som do clipe). Se quiser o som do vídeo,
+    é trabalho novo no ffmpeg (mixar o áudio do clipe com música e voz).
+
 - **19/09/2026 (noite) — Claude Code (ajuste de preços, mesmo branch `editor-2026`, NÃO
   publicado):** ele pediu "faça esses ajustes que achar necessário" depois da análise de
   preço. Detalhes e motivos em `docs/precos-e-margens.md` ("Mudanças de 19/09/2026").

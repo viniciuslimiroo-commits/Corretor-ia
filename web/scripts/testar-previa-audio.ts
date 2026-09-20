@@ -281,6 +281,15 @@ if (process.argv.includes("--sem-portao")) {
 
   const hook = ler("components", "editor", "usar-previa-de-audio.ts");
   conferir(/function tocar\(t: number\) \{\n\s*const c = contexto\(\);\n(\s*\/\/[^\n]*\n)*\s*if \(c\) void c\.resume\(\)/.test(hook), "resume() é a primeira coisa de tocar, sem await antes");
+  // 20/09/2026: o Play ficava MUDO porque o motor desistia do som em 300 ms enquanto o
+  // dispositivo levava ~1 s pra abrir. Quem manda é a promessa do resume; o prazo é só o
+  // teto de desistência. Se alguém voltar a tratar "não está running" como "não vai ter
+  // som", o primeiro Play fica mudo de novo -- e a bancada não pega, porque ela roda com
+  // --autoplay-policy=no-user-gesture-required (o contexto já nasce tocando).
+  conferir(/if \(c\.state !== "running"\) esperarOAudioAbrir\(c\)/.test(hook) && /ESPERA_DO_CONTEXTO = (\d+)/.test(hook) && Number(RegExp.$1) >= 1000, "o Play espera o dispositivo abrir, com teto de pelo menos 1 s");
+  conferir(/const olhar = \(\) => \{[\s\S]{0,400}?c\.state === "running"/.test(hook), "e quem decide é o estado do contexto, olhado de tempos em tempos");
+  conferir(/ctx\.state === "running" && semContextoDesde !== null/.test(hook), "e o som volta sozinho se o dispositivo abrir depois da desistência");
+  conferir(/addEventListener\("pointerdown", aquecer/.test(hook), "o áudio é aquecido no primeiro toque da tela, não só no Play");
   conferir(/window\.dispatchEvent\(new Event\("encena:parar-audio"\)\)/.test(hook), "a prévia avisa os outros tocadores ao começar");
   conferir(/addEventListener\("encena:parar-previa"/.test(hook), "e para quando a biblioteca pede a vez");
   const semComentarios = hook.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
