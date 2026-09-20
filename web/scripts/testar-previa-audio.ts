@@ -294,6 +294,13 @@ if (process.argv.includes("--sem-portao")) {
   conferir(/addEventListener\("encena:parar-previa"/.test(hook), "e para quando a biblioteca pede a vez");
   const semComentarios = hook.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
   conferir(/method: "HEAD"/.test(hook) && /headers\.get\("content-length"\)/.test(hook), "o tamanho vem do Content-Length de um HEAD");
+  // 20/09/2026: com `credentials: "omit"` a música (que mora na NOSSA origem) era pedida
+  // sem o cookie da sessão. Em produção não muda nada; no link de teste da Vercel, que
+  // exige login, vinha 401 e a linha do tempo tocava muda. Medido: omit 401, same-origin
+  // 200, com o mesmo cookie na página.
+  conferir(!/credentials: "omit"/.test(semComentarios), "os arquivos da prévia vão com o cookie da origem (nunca credentials: omit)");
+  const comCookie = (semComentarios.match(/credentials: "same-origin"/g) ?? []).length;
+  conferir(comCookie >= 2, "e isso vale no HEAD e no GET", `${comCookie} lugares no código`);
   conferir(!/content-range/i.test(semComentarios), "e nunca de Content-Range, que o Supabase não expõe (medido no P0)");
   conferir(/useState<MotorDePrevia>\(criarMotorDePrevia\)/.test(hook) && !/\buseRef\b/.test(semComentarios), "o motor mora num useState com inicializador, sem ref lido no render");
   conferir(/useSyncExternalStore\(motor\.assinarEstado, motor\.instantaneo, motor\.instantaneo\)/.test(hook), "o estado sai por useSyncExternalStore, com instantâneo de servidor");

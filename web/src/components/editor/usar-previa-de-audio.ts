@@ -505,10 +505,17 @@ function criarMotorDePrevia() {
    * `Access-Control-Allow-Origin: *` mas NÃO expõe `Content-Range`, então um Range de um
    * byte volta sem o número. Content-Length do HEAD, e se o HEAD não passar, o tamanho sai
    * do próprio corpo baixado.
+   *
+   * `credentials: "same-origin"` (o padrão) e NÃO "omit": a música e os efeitos moram na
+   * nossa origem (`/musica/previa/...`), e uma origem pode exigir cookie -- é o caso de todo
+   * link de teste da Vercel, protegido por login. Medido em 20/09/2026, com o cookie na
+   * página: "omit" devolve 401 e "same-origin" devolve 200. Com "omit", a música não
+   * chegava a ser baixada no link de teste e a linha do tempo tocava muda. Pra URL assinada
+   * do Supabase (outra origem) "same-origin" não manda cookie nenhum, igual ao que era.
    */
   async function tamanhoPorCabeca(url: string): Promise<number | undefined> {
     try {
-      const r = await fetch(url, { method: "HEAD", mode: "cors", credentials: "omit" });
+      const r = await fetch(url, { method: "HEAD", mode: "cors", credentials: "same-origin" });
       const n = Number(r.headers.get("content-length"));
       return Number.isFinite(n) && n > 0 ? n : undefined;
     } catch {
@@ -534,7 +541,7 @@ function criarMotorDePrevia() {
           mudou();
           return;
         }
-        const r = await fetch(f.url, { mode: "cors", credentials: "omit" });
+        const r = await fetch(f.url, { mode: "cors", credentials: "same-origin" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const dados = await r.arrayBuffer();
         if (minha !== geracao) return;

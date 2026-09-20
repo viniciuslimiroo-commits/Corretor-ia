@@ -20,9 +20,16 @@
 // regra em si (esperar o estado do contexto em vez de desistir em 300 ms) está presa no
 // `scripts/testar-previa-audio.ts`, que lê o código; aqui fica a prova de que sai som.
 //
-//   BASE=http://localhost:3002 node scripts/conferir-som-do-play.mjs [--celular]
+// `--com-login` põe na frente um servidor que IMITA a proteção da Vercel: a página passa
+// (e ganha o cookie), mas todo arquivo pedido sem o cookie leva 401. É o link de teste. Foi
+// assim que apareceu o segundo defeito do dia: a prévia baixava a música com
+// `credentials: "omit"`, o cookie não ia junto, a Vercel respondia 401 e a linha do tempo
+// tocava muda -- só no link de teste, nunca em produção, que não pede login.
+//
+//   BASE=http://localhost:3002 node scripts/conferir-som-do-play.mjs [--celular] [--com-login]
 
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { abrirChrome, esperar } from "./chrome-cdp.mjs";
 
@@ -92,6 +99,42 @@ if (!r0 || !r0.ok) {
   process.exit(1);
 }
 
+/**
+ * A proteção do link de teste, imitada: a PÁGINA passa e ganha o cookie; qualquer outro
+ * arquivo sem o cookie leva 401, que é o que a Vercel faz em deploy de branch.
+ */
+let portao = null;
+let ENDERECO = BASE;
+if (process.argv.includes("--com-login")) {
+  const alvo = new URL(BASE);
+  portao = http.createServer((req, res) => {
+    const ehPagina = (req.headers.accept ?? "").includes("text/html");
+    const temCookie = (req.headers.cookie ?? "").includes("_login_de_teste=1");
+    if (!ehPagina && !temCookie) {
+      res.writeHead(401, { "content-type": "text/plain" });
+      res.end("precisa do cookie de login (imitando a Vercel)");
+      return;
+    }
+    const pedido = http.request(
+      { hostname: alvo.hostname, port: alvo.port, path: req.url, method: req.method, headers: { ...req.headers, host: alvo.host } },
+      (resposta) => {
+        const cabecalhos = { ...resposta.headers };
+        if (ehPagina) cabecalhos["set-cookie"] = [...(resposta.headers["set-cookie"] ?? []), "_login_de_teste=1; Path=/; SameSite=Lax"];
+        res.writeHead(resposta.statusCode ?? 502, cabecalhos);
+        resposta.pipe(res);
+      },
+    );
+    pedido.on("error", () => {
+      res.writeHead(502);
+      res.end("servidor de origem não respondeu");
+    });
+    req.pipe(pedido);
+  });
+  await new Promise((pronto) => portao.listen(0, pronto));
+  ENDERECO = `http://localhost:${portao.address().port}`;
+  console.log(`(com login: ${ENDERECO} na frente de ${BASE})\n`);
+}
+
 const c = await abrirChrome();
 await c.cdp("Page.addScriptToEvaluateOnNewDocument", { source: `(${grampo.toString()})(); document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = 'nextjs-portal{visibility:hidden!important}'; document.head.appendChild(st); });` });
 
@@ -119,9 +162,9 @@ async function tocarNaTela(seletor) {
 }
 
 try {
-  await c.abrir(`${BASE}/login`, tela);
+  await c.abrir(`${ENDERECO}/login`, tela);
   await c.avaliar(`localStorage.setItem("sb-${REF}-auth-token", ${JSON.stringify(JSON.stringify(sessao))})`);
-  await c.abrir(`${BASE}/editor/video`, { ...tela, pronto: "!!document.querySelector('[data-editor]')" });
+  await c.abrir(`${ENDERECO}/editor/video`, { ...tela, pronto: "!!document.querySelector('[data-editor]')" });
   await esperar(1500);
 
   // Montagem por clique de PROGRAMA: não conta como gesto, então o áudio continua fechado.
@@ -186,6 +229,7 @@ try {
   conferir(false, "o roteiro chegou ao fim", e.message);
 } finally {
   c.fechar();
+  portao?.close();
   console.log(falhas ? `\n${falhas} falha(s)` : "\ntudo certo");
   process.exit(falhas ? 1 : 0);
 }
