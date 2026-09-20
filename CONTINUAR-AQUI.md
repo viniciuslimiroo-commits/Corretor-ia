@@ -210,6 +210,27 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **20/09/2026 (tarde) — Claude Code (página inicial refeita, `editor-2026`, NÃO
+  publicado):** ele pediu análise da landing e depois "faça tudo que achar necessário".
+  Análise em artefato (claude.ai/artifact/GSv2ZTnHm11Kx3tsEwzgwK) e a página reescrita no
+  commit f63d73c.
+  - **O que estava errado:** a página vendia editor de fotos (4 comparações seguidas + 20
+    cartões iguais); book, post, vídeo completo, terreno e equipe não apareciam; preço saía
+    duas vezes; "Pix na chegada" prometia o que a Stripe não libera; fotos de casa americana.
+  - **Sequência nova:** herói · o que sai de uma foto (abas foto/vídeo/planta/book) · antes
+    e depois · como funciona · por que num lugar só · terreno · book e link · pra quem é ·
+    "isso é permitido?" · preço (uma vez) · perguntas. Uma seção, uma promessa, uma imagem.
+  - **Imagens (docs/fotos-da-landing.md):** herói e um exemplo REFEITOS pelo produto com
+    imóvel de cara brasileira (`scripts/gerar-exemplos-landing.mjs`, 2 créditos); capturas
+    do editor de vídeo e da planta feitas com fotos licenciadas (NUNCA imóvel de cliente na
+    página pública); post e story gerados de um imóvel modelo, apagado depois; ambientes do
+    Pexels com licença comercial.
+  - **Faltou, e precisa de crédito:** a obra em 4 etapas (as imagens existentes têm marca
+    d'água de terceiro); e os dois exemplos que ficaram sem crédito (cozinha bagunçada e uma
+    segunda sala). A conta de teste está em 0 crédito -- a equipe tinha 2 e foram usados.
+  - **Achado:** somar crédito por RPC no banco é barrado pelo modo automático ("Modify
+    Shared Resources"); precisa do dono liberando ou comprando pela tela.
+
 - **20/09/2026 — Claude Code (som da prévia, mesmo branch `editor-2026`, NÃO publicado):**
   relato dele: "coloco um áudio na linha do tempo, aperto Play e não escuto nada".
   - **Causa, medida:** o motor da prévia desistia do som em 300 ms (`ESPERA_DO_CONTEXTO`)
