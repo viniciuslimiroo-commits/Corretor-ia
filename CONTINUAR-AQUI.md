@@ -1,5 +1,9 @@
 # Continuar o Encena daqui
 
+> **Chegando agora, 20/09/2026?** Leia primeiro `PASSAGEM-ANTIGRAVITY.md`, na raiz: estado
+> de hoje, o que está no branch `editor-2026` (nada publicado), o que está pendente com os
+> comandos prontos, e as regras do dono. Este arquivo aqui é o histórico longo.
+
 Arquivo de passagem de bastão, escrito em 18/09/2026 pelo Claude (Claude Code) pra outra
 ferramenta (Antigravity ou qualquer agente) continuar o trabalho, e pra o Claude retomar
 depois. **Leia inteiro antes de mexer em qualquer coisa.**
