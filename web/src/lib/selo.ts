@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { ACOES_POR_ID } from "./acoes";
+import { FONTE_SVG_SERVIDOR } from "./fonte-svg";
 import { AVISO_IMAGEM, type Idioma } from "@/i18n/idiomas";
 
 // Selo de "imagem ilustrativa" (Sprint 4 do plano, puxado pra cá porque é pré-requisito
@@ -122,7 +123,7 @@ export async function aplicarSelo(bytes: Buffer, texto: string | null): Promise<
         g.alturaCaixa * 0.25
       )}" fill="#000000" fill-opacity="0.55"/>` +
       `<text x="${g.padX}" y="${Math.round(g.padY + g.fonte * 0.78)}" ` +
-      `font-family="DejaVu Sans, Verdana, Arial, Helvetica, sans-serif" ` +
+      `font-family="${FONTE_SVG_SERVIDOR}" ` +
       `font-size="${g.fonte}" fill="#ffffff">${escaparXml(texto)}</text>` +
       `</svg>`
   );

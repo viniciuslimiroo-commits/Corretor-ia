@@ -1,5 +1,6 @@
 import { area, centro, distancia, limites, metros, metrosQuadrados, type Planta } from "./planta";
 import { MOVEL_POR_TIPO } from "./moveis";
+import { FONTE_SVG_SERVIDOR } from "./fonte-svg";
 
 // Desenho da planta em SVG. Uma função só, usada nos dois lados: a tela mostra o SVG
 // direto e o servidor converte o MESMO SVG em PNG com o sharp. O que a pessoa vê é
@@ -70,7 +71,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
 
   if (planta.nome && !o.semTexto) {
     partes.push(
-      `<text x="16" y="30" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 1.25)}" font-weight="700" fill="#0f2d5b">${escapar(planta.nome)}</text>`
+      `<text x="16" y="30" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 1.25)}" font-weight="700" fill="#0f2d5b">${escapar(planta.nome)}</text>`
     );
   }
 
@@ -154,7 +155,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
         partes.push(
           `<g transform="translate(${mx} ${my})">` +
             `<rect x="${-larg / 2}" y="${-fonteCota * 0.8}" width="${larg}" height="${fonteCota * 1.6}" rx="${fonteCota * 0.8}" fill="#ffffff" fill-opacity="0.92"/>` +
-            `<text y="${fonteCota * 0.42}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${fonteCota}" fill="#334155" text-anchor="middle">${texto}</text>` +
+            `<text y="${fonteCota * 0.42}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonteCota}" fill="#334155" text-anchor="middle">${texto}</text>` +
             `</g>`
         );
       }
@@ -171,11 +172,11 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
     const cy = py(m.y);
     if (c.nome) {
       partes.push(
-        `<text x="${cx}" y="${Number(cy) - fonte * 0.15}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${fonte}" font-weight="600" fill="#0f2d5b" text-anchor="middle">${escapar(c.nome)}</text>`
+        `<text x="${cx}" y="${Number(cy) - fonte * 0.15}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonte}" font-weight="600" fill="#0f2d5b" text-anchor="middle">${escapar(c.nome)}</text>`
       );
     }
     partes.push(
-      `<text x="${cx}" y="${Number(cy) + fonte * (c.nome ? 1.05 : 0.35)}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 0.85)}" fill="#475569" text-anchor="middle">${metrosQuadrados(a)}</text>`
+      `<text x="${cx}" y="${Number(cy) + fonte * (c.nome ? 1.05 : 0.35)}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.85)}" fill="#475569" text-anchor="middle">${metrosQuadrados(a)}</text>`
     );
   }
 
@@ -187,16 +188,16 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
     return { svg: partes.join(""), largura: L, altura: A };
   }
   partes.push(
-    `<text x="16" y="${yRod}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 0.95)}" font-weight="700" fill="#0f2d5b">Área total ${metrosQuadrados(total)}</text>`
+    `<text x="16" y="${yRod}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.95)}" font-weight="700" fill="#0f2d5b">Área total ${metrosQuadrados(total)}</text>`
   );
   if (o.autor) {
     partes.push(
-      `<text x="${L / 2}" y="${yRod}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 0.8)}" fill="#475569" text-anchor="middle">${escapar(o.autor)}</text>`
+      `<text x="${L / 2}" y="${yRod}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.8)}" fill="#475569" text-anchor="middle">${escapar(o.autor)}</text>`
     );
   }
   if (o.rodape) {
     partes.push(
-      `<text x="${L - 16}" y="${yRod}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${Math.round(fonte * 0.7)}" fill="#94a3b8" text-anchor="end">${escapar(o.rodape)}</text>`
+      `<text x="${L - 16}" y="${yRod}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.7)}" fill="#94a3b8" text-anchor="end">${escapar(o.rodape)}</text>`
     );
   }
 

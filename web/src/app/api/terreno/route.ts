@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { caminhoOriginal, caminhoResultado, guardarEAssinar } from "@/lib/armazenamento";
 import { contaDe } from "@/lib/cobranca";
+import { FONTE_SVG_SERVIDOR } from "@/lib/fonte-svg";
 
 // Terreno com medidas: a pessoa marca os cantos do lote na foto e digita os metros de
 // cada lado; aqui a gente desenha por cima -- polígono, medidas no meio de cada lado,
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     const larguraCaixa = Math.round(texto.length * fonte * 0.62 + fonte * 1.2);
     const alturaCaixa = Math.round(fonte * 1.7);
     svg += `<rect x="${(mx - larguraCaixa / 2).toFixed(1)}" y="${(my - alturaCaixa / 2).toFixed(1)}" width="${larguraCaixa}" height="${alturaCaixa}" rx="${Math.round(alturaCaixa / 2)}" fill="${i === frente ? cor : "#0f2d5b"}" fill-opacity="0.92"/>`;
-    svg += `<text x="${mx.toFixed(1)}" y="${(my + fonte * 0.36).toFixed(1)}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${fonte}" font-weight="600" fill="#ffffff" text-anchor="middle">${escapar(texto)}</text>`;
+    svg += `<text x="${mx.toFixed(1)}" y="${(my + fonte * 0.36).toFixed(1)}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonte}" font-weight="600" fill="#ffffff" text-anchor="middle">${escapar(texto)}</text>`;
   }
   if (area) {
     const cx = pts.reduce((s2, p) => s2 + p.x, 0) / pts.length;
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
     const lc = Math.round(textoArea.length * fonteArea * 0.62 + fonteArea * 1.4);
     const ac = Math.round(fonteArea * 1.8);
     svg += `<rect x="${(cx - lc / 2).toFixed(1)}" y="${(cy - ac / 2).toFixed(1)}" width="${lc}" height="${ac}" rx="${Math.round(ac / 2)}" fill="#ffffff" fill-opacity="0.94"/>`;
-    svg += `<text x="${cx.toFixed(1)}" y="${(cy + fonteArea * 0.36).toFixed(1)}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${fonteArea}" font-weight="700" fill="#0f2d5b" text-anchor="middle">${escapar(textoArea)}</text>`;
+    svg += `<text x="${cx.toFixed(1)}" y="${(cy + fonteArea * 0.36).toFixed(1)}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonteArea}" font-weight="700" fill="#0f2d5b" text-anchor="middle">${escapar(textoArea)}</text>`;
   }
   if (titulo) {
     const ft = Math.round(fonte * 1.1);
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
     const at = Math.round(ft * 1.8);
     const margem = Math.round(18 * esc);
     svg += `<rect x="${margem}" y="${margem}" width="${lt}" height="${at}" rx="${Math.round(at / 2)}" fill="#0f2d5b" fill-opacity="0.9"/>`;
-    svg += `<text x="${margem + Math.round(ft * 0.7)}" y="${margem + ft * 1.22}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${ft}" font-weight="600" fill="#ffffff">${escapar(titulo)}</text>`;
+    svg += `<text x="${margem + Math.round(ft * 0.7)}" y="${margem + ft * 1.22}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${ft}" font-weight="600" fill="#ffffff">${escapar(titulo)}</text>`;
   }
   // aviso: medidas são declaração do anunciante, não medição nossa
   const aviso = "Medidas aproximadas · informadas pelo anunciante";
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
   const la = Math.round(aviso.length * fa * 0.55 + fa * 1.4);
   const aa = Math.round(fa * 1.8);
   svg += `<rect x="${W - la - Math.round(14 * esc)}" y="${H - aa - Math.round(14 * esc)}" width="${la}" height="${aa}" rx="${Math.round(aa / 4)}" fill="#000000" fill-opacity="0.55"/>`;
-  svg += `<text x="${W - la / 2 - Math.round(14 * esc)}" y="${H - Math.round(14 * esc) - aa / 2 + fa * 0.36}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${fa}" fill="#ffffff" text-anchor="middle">${aviso}</text>`;
+  svg += `<text x="${W - la / 2 - Math.round(14 * esc)}" y="${H - Math.round(14 * esc) - aa / 2 + fa * 0.36}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fa}" fill="#ffffff" text-anchor="middle">${aviso}</text>`;
   svg += `</svg>`;
 
   const final = await sharp(base).composite([{ input: Buffer.from(svg), left: 0, top: 0 }]).jpeg({ quality: 92 }).toBuffer();

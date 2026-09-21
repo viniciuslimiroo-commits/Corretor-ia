@@ -1,6 +1,7 @@
 import sharp, { type OverlayOptions } from "sharp";
 import type { PaginaLayout } from "./book-layout";
 import { ALTURA_ACIMA_DA_BASE } from "./book-constantes";
+import { FONTE_SVG_SERVIDOR } from "./fonte-svg";
 
 // O TERCEIRO DESENHISTA: a mesma página, em JPG.
 //
@@ -17,7 +18,7 @@ import { ALTURA_ACIMA_DA_BASE } from "./book-constantes";
 // por isso o corpo sai 4% menor -- a quebra de linha veio pronta com as métricas da
 // Helvetica, e uma fonte um pouco mais larga estouraria a caixa. É o mesmo cuidado (e a
 // mesma família de fontes) do selo de imagem ilustrativa.
-const FONTE_SVG = "DejaVu Sans, Verdana, Arial, Helvetica, sans-serif";
+const FONTE_SVG = FONTE_SVG_SERVIDOR;
 const AJUSTE_FONTE = 0.96;
 
 /** 1080px de largura é o que o Instagram pede em qualquer um dos formatos. */

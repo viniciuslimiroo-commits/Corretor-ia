@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp, { type OverlayOptions } from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { marcaEfetiva } from "@/lib/cobranca";
+import { FONTE_SVG_SERVIDOR } from "@/lib/fonte-svg";
 
 // Export por portal (Sprint 4, adiantado). Specs reais pesquisadas antes de
 // implementar -- não inventadas:
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
     const margem = Math.max(10, Math.round(L * 0.015));
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${larguraCaixa}" height="${alturaCaixa}">
       <rect width="${larguraCaixa}" height="${alturaCaixa}" rx="${Math.round(alturaCaixa / 2)}" fill="rgba(15,45,91,0.82)"/>
-      <text x="${padX}" y="${padY + fonte * 0.78}" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="${fonte}" font-weight="600" fill="#FFFFFF">${escaparXml(legenda)}</text>
+      <text x="${padX}" y="${padY + fonte * 0.78}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonte}" font-weight="600" fill="#FFFFFF">${escaparXml(legenda)}</text>
     </svg>`;
     camadas.push({ input: Buffer.from(svg), left: margem, top: margem });
   }
