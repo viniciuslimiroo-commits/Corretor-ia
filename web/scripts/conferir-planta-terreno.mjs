@@ -177,17 +177,35 @@ if (cx) {
       const a = s[0].getBoundingClientRect(), b = s[s.length - 1].getBoundingClientRect();
       return Math.hypot(a.x - b.x, a.y - b.y);
     })()`);
+  /** Onde está o canto mais ALTO do rascunho, em pixels de tela. */
+  const topoDoDesenho = async () =>
+    c.avaliar(`(() => {
+      const s = [...document.querySelectorAll('[data-caixa] > span.rounded-full')];
+      if (!s.length) return null;
+      return Math.min(...s.map((e) => e.getBoundingClientRect().top));
+    })()`);
+
   const antesDaBorda = await posDoPrimeiro();
-  // Encosta o dedo na faixa da borda direita e fica ali um pouco, movendo de leve.
+  const topoAntes = await topoDoDesenho();
+  // Desce até a faixa da borda DE BAIXO e fica ali, que é o caso que ele relatou.
   for (let i = 0; i < 14; i++) {
-    await c.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(cx.x + cx.w * 0.97), y: Math.round(cx.y + cx.h * (0.45 + (i % 2) * 0.01)), button: "none", buttons: 0 });
+    await c.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(cx.x + cx.w * (0.5 + (i % 2) * 0.01)), y: Math.round(cx.y + cx.h * 0.96), button: "none", buttons: 0 });
     await esperar(110);
   }
   const depoisDaBorda = await posDoPrimeiro();
+  const topoDepois = await topoDoDesenho();
   conferir(
     antesDaBorda !== null && depoisDaBorda !== null && depoisDaBorda < antesDaBorda - 1,
     "planta: desenhando até a borda, a vista afasta sozinha (sem ir no “enquadrar”)",
     `entre dois cantos: ${antesDaBorda?.toFixed(0)}px -> ${depoisDaBorda?.toFixed(0)}px`
+  );
+  // A DIREÇÃO importa tanto quanto o afastamento: descendo, o espaço tem que abrir PRA
+  // BAIXO. Ancorado no dedo, o desenho descia atrás da mão e o espaço nascia em cima --
+  // "fica ruim", e com razão. O que fixa isso é o canto mais alto NÃO descer.
+  conferir(
+    topoAntes !== null && topoDepois !== null && topoDepois <= topoAntes + 2,
+    "e o espaço abre PRA BAIXO: o desenho não foge pra cima",
+    `topo ${topoAntes?.toFixed(0)}px -> ${topoDepois?.toFixed(0)}px`
   );
 
   // E no MEIO da caixa não afasta: afastar sozinho o tempo todo seria pior que o problema.

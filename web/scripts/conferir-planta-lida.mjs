@@ -65,7 +65,9 @@ await c.avaliar(`localStorage.setItem('sb-${REF}-auth-token', ${JSON.stringify(J
 await c.abrir(`${BASE}/planta`, { largura: 1280, altura: 1000, pronto: "!!document.querySelector('[data-caixa]')" });
 await esperar(2500);
 
+await foto("planta-vazia");
 const temLink = await c.avaliar(`/Mandar uma planta pronta/i.test(document.body.innerText)`);
+conferir(!!(await c.avaliar(`/Já tem a planta em arquivo/i.test(document.body.innerText)`)), "e a caixa vazia convida a mandar o arquivo");
 conferir(!!temLink, "o link “Mandar uma planta pronta” está na tela");
 conferir(!!(await c.avaliar(`/beta/i.test(document.body.innerText)`)), "e está marcado como beta");
 

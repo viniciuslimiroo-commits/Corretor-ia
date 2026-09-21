@@ -481,7 +481,19 @@ export default function PaginaPlanta() {
     const agora = performance.now();
     if (agora - ultimoAfastar.current < INTERVALO_AFASTAR) return;
     ultimoAfastar.current = agora;
-    nav.zoomEm(PASSO_AFASTAR, Math.min(1, Math.max(0, fx)), Math.min(1, Math.max(0, fy)));
+    /**
+     * A ÂNCORA VAI NO LADO OPOSTO AO DEDO, e não no dedo.
+     *
+     * A primeira versão ancorava no próprio dedo: o ponto sob ele ficava parado e o espaço
+     * novo nascia PRA TRÁS. Descendo uma parede, a planta subia e ele ia atrás dela -- "o
+     * espaço que aumenta é pra cima, fica ruim". Ancorando no lado oposto, a borda de trás
+     * fica cravada e o espaço abre exatamente pra onde a linha está indo.
+     *
+     * No eixo em que o dedo NÃO está na borda, a âncora fica no meio: ali não há direção
+     * pedida, e deslocar seria mexer no desenho sem motivo.
+     */
+    const ancora = (f: number) => (f < FAIXA_DA_BORDA ? 1 : f > 1 - FAIXA_DA_BORDA ? 0 : 0.5);
+    nav.zoomEm(PASSO_AFASTAR, ancora(fx), ancora(fy));
   }
 
   /**
@@ -712,13 +724,15 @@ export default function PaginaPlanta() {
           <p className="mt-1 text-sm text-neutral-500">Arraste um retângulo por cômodo, ou marque canto a canto. Cômodo novo cola no anterior; medidas e área saem sozinhas. Não gasta crédito.</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          {/* A ENTRADA DA PLANTA PRONTA. Discreta de propósito: quem desenha é a maioria, e
-              quem tem o arquivo na mão procura. Vira um rascunho no mesmo editor -- daí em
-              diante é uma planta igual às outras (veja `lerPlantaPronta`). */}
-          <label className={"inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-sm font-medium " + (lendoPlanta ? "text-neutral-400" : "text-marca-indigo hover:underline")}>
+          {/* A ENTRADA DA PLANTA PRONTA.
+              Nasceu como link discreto -- ideia minha -- e ele não achou: "tá muito escondido,
+              quase não vi". Virou botão com contorno e ícone. Discrição que esconde a função
+              não é discrição, é defeito. E ela aparece num segundo lugar, dentro da caixa
+              vazia (mais abaixo), que é onde olha quem chegou com o arquivo na mão. */}
+          <label className={"inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3.5 text-sm font-medium transition " + (lendoPlanta ? "border-neutral-200 text-neutral-400" : "border-marca-indigo/40 text-marca-indigo hover:border-marca-indigo hover:bg-marca-indigo hover:text-white")}>
             <Icone nome="planta" className="h-4 w-4" />
             {lendoPlanta ? "Lendo a planta…" : "Mandar uma planta pronta"}
-            <span className="rounded bg-neutral-100 px-1 py-0.5 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">beta</span>
+            <span className="rounded bg-marca-pessego px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-marca-indigo uppercase">beta</span>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -992,6 +1006,34 @@ export default function PaginaPlanta() {
                   />
                 );
               })}
+
+              {/* CAIXA VAZIA: é aqui que olha quem chegou com a planta no arquivo.
+                  Fica no rodapé da caixa, e não no meio, pra não roubar o lugar onde a pessoa
+                  naturalmente começa a desenhar. Some no primeiro cômodo (ou no primeiro
+                  canto do rascunho), então nunca atrapalha quem já começou. */}
+              {planta.comodos.length === 0 && rascunho.length === 0 && !lendoPlanta && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
+                  <label className="pointer-events-auto flex max-w-md cursor-pointer items-center gap-3 rounded-2xl border border-marca-indigo/30 bg-white/95 px-4 py-3 shadow-sm backdrop-blur transition hover:border-marca-indigo">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-marca-pessego text-marca-indigo">
+                      <Icone nome="planta" className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 text-sm">
+                      <span className="block font-semibold text-neutral-800">Já tem a planta em arquivo?</span>
+                      <span className="block text-xs text-neutral-500">Mande a imagem e eu monto o rascunho pra você ajustar. Não gasta crédito.</span>
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void lerPlantaPronta(f);
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
