@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
@@ -61,6 +62,10 @@ function PolyTerreno({ pontos, fechado, stroke, strokeWidth, fill, dash, opacity
 
 export default function Terreno() {
   const c = useConta();
+  // O endereço pelo hook do Next, e não por `window.location`: na navegação interna (o link
+  // que vem da Planta) a primeira renderização acontece ANTES de a barra mudar, e ler o
+  // window devolve vazio -- foi assim que a planta sumia no caminho.
+  const parametros = useSearchParams();
   const [foto, setFoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   /**
@@ -115,7 +120,25 @@ export default function Terreno() {
   const [resultado, setResultado] = useState<{ jobId: string; url: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
-  const [acaoIa, setAcaoIa] = useState(ACOES_TERRENO[0].id);
+  /**
+   * A área do lote como NÚMERO. O campo é texto de propósito (ele digita "430 m²",
+   * "sob consulta", "430,5"), mas a ficha do imóvel guarda número -- então só oferece
+   * levar pra ficha o que dá pra ler como medida.
+   */
+  const areaEmNumero = (() => {
+    const n = Number(area.replace(/[^0-9,.]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : null;
+  })();
+  // Chegou com uma planta na mão? Então a ação já começa em "Construir a casa" -- é a única
+  // que usa planta, e pedir pra pessoa escolher de novo o que ela acabou de escolher é atrito.
+  // Derivado, e não estado com efeito: o React Compiler proíbe setState dentro de efeito, e
+  // ler o endereço no `useState` inicial não funciona (na navegação interna a primeira
+  // renderização acontece antes de a barra mudar -- medido: a tela abria sem a planta).
+  /** O id da planta que veio da outra tela, quando veio. */
+  const jobDaUrl = parametros.get("planta");
+  const [acaoEscolhida, setAcaoEscolhida] = useState<string | null>(null);
+  const acaoIa = acaoEscolhida ?? (jobDaUrl ? "construir" : ACOES_TERRENO[0].id);
+  const setAcaoIa = setAcaoEscolhida;
   // A obra é uma sequência, não uma ação: quatro imagens encadeadas, cada uma nascendo da
   // anterior. Por isso tem estado próprio -- o resultado não é UMA imagem.
   const [etapasFeitas, setEtapasFeitas] = useState<{ id: string; rotulo: string; url: string; jobId: string }[]>([]);
@@ -127,12 +150,44 @@ export default function Terreno() {
   const [referencia, setReferencia] = useState<File | null>(null);
   const [tipoReferencia, setTipoReferencia] = useState(TIPOS_REFERENCIA[0].valor);
   const [previewRef, setPreviewRef] = useState<string | null>(null);
+  /**
+   * A planta que veio da tela da Planta (/terreno?planta=<jobId>).
+   *
+   * Ela não vira arquivo: já está no armazenamento, e o servidor a assina pelo id. Por isso
+   * é um estado separado da `referencia`, que é upload -- ter os dois no mesmo lugar
+   * obrigaria a baixar o PNG só pra subir de volta, que é exatamente o passo que esta ponte
+   * existe pra tirar.
+   */
+  const [urlDaPlanta, setUrlDaPlanta] = useState<string | null>(null);
+  const [plantaDispensada, setPlantaDispensada] = useState(false);
+  const plantaDoEncena = !jobDaUrl || plantaDispensada ? null : { jobId: jobDaUrl, url: urlDaPlanta };
   const [gerandoIa, setGerandoIa] = useState(false);
+  const [areaNaFicha, setAreaNaFicha] = useState<"parado" | "indo" | "erro">("parado");
+  /** A metragem que JÁ está na ficha; se ele mudar a área aqui, o "✓" some. */
+  const [areaGravada, setAreaGravada] = useState<number | null>(null);
   const [resultadoIa, setResultadoIa] = useState<{ jobId: string; url: string } | null>(null);
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
   }, [preview]);
+
+  // A miniatura da planta que veio pela URL: o id chega, o endereço da imagem não.
+  const jobDaPlanta = plantaDoEncena?.jobId;
+  const temUrlDaPlanta = !!plantaDoEncena?.url;
+  const temConta = !!c.user;
+  const pegarToken = c.token;
+  useEffect(() => {
+    if (!jobDaPlanta || temUrlDaPlanta || !temConta) return;
+    let vivo = true;
+    pegarToken()
+      .then((t) => fetch(`/api/job/${jobDaPlanta}`, { headers: { Authorization: `Bearer ${t}` } }))
+      .then((r) => r.json())
+      .then((d) => vivo && d?.url && setUrlDaPlanta(d.url))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [jobDaPlanta, temUrlDaPlanta, temConta, pegarToken]);
 
   // Miniatura da referência. Criada no manipulador do clique, não num efeito: efeito que
   // chama setState em cascata é justamente o que o lint proíbe, e aqui não precisa.
@@ -238,6 +293,10 @@ export default function Terreno() {
       if (referencia) {
         f.append("referencia", referencia);
         f.append("tipoReferencia", tipoReferencia);
+      } else if (plantaDoEncena) {
+        // A planta desenhada aqui vai pelo id: já está no armazenamento.
+        f.append("referenciaJobId", plantaDoEncena.jobId);
+        f.append("tipoReferencia", "planta");
       }
       if (imovelId) f.append("imovelId", imovelId);
       const r = await fetch("/api/terreno/ia", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: f });
@@ -293,6 +352,9 @@ export default function Terreno() {
         if (referencia) {
           f.append("referencia", referencia);
           f.append("tipoReferencia", tipoReferencia);
+        } else if (plantaDoEncena) {
+          f.append("referenciaJobId", plantaDoEncena.jobId);
+          f.append("tipoReferencia", "planta");
         }
         if (imovelId) f.append("imovelId", imovelId);
 
@@ -408,7 +470,19 @@ export default function Terreno() {
         <section className="lg:col-span-7">
           <Cartao className="p-3 sm:p-4">
             {!preview ? (
-              <Dropzone rotulo="Foto do terreno ou lote" onArquivo={receber} />
+              <>
+                {/* Veio da Planta e ainda não escolheu o lote: sem este aviso a planta parece
+                    ter se perdido no caminho, porque as opções de IA só aparecem com a foto. */}
+                {plantaDoEncena && (
+                  <div className="mb-3 flex items-start gap-3 rounded-xl border-l-4 border-marca-coral bg-marca-pessego/30 px-4 py-3">
+                    <Icone nome="planta" className="mt-0.5 h-5 w-5 shrink-0 text-marca-coral" />
+                    <p className="text-sm">
+                      <span className="font-semibold">Sua planta veio junto.</span> Escolha agora a foto do terreno: a casa vai ser construída nela, inspirada na planta que você desenhou.
+                    </p>
+                  </div>
+                )}
+                <Dropzone rotulo="Foto do terreno ou lote" onArquivo={receber} />
+              </>
             ) : resultado ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -667,6 +741,22 @@ export default function Terreno() {
                       : "Mande a foto de uma casa parecida e a IA copia o jeitão dela — telhado, materiais e cor."}
                   </p>
 
+                  {/* A planta que veio da outra tela: já está no armazenamento, então nada
+                      sobe de novo. Fica à vista pra pessoa saber o que a IA vai seguir. */}
+                  {plantaDoEncena && !referencia && (
+                    <div className="mt-3 flex items-center gap-3 rounded-lg border border-marca-indigo/40 bg-white p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      {plantaDoEncena.url ? <img src={plantaDoEncena.url} alt="" className="h-16 w-16 shrink-0 rounded-md bg-white object-contain" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-marca-pessego text-marca-indigo"><Icone nome="planta" className="h-6 w-6" /></span>}
+                      <span className="min-w-0 flex-1 text-sm">
+                        <span className="block font-medium text-neutral-800">A planta que você desenhou</span>
+                        <span className="block text-xs text-neutral-500">A casa sai inspirada nela: mesma implantação e mesmos cômodos.</span>
+                      </span>
+                      <button type="button" onClick={() => setPlantaDispensada(true)} className="shrink-0 px-2 text-neutral-400 hover:text-red-600" title="Não usar">
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
                   <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 bg-white p-2 hover:border-marca-indigo">
                     {previewRef ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
@@ -792,6 +882,36 @@ export default function Terreno() {
               <Rotulo>Guardar em</Rotulo>
               <SeletorImovel token={c.token} valor={imovelId} onChange={setImovelId} disabled={gerando} />
             </div>
+            {/* A metragem do lote indo pra ficha: o mesmo número que ele digitaria de novo em
+                Imóveis, e que depois sai no book, no post e na mensagem do cliente. */}
+            {imovelId && areaEmNumero !== null && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setAreaNaFicha("indo");
+                  try {
+                    const r = await fetch(`/api/imoveis/${imovelId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await c.token()}` },
+                      body: JSON.stringify({ area_total: areaEmNumero }),
+                    });
+                    if (!r.ok) throw new Error((await r.json()).error);
+                    setAreaNaFicha("parado");
+                    setAreaGravada(areaEmNumero);
+                  } catch {
+                    setAreaNaFicha("erro");
+                  }
+                }}
+                disabled={areaNaFicha === "indo"}
+                className="mt-2 w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm text-neutral-700 hover:border-marca-indigo hover:text-marca-indigo disabled:opacity-60"
+              >
+                {areaGravada !== null && areaGravada === areaEmNumero
+                  ? `✓ ${areaEmNumero} m² na ficha, como área total`
+                  : areaNaFicha === "erro"
+                    ? "Não consegui gravar. Tente de novo."
+                    : `Pôr ${areaEmNumero} m² na ficha do imóvel`}
+              </button>
+            )}
             <Botao onClick={gerar} disabled={gerando || !foto || pontos.length < 3 || !!resultado} className="w-full py-3 text-base">
               {gerando ? "Gerando…" : "Gerar imagem · grátis"}
             </Botao>

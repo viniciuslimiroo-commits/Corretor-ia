@@ -149,6 +149,11 @@ export default function PaginaPlanta() {
   const [guias, setGuias] = useState<{ eixo: "x" | "y"; valor: number }[]>([]);
   const [decorando, setDecorando] = useState<"humanizada" | "maquete" | null>(null);
   const [decorado, setDecorado] = useState<{ jobId: string; url: string } | null>(null);
+  /** O botão que leva a metragem pra ficha do imóvel: parado, indo, foi, ou deu erro. */
+  const [areaNaFicha, setAreaNaFicha] = useState<"parado" | "indo" | "erro">("parado");
+  /** A metragem que JÁ está na ficha. Mexeu na planta depois de gravar? O "✓" some --
+   *  senão ele diria que a ficha tem um número que ela não tem mais. */
+  const [areaGravada, setAreaGravada] = useState<number | null>(null);
 
   /**
    * Janela visível, em metros. Vem da camada compartilhada de navegação (use-navegacao),
@@ -968,6 +973,37 @@ export default function PaginaPlanta() {
               <Rotulo>Guardar em</Rotulo>
               <SeletorImovel token={c.token} valor={imovelId} onChange={setImovelId} disabled={salvando} />
             </div>
+            {/* A ÁREA ATRAVESSANDO AS TELAS. A planta já sabe a metragem exata -- e o corretor
+                digitava o mesmo número de novo na ficha, de cabeça. Daqui ela vai direto, e
+                sai igual no book, no post e na mensagem do cliente. Sem IA, sem crédito. */}
+            {imovelId && total > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setAreaNaFicha("indo");
+                  try {
+                    const r = await fetch(`/api/imoveis/${imovelId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await c.token()}` },
+                      body: JSON.stringify({ area_util: Number(total.toFixed(2)) }),
+                    });
+                    if (!r.ok) throw new Error((await r.json()).error);
+                    setAreaNaFicha("parado");
+                    setAreaGravada(Number(total.toFixed(2)));
+                  } catch {
+                    setAreaNaFicha("erro");
+                  }
+                }}
+                disabled={areaNaFicha === "indo"}
+                className="mt-2 w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm text-neutral-700 hover:border-marca-indigo hover:text-marca-indigo disabled:opacity-60"
+              >
+                {areaGravada !== null && areaGravada === Number(total.toFixed(2))
+                  ? `✓ ${metrosQuadrados(total)} na ficha, como área útil`
+                  : areaNaFicha === "erro"
+                    ? "Não consegui gravar. Tente de novo."
+                    : `Pôr ${metrosQuadrados(total)} na ficha do imóvel`}
+              </button>
+            )}
             <Botao onClick={salvar} disabled={salvando || planta.comodos.length === 0} className="mt-3 w-full py-3 text-base">
               {salvando ? "Gerando…" : resultado ? "Atualizar planta · grátis" : "Gerar planta · grátis"}
             </Botao>
@@ -984,6 +1020,19 @@ export default function PaginaPlanta() {
                   Baixar PNG
                 </a>
               </div>
+              {/* A PONTE PRO TERRENO. "Construir a casa" sempre aceitou uma planta como
+                  referência -- só que o caminho era baixar o PNG e subir de novo lá. Aqui a
+                  planta vai pelo id: a tela do terreno já abre com ela escolhida. */}
+              <Link
+                href={`/terreno?planta=${resultado.jobId}${imovelId ? `&imovel=${imovelId}` : ""}`}
+                className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 px-4 text-sm font-medium text-neutral-700 hover:border-marca-indigo hover:text-marca-indigo"
+              >
+                <Icone nome="lote" className="h-4 w-4" />
+                Construir esta casa num terreno
+              </Link>
+              <p className="mt-1.5 text-xs text-neutral-500">
+                Leva a planta pro Terreno como referência. A casa sai <strong className="font-semibold">inspirada</strong> nela — mesma implantação e mesmos cômodos, mas é ilustração, não projeto.
+              </p>
               <div className="mt-3">
                 <Compartilhar token={c.token} jobId={resultado.jobId} texto="Planta do imóvel:" />
               </div>

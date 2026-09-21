@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { usuarioDaRota } from "@/lib/auth-rota";
-import { caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
+import { assinar, caminhoEntrada, caminhoOriginal, guardarEAssinar } from "@/lib/armazenamento";
 import { contaDe, creditar, debitar } from "@/lib/cobranca";
 import { corpoRequisicao, despachar } from "@/lib/fal";
 import { ACAO_TERRENO_POR_ID, EXTRAS_CASA, LIMITE_TEXTO_LIVRE, type Referencia } from "@/lib/terreno-ia";
@@ -68,7 +68,30 @@ export async function POST(req: NextRequest) {
 
   const referencia = acao.aceitaReferencia ? (form.get("referencia") as File | null) : null;
   // o que a segunda imagem é muda o prompt: casa parecida (copia o jeitão) x planta (constrói aquela casa)
-  const tipoReferencia: Referencia = String(form.get("tipoReferencia") ?? "") === "planta" ? "planta" : "casa";
+  let tipoReferencia: Referencia = String(form.get("tipoReferencia") ?? "") === "planta" ? "planta" : "casa";
+
+  /**
+   * A referência pode vir de uma planta que a pessoa DESENHOU aqui, em vez de um arquivo.
+   *
+   * Antes o caminho era: desenhar a planta, gerar, baixar o PNG, voltar pro terreno e subir
+   * o arquivo. Quatro passos manuais entre duas telas que já se entendiam -- o prompt de
+   * "construir a casa" sempre soube o que fazer com uma planta. Aqui a planta entra pelo id
+   * do job: nada sobe de novo, e a imagem já está no armazenamento.
+   */
+  const referenciaJobId = acao.aceitaReferencia ? String(form.get("referenciaJobId") ?? "").trim() : "";
+  let caminhoDaPlanta: string | null = null;
+  if (referenciaJobId && (!referencia || referencia.size === 0)) {
+    const { data: jobRef } = await db
+      .from("jobs")
+      .select("id, tipo, output_path")
+      .eq("id", referenciaJobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!jobRef?.output_path) return NextResponse.json({ error: "Não achei essa planta." }, { status: 400 });
+    if (!String(jobRef.tipo).startsWith("planta")) return NextResponse.json({ error: "Essa imagem não é uma planta." }, { status: 400 });
+    caminhoDaPlanta = jobRef.output_path as string;
+    tipoReferencia = "planta";
+  }
 
   let bytesFoto: Buffer;
   try {
@@ -132,7 +155,10 @@ export async function POST(req: NextRequest) {
     const urlFoto = await guardarEAssinar(db, caminhoOrig, bytesFoto, "image/jpeg");
 
     let urlReferencia: string | undefined;
-    if (referencia && referencia.size > 0) {
+    // A planta desenhada aqui já está no armazenamento: assina e manda o endereço. Nada é
+    // copiado, nada sobe de novo, e a entrada não vira lixo pra apagar depois.
+    if (caminhoDaPlanta) urlReferencia = await assinar(db, caminhoDaPlanta);
+    else if (referencia && referencia.size > 0) {
       const bytesRef = await sharp(Buffer.from(await referencia.arrayBuffer()))
         .rotate()
         .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
