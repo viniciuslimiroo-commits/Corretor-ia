@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
-import { Aviso, Botao, Cartao, Chip, Icone } from "@/components/ui";
+import { Aviso, Botao, Cartao, Icone } from "@/components/ui";
 import { AVISO_OBSERVACOES, ETAPAS, ETAPA_POR_ID, ORIGENS, ORIGEM_POR_ID, telefoneLegivel, type EtapaId, type OrigemId } from "@/lib/crm";
 import { COR_ETAPA, iniciais } from "@/components/crm/comum";
 
@@ -36,6 +36,29 @@ type Filtro = "hoje" | "todos" | EtapaId;
 
 const hojeISO = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const dataCurta = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+
+/**
+ * O próximo passo em quatro palavras, pra caber na linha da lista.
+ *
+ * O subtítulo da página promete "em que pé está e o PRÓXIMO PASSO" -- e a lista só mostrava o
+ * pé. Saber quem cobrar hoje exigia abrir um cliente de cada vez. É a frase curta do painel,
+ * encurtada mais: no painel ela explica, aqui ela só aponta.
+ *
+ * `urgente` é o que pinta de coral: é o que tem hora marcada e passou, ou está prestes a
+ * travar. O resto fica cinza, pra a cor continuar querendo dizer alguma coisa.
+ */
+function passoCurto(l: Lead, hoje: string): { texto: string; urgente: boolean } | null {
+  if (l.bloqueio) return { texto: l.bloqueio === "pediu_parar" ? "Não mandar mais mensagem" : "Número errado: corrija pra destravar", urgente: false };
+  if (l.etapa === "fechado") return { texto: "Negócio fechado 🎉", urgente: false };
+  if (l.etapa === "perdido") return null;
+  if (!l.ultimo_envio_em) return { texto: "Mande a primeira mensagem", urgente: true };
+  if (l.proximo_contato_em && l.proximo_contato_em < hoje) return { texto: `Retorno atrasado: era ${dataCurta(l.proximo_contato_em)}`, urgente: true };
+  if (l.proximo_contato_em === hoje) return { texto: "Retorno marcado pra hoje", urgente: true };
+  if (l.etapa === "sem_resposta") return { texto: "Sem resposta: espere ela responder", urgente: false };
+  const dias = Math.floor((Date.now() - Date.parse(l.ultimo_envio_em)) / 86400000);
+  if (dias >= 3) return { texto: `Última mensagem há ${dias} dias`, urgente: false };
+  return null;
+}
 
 export default function Clientes() {
   const c = useConta();
@@ -245,14 +268,36 @@ export default function Clientes() {
                 aria-label="Buscar cliente"
                 className="mt-5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-base focus:border-marca-indigo focus:outline-none sm:text-sm"
               />
-              <div className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&>*]:min-h-10 [&>*]:shrink-0 [&>*]:whitespace-nowrap sm:[&>*]:min-h-0 ${achados ? "opacity-40" : ""}`} aria-label="Etapas">
-                <Chip ativo={filtro === "hoje"} onClick={() => setFiltro("hoje")}>Pra hoje · {nHoje}</Chip>
-                <Chip ativo={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos · {lista.length}</Chip>
-                {ETAPAS.map((e) => (
-                  <Chip key={e.id} ativo={filtro === e.id} onClick={() => setFiltro(e.id)}>
-                    {e.rotulo} · {porEtapa[e.id] ?? 0}
-                  </Chip>
-                ))}
+              {/* OS FILTROS COM A COR DA ETAPA. Eram oito pílulas cinzas idênticas, e a
+                  contagem colada no rótulo -- o olho não separava "Visita · 1" de
+                  "Proposta · 0". Agora cada etapa carrega a bolinha e a cor que ela tem no
+                  painel do cliente e nas mensagens: o mesmo desenho no produto inteiro.
+                  Etapa sem ninguém fica apagada, pra a vista cair em quem tem gente. */}
+              <div className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&>*]:shrink-0 [&>*]:whitespace-nowrap ${achados ? "opacity-40" : ""}`} aria-label="Etapas">
+                {[
+                  { id: "hoje" as const, rotulo: "Pra hoje", n: nHoje, ponto: "bg-marca-coral", fundo: "bg-marca-pessego/60", texto: "text-marca-indigo" },
+                  { id: "todos" as const, rotulo: "Todos", n: lista.length, ponto: "bg-neutral-400", fundo: "bg-neutral-100", texto: "text-neutral-700" },
+                  ...ETAPAS.map((e) => ({ id: e.id, rotulo: e.rotulo, n: porEtapa[e.id] ?? 0, ...COR_ETAPA[e.id] })),
+                ].map((f) => {
+                  const ativo = filtro === f.id;
+                  const vazio = f.n === 0;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFiltro(f.id)}
+                      aria-pressed={ativo}
+                      className={
+                        "inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition " +
+                        (ativo ? `${f.fundo} ${f.texto} ring-2 ring-marca-indigo ring-offset-1` : vazio ? "text-neutral-400 hover:bg-neutral-100" : `${f.fundo} ${f.texto} hover:brightness-95`)
+                      }
+                    >
+                      <span className={`h-2 w-2 rounded-full ${vazio && !ativo ? "bg-neutral-300" : f.ponto}`} />
+                      {f.rotulo}
+                      <span className={"rounded-full px-1.5 text-xs font-semibold " + (ativo ? "bg-white/70" : vazio ? "text-neutral-400" : "bg-white/60")}>{f.n}</span>
+                    </button>
+                  );
+                })}
               </div>
             </>
           )}
@@ -282,10 +327,23 @@ export default function Clientes() {
                         <p className="truncate text-sm text-neutral-500">
                           {telefoneLegivel(l.telefone)} · {ORIGEM_POR_ID[l.origem]?.rotulo.split(" (")[0]}
                         </p>
+                        {/* O PRÓXIMO PASSO, na linha. O subtítulo da página promete "em que pé
+                            está e o próximo passo" e a lista só mostrava o pé. Sem isto, saber
+                            quem cobrar hoje exigia abrir um cliente de cada vez. */}
+                        {(() => {
+                          const passo = passoCurto(l, hoje);
+                          return passo ? <p className={`truncate text-xs font-medium ${passo.urgente ? "text-marca-coral-escuro" : "text-neutral-500"}`}>{passo.texto}</p> : null;
+                        })()}
                         {l.corretor && <p className="truncate text-xs text-neutral-400">Corretor: {l.corretor}</p>}
                       </div>
                       <div className="shrink-0 text-right">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${l.bloqueio ? "bg-red-50 text-red-700" : "bg-marca-pessego/60 text-marca-indigo"}`}>
+                        <span
+                          className={
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold " +
+                            (l.bloqueio ? "bg-red-50 text-red-700" : `${COR_ETAPA[l.etapa]?.fundo} ${COR_ETAPA[l.etapa]?.texto}`)
+                          }
+                        >
+                          {!l.bloqueio && <span className={`h-1.5 w-1.5 rounded-full ${COR_ETAPA[l.etapa]?.ponto}`} />}
                           {l.bloqueio === "pediu_parar" ? "Pediu para parar" : l.bloqueio === "numero_errado" ? "Número errado" : ETAPA_POR_ID[l.etapa]?.rotulo}
                         </span>
                         {l.proximo_contato_em && !l.bloqueio && (
