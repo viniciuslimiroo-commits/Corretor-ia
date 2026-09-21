@@ -55,6 +55,41 @@ de 1912 em 1:400 e uma planta de implantação de igreja), o modelo devolveu
 estimou**, em vez de inventar medida com cara de certa. É o contrato de `lib/planta-lida.ts`
 fazendo o trabalho dele.
 
+## A planta de verdade (21/09, à tarde)
+
+O dono mandou uma planta de lançamento real: humanizada, com mobília, textura de piso, balões
+de marketing, logo e texto na lateral — e cotas pequenas de TRECHO de parede, não um
+"3,20 × 2,50" por cômodo. A prancha declara **98 m²**, o que dá gabarito de graça: a soma dos
+cômodos tem que cair um pouco abaixo disso.
+
+| rodada | cômodos | soma | % dos 98 m² |
+|---|---|---|---|
+| primeira | 11 (um falso) | 79,7 m² | 81% |
+| com o prompt corrigido | 11 (um falso) | 99,4 m² | 101% |
+| **com o filtro de não-cômodo** | **10** | **90,5 m²** | **92%** |
+
+Os dois defeitos que a planta real revelou, e o que cada um ensinou:
+
+**1. Cota emprestada do vizinho.** A cozinha herdou o 2,85 da lavanderia; o banho herdou o
+3,15 do dormitório. O modelo lê o número certo e pendura no cômodo errado — é erro de
+ATRIBUIÇÃO, não de leitura, e é o mais perigoso porque o número parece certo. Resolvido no
+prompt: uma cota só vale pro cômodo se a linha de cota corre na parede dele; sem cota própria,
+estima e marca `medida_lida: false`.
+
+**2. Balão de marketing virando cômodo.** "Laje técnica" entrou como um cômodo de 4 m². Mandar
+o modelo ignorar balões no prompt **não resolveu** — ele continuou entrando. Resolvido no
+CÓDIGO, com uma lista de rótulos que não são cômodo (`NAO_E_COMODO`). Instrução repetida no
+prompt não faz o modelo obedecer; filtro determinístico faz, custa nada e sobrevive a troca de
+modelo.
+
+O que ficou bom: os nomes saem certos (Lavanderia, Cozinha, Terraço Gourmet, Sala de TV,
+Dormitório, Suíte, Banho, Lavabo, Sala de Jantar), a Suíte saiu exata nas três rodadas
+(3,00 × 4,35, conferido na lupa) e a proporção da área fecha.
+
+O que continua irregular: cômodos cujas cotas são ambíguas mudam de tamanho entre rodadas (a
+cozinha saiu 5,45 numa e 4,65 noutra). Para rascunho que a pessoa ajusta, serve; para número
+de anúncio sem conferência, não — e é por isso que a medida lida não vai sozinha pra ficha.
+
 ## O que este experimento NÃO prova
 
 Isto é importante e não deve sumir do registro:

@@ -172,7 +172,13 @@ for (const caso of casos) {
       if (r.casados) console.log(`   erro de medida: médio ${r.medioPct.toFixed(0)}% · pior ${r.piorPct.toFixed(0)}%`);
       for (const d of r.detalhes) console.log(d);
     } else {
-      for (const c of leitura.comodos.slice(0, 8)) console.log(`   · ${c.nome.padEnd(12)} ${c.largura.toFixed(2)} x ${c.altura.toFixed(2)} m${c.medida_lida ? "  (cota lida)" : ""}`);
+      for (const c of leitura.comodos) console.log(`   · ${c.nome.padEnd(16)} ${c.largura.toFixed(2)} x ${c.altura.toFixed(2)} = ${(c.largura * c.altura).toFixed(1).padStart(5)} m2${c.medida_lida ? "  (cota lida)" : ""}`);
+      // A planta DECLARA a área total: é gabarito de graça. A soma dos cômodos fica
+      // abaixo dela (parede e circulação não entram), então o que se espera é 70-95%.
+      const soma = leitura.comodos.reduce((s2, c) => s2 + c.largura * c.altura, 0);
+      const iA = process.argv.indexOf("--area");
+      const declarada = iA > -1 ? Number(process.argv[iA + 1]) : NaN;
+      console.log(`   soma dos cômodos: ${soma.toFixed(1)} m2${Number.isFinite(declarada) ? ` · planta declara ${declarada} m2 · ${((soma / declarada) * 100).toFixed(0)}%` : ""}`);
     }
   } catch (e) {
     console.log(`== ${caso.rotulo}\n   FALHOU: ${e instanceof Error ? e.message : e}`);

@@ -72,12 +72,30 @@ export const SISTEMA_LEITURA = [
   "- If the plan has no written dimensions anywhere and no scale, set tem_cotas=false and still return the layout with medida_lida=false everywhere.",
   '- nome: the room label in Portuguese, short ("Sala", "Cozinha", "Quarto 1", "Banheiro", "Varanda"). If the room is unlabelled, use "Cômodo".',
   "- Ignore furniture, hatching, north arrows, title blocks, logos and text that is not a room name or a dimension.",
+  // Medido numa planta de lançamento de verdade: o balão "Laje técnica", que aponta pra
+  // dentro do desenho a partir da margem, virou um cômodo de 4 m².
+  "- A label is a ROOM only if it sits INSIDE a closed outline of walls. Marketing call-outs that sit in the margin and point into the drawing with a leader line (e.g. \"Laje técnica\", \"Ponto de ar condicionado\", \"Infra para persiana\") are NOT rooms: skip them.",
+  // Mesma planta: a cozinha herdou o 2,85 da lavanderia e o banho herdou o 3,15 do
+  // dormitório. Ler o número certo e pendurar no cômodo errado é o erro mais comum aqui --
+  // e o mais perigoso, porque o número parece certo.
+  "- NEVER borrow a dimension from a neighbouring room. A dimension belongs to a room only if its dimension line runs along that room's own wall. If a room's side has no dimension of its own, estimate that side and set medida_lida=false for the room.",
+  "- If the sheet prints a TOTAL area (e.g. \"98 M²\"), use it as a sanity check: the sum of your rooms should land near it, a bit below. If your sum is far off, your dimensions are wrong -- re-read them.",
   "- If the image is not a floor plan, or is unreadable, return {\"comodos\":[],\"tem_cotas\":false,\"escala\":null,\"observacao\":\"<why, in Portuguese>\"}.",
   "- observacao: one short sentence IN PORTUGUESE when something is doubtful; null when everything is clear.",
 ].join("\n");
 
 const limpar = (t: unknown, max: number) =>
   typeof t === "string" ? t.replace(/[\r\n]+/g, " ").trim().slice(0, max) : "";
+
+/**
+ * Rótulos que NÃO são cômodo, barrados aqui e não no prompt.
+ *
+ * "Laje técnica" virou um cômodo de 4 m² numa planta de lançamento de verdade, e continuou
+ * virando depois de eu mandar o modelo ignorar balões de marketing -- pedir duas vezes a
+ * mesma coisa não faz o modelo obedecer. Lista no código é determinística, custa nada e
+ * sobrevive a troca de modelo; a instrução no prompt fica como primeira barreira.
+ */
+const NAO_E_COMODO = /^(laje|[aá]rea|ponto|infra|espa[çc]o|shaft|duto|prumada|po[çc]o|proje[çc][ãa]o|acesso|entrada de|tomada|guarda|piso|churrasqueira)\b/i;
 
 const numero = (v: unknown): number | null => {
   const n = typeof v === "number" ? v : Number(String(v ?? "").replace(",", "."));
@@ -108,7 +126,9 @@ export function limparLeitura(bruto: unknown): LeituraDaPlanta {
     const x = numero(c.x) ?? 0;
     const y = numero(c.y) ?? 0;
     if (largura === null || altura === null || largura <= 0 || altura <= 0) continue;
-    cru.push({ nome: limpar(c.nome, LIMITES_LEITURA.nomeMax) || "Cômodo", x, y, largura, altura, medida_lida: c.medida_lida === true });
+    const nome = limpar(c.nome, LIMITES_LEITURA.nomeMax) || "Cômodo";
+    if (NAO_E_COMODO.test(nome)) continue;
+    cru.push({ nome, x, y, largura, altura, medida_lida: c.medida_lida === true });
   }
 
   // Tudo em centímetros? Acontece quando o modelo copia a cota crua ("320"). Só converte se
