@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
-import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { Aviso, Botao, BotaoConfirma, Cartao, Icone, Rotulo } from "@/components/ui";
 import {
   LIMITES_MODELO,
   MODELOS_SUGERIDOS,
@@ -30,6 +30,42 @@ import {
 // salvar -- sem isso as chaves entre chaves parecem código e ninguém usa.
 
 const EXEMPLO = { nomeLead: "Maria Souza", corretor: "você", creci: "00000-F", imovel: "Apto 302 · Setor Bueno", origem: "portal" as const };
+
+/**
+ * A cara de cada momento da conversa: cor e ícone.
+ *
+ * O momento era um rótulo cinza de 11px em cima do título -- ele olhou a tela e disse que
+ * estava "muito escondido e pequeno". E é a informação que mais importa no cartão: é ela que
+ * responde "quando é que eu mando isto?". Cor e ícone fazem o olho achar antes de ler.
+ *
+ * As cores seguem a paleta das etapas do CRM (components/crm/comum.ts), então "Visita" aqui
+ * é do mesmo verde-água da etapa Visita lá -- a pessoa aprende uma vez e vale no produto todo.
+ */
+const CARA_DA_SITUACAO: Record<SituacaoId, { fundo: string; texto: string; ponto: string; icone: string }> = {
+  primeiro_contato: { fundo: "bg-slate-100", texto: "text-slate-700", ponto: "bg-slate-400", icone: "compartilhar" },
+  retorno: { fundo: "bg-orange-100", texto: "text-orange-800", ponto: "bg-orange-500", icone: "tour360" },
+  visita: { fundo: "bg-teal-100", texto: "text-teal-800", ponto: "bg-teal-500", icone: "imoveis" },
+  proposta: { fundo: "bg-amber-100", texto: "text-amber-800", ponto: "bg-amber-500", icone: "editar_prompt" },
+  fechado: { fundo: "bg-emerald-100", texto: "text-emerald-800", ponto: "bg-emerald-500", icone: "check" },
+  qualquer: { fundo: "bg-sky-100", texto: "text-sky-800", ponto: "bg-sky-500", icone: "magica" },
+};
+
+/** A pílula do momento: cor, bolinha e ícone. É o que o olho acha primeiro no cartão. */
+function Momento({ id, tamanho = "normal" }: { id: SituacaoId; tamanho?: "normal" | "grande" }) {
+  const cara = CARA_DA_SITUACAO[id];
+  const rotulo = SITUACAO_POR_ID[id]?.rotulo ?? id;
+  return (
+    <span
+      className={
+        `inline-flex items-center gap-1.5 rounded-full font-semibold ${cara.fundo} ${cara.texto} ` +
+        (tamanho === "grande" ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs")
+      }
+    >
+      <Icone nome={cara.icone} className={tamanho === "grande" ? "h-4 w-4" : "h-3.5 w-3.5"} />
+      {rotulo}
+    </span>
+  );
+}
 
 type Rascunho = { id: string | null; situacao: SituacaoId; titulo: string; texto: string; automatico: boolean };
 
@@ -155,16 +191,27 @@ export default function MinhasMensagens() {
           <div className="mt-3 grid gap-3">
             <div>
               <Rotulo>Quando usar</Rotulo>
+              {/* Os mesmos cor e ícone do cartão: a pessoa escolhe o momento reconhecendo o
+                  desenho que acabou de ver, em vez de ler seis rótulos iguais. */}
               <div className="mt-1 flex flex-wrap gap-2">
-                {SITUACOES.map((s) => (
-                  <Chip
-                    key={s.id}
-                    ativo={rascunho.situacao === s.id}
-                    onClick={() => setRascunho({ ...rascunho, situacao: s.id, automatico: s.id === "qualquer" ? false : rascunho.automatico })}
-                  >
-                    {s.rotulo}
-                  </Chip>
-                ))}
+                {SITUACOES.map((s) => {
+                  const escolhido = rascunho.situacao === s.id;
+                  const cara = CARA_DA_SITUACAO[s.id];
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setRascunho({ ...rascunho, situacao: s.id, automatico: s.id === "qualquer" ? false : rascunho.automatico })}
+                      className={
+                        "inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition " +
+                        (escolhido ? `${cara.fundo} ${cara.texto} ring-2 ring-marca-indigo ring-offset-1` : `${cara.fundo} ${cara.texto} opacity-55 hover:opacity-100`)
+                      }
+                    >
+                      <Icone nome={cara.icone} className="h-4 w-4" />
+                      {s.rotulo}
+                    </button>
+                  );
+                })}
               </div>
               <p className="mt-1 text-xs text-neutral-500">{SITUACAO_POR_ID[rascunho.situacao]?.dica}</p>
             </div>
@@ -258,8 +305,11 @@ export default function MinhasMensagens() {
             if (!dela.length) return null;
             return (
               <Cartao key={s.id} className="surgir">
-                <p className="font-semibold">{s.rotulo}</p>
-                <div className="mt-2 grid gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Momento id={s.id} tamanho="grande" />
+                  <span className="text-xs text-neutral-500">{s.dica}</span>
+                </div>
+                <div className="mt-3 grid gap-2">
                   {dela.map((m) => (
                     <div key={m.id} className="flex flex-wrap items-start gap-3 rounded-xl border border-neutral-200 p-3">
                       <div className="min-w-0 flex-1">
@@ -297,17 +347,23 @@ export default function MinhasMensagens() {
           <Cartao className="surgir">
             <p className="font-semibold">Comece por uma destas</p>
             <p className="mt-1 text-sm text-neutral-500">São só sugestões: toque numa e mude tudo o que quiser antes de salvar.</p>
-            <div className="mt-3 grid gap-2">
-              {MODELOS_SUGERIDOS.map((s) => (
+            <div className="mt-3 grid gap-2.5">
+              {MODELOS_SUGERIDOS.map((s, i) => (
                 <button
                   key={s.titulo}
                   type="button"
                   onClick={() => setRascunho({ id: null, situacao: s.situacao, titulo: s.titulo, texto: s.texto, automatico: false })}
-                  className="rounded-xl border border-neutral-200 p-3 text-left hover:border-marca-indigo"
+                  // Entram uma a uma (`surgir` com atraso): a lista se apresenta em vez de
+                  // aparecer de uma vez, e o olho percorre os momentos na ordem da conversa.
+                  className="surgir group rounded-2xl border border-neutral-200 p-3.5 text-left transition hover:-translate-y-0.5 hover:border-marca-indigo hover:shadow-md"
+                  style={{ animationDelay: `${60 + i * 70}ms` }}
                 >
-                  <p className="text-xs font-semibold text-neutral-500">{SITUACAO_POR_ID[s.situacao]?.rotulo}</p>
-                  <p className="font-medium">{s.titulo}</p>
-                  <p className="mt-0.5 text-sm text-neutral-600">{s.texto}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Momento id={s.situacao} tamanho="grande" />
+                    <span className="font-semibold text-neutral-800">{s.titulo}</span>
+                    <span className="ml-auto text-xs text-neutral-400 opacity-0 transition group-hover:opacity-100">usar esta →</span>
+                  </div>
+                  <p className="mt-2 border-l-2 border-neutral-200 pl-3 text-sm leading-relaxed text-neutral-600 italic">{s.texto}</p>
                 </button>
               ))}
             </div>
