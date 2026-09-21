@@ -374,6 +374,46 @@ export default function GaleriaElementos({
         </div>
       )}
 
+      {/* ---------- adesivos 3D / GIFs ---------- */}
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <p className="text-[13px] font-semibold text-[var(--ed-texto)]">{(gifs ? "Emojis animados" : "Adesivos") + (buscando ? ` · ${adesivos.length}` : "")}</p>
+      </div>
+      {!buscando && (
+        <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <Pilula ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
+            Todos
+          </Pilula>
+          {categorias.map((c) => (
+            <Pilula key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
+              {c.rotulo}
+            </Pilula>
+          ))}
+        </div>
+      )}
+      {adesivos.length === 0 ? (
+        <p className="mb-3 text-xs text-neutral-500">
+          {gifs ? `Nenhum GIF com “${busca}”. Tente rir, uau, palmas, amor, festa.` : `Nenhum adesivo com “${busca}”. Tente casa, chave, dinheiro, praia, rindo.`}
+        </p>
+      ) : (
+        <div className="ed-rolagem mb-5 grid max-h-[320px] grid-cols-5 gap-1.5 overflow-y-auto pr-1">
+          {adesivos.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => porAdesivo(a.id)}
+              disabled={!podeMais}
+              title={a.rotulo}
+              aria-label={`Pôr ${a.rotulo}`}
+              className="rounded-xl p-1.5 transition hover:bg-[var(--ed-elevado-2)] active:scale-95 disabled:opacity-40"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={urlDaMiniatura(a.id)} alt="" loading="lazy" className="aspect-square w-full" draggable={false} />
+            </button>
+          ))}
+        </div>
+      )}
+      {gifs && <p className="-mt-2 mb-3 text-[10px] text-neutral-400">{CREDITO_GIFS}</p>}
+
       {/* ---------- gente reagindo (Pexels) ---------- */}
       {gifs && (
         <div className="mb-4">
@@ -424,46 +464,6 @@ export default function GaleriaElementos({
           )}
         </div>
       )}
-
-      {/* ---------- adesivos 3D / GIFs ---------- */}
-      <div className="mb-2.5 flex items-baseline justify-between">
-        <p className="text-[13px] font-semibold text-[var(--ed-texto)]">{(gifs ? "Emojis animados" : "Adesivos") + (buscando ? ` · ${adesivos.length}` : "")}</p>
-      </div>
-      {!buscando && (
-        <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <Pilula ativo={categoria === "todos"} onClick={() => setCategoria("todos")}>
-            Todos
-          </Pilula>
-          {categorias.map((c) => (
-            <Pilula key={c.id} ativo={categoria === c.id} onClick={() => setCategoria(c.id)}>
-              {c.rotulo}
-            </Pilula>
-          ))}
-        </div>
-      )}
-      {adesivos.length === 0 ? (
-        <p className="mb-3 text-xs text-neutral-500">
-          {gifs ? `Nenhum GIF com “${busca}”. Tente rir, uau, palmas, amor, festa.` : `Nenhum adesivo com “${busca}”. Tente casa, chave, dinheiro, praia, rindo.`}
-        </p>
-      ) : (
-        <div className="ed-rolagem mb-5 grid max-h-[320px] grid-cols-5 gap-1.5 overflow-y-auto pr-1">
-          {adesivos.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => porAdesivo(a.id)}
-              disabled={!podeMais}
-              title={a.rotulo}
-              aria-label={`Pôr ${a.rotulo}`}
-              className="rounded-xl p-1.5 transition hover:bg-[var(--ed-elevado-2)] active:scale-95 disabled:opacity-40"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={urlDaMiniatura(a.id)} alt="" loading="lazy" className="aspect-square w-full" draggable={false} />
-            </button>
-          ))}
-        </div>
-      )}
-      {gifs && <p className="-mt-2 mb-3 text-[10px] text-neutral-400">{CREDITO_GIFS}</p>}
 
       {/* ---------- peças que carregam dado ---------- */}
       {!buscando &&
