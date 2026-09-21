@@ -160,6 +160,9 @@ export default function PaginaPlanta() {
   const [guias, setGuias] = useState<{ eixo: "x" | "y"; valor: number }[]>([]);
   const [decorando, setDecorando] = useState<"humanizada" | "maquete" | null>(null);
   const [decorado, setDecorado] = useState<{ jobId: string; url: string } | null>(null);
+  const [lendoPlanta, setLendoPlanta] = useState(false);
+  /** O aviso de onde vieram as medidas lidas. Fica até a pessoa fechar. */
+  const [avisoLeitura, setAvisoLeitura] = useState<string | null>(null);
   /** O botão que leva a metragem pra ficha do imóvel: parado, indo, foi, ou deu erro. */
   const [areaNaFicha, setAreaNaFicha] = useState<"parado" | "indo" | "erro">("parado");
   /** A metragem que JÁ está na ficha. Mexeu na planta depois de gravar? O "✓" some --
@@ -571,6 +574,42 @@ export default function PaginaPlanta() {
     }
   }
 
+  /**
+   * A PLANTA PRONTA VIRANDO RASCUNHO EDITÁVEL.
+   *
+   * Sobe o arquivo, o servidor lê com o modelo de visão (não gasta crédito) e o que volta
+   * entra no editor como uma planta qualquer -- daí em diante vale tudo o que já existe:
+   * arrastar canto, pôr porta, humanizar, mandar a metragem pra ficha, construir no terreno.
+   *
+   * Entra como UMA entrada de histórico: "Voltar" desfaz a importação inteira e devolve o
+   * que estava desenhado antes. É por isso que ela não pode simplesmente sobrescrever o
+   * estado -- e é também por isso que dá pra perguntar antes sem medo de perder trabalho.
+   */
+  async function lerPlantaPronta(arquivo: File) {
+    if (planta.comodos.length > 0 && !confirm("Isto substitui o que está desenhado. O “Voltar” traz de volta. Seguir?")) return;
+    setLendoPlanta(true);
+    setErro(null);
+    setAvisoLeitura(null);
+    try {
+      const corpo = new FormData();
+      corpo.append("planta", arquivo);
+      const r = await fetch("/api/planta/ler", { method: "POST", headers: { Authorization: `Bearer ${await c.token()}` }, body: corpo });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      const nova = d.planta as Planta;
+      if (!nova?.comodos?.length) throw new Error(d.aviso ?? "Não consegui achar cômodos nesta planta.");
+      registrar(() => ({ planta: nova, rascunho: [] }));
+      nav.enquadrar(enquadramentoDe(nova));
+      setSelecionado(null);
+      setResultado(null);
+      setAvisoLeitura(String(d.aviso ?? ""));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui ler essa planta.");
+    } finally {
+      setLendoPlanta(false);
+    }
+  }
+
   async function salvar() {
     if (planta.comodos.length === 0) return;
     setSalvando(true);
@@ -672,12 +711,53 @@ export default function PaginaPlanta() {
           <h1 className="text-2xl font-semibold">Planta baixa</h1>
           <p className="mt-1 text-sm text-neutral-500">Arraste um retângulo por cômodo, ou marque canto a canto. Cômodo novo cola no anterior; medidas e área saem sozinhas. Não gasta crédito.</p>
         </div>
-        <p className="text-sm text-neutral-600">
-          {planta.comodos.length} {planta.comodos.length === 1 ? "cômodo" : "cômodos"} · <strong>{metrosQuadrados(total)}</strong>
-        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* A ENTRADA DA PLANTA PRONTA. Discreta de propósito: quem desenha é a maioria, e
+              quem tem o arquivo na mão procura. Vira um rascunho no mesmo editor -- daí em
+              diante é uma planta igual às outras (veja `lerPlantaPronta`). */}
+          <label className={"inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-sm font-medium " + (lendoPlanta ? "text-neutral-400" : "text-marca-indigo hover:underline")}>
+            <Icone nome="planta" className="h-4 w-4" />
+            {lendoPlanta ? "Lendo a planta…" : "Mandar uma planta pronta"}
+            <span className="rounded bg-neutral-100 px-1 py-0.5 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">beta</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              disabled={lendoPlanta}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void lerPlantaPronta(f);
+              }}
+            />
+          </label>
+          <p className="text-sm text-neutral-600">
+            {planta.comodos.length} {planta.comodos.length === 1 ? "cômodo" : "cômodos"} · <strong>{metrosQuadrados(total)}</strong>
+          </p>
+        </div>
       </div>
 
       {erro && <div className="mt-4"><Aviso tipo="erro">{erro}</Aviso></div>}
+
+      {/* O aviso da leitura: de onde vieram as medidas, e que isto é rascunho. Fica até a
+          pessoa fechar -- não some sozinho, porque é ele que impede o número de virar
+          medida de anúncio sem ninguém ter olhado. */}
+      {avisoLeitura && (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border-l-4 border-marca-coral bg-marca-pessego/30 px-4 py-3">
+          <Icone nome="estrela" className="mt-0.5 h-5 w-5 shrink-0 text-marca-coral" />
+          <div className="min-w-0 flex-1 text-sm">
+            <p>
+              <strong className="font-semibold">Rascunho lido da sua planta.</strong> {avisoLeitura}
+            </p>
+            <p className="mt-1 text-xs text-neutral-600">
+              Os cômodos vêm posicionados por aproximação: arraste os cantos pra encaixar, apague o que sobrou e ponha portas e janelas. A área é recalculada do desenho, não copiada da leitura.
+            </p>
+          </div>
+          <button onClick={() => setAvisoLeitura(null)} className="shrink-0 px-2 text-neutral-400 hover:text-neutral-700" title="Fechar">
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="mt-5 grid gap-6 lg:grid-cols-12">
         <section className="lg:col-span-8">

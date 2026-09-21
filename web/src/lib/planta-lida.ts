@@ -79,6 +79,15 @@ export const SISTEMA_LEITURA = [
   // dormitório. Ler o número certo e pendurar no cômodo errado é o erro mais comum aqui --
   // e o mais perigoso, porque o número parece certo.
   "- NEVER borrow a dimension from a neighbouring room. A dimension belongs to a room only if its dimension line runs along that room's own wall. If a room's side has no dimension of its own, estimate that side and set medida_lida=false for the room.",
+  // TENTEI E REVERTI (21/09/2026). Duas plantas técnicas mostraram o salão levando o 7,00 que
+  // é a largura TOTAL da casa, e a varanda levando 7,30 x 7,50. A regra óbvia -- "dimensão
+  // geral não é dimensão de cômodo, use só pra conferir a soma" -- melhorou essas duas e
+  // DERRUBOU a planta de lançamento de 97% pra 64% da área declarada, three de três rodadas.
+  //
+  // Fica registrado porque a lição não é sobre esta regra: cada ajuste de prompt move o erro
+  // de lugar, e sem uma bancada que pontue VÁRIAS plantas de uma vez, afinar aqui é trocar um
+  // acerto conhecido por outro desconhecido. A próxima pessoa que sentir vontade de melhorar
+  // isto precisa primeiro da bancada, não de uma frase melhor.
   "- If the sheet prints a TOTAL area (e.g. \"98 M²\"), use it as a sanity check: the sum of your rooms should land near it, a bit below. If your sum is far off, your dimensions are wrong -- re-read them.",
   "- If the image is not a floor plan, or is unreadable, return {\"comodos\":[],\"tem_cotas\":false,\"escala\":null,\"observacao\":\"<why, in Portuguese>\"}.",
   "- observacao: one short sentence IN PORTUGUESE when something is doubtful; null when everything is clear.",

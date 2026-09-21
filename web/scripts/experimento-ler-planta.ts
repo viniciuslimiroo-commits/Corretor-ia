@@ -26,7 +26,7 @@ import { chamarSincrono } from "../src/lib/fal.ts";
 import { PASSO_PADRAO, type Planta } from "../src/lib/planta.ts";
 import { plantaParaSvg } from "../src/lib/planta-svg.ts";
 import { textoSvg } from "../src/lib/texto-svg.ts";
-import { SISTEMA_LEITURA, limparLeitura, type ComodoLido } from "../src/lib/planta-lida.ts";
+import { SISTEMA_LEITURA, limparLeitura, plantaDaLeitura, type ComodoLido, type LeituraDaPlanta } from "../src/lib/planta-lida.ts";
 
 const RAIZ = path.resolve(import.meta.dirname, "..");
 const env = Object.fromEntries(
@@ -140,6 +140,30 @@ function comparar(lidos: ComodoLido[]) {
   return { casados, medioPct: casados ? (somaErro / casados) * 100 : NaN, piorPct: piorErro * 100, faltando, detalhes };
 }
 
+/**
+ * Desenha o que o modelo LEU, do lado do original.
+ *
+ * Número em tabela não mostra cômodo trocado de lugar nem parede atravessada. Ver os dois
+ * lado a lado mostra em dois segundos o que a soma da área esconde -- e foi olhando a imagem
+ * que eu achei os dois defeitos desta tarde.
+ */
+async function ladoALado(original: Buffer, leitura: LeituraDaPlanta, destino: string) {
+  const planta = plantaDaLeitura(leitura, "");
+  if (!planta.comodos.length) return;
+  const { svg, largura, altura } = plantaParaSvg(planta, { escala: 60, grade: false, texto: textoSvg });
+  const lido = await sharp(Buffer.from(svg)).png().toBuffer();
+  const ALTURA = 760;
+  const esq = await sharp(original).resize(null, ALTURA, { fit: "contain", background: "#ffffff" }).toBuffer();
+  const dir = await sharp(lido).resize(Math.round((largura / altura) * ALTURA), ALTURA, { fit: "contain", background: "#ffffff" }).toBuffer();
+  const mE = await sharp(esq).metadata();
+  const mD = await sharp(dir).metadata();
+  await sharp({ create: { width: (mE.width ?? 0) + (mD.width ?? 0) + 24, height: ALTURA, channels: 3, background: "#c9ced6" } })
+    .composite([{ input: esq, left: 0, top: 0 }, { input: dir, left: (mE.width ?? 0) + 24, top: 0 }])
+    .jpeg({ quality: 88 })
+    .toFile(destino);
+  console.log(`   desenho: ${destino}`);
+}
+
 // ---------------- roda ----------------
 const base = await pngDoControle();
 fs.writeFileSync(path.join(SAIDA, "controle.png"), base);
@@ -179,6 +203,7 @@ for (const caso of casos) {
       const iA = process.argv.indexOf("--area");
       const declarada = iA > -1 ? Number(process.argv[iA + 1]) : NaN;
       console.log(`   soma dos cômodos: ${soma.toFixed(1)} m2${Number.isFinite(declarada) ? ` · planta declara ${declarada} m2 · ${((soma / declarada) * 100).toFixed(0)}%` : ""}`);
+      await ladoALado(caso.bytes, leitura, path.join(SAIDA, `comparacao-${caso.rotulo.replace(/[^a-z0-9]+/gi, "-")}.jpg`));
     }
   } catch (e) {
     console.log(`== ${caso.rotulo}\n   FALHOU: ${e instanceof Error ? e.message : e}`);
