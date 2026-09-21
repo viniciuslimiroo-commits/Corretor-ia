@@ -18,7 +18,7 @@
 // e `scripts/testar-fontes-svg.ts` falha se alguém escrever outra lista num arquivo de
 // servidor. A primeira da lista é a que o Linux tem; as seguintes são pra máquina de quem
 // desenvolve (Windows e Mac não têm DejaVu, e caem no Geist/Segoe UI, como antes).
-export const FONTE_SVG_SERVIDOR = "DejaVu Sans, Geist, Segoe UI, Verdana, Arial, Helvetica, sans-serif";
+export const FONTE_SVG_SERVIDOR = "Geist, DejaVu Sans, Segoe UI, Verdana, Arial, Helvetica, sans-serif";
 
 /** A família que precisa estar em toda lista: é a única que o servidor tem de verdade. */
-export const FAMILIA_QUE_O_SERVIDOR_TEM = "DejaVu Sans";
+export const FAMILIA_QUE_O_SERVIDOR_TEM = "Geist";

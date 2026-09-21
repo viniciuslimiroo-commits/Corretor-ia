@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { caminhoOriginal, caminhoResultado, guardarEAssinar } from "@/lib/armazenamento";
 import { contaDe } from "@/lib/cobranca";
-import { FONTE_SVG_SERVIDOR } from "@/lib/fonte-svg";
+import { larguraDoTexto, textoSvg } from "@/lib/texto-svg";
 
 // Terreno com medidas: a pessoa marca os cantos do lote na foto e digita os metros de
 // cada lado; aqui a gente desenha por cima -- polígono, medidas no meio de cada lado,
@@ -14,10 +14,6 @@ import { FONTE_SVG_SERVIDOR } from "@/lib/fonte-svg";
 // no histórico, na galeria do imóvel e no link compartilhado como qualquer foto.
 
 type Ponto = { x: number; y: number };
-
-function escapar(t: string) {
-  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function limparTexto(v: unknown, max: number) {
   return typeof v === "string" ? v.replace(/[\r\n]+/g, " ").trim().slice(0, max) : "";
@@ -93,36 +89,36 @@ export async function POST(req: NextRequest) {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
     const texto = /m/i.test(m) ? m : `${m} m`;
-    const larguraCaixa = Math.round(texto.length * fonte * 0.62 + fonte * 1.2);
+    const larguraCaixa = Math.round(larguraDoTexto(texto, fonte) + fonte * 1.2);
     const alturaCaixa = Math.round(fonte * 1.7);
     svg += `<rect x="${(mx - larguraCaixa / 2).toFixed(1)}" y="${(my - alturaCaixa / 2).toFixed(1)}" width="${larguraCaixa}" height="${alturaCaixa}" rx="${Math.round(alturaCaixa / 2)}" fill="${i === frente ? cor : "#0f2d5b"}" fill-opacity="0.92"/>`;
-    svg += `<text x="${mx.toFixed(1)}" y="${(my + fonte * 0.36).toFixed(1)}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonte}" font-weight="600" fill="#ffffff" text-anchor="middle">${escapar(texto)}</text>`;
+    svg += textoSvg(texto, { x: mx, y: my + fonte * 0.36, corpo: fonte, cor: "#ffffff", ancora: "middle" });
   }
   if (area) {
     const cx = pts.reduce((s2, p) => s2 + p.x, 0) / pts.length;
     const cy = pts.reduce((s2, p) => s2 + p.y, 0) / pts.length;
     const textoArea = /m/i.test(area) ? area : `${area} m²`;
     const fonteArea = Math.round(fonte * 1.35);
-    const lc = Math.round(textoArea.length * fonteArea * 0.62 + fonteArea * 1.4);
+    const lc = Math.round(larguraDoTexto(textoArea, fonteArea) + fonteArea * 1.4);
     const ac = Math.round(fonteArea * 1.8);
     svg += `<rect x="${(cx - lc / 2).toFixed(1)}" y="${(cy - ac / 2).toFixed(1)}" width="${lc}" height="${ac}" rx="${Math.round(ac / 2)}" fill="#ffffff" fill-opacity="0.94"/>`;
-    svg += `<text x="${cx.toFixed(1)}" y="${(cy + fonteArea * 0.36).toFixed(1)}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonteArea}" font-weight="700" fill="#0f2d5b" text-anchor="middle">${escapar(textoArea)}</text>`;
+    svg += textoSvg(textoArea, { x: cx, y: cy + fonteArea * 0.36, corpo: fonteArea, cor: "#0f2d5b", ancora: "middle" });
   }
   if (titulo) {
     const ft = Math.round(fonte * 1.1);
-    const lt = Math.round(titulo.length * ft * 0.6 + ft * 1.4);
+    const lt = Math.round(larguraDoTexto(titulo, ft) + ft * 1.4);
     const at = Math.round(ft * 1.8);
     const margem = Math.round(18 * esc);
     svg += `<rect x="${margem}" y="${margem}" width="${lt}" height="${at}" rx="${Math.round(at / 2)}" fill="#0f2d5b" fill-opacity="0.9"/>`;
-    svg += `<text x="${margem + Math.round(ft * 0.7)}" y="${margem + ft * 1.22}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${ft}" font-weight="600" fill="#ffffff">${escapar(titulo)}</text>`;
+    svg += textoSvg(titulo, { x: margem + Math.round(ft * 0.7), y: margem + ft * 1.22, corpo: ft, cor: "#ffffff" });
   }
   // aviso: medidas são declaração do anunciante, não medição nossa
   const aviso = "Medidas aproximadas · informadas pelo anunciante";
   const fa = Math.round(fonte * 0.62);
-  const la = Math.round(aviso.length * fa * 0.55 + fa * 1.4);
+  const la = Math.round(larguraDoTexto(aviso, fa) + fa * 1.4);
   const aa = Math.round(fa * 1.8);
   svg += `<rect x="${W - la - Math.round(14 * esc)}" y="${H - aa - Math.round(14 * esc)}" width="${la}" height="${aa}" rx="${Math.round(aa / 4)}" fill="#000000" fill-opacity="0.55"/>`;
-  svg += `<text x="${W - la / 2 - Math.round(14 * esc)}" y="${H - Math.round(14 * esc) - aa / 2 + fa * 0.36}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fa}" fill="#ffffff" text-anchor="middle">${aviso}</text>`;
+  svg += textoSvg(aviso, { x: W - la / 2 - Math.round(14 * esc), y: H - Math.round(14 * esc) - aa / 2 + fa * 0.36, corpo: fa, cor: "#ffffff", ancora: "middle" });
   svg += `</svg>`;
 
   const final = await sharp(base).composite([{ input: Buffer.from(svg), left: 0, top: 0 }]).jpeg({ quality: 92 }).toBuffer();

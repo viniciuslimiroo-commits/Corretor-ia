@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp, { type OverlayOptions } from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { marcaEfetiva } from "@/lib/cobranca";
-import { FONTE_SVG_SERVIDOR } from "@/lib/fonte-svg";
+import { textoSvg } from "@/lib/texto-svg";
+
 
 // Export por portal (Sprint 4, adiantado). Specs reais pesquisadas antes de
 // implementar -- não inventadas:
@@ -28,10 +29,6 @@ const PRESETS: Record<string, { largura: number; altura: number; rotulo: string 
   zap_vivareal_olx: { largura: 3840, altura: 2160, rotulo: "ZAP · VivaReal · OLX" },
   generico: { largura: 1920, altura: 1440, rotulo: "Outros portais (padrão Full HD)" },
 };
-
-function escaparXml(t: string) {
-  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 export async function POST(req: NextRequest) {
   const db = supabaseServer();
@@ -104,7 +101,7 @@ export async function POST(req: NextRequest) {
     const margem = Math.max(10, Math.round(L * 0.015));
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${larguraCaixa}" height="${alturaCaixa}">
       <rect width="${larguraCaixa}" height="${alturaCaixa}" rx="${Math.round(alturaCaixa / 2)}" fill="rgba(15,45,91,0.82)"/>
-      <text x="${padX}" y="${padY + fonte * 0.78}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonte}" font-weight="600" fill="#FFFFFF">${escaparXml(legenda)}</text>
+      ${textoSvg(legenda, { x: padX, y: padY + fonte * 0.78, corpo: fonte, cor: "#FFFFFF" })}
     </svg>`;
     camadas.push({ input: Buffer.from(svg), left: margem, top: margem });
   }

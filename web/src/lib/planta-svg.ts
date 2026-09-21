@@ -32,11 +32,39 @@ export type OpcoesSvg = {
    * os números certos, continua sendo a saída separada e é ela que vale como medida.
    */
   semTexto?: boolean;
+  /**
+   * Quem desenha o texto. É injetado porque esta função roda nos DOIS lados.
+   *
+   * Na tela, `<text font-family=...>` funciona: o navegador tem fontes. No servidor da
+   * Vercel não existe fonte nenhuma, e todo `<text>` sai como glifo vazio -- foi assim que
+   * as medidas do terreno sumiram (21/09/2026). Lá quem desenha é `lib/texto-svg.ts`, que
+   * transforma a letra em contorno lendo o .ttf; mas esse módulo lê arquivo do disco e não
+   * pode ser importado aqui, senão vai parar no pacote do navegador.
+   *
+   * Por isso a rota passa o desenhista de contorno e a tela fica com o padrão.
+   */
+  texto?: DesenharTexto;
 };
+
+/** `y` é a LINHA DE BASE, como no `<text>`. */
+export type DesenharTexto = (
+  texto: string,
+  o: { x: number; y: number; corpo: number; cor?: string; ancora?: "start" | "middle" | "end"; peso?: number }
+) => string;
 
 function escapar(t: string) {
   return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+
+/** O padrão: `<text>` de verdade, pra tela. */
+const TEXTO_NA_TELA: DesenharTexto = (t, o) =>
+  !t
+    ? ""
+    : `<text x="${o.x}" y="${o.y}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${o.corpo}"` +
+      (o.peso ? ` font-weight="${o.peso}"` : "") +
+      ` fill="${o.cor ?? "#000000"}"` +
+      (o.ancora && o.ancora !== "start" ? ` text-anchor="${o.ancora}"` : "") +
+      `>${escapar(t)}</text>`;
 
 /** Desenha a planta e devolve o SVG e o tamanho em pixels. */
 export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string; largura: number; altura: number } {
@@ -55,6 +83,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
   const topo = planta.nome ? 46 : 0;
   const px = (x: number) => ((x - lim.x0) * escala).toFixed(1);
   const py = (y: number) => ((y - lim.y0) * escala + topo).toFixed(1);
+  const txt = o.texto ?? TEXTO_NA_TELA;
   const parede = Math.max(3, Math.round(escala * 0.09));
   const fonte = Math.max(11, Math.round(escala * 0.2));
   const fonteCota = Math.max(9, Math.round(escala * 0.145));
@@ -71,7 +100,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
 
   if (planta.nome && !o.semTexto) {
     partes.push(
-      `<text x="16" y="30" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 1.25)}" font-weight="700" fill="#0f2d5b">${escapar(planta.nome)}</text>`
+      txt(planta.nome, { x: 16, y: 30, corpo: Math.round(fonte * 1.25), cor: "#0f2d5b", peso: 700 })
     );
   }
 
@@ -155,7 +184,7 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
         partes.push(
           `<g transform="translate(${mx} ${my})">` +
             `<rect x="${-larg / 2}" y="${-fonteCota * 0.8}" width="${larg}" height="${fonteCota * 1.6}" rx="${fonteCota * 0.8}" fill="#ffffff" fill-opacity="0.92"/>` +
-            `<text y="${fonteCota * 0.42}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonteCota}" fill="#334155" text-anchor="middle">${texto}</text>` +
+            txt(texto, { x: 0, y: fonteCota * 0.42, corpo: fonteCota, cor: "#334155", ancora: "middle" }) +
             `</g>`
         );
       }
@@ -172,11 +201,11 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
     const cy = py(m.y);
     if (c.nome) {
       partes.push(
-        `<text x="${cx}" y="${Number(cy) - fonte * 0.15}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${fonte}" font-weight="600" fill="#0f2d5b" text-anchor="middle">${escapar(c.nome)}</text>`
+        txt(c.nome, { x: Number(cx), y: Number(cy) - fonte * 0.15, corpo: fonte, cor: "#0f2d5b", ancora: "middle", peso: 600 })
       );
     }
     partes.push(
-      `<text x="${cx}" y="${Number(cy) + fonte * (c.nome ? 1.05 : 0.35)}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.85)}" fill="#475569" text-anchor="middle">${metrosQuadrados(a)}</text>`
+      txt(metrosQuadrados(a), { x: Number(cx), y: Number(cy) + fonte * (c.nome ? 1.05 : 0.35), corpo: Math.round(fonte * 0.85), cor: "#475569", ancora: "middle" })
     );
   }
 
@@ -188,16 +217,16 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
     return { svg: partes.join(""), largura: L, altura: A };
   }
   partes.push(
-    `<text x="16" y="${yRod}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.95)}" font-weight="700" fill="#0f2d5b">Área total ${metrosQuadrados(total)}</text>`
+    txt(`Área total ${metrosQuadrados(total)}`, { x: 16, y: yRod, corpo: Math.round(fonte * 0.95), cor: "#0f2d5b", peso: 700 })
   );
   if (o.autor) {
     partes.push(
-      `<text x="${L / 2}" y="${yRod}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.8)}" fill="#475569" text-anchor="middle">${escapar(o.autor)}</text>`
+      txt(o.autor, { x: L / 2, y: yRod, corpo: Math.round(fonte * 0.8), cor: "#475569", ancora: "middle" })
     );
   }
   if (o.rodape) {
     partes.push(
-      `<text x="${L - 16}" y="${yRod}" font-family="${FONTE_SVG_SERVIDOR}" font-size="${Math.round(fonte * 0.7)}" fill="#94a3b8" text-anchor="end">${escapar(o.rodape)}</text>`
+      txt(o.rodape, { x: L - 16, y: yRod, corpo: Math.round(fonte * 0.7), cor: "#94a3b8", ancora: "end" })
     );
   }
 

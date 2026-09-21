@@ -55,35 +55,34 @@ async function comoDataUri(arquivo: string): Promise<string> {
   return `data:image/jpeg;base64,${bytes.toString("base64")}`;
 }
 
-const INSTRUCAO_MODERNA =
-  "modernize and renovate this corner two-storey townhouse for an architectural real estate listing: " +
-  "repaint the facade in a clean, sophisticated off-white with an elegant dark graphite base trim at street level, " +
-  "install sleek modern matte-black aluminum window frames with clear glass inside each existing window opening, keeping the exact dimensions, position and number of windows, " +
-  "install modern matte-black architectural outdoor wall sconces with subtle up-and-down warm light accents on the facade, " +
-  "restore and align the ceramic roof tiles to look clean and neat, " +
-  "clean the sidewalk pavement completely and remove the street pedestrian and any trash on the corner, " +
-  "no wood cladding on the ground level street wall. Keep the exact same building footprint, wall angles, roof structure and pitch, same street wires and poles, same camera angle and framing.";
+const INSTRUCAO_VIDRO_SLIM =
+  "modern architectural renovation focusing on high-end modern windows for this urban corner townhouse: " +
+  "remove all old window grilles and heavy shutters completely; " +
+  "install sleek contemporary minimalist black aluminum slim window frames with large clear transparent tempered glass panes inside each existing window opening, letting interior light and reflections show; " +
+  "clean off-white and light concrete stucco facade with smooth texture; " +
+  "install modern minimalist black exterior door and modern up-and-down architectural beam lights on the facade; " +
+  "clean and aligned roof tiles, spotless sidewalk. " +
+  "Keep exact same building dimensions, same wall outline, same roof structure, exact same number and position of window openings. Photorealistic.";
 
-const INSTRUCAO_CONTEMPORANEA =
-  "high-end contemporary architectural renovation of this Brazilian urban corner house: " +
-  "smooth light warm-grey and sand textured stucco on the exterior walls, with clean waterproof microcement finish on the ground floor base, " +
-  "replace old frames with contemporary minimalist black window frames fitted precisely inside the existing wall openings, " +
-  "clean and pressure-wash the roof tiles, " +
-  "add subtle modern facade lighting with warm architectural spotlights, " +
-  "clean up the corner sidewalk nicely, " +
-  "no wood panels on the lower exterior wall. Keep the exact building structure, same number and position of windows, same roofline, same perspective.";
+const INSTRUCAO_CONTEMPORANEA_CLEAN =
+  "sophisticated modern architect renovation of this corner house: " +
+  "replace all old window frames and iron bars with brand-new contemporary black steel and glass windows (frameless look with dark slim profiles and clear glass) in all openings upstairs and downstairs; " +
+  "facade repainted in elegant matte sand-grey / greige with clean sharp corners; " +
+  "clean modern entrance door; " +
+  "clean sidewalk with no clutter; " +
+  "preserve the exact building structure, same openings placement and size, same roof angle, same camera perspective.";
 
 const VERSOES = [
   {
-    saida: "casa-depois-moderna",
+    saida: "casa-depois-janelas-vidro",
     acao: "editar_prompt",
-    params: { instrucao: INSTRUCAO_MODERNA },
+    params: { instrucao: INSTRUCAO_VIDRO_SLIM },
     contrato: ESTRUTURA_FIXA_SALVO_PEDIDO,
   },
   {
-    saida: "casa-depois-contemporanea",
+    saida: "casa-depois-janelas-minimalistas",
     acao: "editar_prompt",
-    params: { instrucao: INSTRUCAO_CONTEMPORANEA },
+    params: { instrucao: INSTRUCAO_CONTEMPORANEA_CLEAN },
     contrato: ESTRUTURA_FIXA_SALVO_PEDIDO,
   },
 ];

@@ -8,6 +8,7 @@ import { limparPlanta } from "@/lib/planta";
 import { plantaParaSvg } from "@/lib/planta-svg";
 import { comEstruturaPreservada, PLANTA_FIXA } from "@/lib/preservar";
 import { ESTILOS, trechoDaFaixa } from "@/lib/acoes";
+import { textoSvg } from "@/lib/texto-svg";
 
 // Planta humanizada: a planta técnica que a pessoa desenhou vira uma vista de cima
 // realista, com móveis, piso e sombra -- o desenho que vende, ao lado do que mede.
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
   }
 
   // A planta limpa que a IA vai ler: só geometria, sem número nem nome.
-  const { svg } = plantaParaSvg(planta, { escala: 90, grade: false, semTexto: true });
+  const { svg } = plantaParaSvg(planta, { escala: 90, grade: false, semTexto: true, texto: textoSvg });
   let png: Buffer;
   try {
     png = await sharp(Buffer.from(svg)).png().toBuffer();
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
     const caminhoIn = caminhoEntrada(userId, job.id, "foto");
     const urlPlanta = await guardarEAssinar(db, caminhoIn, png, "image/png");
     // guarda a planta técnica como "original" pra aparecer no antes/depois
-    const { svg: svgCheio } = plantaParaSvg(planta, { escala: 90, grade: false });
+    const { svg: svgCheio } = plantaParaSvg(planta, { escala: 90, grade: false, texto: textoSvg });
     const caminhoOrig = caminhoOriginal(userId, job.id);
     await guardarEAssinar(db, caminhoOrig, await sharp(Buffer.from(svgCheio)).png().toBuffer(), "image/png");
 

@@ -5,6 +5,7 @@ import { caminhoResultado, guardarEAssinar } from "@/lib/armazenamento";
 import { contaDe, marcaEfetiva } from "@/lib/cobranca";
 import { areaTotal, limparPlanta } from "@/lib/planta";
 import { plantaParaSvg } from "@/lib/planta-svg";
+import { textoSvg } from "@/lib/texto-svg";
 
 // Planta baixa: recebe os cômodos em METROS, desenha o mesmo SVG que a tela mostra e
 // guarda como PNG. Não gasta crédito -- é desenho, não IA (a Pedra também cobra zero
@@ -36,7 +37,9 @@ export async function POST(req: NextRequest) {
   const marca = await marcaEfetiva(db, userId);
   const autor = [marca.nome, marca.creci ? `CRECI ${marca.creci}` : null].filter(Boolean).join(" · ");
 
+  // o texto vai como CONTORNO: no servidor não existe fonte pra um <text> usar
   const { svg } = plantaParaSvg(planta, {
+    texto: textoSvg,
     escala: 70,
     grade: false,
     autor: autor || undefined,

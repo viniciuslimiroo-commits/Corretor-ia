@@ -23,6 +23,30 @@ const nextConfig: NextConfig = {
     "/api/video/\\[id\\]": ["./bin/ffmpeg", "./assets/**", "./public/adesivos/*.png", "./public/adesivos/*.gif", "./public/musica/*.m4a", "./public/efeitos/*.m4a"],
     // O efeito de texto desenha com as fontes do disco; as outras rotas do editor, não.
     "/api/editor/efeito-texto": ["./assets/fontes/**"],
+
+    // TEXTO DESENHADO PELO SERVIDOR (21/09/2026). O servidor da Vercel não tem fonte
+    // nenhuma: todo `<text>` saía como glifo vazio -- as medidas do terreno, os nomes dos
+    // cômodos, o selo de imagem ilustrativa. Agora `lib/texto-svg.ts` lê o .ttf e desenha a
+    // letra como CONTORNO, que não depende de fonte instalada em lugar nenhum. Mas o arquivo
+    // só chega na função se estiver LISTADO aqui: ele é lido do disco em tempo de execução,
+    // e o rastreio de dependências não enxerga isso.
+    //
+    // Só a Geist (73 KB), e não `fontes/**` (2,4 MB de fontes de cartaz que só o vídeo usa):
+    // esta lista se repete por rota, e foi peso repetido assim que estourou o armazenamento
+    // de funções em 17/09.
+    ...Object.fromEntries(
+      [
+        "/api/terreno",
+        "/api/terreno/ia",
+        "/api/planta",
+        "/api/planta/humanizar",
+        "/api/exportar",
+        "/api/gerar",
+        "/api/job/\\[id\\]",
+        "/api/materiais/enviar",
+        "/api/imoveis/\\[id\\]/zip",
+      ].map((rota) => [rota, ["./assets/fontes/Geist-SemiBold.ttf"]])
+    ),
   },
   // As miniaturas dos GIFs são só da galeria (o navegador baixa do CDN); o vídeo usa o GIF
   // grande. Fora do pacote da função, que já leva o ffmpeg.

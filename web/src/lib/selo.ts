@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { ACOES_POR_ID } from "./acoes";
-import { FONTE_SVG_SERVIDOR } from "./fonte-svg";
+import { larguraDoTexto, textoSvg } from "./texto-svg";
 import { AVISO_IMAGEM, type Idioma } from "@/i18n/idiomas";
 
 // Selo de "imagem ilustrativa" (Sprint 4 do plano, puxado pra cá porque é pré-requisito
@@ -43,14 +43,6 @@ export function textoDoSelo(acao: string, seloDoJob?: string | null, idioma: Idi
   return def ? def.selo : AVISO_IMAGEM.pt.generico;
 }
 
-function escaparXml(texto: string): string {
-  return texto
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 type Geometria = {
   margem: number;
   fonte: number;
@@ -77,12 +69,12 @@ export function geometriaDoSelo(largura: number, altura: number, texto: string):
   const margem = Math.max(8, Math.round(largura * 0.015));
   const larguraDisponivel = largura - margem * 2;
   const fonteProporcional = Math.round(largura * 0.016);
-  const fonteQueCabe = Math.floor(larguraDisponivel / (texto.length * 0.52 + 1.6));
+  const fonteQueCabe = Math.floor(larguraDisponivel / (larguraDoTexto(texto, 100) / 100 + 1.6));
   const fonte = Math.max(10, Math.min(fonteProporcional, fonteQueCabe));
 
   const padX = Math.round(fonte * 0.8);
   const padY = Math.round(fonte * 0.5);
-  const larguraCaixa = Math.min(Math.round(texto.length * fonte * 0.52) + padX * 2, larguraDisponivel);
+  const larguraCaixa = Math.min(Math.round(larguraDoTexto(texto, fonte)) + padX * 2, larguraDisponivel);
   const alturaCaixa = fonte + padY * 2;
 
   return {
@@ -122,9 +114,7 @@ export async function aplicarSelo(bytes: Buffer, texto: string | null): Promise<
       `<rect x="0" y="0" width="${g.larguraCaixa}" height="${g.alturaCaixa}" rx="${Math.round(
         g.alturaCaixa * 0.25
       )}" fill="#000000" fill-opacity="0.55"/>` +
-      `<text x="${g.padX}" y="${Math.round(g.padY + g.fonte * 0.78)}" ` +
-      `font-family="${FONTE_SVG_SERVIDOR}" ` +
-      `font-size="${g.fonte}" fill="#ffffff">${escaparXml(texto)}</text>` +
+      textoSvg(texto, { x: g.padX, y: Math.round(g.padY + g.fonte * 0.78), corpo: g.fonte, cor: "#ffffff" }) +
       `</svg>`
   );
 

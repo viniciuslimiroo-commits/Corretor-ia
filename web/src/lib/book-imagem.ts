@@ -1,7 +1,7 @@
 import sharp, { type OverlayOptions } from "sharp";
 import type { PaginaLayout } from "./book-layout";
 import { ALTURA_ACIMA_DA_BASE } from "./book-constantes";
-import { FONTE_SVG_SERVIDOR } from "./fonte-svg";
+import { textoSvg } from "./texto-svg";
 
 // O TERCEIRO DESENHISTA: a mesma página, em JPG.
 //
@@ -18,7 +18,6 @@ import { FONTE_SVG_SERVIDOR } from "./fonte-svg";
 // por isso o corpo sai 4% menor -- a quebra de linha veio pronta com as métricas da
 // Helvetica, e uma fonte um pouco mais larga estouraria a caixa. É o mesmo cuidado (e a
 // mesma família de fontes) do selo de imagem ilustrativa.
-const FONTE_SVG = FONTE_SVG_SERVIDOR;
 const AJUSTE_FONTE = 0.96;
 
 /** 1080px de largura é o que o Instagram pede em qualquer um dos formatos. */
@@ -32,10 +31,6 @@ export type EntradaImagem = {
   largura?: number;
   qualidade?: number;
 };
-
-function escaparXml(t: string): string {
-  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function corDoHex(hex: string): { r: number; g: number; b: number } {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -147,8 +142,7 @@ export async function montarImagemDaPagina(p: PaginaLayout, e: EntradaImagem): P
       c.linhas.forEach((linha, i) => {
         if (!linha) return;
         svgTexto.push(
-          `<text x="${xTexto}" y="${Math.round(base + i * entrelinha)}" font-family="${FONTE_SVG}" font-size="${tamanho.toFixed(1)}" ` +
-            `font-weight="${c.negrito ? 700 : 400}" fill="${c.cor}" text-anchor="${ancora}" xml:space="preserve">${escaparXml(linha)}</text>`
+          textoSvg(linha, { x: xTexto, y: Math.round(base + i * entrelinha), corpo: tamanho, cor: c.cor, ancora })
         );
       });
     }
