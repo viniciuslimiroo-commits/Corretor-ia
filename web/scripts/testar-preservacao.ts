@@ -42,6 +42,30 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   conferir(/camera angle|perspective/i.test(ESTRUTURA_FIXA), "e o ângulo da câmera");
   conferir(TERRENO_FIXO.includes("boundaries") && /slope|terrain/i.test(TERRENO_FIXO), "no terreno, os limites e o relevo do lote também são fixos");
   conferir(/do not add, remove, merge, resize or move any room/i.test(PLANTA_FIXA), "na planta humanizada, nenhum cômodo some, nasce ou muda de tamanho");
+
+  // 21/09/2026: os dois buracos que passaram pela versão anterior, na casa do próprio dono.
+  // 1) a instrução mandou limpar a cena, a IA tirou a planta que cobria a parede e pôs uma
+  //    janela onde ninguém pode conferir o que existe;
+  // 2) "janelas modernas" virou licença pra ampliar TODAS as aberturas e abrir uma janela
+  //    de esquina, mesmo com o contrato colado no fim do pedido.
+  conferir(/hides part of the building/i.test(ESTRUTURA_FIXA), "o que TAPA a construção (planta, carro, poste) fica onde está");
+  conferir(/must not guess/i.test(ESTRUTURA_FIXA) && /never place a window, door, opening, vent, niche or any other feature in an area you cannot see/i.test(ESTRUTURA_FIXA), "e nada é inventado no pedaço escondido");
+  conferir(/means loose rubbish and dirt on the ground/i.test(ESTRUTURA_FIXA), "pedido de limpeza vale pro lixo do chão, não pro que cobre parede ou telhado");
+  // "Remover objeto" e "Esvaziar" existem pra tirar coisa da foto: a regra da oclusão não
+  // pode brigar com elas. O que continua proibido é inventar no pedaço que aparecer.
+  conferir(/UNLESS this instruction explicitly asks for that thing to be taken out/i.test(ESTRUTURA_FIXA), "tirar o que tapa continua valendo quando é isso que a pessoa pediu");
+  for (const id of ["remover_objeto", "esvaziar"]) {
+    const acao = ACOES.find((a) => a.id === id);
+    const final = acao ? comEstruturaPreservada(acao.prompt(limparParametros(acao, {}) as never), ESTRUTURA_FIXA) : "";
+    conferir(/UNLESS this instruction explicitly asks/i.test(final) && /continue that surface as the plain material around it/i.test(final), `${id}: pode tirar, mas preenche com a parede, não com janela`);
+  }
+  conferir(/the OPENING in the wall keeps its exact/i.test(ESTRUTURA_FIXA), "trocar esquadria não é ampliar o buraco da parede");
+  conferir(/floor-to-ceiling, panoramic, corner or wrap-around/i.test(ESTRUTURA_FIXA), "e janela nenhuma vira panorâmica nem dobra a esquina");
+  conferir(
+    /covers finishes, materials, colours, lighting, furniture and objects/i.test(ESTRUTURA_FIXA_SALVO_PEDIDO) && /does NOT cover the structure/i.test(ESTRUTURA_FIXA_SALVO_PEDIDO),
+    "a exceção de quem pede cobre acabamento, não obra"
+  );
+  conferir(/enlarge this window|open a new door here/i.test(ESTRUTURA_FIXA_SALVO_PEDIDO), "pra mexer na estrutura, a pessoa tem que pedir a estrutura com todas as letras");
 }
 
 // ---------- 2. toda ação do catálogo sai com o contrato ----------
