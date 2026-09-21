@@ -97,10 +97,11 @@ Isto é importante e não deve sumir do registro:
 - **A planta de controle é o caso mais fácil que existe.** Ela é desenhada pelo produto: texto
   vetorial limpo, cômodos retangulares alinhados, um rótulo e uma cota por cômodo, sem
   mobília, sem hachura, sem espessura de parede, sem escada, sem porta.
-- **Planta de construtora não testada.** As duas plantas reais que consegui no Wikimedia
-  Commons não têm cota métrica impressa, então não mediram nada. A busca por palavra no
-  Commons devolve foto de prédio; categoria devolve pouca coisa moderna.
-- **Amostra de uma planta, 5 cômodos.**
+- **Uma planta de construtora testada, não dez.** A de 98 m² acima é uma só, e de um só
+  estilo de prancha (humanizada, de lançamento). Planta TÉCNICA de arquiteto — linha preta,
+  cadeia de cotas nas laterais, sem mobília — continua não testada, e é um desenho bem
+  diferente.
+- **Amostra: uma planta sintética de controle e uma real.**
 
 O próximo passo que vale mais que qualquer ajuste de código: **3 a 5 plantas reais** (PDF
 exportado de construtora, foto de prancha impressa, print de portal) rodadas com
