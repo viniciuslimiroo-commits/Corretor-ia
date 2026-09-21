@@ -129,11 +129,21 @@ export default function Clientes() {
           <h1 className="text-2xl font-semibold">Meus clientes</h1>
           <p className="mt-1 text-sm text-neutral-500">Quem pediu informação, em que pé está e o próximo passo.</p>
         </div>
-        {!criando && !fechado && (
-          <Botao onClick={() => setCriando(true)} className="min-h-11">
-            <Icone nome="mais" className="h-4 w-4" />
-            Novo cliente
-          </Botao>
+        {!fechado && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* As mensagens da casa ficam aqui do lado, e não escondidas em ajustes: é da
+                lista de clientes que a pessoa sai pra escrever o texto que vai mandar. */}
+            <Link href="/crm/mensagens" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-neutral-200 px-3 text-sm font-medium text-neutral-700 hover:border-marca-indigo hover:text-marca-indigo">
+              <Icone nome="editar_prompt" className="h-4 w-4" />
+              Minhas mensagens
+            </Link>
+            {!criando && (
+              <Botao onClick={() => setCriando(true)} className="min-h-11">
+                <Icone nome="mais" className="h-4 w-4" />
+                Novo cliente
+              </Botao>
+            )}
+          </div>
         )}
       </div>
 

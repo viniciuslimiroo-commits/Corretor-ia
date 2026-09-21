@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Aviso, Botao, Cartao, Chip, Icone } from "@/components/ui";
 import { DECLARACAO, TONS, pedeDadoSensivel, temLink, type TomId } from "@/lib/crm";
+import { mensagemDoModelo, modeloAutomatico, modelosDaSituacao, situacaoDoLead, type Modelo } from "@/lib/crm-modelos";
 import type { EnvioPainel, LeadPainel } from "./comum";
 
 // PREPARAR ENVIO: imóvel -> materiais -> mensagem -> enviar/copiar/compartilhar.
@@ -76,12 +77,56 @@ export default function PrepararEnvio({
   const [aceito, setAceito] = useState(false);
   const [podeCompartilhar] = useState(() => typeof navigator !== "undefined" && typeof navigator.share === "function");
 
+  /**
+   * Os modelos de mensagem da casa. O automático da situação vem PREENCHIDO -- é o pedido
+   * dele: "deixar automático pra cada situação". Sem IA no meio: não gasta crédito.
+   *
+   * `usouModelo` guarda que a gente já preencheu uma vez: sem isso, o auto-preenchimento
+   * voltaria a sobrescrever o que ele digitou a cada re-render da lista.
+   */
+  const [modelos, setModelos] = useState<Modelo[] | null>(null);
+  const [usouModelo, setUsouModelo] = useState(false);
+  const situacao = situacaoDoLead(lead);
+  const dadosDoTexto = { nomeLead: lead.nome, corretor: envio.corretor ?? "", creci: envio.creci ?? "", imovel: envio.imovel, origem: lead.origem };
+  const daSituacao = modelos ? modelosDaSituacao(modelos, situacao) : [];
+
+  function usar(m: Modelo) {
+    setTexto(mensagemDoModelo({ modelo: m, primeiroContato, dados: dadosDoTexto }));
+    setUsouModelo(true);
+    setAviso(null);
+    setErro(null);
+  }
+
   const bloqueado = !!lead.bloqueio;
   const motivo = envio.pode.ok ? null : envio.pode.motivo;
   const primeiroContato = envio.pode.ok ? envio.pode.primeiroContato : !lead.ultimo_envio_em;
   const podeMandar = envio.pode.ok;
   const carregando = !!imovelId && dados?.imovelId !== imovelId;
   const materiais = dados?.imovelId === imovelId ? dados.lista : [];
+
+  // Busca os modelos uma vez e, se houver um automático pra esta situação, já escreve.
+  useEffect(() => {
+    let vivo = true;
+    token()
+      .then((t) => fetch("/api/crm/modelos", { headers: { Authorization: `Bearer ${t}` } }))
+      .then((r) => r.json())
+      .then((d: { modelos?: Modelo[] }) => {
+        if (!vivo) return;
+        const lista = d.modelos ?? [];
+        setModelos(lista);
+        const auto = modeloAutomatico(lista, situacao);
+        if (auto) {
+          setTexto(mensagemDoModelo({ modelo: auto, primeiroContato, dados: dadosDoTexto }));
+          setUsouModelo(true);
+        }
+      })
+      .catch(() => vivo && setModelos([]));
+    return () => {
+      vivo = false;
+    };
+    // Uma vez por cliente: recarregar a cada troca de imóvel apagaria o que ele digitou.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id]);
 
   useEffect(() => {
     if (!imovelId) return;
@@ -325,7 +370,32 @@ export default function PrepararEnvio({
           )}
         </Passo>
 
-        <Passo n={3} titulo="Mensagem" dica={primeiroContato ? "Seu nome, o CRECI e a frase que dá à pessoa a opção de parar são fixos na primeira mensagem." : undefined} atraso={300} desligado={!podeMandar}>
+        <Passo n={3} titulo="Mensagem" dica={primeiroContato ? "Seu nome e o CRECI são fixos na primeira mensagem, e link nenhum sai nela." : undefined} atraso={300} desligado={!podeMandar}>
+          {/* Os textos da casa, antes da IA: quem já tem a sua frase não precisa gerar nada.
+              O automático da situação já veio escrito; os outros ficam a um toque. */}
+          {daSituacao.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-neutral-50 p-2.5">
+              <span className="text-xs font-semibold text-neutral-500">Suas mensagens</span>
+              {daSituacao.map((m) => (
+                <Chip key={m.id} ativo={false} onClick={() => usar(m)} disabled={!podeMandar || preparando}>
+                  {m.titulo}
+                  {m.automatico && <span className="ml-1 text-[10px] text-marca-coral">automática</span>}
+                </Chip>
+              ))}
+              <Link href="/crm/mensagens" className="ml-auto text-xs text-neutral-500 underline">
+                escrever outra
+              </Link>
+            </div>
+          )}
+          {modelos?.length === 0 && (
+            <p className="mb-3 text-xs text-neutral-500">
+              Você pode guardar as suas mensagens prontas e deixar uma automática pra cada momento.{" "}
+              <Link href="/crm/mensagens" className="underline">
+                Escrever as minhas
+              </Link>
+              .
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             {TONS.map((t) => (
               <Chip key={t.id} ativo={tom === t.id} onClick={() => setTom(t.id)} disabled={!podeMandar || preparando}>
@@ -337,6 +407,7 @@ export default function PrepararEnvio({
               {preparando ? "Escrevendo…" : "Preparar com IA"}
             </Botao>
           </div>
+          {usouModelo && <p className="mt-2 text-xs text-neutral-500">Texto seu, sem IA. Dá pra editar abaixo antes de mandar.</p>}
           {preparando ? (
             <div className="carregando-ia mt-3 flex h-40 items-center justify-center rounded-xl px-4 text-center text-sm text-neutral-600">
               Escrevendo com o nome do cliente e os dados do imóvel…

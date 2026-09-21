@@ -5,7 +5,6 @@
 
 import {
   DECLARACAO,
-  FRASE_DE_SAIDA,
   LIMITES_CRM,
   ORIGENS,
   avisosDoEstado,
@@ -69,8 +68,10 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   const m = mensagemPronta({ corretor: "João Lima", creci: "12345-F", nomeLead: "Maria da Silva", origem: "portal", imovel: "Apto 302 Setor Bueno" });
   conferir(m.startsWith("Olá, Maria!") && m.includes("João Lima") && m.includes("corretor(a) de imóveis") && m.includes("CRECI 12345-F"), "mensagem: se identifica com nome, profissão e CRECI", m);
   conferir(m.includes("pelo anúncio no portal") && m.includes("Apto 302"), "mensagem: diz de onde veio o contato e o imóvel");
-  conferir(m.includes(FRASE_DE_SAIDA), "mensagem: dá a saída, em português de gente", FRASE_DE_SAIDA);
-  conferir(!/SAIR/.test(m), "e sem palavra-chave em maiúscula, que é cara de disparo em massa");
+  // A frase de saída saiu por decisão do dono em 21/09/2026: o que se confere agora é que
+  // ela NÃO volta sozinha (nem a palavra-chave antiga), e que a identificação continua.
+  conferir(!/SAIR/i.test(m) && !/n[ãa]o mando mais|n[ãa]o quiser receber/i.test(m), "mensagem: sem frase de negativa (decisão do dono)", m);
+  conferir(/CRECI/.test(m), "e a identificação com CRECI continua");
   conferir(!/https?:\/\//.test(m), "mensagem: sem link no primeiro contato");
   conferir(!pedeDadoSensivel(m), "mensagem: a pronta nunca pede documento nem dado bancário");
   conferir(pedeDadoSensivel("me manda seu CPF") && pedeDadoSensivel("preciso dos dados bancários") && !pedeDadoSensivel("Posso te mandar as fotos?"), "mensagem editada: pedido de documento é detectado");
@@ -160,7 +161,7 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   const base = { corretor: "João Lima", creci: "12345-F", nomeLead: "Maria da Silva" };
   // A IA "desobediente": cumprimenta de novo, põe link e esquece a saída.
   const m1 = montarMensagem({ ...base, primeiroContato: true, miolo: "Vi que você se interessou pelo apê. Veja em https://golpe.com/x e me diga!", links: [{ rotulo: "Fotos", url: "https://encena.app/c/abc" }] });
-  conferir(m1.startsWith("Olá, Maria! Aqui é João Lima, corretor(a) de imóveis, CRECI 12345-F.") && m1.endsWith(FRASE_DE_SAIDA), "preparada, 1º contato: abertura com CRECI e a saída são do Encena, não da IA", m1);
+  conferir(m1.startsWith("Olá, Maria! Aqui é João Lima, corretor(a) de imóveis, CRECI 12345-F.") && !/SAIR/i.test(m1), "preparada, 1º contato: abertura com CRECI é do Encena, e nenhuma frase de negativa volta", m1);
   conferir(!temLink(m1), "preparada, 1º contato: nenhum link sai (nem o que a IA inventou, nem o de material)");
   const m2 = montarMensagem({ ...base, primeiroContato: false, miolo: "Olá, Maria! Separei o material, segue abaixo. www.site-falso.com Quer visitar?", links: [{ rotulo: "Fotos", url: "https://encena.app/c/abc" }, { rotulo: "Vídeo", url: "javascript:alert(1)" }] });
   conferir(m2.includes("Fotos: https://encena.app/c/abc") && !m2.includes("site-falso") && !m2.includes("javascript:"), "preparada, retorno: só os links dos materiais (https), um por linha; o da IA some", m2.replace(/\n/g, " ⏎ "));

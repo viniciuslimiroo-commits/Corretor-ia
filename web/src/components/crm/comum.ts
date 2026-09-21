@@ -27,6 +27,10 @@ export type EnvioPainel = {
   primeirosHoje: number;
   limiteDia: number;
   imovel: string | null;
+  /** Quem assina a mensagem. Já vinha do servidor; a tela precisa deles pra trocar
+   *  as chaves {corretor} e {creci} dos modelos de mensagem. */
+  corretor: string;
+  creci: string | null;
 };
 
 export type Registro = { acao: string; detalhe: Record<string, unknown> | null; criado_em: string };
