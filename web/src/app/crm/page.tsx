@@ -56,7 +56,10 @@ function passoCurto(l: Lead, hoje: string): { texto: string; urgente: boolean } 
   if (l.proximo_contato_em === hoje) return { texto: "Retorno marcado pra hoje", urgente: true };
   if (l.etapa === "sem_resposta") return { texto: "Sem resposta: espere ela responder", urgente: false };
   const dias = Math.floor((Date.now() - Date.parse(l.ultimo_envio_em)) / 86400000);
-  if (dias >= 3) return { texto: `Última mensagem há ${dias} dias`, urgente: false };
+  // SEM DATA DE RETORNO é o jeito silencioso de perder cliente: ele não entra em "Pra hoje",
+  // não fica vermelho em lugar nenhum, e some. O cliente em Visita da foto de teste estava
+  // exatamente assim -- e a linha dele saía em branco. Uma semana parado já fica coral.
+  if (!l.proximo_contato_em) return { texto: dias >= 3 ? `Parado há ${dias} dias — marque o retorno` : "Marque o próximo retorno", urgente: dias >= 7 };
   return null;
 }
 
@@ -68,7 +71,8 @@ export default function Clientes() {
   const [porEtapa, setPorEtapa] = useState<Record<string, number>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [fechado, setFechado] = useState(false);
-  const [filtro, setFiltro] = useState<Filtro>("hoje");
+  /** null = ainda não escolheu nada; o filtro de abertura sai de `filtro`, logo abaixo. */
+  const [escolhido, setFiltro] = useState<Filtro | null>(null);
   const [criando, setCriando] = useState(false);
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [form, setForm] = useState({ nome: "", telefone: "", origem: "", email: "", property_id: "", observacoes: "" });
@@ -107,8 +111,16 @@ export default function Clientes() {
   const termo = semAcento(busca.trim());
   const digitos = busca.replace(/\D/g, "");
   const achados = termo ? lista.filter((l) => semAcento(l.nome).includes(termo) || semAcento(l.corretor ?? "").includes(termo) || (digitos.length >= 3 && l.telefone.includes(digitos))) : null;
-  const visiveis = achados ?? (filtro === "todos" ? lista : filtro === "hoje" ? lista.filter(praHoje) : lista.filter((l) => l.etapa === filtro));
   const nHoje = lista.filter(praHoje).length;
+  /**
+   * ABRIR EM "PRA HOJE" SÓ QUANDO HÁ ALGO PRA HOJE.
+   *
+   * Abria sempre em "Pra hoje" e, num dia sem nada marcado, a primeira coisa que aparecia em
+   * "Meus clientes" era "Ninguém nesta etapa" -- a lista parecia vazia tendo gente dentro.
+   * Derivado, não em efeito: enquanto ele não toca em nada, o filtro segue o dia.
+   */
+  const filtro: Filtro = escolhido ?? (nHoje > 0 ? "hoje" : "todos");
+  const visiveis = achados ?? (filtro === "todos" ? lista : filtro === "hoje" ? lista.filter(praHoje) : lista.filter((l) => l.etapa === filtro));
 
   async function criar(e: React.FormEvent) {
     e.preventDefault();
@@ -273,7 +285,13 @@ export default function Clientes() {
                   "Proposta · 0". Agora cada etapa carrega a bolinha e a cor que ela tem no
                   painel do cliente e nas mensagens: o mesmo desenho no produto inteiro.
                   Etapa sem ninguém fica apagada, pra a vista cair em quem tem gente. */}
-              <div className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&>*]:shrink-0 [&>*]:whitespace-nowrap ${achados ? "opacity-40" : ""}`} aria-label="Etapas">
+              {/* No celular rolam de lado; do tablet pra cima QUEBRAM a linha -- em 1280px a
+                  última ficha ("Sem resposta") era cortada no meio da palavra, sem nada dizendo
+                  que dava pra rolar. Espaço vertical sobra na tela grande; palavra cortada não. */}
+              <div
+                className={`-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0 [&>*]:whitespace-nowrap ${achados ? "opacity-40" : ""}`}
+                aria-label="Etapas"
+              >
                 {[
                   { id: "hoje" as const, rotulo: "Pra hoje", n: nHoje, ponto: "bg-marca-coral", fundo: "bg-marca-pessego/60", texto: "text-marca-indigo" },
                   { id: "todos" as const, rotulo: "Todos", n: lista.length, ponto: "bg-neutral-400", fundo: "bg-neutral-100", texto: "text-neutral-700" },
@@ -307,13 +325,26 @@ export default function Clientes() {
               <p className="text-sm text-neutral-500">Carregando…</p>
             ) : visiveis.length === 0 ? (
               <Cartao>
-                <p className="font-medium">{leads.length === 0 ? "Nenhum cliente ainda." : achados ? "Ninguém com esse nome ou número." : "Ninguém nesta etapa."}</p>
+                {/* "Pra hoje" vazio é BOA notícia, não falta de cliente -- dizer "ninguém nesta
+                    etapa" num dia em dia fazia a lista inteira parecer vazia. */}
+                <p className="font-medium">
+                  {leads.length === 0 ? "Nenhum cliente ainda." : achados ? "Ninguém com esse nome ou número." : filtro === "hoje" ? "Nada pra hoje — você está em dia. 🎉" : "Ninguém nesta etapa."}
+                </p>
                 {leads.length === 0 && <p className="mt-1 text-sm text-neutral-600">Cadastre quem te pediu informação: de um portal, do seu anúncio, da placa, por indicação.</p>}
+                {leads.length > 0 && !achados && filtro === "hoje" && (
+                  <button type="button" onClick={() => setFiltro("todos")} className="mt-1 text-sm text-neutral-600 underline underline-offset-2 hover:text-marca-indigo">
+                    Ver os {leads.length} clientes
+                  </button>
+                )}
               </Cartao>
             ) : (
-              <ul className="grid gap-2">
+              /* grid-cols-1 (minmax(0,1fr)) e não só "grid": a coluna automática tem largura
+                 mínima = conteúdo, e o telefone com a origem numa linha só empurrava a ficha
+                 90px pra fora da tela em 390px -- a etapa saía do lado direito e a página
+                 inteira ganhava rolagem lateral. Medido no navegador, não deduzido. */
+              <ul className="grid grid-cols-1 gap-2">
                 {visiveis.map((l, k) => (
-                  <li key={l.id} className="surgir" style={{ animationDelay: `${Math.min(k, 8) * 35}ms` }}>
+                  <li key={l.id} className="surgir min-w-0" style={{ animationDelay: `${Math.min(k, 8) * 35}ms` }}>
                     <Link
                       href={`/crm/${l.id}`}
                       className="flex min-h-16 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
