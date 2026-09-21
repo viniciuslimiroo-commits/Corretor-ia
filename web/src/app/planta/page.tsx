@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import {
@@ -81,6 +81,15 @@ type Estado = { planta: Planta; rascunho: Ponto[] };
 const ESTADO_INICIAL: Estado = { planta: PLANTA_VAZIA, rascunho: [] };
 const LIMITE_HISTORICO = 80;
 
+// A vista afastando sozinha enquanto se desenha. Faixa da borda em FRAÇÃO da caixa, passo de
+// afastamento por vez e o intervalo mínimo entre dois passos -- `pointermove` dispara dezenas
+// de vezes por segundo, e sem o intervalo um segundo na borda jogaria a planta pra longe.
+// 1,05 a cada 90ms dá ~1,7x por segundo de dedo encostado: dá pra ver acontecendo e dá pra
+// parar no lugar certo.
+const FAIXA_DA_BORDA = 0.12;
+const PASSO_AFASTAR = 1.05;
+const INTERVALO_AFASTAR = 90;
+
 export default function PaginaPlanta() {
   const c = useConta();
   const [ferramenta, setFerramenta] = useState<Ferramenta>("comodo");
@@ -138,6 +147,8 @@ export default function PaginaPlanta() {
   const [erro, setErro] = useState<string | null>(null);
   const [pan, setPan] = useState<{ telaX: number; telaY: number; x0: number; y0: number } | null>(null);
   const [cantoRetangulo, setCantoRetangulo] = useState<Ponto | null>(null);
+  /** Quando foi o último passo de afastamento automático (veja `afastarNaBorda`). */
+  const ultimoAfastar = useRef(0);
   const [estiloIa, setEstiloIa] = useState(ESTILOS[0].valor);
   // A faixa de mercado: a mesma planta mobiliada como compacto e como alto padrão são
   // dois imóveis diferentes, e quem vende sabe qual dos dois é.
@@ -193,6 +204,8 @@ export default function PaginaPlanta() {
    * a partir do terceiro ponto, a linha que segue o dedo pula pra ele quando chega perto,
    * e o cômodo aparece preenchido antes de existir.
    */
+  /** Está desenhando agora? É o que liga o afastamento automático na borda. */
+  const desenhando = (ferramenta === "comodo" && rascunho.length > 0) || cantoRetangulo !== null;
   const alcanceDeFechar = planta.passo * 1.2;
   const podeFechar = ferramenta === "comodo" && rascunho.length >= 3;
   const fechando = podeFechar && !!cursor && distancia(cursor, rascunho[0]) < alcanceDeFechar;
@@ -433,10 +446,39 @@ export default function PaginaPlanta() {
     }
     const p = pontoDeTrabalho(e);
     setCursor(p);
-    // Arrastando um retângulo até a borda, a vista cresce junto. `abrirEspacoPara` só abre
-    // quando o ponto passaria da borda (e nunca re-centraliza), então o desenho não foge
-    // debaixo do dedo -- que era o motivo de a vista não se mexer sozinha.
+    // Desenhando e chegando na borda: a vista afasta sozinha (veja `afastarNaBorda`).
+    if (desenhando) afastarNaBorda(e);
     if (p && cantoRetangulo) abrirEspacoPara([p]);
+  }
+
+  /**
+   * DESENHOU ATÉ A BORDA? A VISTA AFASTA SOZINHA.
+   *
+   * Pedido dele: "quando estou desenhando a linha, o lugar acaba, e tenho que ir lá em cima
+   * enquadrar". Tinha razão, e a primeira tentativa (crescer a janela a cada canto, via
+   * `abrirEspacoPara`) não resolveu -- ela cresce 0,8 m de folga em volta do PONTO, e o
+   * ponto vem do dedo, que nunca sai da caixa. Ou seja: nunca aparecia espaço À FRENTE do
+   * desenho, que é o que estava faltando.
+   *
+   * Aqui é o contrário: enquanto se desenha, se o dedo entra na faixa da borda, a janela
+   * cresce ANCORADA no dedo -- o que está sob ele continua sob ele, o desenho não foge, e
+   * surge espaço nos quatro lados. Para quando o dedo sai da faixa, e o `zoomEm` respeita o
+   * limite de afastamento.
+   *
+   * O relógio existe porque `pointermove` dispara dezenas de vezes por segundo: sem ele, um
+   * segundo encostado na borda afastaria a planta pra longe.
+   */
+  function afastarNaBorda(e: ReactPointerEvent) {
+    const r = nav.caixa.current?.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    const fx = (e.clientX - r.left) / r.width;
+    const fy = (e.clientY - r.top) / r.height;
+    const naBorda = fx < FAIXA_DA_BORDA || fx > 1 - FAIXA_DA_BORDA || fy < FAIXA_DA_BORDA || fy > 1 - FAIXA_DA_BORDA;
+    if (!naBorda) return;
+    const agora = performance.now();
+    if (agora - ultimoAfastar.current < INTERVALO_AFASTAR) return;
+    ultimoAfastar.current = agora;
+    nav.zoomEm(PASSO_AFASTAR, Math.min(1, Math.max(0, fx)), Math.min(1, Math.max(0, fy)));
   }
 
   /**

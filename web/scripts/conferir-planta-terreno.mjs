@@ -157,6 +157,48 @@ if (cx) {
   await esperar(500);
   const depoisDireito = await c.avaliar(`document.querySelectorAll('[data-caixa] > span.rounded-full').length`);
   conferir(depoisDireito < antesDireito, "planta: botão direito tira o último canto", `${antesDireito} -> ${depoisDireito}`);
+
+  // ---- desenhar até a borda afasta a vista sozinho ----
+  //
+  // Como se mede sem poder ler o estado: os cantos do rascunho são marcados em % DA CAIXA.
+  // Se a janela do mundo cresce, o mesmo canto do mundo cai numa % diferente -- ele "anda"
+  // em direção ao meio. Então o que se observa é o deslocamento do primeiro canto.
+  //
+  // E o que se mede é a DISTÂNCIA entre dois cantos, não a posição de um: no afastamento
+  // ancorado no dedo, tudo anda em direção a ele -- um canto sozinho pode ir pra qualquer
+  // lado, e medir isso é medir a âncora, não a escala. A distância entre dois pontos do
+  // mundo só encolhe quando a janela cresce, em qualquer direção.
+  await apontar(Math.round(cx.x + cx.w * 0.55), Math.round(cx.y + cx.h * 0.6));
+  await esperar(350);
+  const posDoPrimeiro = async () =>
+    c.avaliar(`(() => {
+      const s = [...document.querySelectorAll('[data-caixa] > span.rounded-full')];
+      if (s.length < 2) return null;
+      const a = s[0].getBoundingClientRect(), b = s[s.length - 1].getBoundingClientRect();
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    })()`);
+  const antesDaBorda = await posDoPrimeiro();
+  // Encosta o dedo na faixa da borda direita e fica ali um pouco, movendo de leve.
+  for (let i = 0; i < 14; i++) {
+    await c.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(cx.x + cx.w * 0.97), y: Math.round(cx.y + cx.h * (0.45 + (i % 2) * 0.01)), button: "none", buttons: 0 });
+    await esperar(110);
+  }
+  const depoisDaBorda = await posDoPrimeiro();
+  conferir(
+    antesDaBorda !== null && depoisDaBorda !== null && depoisDaBorda < antesDaBorda - 1,
+    "planta: desenhando até a borda, a vista afasta sozinha (sem ir no “enquadrar”)",
+    `entre dois cantos: ${antesDaBorda?.toFixed(0)}px -> ${depoisDaBorda?.toFixed(0)}px`
+  );
+
+  // E no MEIO da caixa não afasta: afastar sozinho o tempo todo seria pior que o problema.
+  const antesDoMeio = await posDoPrimeiro();
+  for (let i = 0; i < 14; i++) {
+    await c.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(cx.x + cx.w * (0.5 + (i % 2) * 0.01)), y: Math.round(cx.y + cx.h * 0.5), button: "none", buttons: 0 });
+    await esperar(110);
+  }
+  const depoisDoMeio = await posDoPrimeiro();
+  conferir(Math.abs((depoisDoMeio ?? 0) - (antesDoMeio ?? 0)) < 1, "e no meio da caixa ela fica parada", `${antesDoMeio?.toFixed(0)}px -> ${depoisDoMeio?.toFixed(0)}px`);
+  await foto("planta-4-afastou-na-borda");
 }
 
 // ---------------- TERRENO ----------------
