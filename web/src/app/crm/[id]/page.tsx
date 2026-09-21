@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
 import { Aviso, Botao, BotaoConfirma, Cartao, Icone } from "@/components/ui";
-import { AVISO_OBSERVACOES, LIMITES_CRM, telefoneLegivel, type EtapaId } from "@/lib/crm";
+import { AVISO_OBSERVACOES, LIMITES_CRM, ORIGENS, ORIGEM_POR_ID, telefoneLegivel, type EtapaId, type OrigemId } from "@/lib/crm";
 import CabecalhoCliente from "@/components/crm/cabecalho-cliente";
 import CaminhoEtapas from "@/components/crm/caminho-etapas";
 import PrepararEnvio from "@/components/crm/preparar-envio";
@@ -59,7 +59,7 @@ export default function Cliente() {
   const [corretor, setCorretor] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
-  const [dados, setDados] = useState({ nome: "", telefone: "", email: "", proximo_contato_em: "", observacoes: "", property_id: "" });
+  const [dados, setDados] = useState({ nome: "", telefone: "", email: "", origem: "", proximo_contato_em: "", observacoes: "", property_id: "" });
   const [salvo, setSalvo] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
@@ -80,7 +80,7 @@ export default function Cliente() {
         setEnvio(d.envio);
         setHistorico(d.historico);
         setCorretor(d.corretor ?? null);
-        setDados({ nome: d.lead.nome, telefone: telefoneLegivel(d.lead.telefone), email: d.lead.email ?? "", proximo_contato_em: d.lead.proximo_contato_em ?? "", observacoes: d.lead.observacoes ?? "", property_id: d.lead.property_id ?? "" });
+        setDados({ nome: d.lead.nome, telefone: telefoneLegivel(d.lead.telefone), email: d.lead.email ?? "", origem: d.lead.origem, proximo_contato_em: d.lead.proximo_contato_em ?? "", observacoes: d.lead.observacoes ?? "", property_id: d.lead.property_id ?? "" });
       })
       .catch((e) => setErro(e.message));
   }, [user, token, id, versao]);
@@ -149,7 +149,18 @@ export default function Cliente() {
         )
       ) : (
         <div className="mt-2 grid gap-5">
-          <CabecalhoCliente lead={lead} imovel={envio.imovel} corretor={corretor} agora={agora} />
+          <CabecalhoCliente
+            lead={lead}
+            imovel={envio.imovel}
+            corretor={corretor}
+            agora={agora}
+            aoEditar={() => {
+              setEditando(true);
+              // Abrir o formulário não basta: ele fica no fim da coluna da direita, fora da
+              // tela. Rola até lá no quadro seguinte, quando o formulário já existe no DOM.
+              requestAnimationFrame(() => document.getElementById("dados-do-cliente")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+            }}
+          />
 
           {passo && (
             <div className="surgir flex items-start gap-3 rounded-2xl border-l-4 border-marca-coral bg-white px-4 py-3 shadow-sm" style={{ animationDelay: "90ms" }}>
@@ -215,7 +226,7 @@ export default function Cliente() {
             <div className="grid content-start gap-5">
               <LinhaHistorico historico={historico} agora={agora} />
 
-              <Cartao className="surgir" style={{ animationDelay: "280ms" }}>
+              <Cartao id="dados-do-cliente" className="surgir" style={{ animationDelay: "280ms" }}>
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold">Dados do cliente</p>
                   {!editando && (
@@ -226,19 +237,24 @@ export default function Cliente() {
                   )}
                 </div>
                 {!editando ? (
+                  // Tudo que dá pra editar aparece AQUI, e cada linha abre o formulário.
+                  // Antes esta lista mostrava três campos (e-mail, retorno, observações) e
+                  // escondia justamente os dois que ele quis arrumar: o celular e como
+                  // conheceu a pessoa. Quem não vê o campo não procura o botão.
                   <dl className="mt-2 grid gap-2 text-sm">
-                    <div>
-                      <dt className="text-xs text-neutral-500">E-mail</dt>
-                      <dd className="truncate">{lead.email ?? "—"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-neutral-500">Próximo retorno</dt>
-                      <dd>{lead.proximo_contato_em ? diaCurto(lead.proximo_contato_em) : "sem data"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-neutral-500">Observações</dt>
-                      <dd className="line-clamp-3 whitespace-pre-line text-neutral-700">{lead.observacoes ?? "—"}</dd>
-                    </div>
+                    {[
+                      { rotulo: "Celular", valor: telefoneLegivel(lead.telefone) },
+                      { rotulo: "Como conheceu", valor: ORIGEM_POR_ID[lead.origem]?.rotulo ?? "—" },
+                      { rotulo: "E-mail", valor: lead.email ?? "—" },
+                      { rotulo: "Imóvel de interesse", valor: envio.imovel ?? "—" },
+                      { rotulo: "Próximo retorno", valor: lead.proximo_contato_em ? diaCurto(lead.proximo_contato_em) : "sem data" },
+                      { rotulo: "Observações", valor: lead.observacoes ?? "—", solto: true },
+                    ].map((c) => (
+                      <button key={c.rotulo} type="button" onClick={() => setEditando(true)} className="-mx-1 rounded-lg px-1 py-0.5 text-left hover:bg-neutral-50" title="Editar">
+                        <span className="block text-xs text-neutral-500">{c.rotulo}</span>
+                        <span className={"block text-neutral-800 " + (c.solto ? "line-clamp-3 whitespace-pre-line" : "truncate")}>{c.valor}</span>
+                      </button>
+                    ))}
                   </dl>
                 ) : (
                   <form
@@ -248,6 +264,7 @@ export default function Cliente() {
                       const d = await chamar("PATCH", `/api/crm/leads/${id}`, {
                         nome: dados.nome,
                         email: dados.email || null,
+                        origem: dados.origem,
                         proximo_contato_em: dados.proximo_contato_em || null,
                         observacoes: dados.observacoes || null,
                         property_id: dados.property_id || null,
@@ -270,6 +287,17 @@ export default function Cliente() {
                     <label className="text-sm">
                       <span className={rotulo}>E-mail</span>
                       <input type="email" value={dados.email} onChange={(e) => mudar({ email: e.target.value })} className={campo} />
+                    </label>
+                    <label className="text-sm">
+                      <span className={rotulo}>Como conheceu esta pessoa</span>
+                      <select value={dados.origem} onChange={(e) => mudar({ origem: e.target.value })} className={campo}>
+                        {ORIGENS.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.rotulo}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="mt-1 block text-xs text-neutral-500">É o que a primeira mensagem diz: “estou falando com você {ORIGEM_POR_ID[dados.origem as OrigemId]?.frase ?? ""}”.</span>
                     </label>
                     <label className="text-sm">
                       <span className={rotulo}>Próximo retorno</span>

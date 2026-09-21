@@ -172,9 +172,9 @@ export function Miniatura({ arquivo, className = "" }: { arquivo: File; classNam
   return <img ref={img} alt="" className={className} />;
 }
 
-export function Cartao({ children, className = "", style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
+export function Cartao({ children, className = "", style, id }: { children: ReactNode; className?: string; style?: CSSProperties; id?: string }) {
   return (
-    <div className={`rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm ${className}`} style={style}>
+    <div id={id} className={`rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm ${className}`} style={style}>
       {children}
     </div>
   );

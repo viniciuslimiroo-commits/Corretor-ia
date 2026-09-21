@@ -325,7 +325,7 @@ export default function PrepararEnvio({
           )}
         </Passo>
 
-        <Passo n={3} titulo="Mensagem" dica={primeiroContato ? "Seu nome, o CRECI e o “responda SAIR” são fixos na primeira mensagem." : undefined} atraso={300} desligado={!podeMandar}>
+        <Passo n={3} titulo="Mensagem" dica={primeiroContato ? "Seu nome, o CRECI e a frase que dá à pessoa a opção de parar são fixos na primeira mensagem." : undefined} atraso={300} desligado={!podeMandar}>
           <div className="flex flex-wrap items-center gap-2">
             {TONS.map((t) => (
               <Chip key={t.id} ativo={tom === t.id} onClick={() => setTom(t.id)} disabled={!podeMandar || preparando}>

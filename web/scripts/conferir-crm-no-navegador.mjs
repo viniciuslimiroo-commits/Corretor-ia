@@ -192,7 +192,7 @@ try {
     await shot("4-sem-creci");
   } else {
     const msg = await c.avaliar("document.querySelector('textarea[aria-label=\"Texto da mensagem\"]').value");
-    conferir(/^Olá, Teste!/.test(msg) && /CRECI/.test(msg) && msg.includes("responder SAIR") && !/https?:/.test(msg), "mensagem: se identifica com CRECI, dá a saída e não tem link", msg.slice(0, 90) + "…");
+    conferir(/^Olá, Teste!/.test(msg) && /CRECI/.test(msg) && msg.includes("é só me dizer que eu não mando mais") && !/https?:/.test(msg), "mensagem: se identifica com CRECI, dá a saída e não tem link", msg.slice(0, 90) + "…");
     conferir((await texto()).includes("Primeiros contatos hoje"), "mensagem: mostra quantos primeiros contatos já foram hoje (trava 9)");
     await shot("4-mensagem");
     // Troca o window.open por um que só guarda o link: nada sai do navegador.

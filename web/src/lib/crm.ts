@@ -10,7 +10,7 @@
 //   3. declaração antes do 1º envio ("essa pessoa me passou o contato e aceitou receber");
 //   4. "pediu para parar" e "número errado" travam o envio pra sempre;
 //   7. mensagem pronta que se identifica (nome, corretor de imóveis, CRECI, de onde veio o
-//      contato, "responda SAIR") e sem link no primeiro contato;
+//      contato, e a saída em português de gente) e sem link no primeiro contato;
 //   8. sem CRECI no perfil, não envia;
 //   9. limite de primeiros contatos por dia, e no máximo 2 mensagens sem resposta;
 //  11. aviso pra contato frio com DDD de SP e do PR, e fora do horário no PR;
@@ -142,8 +142,23 @@ export function avisosDoEstado(ddd: number, frio: boolean, agora: Date): string[
 const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0] ?? "";
 
 /**
+ * A saída: a frase que diz à pessoa que ela pode mandar parar.
+ *
+ * Era "Se não quiser receber mensagens minhas, é só responder SAIR." Ele leu e disse que
+ * ficava estranho -- e está certo: palavra-chave em maiúscula é a marca registrada de
+ * disparo em massa, justamente o contrário do que esta mensagem é (um corretor falando com
+ * quem lhe passou o número). O texto soava a robô e fazia a mensagem inteira parecer spam.
+ *
+ * A exigência do estudo jurídico (docs/planos/crm-whatsapp-regras.md, trava 7) é dar à
+ * pessoa uma saída CLARA, não uma palavra-chave -- não existe robô lendo a resposta: quem
+ * marca "pediu para parar" é o corretor, na mão. Então a frase virou gente, e continua
+ * saindo em toda primeira mensagem, escrita pelo Encena e nunca pela IA.
+ */
+export const FRASE_DE_SAIDA = "Se preferir não receber minhas mensagens, é só me dizer que eu não mando mais.";
+
+/**
  * A primeira mensagem. Se identifica (nome, corretor de imóveis, CRECI), diz de onde veio
- * o contato e dá a saída ("responda SAIR"). Sem link: o link vai depois da resposta. Nunca
+ * o contato e dá a saída (FRASE_DE_SAIDA). Sem link: o link vai depois da resposta. Nunca
  * pede documento nem dado bancário.
  */
 export function mensagemPronta(o: { corretor: string; creci: string; nomeLead: string; origem: OrigemId; imovel?: string | null }): string {
@@ -152,7 +167,7 @@ export function mensagemPronta(o: { corretor: string; creci: string; nomeLead: s
   return (
     `Olá, ${primeiroNome(o.nomeLead)}! Aqui é ${o.corretor.trim()}, corretor(a) de imóveis, CRECI ${o.creci.trim()}. ` +
     `Estou falando com você ${origem}${sobre}. Posso te mandar as informações? ` +
-    `Se não quiser receber mensagens minhas, é só responder SAIR.`
+    FRASE_DE_SAIDA
   );
 }
 
@@ -174,7 +189,7 @@ export function pedeDadoSensivel(texto: string): boolean {
 // ---------- mensagem preparada (IA + materiais) ----------
 //
 // A IA escreve; o que a regra EXIGE, o Encena escreve. No primeiro contato a abertura (nome,
-// profissão, CRECI) e a saída (SAIR) são fixas e a IA só escreve o miolo -- assim nenhuma
+// profissão, CRECI) e a saída são fixas e a IA só escreve o miolo -- assim nenhuma
 // resposta criativa tira a identificação. Link a IA nunca escreve: o que ela puser some, e
 // os links dos materiais entram depois, pelo código, um por linha (só fora do 1º contato).
 
@@ -209,7 +224,7 @@ export const TOM_POR_ID = Object.fromEntries(TONS.map((t) => [t.id, t])) as Reco
 export function montarMensagem(o: { primeiroContato: boolean; corretor: string; creci: string; nomeLead: string; miolo: string; links: LinkDeMaterial[] }): string {
   const miolo = semLinks(o.miolo).replace(/\s*\n\s*/g, o.primeiroContato ? " " : "\n");
   if (o.primeiroContato) {
-    return `Olá, ${primeiroNome(o.nomeLead)}! Aqui é ${o.corretor.trim()}, corretor(a) de imóveis, CRECI ${o.creci.trim()}. ${miolo} Se não quiser receber mensagens minhas, é só responder SAIR.`
+    return `Olá, ${primeiroNome(o.nomeLead)}! Aqui é ${o.corretor.trim()}, corretor(a) de imóveis, CRECI ${o.creci.trim()}. ${miolo} ${FRASE_DE_SAIDA}`
       .replace(/\s{2,}/g, " ")
       .trim();
   }

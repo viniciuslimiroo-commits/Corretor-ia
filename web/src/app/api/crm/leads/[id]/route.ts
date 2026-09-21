@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
-import { ETAPAS, LIMITES_CRM, normalizarTelefone, type EtapaId } from "@/lib/crm";
+import { ETAPAS, LIMITES_CRM, ORIGENS, normalizarTelefone, type EtapaId, type OrigemId } from "@/lib/crm";
 import { CAMPOS_DO_LEAD, bloquearNumero, contaCrm, crmLiberado, doLeadsDaConta, nomesDosCorretores, numeroBloqueado, registrar, situacaoDeEnvio } from "@/lib/crm-servidor";
 
 // Um cliente: ver (com o histórico e o que dá pra fazer agora), editar, excluir de
@@ -62,6 +62,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (typeof b.etapa === "string") {
     if (!ETAPAS.some((e) => e.id === b.etapa)) return NextResponse.json({ error: "Etapa desconhecida." }, { status: 400 });
     mudanca.etapa = b.etapa as EtapaId;
+  }
+  // A origem é declarada no cadastro e era imutável depois -- mas ela é escolhida na pressa,
+  // e é ela que escreve "estou falando com você PELO ANÚNCIO" na primeira mensagem. Errar e
+  // não poder corrigir deixava o corretor mandando uma frase falsa. Continua vindo da lista
+  // fechada (nada de digitar "lista comprada"), e a troca entra no histórico como as outras.
+  if (typeof b.origem === "string") {
+    if (!ORIGENS.some((o) => o.id === b.origem)) return NextResponse.json({ error: "Origem desconhecida." }, { status: 400 });
+    mudanca.origem = b.origem as OrigemId;
   }
   if (typeof b.proximo_contato_em === "string" || b.proximo_contato_em === null) {
     mudanca.proximo_contato_em = typeof b.proximo_contato_em === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.proximo_contato_em) ? b.proximo_contato_em : null;

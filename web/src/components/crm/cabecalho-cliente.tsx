@@ -8,7 +8,7 @@ import { COR_ETAPA, diaCurto, haQuanto, hojeEmBrasilia, iniciais, type LeadPaine
 // primeiro. Fundo azul da marca com um brilho coral que respira -- é o que tira a tela
 // da cara de "formulário de cadastro" sem pesar (é CSS, não imagem).
 
-export default function CabecalhoCliente({ lead, imovel, corretor, agora }: { lead: LeadPainel; imovel: string | null; corretor: string | null; agora: number }) {
+export default function CabecalhoCliente({ lead, imovel, corretor, agora, aoEditar }: { lead: LeadPainel; imovel: string | null; corretor: string | null; agora: number; aoEditar?: () => void }) {
   const etapa = ETAPA_POR_ID[lead.etapa];
   const cor = COR_ETAPA[lead.etapa];
   const hoje = hojeEmBrasilia(agora);
@@ -38,7 +38,22 @@ export default function CabecalhoCliente({ lead, imovel, corretor, agora }: { le
             </span>
             {lead.frio && <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/80">contato frio</span>}
           </div>
-          <h1 className="mt-1.5 text-3xl leading-tight font-semibold tracking-tight break-words sm:text-4xl">{lead.nome}</h1>
+          <div className="mt-1.5 flex items-start justify-between gap-3">
+            <h1 className="text-3xl leading-tight font-semibold tracking-tight break-words sm:text-4xl">{lead.nome}</h1>
+            {/* Editar MORA AQUI, junto do nome e do número. O botão existia, mas num cartão
+                lá embaixo, depois do histórico: ele cadastrou um cliente e não achou onde
+                trocar o telefone. Perto do dado é onde se procura. */}
+            {aoEditar && (
+              <button
+                type="button"
+                onClick={aoEditar}
+                className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-white/15 px-3 text-sm font-medium text-white backdrop-blur transition hover:bg-white/25"
+              >
+                <Icone nome="editar_prompt" className="h-4 w-4" />
+                Editar
+              </button>
+            )}
+          </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/75">
             <span className="tabular-nums">{telefoneLegivel(lead.telefone)}</span>
             <span aria-hidden>·</span>
