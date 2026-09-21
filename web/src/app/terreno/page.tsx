@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import AppShell from "@/components/app-shell";
@@ -34,6 +34,8 @@ const ESPESSURAS = [
   { id: "extra", rotulo: "Extra", fator: 5 },
 ];
 const PROPORCAO_TRACO = 0.003125; // = 5/1600, a régua do servidor
+/** Quantos passos de voltar/seguir a marcação guarda. O mesmo número da planta. */
+const LIMITE_HISTORICO = 80;
 
 // O contorno do lote, desenhado três vezes (halo escuro, cor, tracejado branco). Fica
 // fora do componente pra não redeclarar a cada tecla digitada nas medidas.
@@ -61,8 +63,46 @@ export default function Terreno() {
   const c = useConta();
   const [foto, setFoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [pontos, setPontos] = useState<Ponto[]>([]);
-  const [medidas, setMedidas] = useState<string[]>([]);
+  /**
+   * Voltar e seguir na marcação do lote (pedido dele: "colocar opção de voltar e seguir
+   * aparente"). Antes existia só um "desfazer" de texto pequeno, que tirava o último canto
+   * e não tinha volta: errou o arrasto de um canto e não havia como desfazer.
+   *
+   * Guarda a fotografia dos cantos e das medidas -- é JSON minúsculo. Pilha e posição no
+   * MESMO estado, senão saem de sincronia numa atualização em lote. A `chave` funde passos
+   * seguidos da mesma origem: arrastar um canto é UM passo, não um por pixel, e digitar uma
+   * medida é um passo, não um por letra.
+   */
+  type Marcacao = { pontos: Ponto[]; medidas: string[] };
+  const [hist, setHist] = useState<{ pilha: Marcacao[]; i: number; chave: string | null }>({ pilha: [{ pontos: [], medidas: [] }], i: 0, chave: null });
+  const { pontos, medidas } = hist.pilha[hist.i];
+  const podeVoltar = hist.i > 0;
+  const podeSeguir = hist.i < hist.pilha.length - 1;
+
+  function registrar(muda: (m: Marcacao) => Marcacao, chave: string | null = null) {
+    setHist((h) => {
+      const base = h.pilha.slice(0, h.i + 1);
+      const atual = base[base.length - 1];
+      const proximo = muda(atual);
+      if (proximo.pontos === atual.pontos && proximo.medidas === atual.medidas) return h;
+      if (chave && chave === h.chave && base.length > 1) {
+        const nova = [...base.slice(0, -1), proximo];
+        return { pilha: nova, i: nova.length - 1, chave };
+      }
+      const nova = [...base, proximo];
+      const cortada = nova.length > LIMITE_HISTORICO ? nova.slice(nova.length - LIMITE_HISTORICO) : nova;
+      return { pilha: cortada, i: cortada.length - 1, chave };
+    });
+  }
+
+  // Mesma assinatura dos setState que substituíram: o resto da tela não mudou.
+  const setPontos = (v: Ponto[] | ((l: Ponto[]) => Ponto[]), chave?: string) =>
+    registrar((m) => ({ ...m, pontos: typeof v === "function" ? v(m.pontos) : v }), chave ?? null);
+  const setMedidas = (v: string[] | ((l: string[]) => string[]), chave?: string) =>
+    registrar((m) => ({ ...m, medidas: typeof v === "function" ? v(m.medidas) : v }), chave ?? null);
+
+  const voltar = () => setHist((h) => (h.i > 0 ? { ...h, i: h.i - 1, chave: null } : h));
+  const seguir = () => setHist((h) => (h.i < h.pilha.length - 1 ? { ...h, i: h.i + 1, chave: null } : h));
   const [area, setArea] = useState("");
   const [titulo, setTitulo] = useState("");
   const [frente, setFrente] = useState<number>(-1);
@@ -121,8 +161,7 @@ export default function Terreno() {
     if (preview) URL.revokeObjectURL(preview);
     setFoto(f);
     setPreview(URL.createObjectURL(f));
-    setPontos([]);
-    setMedidas([]);
+    limparMarcacao();
     setResultado(null);
     setErro(null);
   }
@@ -137,22 +176,50 @@ export default function Terreno() {
     if (arrastando !== null || resultado) return;
     const p = posicao(e);
     if (!p || pontos.length >= 12) return;
-    setPontos((lista) => [...lista, p]);
-    setMedidas((lista) => [...lista, ""]);
+    // canto e medida NUMA registrada só: senão voltar precisaria de dois cliques
+    registrar((m) => ({ pontos: [...m.pontos, p], medidas: [...m.medidas, ""] }));
   }
 
   function mover(e: ReactPointerEvent) {
     if (arrastando === null) return;
     const p = posicao(e);
     if (!p) return;
-    setPontos((lista) => lista.map((q, i) => (i === arrastando ? p : q)));
+    // um arrasto inteiro = UM passo no histórico (a chave funde os pontermove)
+    setPontos((lista) => lista.map((q, i) => (i === arrastando ? p : q)), `arrastar:${arrastando}`);
   }
 
-  function desfazer() {
-    setPontos((lista) => lista.slice(0, -1));
-    setMedidas((lista) => lista.slice(0, -1));
-    setResultado(null);
+  /** Zera a marcação inteira num passo só (trocar de foto, recomeçar). */
+  function limparMarcacao() {
+    registrar(() => ({ pontos: [], medidas: [] }));
   }
+
+  /** Botão direito na foto desfaz, sem tirar a mão de cima do desenho. */
+  function aoBotaoDireito(e: ReactMouseEvent) {
+    e.preventDefault();
+    voltar();
+  }
+
+  // Ctrl+Z / Ctrl+Shift+Z, os mesmos da planta. Fora de campo de texto: quem está digitando
+  // a medida espera que o Ctrl+Z desfaça a DIGITAÇÃO, não o canto.
+  useEffect(() => {
+    function tecla(e: KeyboardEvent) {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return;
+      const cmd = e.ctrlKey || e.metaKey;
+      if (!cmd) return;
+      const k = e.key.toLowerCase();
+      if ((k === "z" && e.shiftKey) || k === "y") {
+        e.preventDefault();
+        return seguir();
+      }
+      if (k === "z") {
+        e.preventDefault();
+        voltar();
+      }
+    }
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  });
 
   /** Manda a foto pra IA. Vira job normal: mesma fila, mesmo estorno automático se falhar. */
   async function gerarIa() {
@@ -352,7 +419,7 @@ export default function Terreno() {
                     Baixar
                   </a>
                   <Botao variante="discreta" onClick={() => setResultado(null)}>Ajustar</Botao>
-                  <Botao variante="secundaria" onClick={() => { setFoto(null); setPreview(null); setPontos([]); setMedidas([]); setResultado(null); }}>Outra foto</Botao>
+                  <Botao variante="secundaria" onClick={() => { setFoto(null); setPreview(null); limparMarcacao(); setResultado(null); }}>Outra foto</Botao>
                 </div>
                 <div className="mt-3">
                   <Compartilhar token={c.token} jobId={resultado.jobId} texto="Olha o terreno:" />
@@ -362,18 +429,47 @@ export default function Terreno() {
               <>
                 <div className="mb-2 flex items-center justify-between">
                   <Rotulo>{pontos.length < 3 ? `Toque nos cantos (${pontos.length}/3 no mínimo)` : `${pontos.length} cantos · arraste pra ajustar`}</Rotulo>
-                  <div className="flex gap-3 text-xs">
-                    {pontos.length > 0 && <button onClick={desfazer} className="text-neutral-500 underline">desfazer</button>}
-                    <button onClick={() => { setFoto(null); setPreview(null); setPontos([]); setMedidas([]); }} className="text-neutral-500 underline">trocar foto</button>
+                  <div className="flex items-center gap-3 text-xs">
+                    {/* Voltar e seguir à vista, como na planta: errar um canto não pode
+                        custar recomeçar, e arrasto errado também se desfaz. */}
+                    <span className="flex items-center gap-0.5 rounded-lg bg-neutral-100 p-0.5">
+                      <button
+                        onClick={voltar}
+                        disabled={!podeVoltar}
+                        title="Voltar (Ctrl+Z)"
+                        className={"flex h-8 items-center gap-1 rounded-md px-2.5 text-sm font-medium transition " + (podeVoltar ? "bg-white text-marca-indigo shadow-sm hover:bg-marca-indigo hover:text-white" : "text-neutral-300")}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 14L4 9l5-5" />
+                          <path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+                        </svg>
+                        Voltar
+                      </button>
+                      <button
+                        onClick={seguir}
+                        disabled={!podeSeguir}
+                        title="Seguir (Ctrl+Shift+Z)"
+                        className={"flex h-8 items-center gap-1 rounded-md px-2.5 text-sm font-medium transition " + (podeSeguir ? "bg-white text-marca-indigo shadow-sm hover:bg-marca-indigo hover:text-white" : "text-neutral-300")}
+                      >
+                        Seguir
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M15 14l5-5-5-5" />
+                          <path d="M20 9H9a5 5 0 0 0 0 10h3" />
+                        </svg>
+                      </button>
+                    </span>
+                    <button onClick={() => { setFoto(null); setPreview(null); limparMarcacao(); }} className="text-neutral-500 underline">trocar foto</button>
                   </div>
                 </div>
                 <div
                   ref={caixa}
+                  data-marcacao=""
                   className="relative select-none overflow-hidden rounded-xl bg-neutral-100"
                   style={{ touchAction: "none", cursor: "crosshair" }}
                   onPointerDown={clicar}
                   onPointerMove={mover}
                   onPointerUp={() => setArrastando(null)}
+                  onContextMenu={aoBotaoDireito}
                   onPointerLeave={() => setArrastando(null)}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -443,7 +539,7 @@ export default function Terreno() {
                   return (
                     <li key={i} className="flex items-center gap-2 text-sm">
                       <span className="w-20 shrink-0 text-neutral-500">Lado {i + 1}→{((i + 1) % pontos.length) + 1}</span>
-                      <input value={medidas[i] ?? ""} onChange={(e) => setMedidas((lista) => lista.map((m, k) => (k === i ? e.target.value : m)))} inputMode="decimal" placeholder="metros" maxLength={16} className={campo} />
+                      <input value={medidas[i] ?? ""} onChange={(e) => setMedidas((lista) => lista.map((m, k) => (k === i ? e.target.value : m)), `medida:${i}`)} inputMode="decimal" placeholder="metros" maxLength={16} className={campo} />
                       <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="Marcar como frente do lote">
                         <input type="radio" name="frente" checked={frente === i} onChange={() => setFrente(i)} className="accent-marca-coral" /> frente
                       </label>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useConta } from "@/lib/use-conta";
 import {
@@ -179,6 +179,19 @@ export default function PaginaPlanta() {
   const svgLargura = Math.round(vista.largura * escalaTela);
   const svgAltura = Math.round(vista.altura * escalaTela);
 
+  /**
+   * O cômodo fecha tocando de novo no primeiro canto -- e isso era invisível.
+   *
+   * Ele desenhou um retângulo, achou que estava pronto e só depois viu que os cantos não
+   * tinham se ligado. O gesto existia e funcionava; o que faltava era a tela DIZER que
+   * estava na hora de fechar. Daqui saem os três avisos: o primeiro canto vira alvo grande
+   * a partir do terceiro ponto, a linha que segue o dedo pula pra ele quando chega perto,
+   * e o cômodo aparece preenchido antes de existir.
+   */
+  const alcanceDeFechar = planta.passo * 1.2;
+  const podeFechar = ferramenta === "comodo" && rascunho.length >= 3;
+  const fechando = podeFechar && !!cursor && distancia(cursor, rascunho[0]) < alcanceDeFechar;
+
   function posicao(e: ReactPointerEvent): Ponto | null {
     const r = nav.caixa.current?.getBoundingClientRect();
     if (!r) return null;
@@ -196,12 +209,18 @@ export default function PaginaPlanta() {
   }
 
   function tocar(e: ReactPointerEvent) {
+    // A borracha vem ANTES do ponto de trabalho: ela não desenha, ela escolhe o que já
+    // está na tela, e por isso usa o ponto cru (veja `apagarNoPonto`).
+    if (ferramenta === "apagar") return apagarNoPonto(e);
     const p = pontoDeTrabalho(e);
     if (!p) return;
     if (ferramenta === "comodo") {
       // tocar de novo no primeiro canto fecha o cômodo
       if (rascunho.length >= 3 && distancia(p, rascunho[0]) < planta.passo * 1.2) return fecharComodo();
       setRascunho((l) => [...l, p]);
+      // o desenho cresce junto: antes só o cômodo FECHADO abria espaço, e quem desenhava
+      // um cômodo grande esbarrava na borda e tinha que parar pra afastar a vista
+      abrirEspacoPara([p]);
       return;
     }
     if (ferramenta === "porta" || ferramenta === "janela") {
@@ -230,18 +249,44 @@ export default function PaginaPlanta() {
       setResultado(null);
       return;
     }
-    if (ferramenta === "apagar") {
-      const perto = planta.aberturas.find((a) => distancia(a.p, p) < 0.6);
-      if (perto) {
-        setPlanta((pl) => ({ ...pl, aberturas: pl.aberturas.filter((a) => a.id !== perto.id) }));
-        setResultado(null);
-        return;
-      }
-      const dentro = [...planta.comodos].reverse().find((cm) => dentroDoPoligono(p, cm.pontos));
-      if (dentro) {
-        setPlanta((pl) => ({ ...pl, comodos: pl.comodos.filter((cm) => cm.id !== dentro.id) }));
-        setResultado(null);
-      }
+  }
+
+  /**
+   * A borracha: apaga o que está DEBAIXO do dedo.
+   *
+   * Ela usava `pontoDeTrabalho`, que é o ponto de DESENHO -- e esse ponto gruda no canto ou
+   * na parede mais próxima (até 0,85 do passo). Tocando perto de uma parede pra apagar o
+   * cômodo, o ponto era puxado pra cima da parede e `dentroDoPoligono` respondia "fora":
+   * a borracha não apagava nada e parecia quebrada. Escolher o que apagar não é desenhar,
+   * então aqui o ponto é o cru.
+   *
+   * E apaga móvel também. Antes só porta, janela e cômodo: tocar num móvel com a borracha
+   * na mão não fazia nada, e a única forma de tirá-lo era pela ferramenta Móveis.
+   *
+   * Ordem: o que está por cima primeiro (móvel), depois abertura, depois cômodo -- e o
+   * cômodo também pela parede, pra quem mira na linha em vez de mirar no meio.
+   */
+  function apagarNoPonto(e: ReactPointerEvent) {
+    const p = posicao(e);
+    if (!p) return;
+    const movel = movelEm(p);
+    if (movel) return apagarMovel(movel.id);
+    const abertura = planta.aberturas.find((a) => distancia(a.p, p) < 0.6);
+    if (abertura) {
+      setPlanta((pl) => ({ ...pl, aberturas: pl.aberturas.filter((a) => a.id !== abertura.id) }));
+      setResultado(null);
+      return;
+    }
+    const naParede = (cm: Comodo) =>
+      cm.pontos.some((a, i) => {
+        const q = projetarNaParede(p, a, cm.pontos[(i + 1) % cm.pontos.length]);
+        return !!q && distancia(p, q) < 0.35;
+      });
+    const alvo = [...planta.comodos].reverse().find((cm) => dentroDoPoligono(p, cm.pontos) || naParede(cm));
+    if (alvo) {
+      setPlanta((pl) => ({ ...pl, comodos: pl.comodos.filter((cm) => cm.id !== alvo.id) }));
+      if (selecionado === alvo.id) setSelecionado(null);
+      setResultado(null);
     }
   }
 
@@ -381,7 +426,27 @@ export default function PaginaPlanta() {
       });
       return;
     }
-    setCursor(pontoDeTrabalho(e));
+    const p = pontoDeTrabalho(e);
+    setCursor(p);
+    // Arrastando um retângulo até a borda, a vista cresce junto. `abrirEspacoPara` só abre
+    // quando o ponto passaria da borda (e nunca re-centraliza), então o desenho não foge
+    // debaixo do dedo -- que era o motivo de a vista não se mexer sozinha.
+    if (p && cantoRetangulo) abrirEspacoPara([p]);
+  }
+
+  /**
+   * Botão direito no desenho = desfazer, sem tirar a mão de cima da planta.
+   *
+   * Pedido dele: "quando estou desenhando a linha e erro tenho que subir clicar em
+   * desfazer". Menu de contexto do navegador não serve pra nada aqui, então o lugar estava
+   * livre. Desfaz o mais perto primeiro: o retângulo que está sendo arrastado, depois o
+   * último canto do cômodo em andamento, e só então o passo anterior do histórico.
+   */
+  function aoBotaoDireito(e: ReactMouseEvent) {
+    e.preventDefault();
+    if (cantoRetangulo) return setCantoRetangulo(null);
+    if (rascunho.length > 0) return setRascunho((l) => l.slice(0, -1));
+    voltar();
   }
 
   function aoSoltar(e: ReactPointerEvent) {
@@ -634,6 +699,7 @@ export default function PaginaPlanta() {
               onPointerDown={aoApertar}
               onPointerMove={aoMover}
               onPointerUp={aoSoltar}
+              onContextMenu={aoBotaoDireito}
               onPointerLeave={() => {
                 setCursor(null);
                 setPan(null);
@@ -643,11 +709,27 @@ export default function PaginaPlanta() {
 
               {/* rascunho do cômodo em andamento */}
               <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {/* o cômodo que vai nascer, já preenchido: dá pra ver a forma antes de fechar */}
+                {fechando && (
+                  <polygon points={rascunho.map((p) => `${px(p.x)},${py(p.y)}`).join(" ")} fill="#f06b4f" fillOpacity={0.18} stroke="none" />
+                )}
                 {rascunho.length >= 2 && (
                   <polyline points={rascunho.map((p) => `${px(p.x)},${py(p.y)}`).join(" ")} fill="none" stroke="#f06b4f" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                 )}
                 {rascunho.length >= 1 && cursor && ferramenta === "comodo" && (
-                  <line x1={px(rascunho[rascunho.length - 1].x)} y1={py(rascunho[rascunho.length - 1].y)} x2={px(cursor.x)} y2={py(cursor.y)} stroke="#f06b4f" strokeWidth={2} strokeDasharray="6 4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  // perto do primeiro canto a linha PULA pra ele e vira cheia: é o aviso de
+                  // que o próximo toque fecha, em vez de marcar mais um canto
+                  <line
+                    x1={px(rascunho[rascunho.length - 1].x)}
+                    y1={py(rascunho[rascunho.length - 1].y)}
+                    x2={px(fechando ? rascunho[0].x : cursor.x)}
+                    y2={py(fechando ? rascunho[0].y : cursor.y)}
+                    stroke="#f06b4f"
+                    strokeWidth={fechando ? 3 : 2}
+                    strokeDasharray={fechando ? undefined : "6 4"}
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
                 )}
                 {guias.map((g, i) =>
                   g.eixo === "x" ? (
@@ -682,6 +764,30 @@ export default function PaginaPlanta() {
               {rascunho.map((p, i) => (
                 <span key={i} className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-marca-coral" style={{ left: `${px(p.x)}%`, top: `${py(p.y)}%` }} />
               ))}
+              {/* O PRIMEIRO canto vira alvo: é nele que se toca pra fechar o cômodo. Fica
+                  grande e com anel a partir do terceiro ponto, e acende quando o dedo chega. */}
+              {podeFechar && (
+                <button
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    fecharComodo();
+                  }}
+                  title="Fechar o cômodo aqui"
+                  className={
+                    "absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] bg-white/80 transition " +
+                    (fechando ? "scale-125 border-marca-coral ring-4 ring-marca-coral/30" : "border-marca-coral/60")
+                  }
+                  style={{ left: `${px(rascunho[0].x)}%`, top: `${py(rascunho[0].y)}%`, touchAction: "none" }}
+                />
+              )}
+              {fechando && (
+                <span
+                  className="pointer-events-none absolute -translate-x-1/2 translate-y-3 whitespace-nowrap rounded bg-marca-coral px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                  style={{ left: `${px(rascunho[0].x)}%`, top: `${py(rascunho[0].y)}%` }}
+                >
+                  fechar aqui
+                </span>
+              )}
               {rascunho.length >= 1 && cursor && ferramenta === "comodo" && (
                 <span className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-marca-indigo px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ left: `${(px(rascunho[rascunho.length - 1].x) + px(cursor.x)) / 2}%`, top: `${(py(rascunho[rascunho.length - 1].y) + py(cursor.y)) / 2}%` }}>
                   {metros(distancia(rascunho[rascunho.length - 1], cursor))}
@@ -767,8 +873,10 @@ export default function PaginaPlanta() {
                   ? "Arraste de um canto ao outro. O cômodo novo cola sozinho na parede do que já está desenhado."
                   : ferramenta === "comodo"
                     ? rascunho.length === 0
-                      ? "Toque em cada canto. O ponto gruda primeiro num canto ou parede que já existe, depois na grade."
-                      : `${rascunho.length} ${rascunho.length === 1 ? "canto" : "cantos"}. Toque no primeiro canto de novo, ou em "fechar cômodo".`
+                      ? "Toque em cada canto. O ponto gruda primeiro num canto ou parede que já existe, depois na grade. Botão direito desfaz."
+                      : rascunho.length < 3
+                        ? `${rascunho.length} ${rascunho.length === 1 ? "canto" : "cantos"}. Botão direito tira o último.`
+                        : `${rascunho.length} cantos. Toque no círculo do primeiro canto pra FECHAR. Botão direito tira o último.`
                     : ferramenta === "movel"
                     ? movelSelecionado
                       ? "Arraste pra mover. A alça de cima gira (Shift solta o passo de 15°), a do canto redimensiona. Delete apaga."
@@ -776,7 +884,7 @@ export default function PaginaPlanta() {
                   : ferramenta === "mover"
                       ? "Arraste pra andar pela planta. Use − e + pra afastar e aproximar."
                       : ferramenta === "apagar"
-                        ? "Toque numa porta, janela ou dentro de um cômodo pra apagar."
+                        ? "Toque no que quer tirar: móvel, porta, janela, ou o cômodo (por dentro ou na parede)."
                         : ferramenta === "porta"
                           ? "Toque perto da parede pra colocar. Toque de novo numa porta pra virar o lado que ela abre."
                           : "Toque perto da parede: a janela gruda nela sozinha."}
