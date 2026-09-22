@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
+import { larguraDoTexto } from "./texto-svg";
 import { anguloDaVinheta } from "./filtros";
 import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
 
@@ -88,6 +89,61 @@ export function quebrarLinhas(texto: string, larguraUtil: number, tamanhoFonte: 
   }
   if (atual && linhas.length < maxLinhas) linhas.push(atual);
   return linhas.join("\n");
+}
+
+/**
+ * Quebra medindo com a FONTE DE VERDADE -- a mesma que o drawtext vai desenhar.
+ *
+ * `quebrarLinhas` acima usa 0,52 do corpo por caractere, que é a média da família. Média não
+ * serve pra nome próprio: "Vinicius Cardoso · Imobiliária J7" tem maiúsculas, acento e um
+ * separador largo, e a conta média diz que cabe quando não cabe. Aqui a régua é o arquivo
+ * .ttf, então o que é medido é o que é desenhado.
+ */
+export function quebrarMedido(texto: string, larguraUtil: number, tam: number, maxLinhas = 2): string[] {
+  const linhas: string[] = [];
+  let atual = "";
+  for (const p of texto.split(/\s+/).filter(Boolean)) {
+    const tentativa = atual ? `${atual} ${p}` : p;
+    // Na ÚLTIMA linha permitida não se quebra mais: o resto entra nela, mesmo passando um
+    // pouco. Cortar uma palavra fora seria perder informação; passar um fio, não.
+    if (atual && linhas.length < maxLinhas - 1 && larguraDoTexto(tentativa, tam) > larguraUtil) {
+      linhas.push(atual);
+      atual = p;
+    } else {
+      atual = tentativa;
+    }
+  }
+  if (atual) linhas.push(atual);
+  return linhas;
+}
+
+/**
+ * O texto encolhido até CABER na largura, e só quebrado se nem no menor corpo couber.
+ *
+ * O `drawtext` centraliza com `x=(w-text_w)/2`: quando o texto é mais largo que o quadro,
+ * essa conta dá negativo e a frase sai cortada dos DOIS lados -- foi o que aconteceu com o
+ * nome na tela final de um vídeo 9:16. Encolher um pouco é invisível; ser cortado, não.
+ */
+export function caberNaLargura(texto: string, tam: number, larguraUtil: number, pisoRelativo = 0.6): { texto: string; tam: number; linhas: number } {
+  if (!texto) return { texto, tam, linhas: 0 };
+  const largura = larguraDoTexto(texto, tam);
+  if (largura <= larguraUtil) return { texto, tam, linhas: 1 };
+  const piso = Math.max(10, Math.round(tam * pisoRelativo));
+  const proporcional = Math.floor((tam * larguraUtil) / largura);
+  if (proporcional >= piso) return { texto, tam: proporcional, linhas: 1 };
+
+  // Nem no menor corpo cabe numa linha: quebra. E DEPOIS de quebrar mede de novo -- uma
+  // palavra sozinha pode ser mais larga que o quadro, e a quebra não resolve isso.
+  // (Foi o que aconteceu com "Maria Aparecida do Nascimento Albuquerque · Imobiliária
+  // Recanto dos Pássaros": duas linhas no piso, e a segunda ainda sangrava.)
+  let corpo = piso;
+  let partes = quebrarMedido(texto, larguraUtil, corpo, 3);
+  const maisLarga = () => Math.max(...partes.map((l) => larguraDoTexto(l, corpo)));
+  if (maisLarga() > larguraUtil) {
+    corpo = Math.max(10, Math.floor((corpo * larguraUtil) / maisLarga()));
+    partes = quebrarMedido(texto, larguraUtil, corpo, 3);
+  }
+  return { texto: partes.join("\n"), tam: corpo, linhas: partes.length };
 }
 
 /** Escala pra cobrir WxH e corta o excesso, mantendo o centro. */
@@ -735,20 +791,28 @@ export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao:
   const grande = Math.round(o.H * 0.042);
   const medio = Math.round(o.H * 0.028);
   let y = o.logo ? 0.5 : 0.42;
+  // A largura que sobra depois das margens. Texto mais largo que isto era CORTADO dos dois
+  // lados, porque `x=(w-text_w)/2` fica negativo -- foi o que comeu "Vinicius Cardoso ·
+  // Imobiliária J7" no 9:16. Agora cada linha é medida com a fonte real antes de sair.
+  const util = o.W * 0.88;
   const draw = (t: string, tam: number, yy: number, alpha = "1") =>
-    `drawtext=fontfile='${fonte}':text=${textoParaFiltro(t)}:fontsize=${tam}:fontcolor=white@${alpha}:x=(w-text_w)/2:y=${Math.round(o.H * yy)}`;
+    `drawtext=fontfile='${fonte}':text=${textoParaFiltro(t, true)}:fontsize=${tam}:fontcolor=white@${alpha}:x=(w-text_w)/2:y=${Math.round(o.H * yy)}:line_spacing=${Math.round(tam * 0.3)}`;
+  /** Escreve cabendo, e devolve quanto desceu (linha quebrada ocupa mais altura). */
+  const escrever = (t: string, tamIdeal: number, yy: number, alpha = "1") => {
+    const c = caberNaLargura(t, tamIdeal, util);
+    linhas.push(draw(c.texto, c.tam, yy, alpha));
+    return ((c.linhas - 1) * c.tam * 1.3) / o.H;
+  };
   // A chamada fica logo acima do nome: é o pedido; o nome e o WhatsApp são o como.
-  if (o.chamada) linhas.push(draw(o.chamada, Math.round(o.H * 0.034), y - 0.08));
+  if (o.chamada) escrever(o.chamada, Math.round(o.H * 0.034), y - 0.08);
   if (o.nome) {
-    linhas.push(draw(o.nome, grande, y));
-    y += 0.07;
+    y += 0.07 + escrever(o.nome, grande, y);
   }
   if (o.creci) {
-    linhas.push(draw(`CRECI ${o.creci}`, medio, y, "0.85"));
-    y += 0.055;
+    y += 0.055 + escrever(`CRECI ${o.creci}`, medio, y, "0.85");
   }
   if (o.whatsapp) {
-    linhas.push(draw(`WhatsApp ${formatarWhatsapp(o.whatsapp)}`, medio, y));
+    escrever(`WhatsApp ${formatarWhatsapp(o.whatsapp)}`, medio, y);
   }
   linhas.push(draw("Imagens ilustrativas · feito com Encena", Math.round(o.H * 0.018), 0.93, "0.6"));
   let filtro: string;
