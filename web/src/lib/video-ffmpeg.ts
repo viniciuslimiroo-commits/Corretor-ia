@@ -1184,13 +1184,40 @@ export function argsMontagem(o: {
   }
 
   const temAudio = temBase || viradas.length > 0;
+
+  // O SOM SAÍA BAIXO DEMAIS PRA REDE SOCIAL. Medido em 22/09/2026 contra um vídeo do
+  // concorrente feito com as mesmas fotos: o dele em -13,4 LUFS, o nosso em -22,7 -- 9,3 LU
+  // abaixo, ou seja, soando umas 2,5 vezes mais fraco no celular. A cadeia inteira explica:
+  // as músicas estão masterizadas em -18,7 LUFS, o volume padrão de 0,8 tira mais 1,9, e não
+  // havia normalização nenhuma no fim. Música fraca faz o vídeo parecer parado por melhor
+  // que seja a imagem -- e a imagem, medida, se move MAIS que a dele.
+  //
+  // -14 LUFS é o alvo de Instagram, TikTok e Reels. O `aresample` depois não é enfeite: o
+  // loudnorm trabalha internamente a 192 kHz e é isso que ele entrega se ninguém pedir outra
+  // coisa.
+  if (temAudio) {
+    partes.push(`[${saidaAudio}]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[anorm]`);
+    saidaAudio = "anorm";
+  }
+
+  // E O ARQUIVO NÃO CABIA NO WHATSAPP. O limite do aplicativo é 16 MB; o vídeo de 31s dele
+  // tinha 30 MB, então o WhatsApp recomprimia antes de entregar e o cliente recebia uma
+  // versão pior do que a que saiu daqui. O do concorrente tem 15 MB -- logo abaixo do teto.
+  //
+  // Teto calculado pela DURAÇÃO, não fixo: vídeo curto continua com a qualidade cheia (o CRF
+  // manda, porque pede menos que o teto) e só o longo é segurado.
+  const ALVO_BYTES = 14 * 1024 * 1024;
+  const kbpsAudio = temAudio ? 128 : 0;
+  const teto = Math.max(1200, Math.round((ALVO_BYTES * 8) / 1000 / Math.max(1, total)) - kbpsAudio);
+
   return [
     ...args,
     "-filter_complex", partes.join(";"),
     "-map", `[${saidaVideo}]`, ...(temAudio ? ["-map", `[${saidaAudio}]`] : []),
     "-t", total.toFixed(2),
     ...CODEC_VIDEO,
-    ...(temAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]),
+    "-maxrate", `${teto}k`, "-bufsize", `${teto * 2}k`,
+    ...(temAudio ? ["-c:a", "aac", "-b:a", "128k", "-ar", "48000"] : ["-an"]),
     "-movflags", "+faststart",
     o.saida,
   ];
