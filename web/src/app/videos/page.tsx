@@ -1020,6 +1020,32 @@ export default function PaginaVideo() {
               <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
               <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
             </div>
+            {/* COMO TERMINA, aqui fora e não lá dentro. A opção já existia -- um quadradinho
+                dentro de "Textos e marca", dentro dos Ajustes, que começam fechados -- e ele
+                olhou o vídeo pronto e disse "não tem opção". Escolha que muda o vídeo inteiro
+                não pode morar dois cliques abaixo do botão de gerar. O tempo estimado logo
+                acima se mexe junto, então dá pra ver a diferença sem gerar nada. */}
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {[
+                { on: true, titulo: "Com meu contato", dica: "Termina numa tela com nome, CRECI e WhatsApp" },
+                { on: false, titulo: "Sem tela final", dica: "Acaba na última foto, sem despedida" },
+              ].map((o) => (
+                <button
+                  key={String(o.on)}
+                  type="button"
+                  onClick={() => setTelaFinal(o.on)}
+                  disabled={gerando}
+                  aria-pressed={telaFinal === o.on}
+                  className={
+                    "rounded-xl border px-3 py-2 text-left transition disabled:opacity-50 " +
+                    (telaFinal === o.on ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                  }
+                >
+                  <span className="block text-sm font-medium">{o.titulo}</span>
+                  <span className="mt-0.5 block text-[11px] leading-tight text-neutral-500">{o.dica}</span>
+                </button>
+              ))}
+            </div>
             <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
               {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
             </Botao>
@@ -1118,18 +1144,14 @@ export default function PaginaVideo() {
                 <input value={preco} onChange={(e) => setPreco(e.target.value)} maxLength={30} placeholder="Preço (ex.: R$ 690.000)" className={campo} />
                 <input value={local} onChange={(e) => setLocal(e.target.value)} maxLength={50} placeholder="Bairro · Cidade" className={campo} />
               </div>
-              <label className="flex items-start gap-2 text-sm text-neutral-700">
-                <input type="checkbox" checked={telaFinal} onChange={(e) => setTelaFinal(e.target.checked)} className="mt-0.5 accent-marca-coral" />
-                <span>
-                  Tela final com meu contato
-                  <span className="block text-xs text-neutral-500">
-                    Nome, CRECI, WhatsApp e logo de <Link href="/marca" className="underline">Minha marca</Link>.
-                  </span>
-                </span>
-              </label>
+              {/* O liga/desliga saiu daqui pro cartão do botão de gerar: escondido aqui, ele
+                  não era achado. O que fica é o que só interessa a quem já quis a tela. */}
+              {!telaFinal && <p className="text-xs text-neutral-500">A tela final está desligada — o vídeo acaba na última foto. Dá pra ligar ao lado do botão de gerar.</p>}
               {telaFinal && (
                 <div className="rounded-lg bg-neutral-50 p-2.5">
-                  <p className="text-xs text-neutral-500">Frase da tela final</p>
+                  <p className="text-xs text-neutral-500">
+                    Frase da tela final <span className="text-neutral-400">· com nome, CRECI, WhatsApp e logo de <Link href="/marca" className="underline">Minha marca</Link></span>
+                  </p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {CHAMADAS.map((f) => (
                       <Chip key={f} ativo={chamada === f} onClick={() => setChamada(f)}>{f}</Chip>
