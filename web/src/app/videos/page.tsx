@@ -52,6 +52,8 @@ import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
+import OuvirMusica from "@/components/ouvir-musica";
+import { useArrastarLista } from "@/components/usar-arrastar-lista";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
@@ -527,6 +529,20 @@ export default function PaginaVideo() {
       return nova;
     });
   }
+  /** Tira de uma posição e põe em outra — o que o arraste faz, e as setas não sabiam fazer. */
+  function reordenar(de: number, para: number) {
+    setCenas((lista) => {
+      if (de < 0 || de >= lista.length || para < 0 || para >= lista.length) return lista;
+      const nova = [...lista];
+      const [movida] = nova.splice(de, 1);
+      nova.splice(para, 0, movida);
+      return nova;
+    });
+  }
+  // Arrastar pela alça: a ordem das cenas é a ordem do vídeo, e mexer nela com duas setas
+  // custa um toque por posição. Com oito cenas, levar a última pro topo eram sete toques.
+  const arraste = useArrastarLista(cenas.map((s) => s.chave), reordenar);
+
   function remover(k: string) {
     setCenas((lista) => lista.filter((s) => s.chave !== k));
   }
@@ -827,8 +843,42 @@ export default function PaginaVideo() {
             ) : (
               <ul className="flex flex-col gap-3">
                 {cenas.map((s, i) => (
-                  <li key={s.chave} className="rounded-xl border border-neutral-200 p-3">
+                  <li
+                    key={s.chave}
+                    ref={arraste.registrar(s.chave)}
+                    className={
+                      "relative rounded-xl border p-3 transition " +
+                      (arraste.arrastando === s.chave ? "border-marca-coral bg-marca-pessego/20 opacity-60" : "border-neutral-200")
+                    }
+                  >
+                    {/* Onde a cena vai cair. Sem esta linha, arrastar é adivinhação. */}
+                    {arraste.arrastando && arraste.alvo === i && arraste.arrastando !== s.chave && (
+                      <span className="pointer-events-none absolute -top-2 right-0 left-0 h-1 rounded-full bg-marca-coral" />
+                    )}
+                    {arraste.arrastando && arraste.alvo === cenas.length && i === cenas.length - 1 && arraste.arrastando !== s.chave && (
+                      <span className="pointer-events-none absolute right-0 -bottom-2 left-0 h-1 rounded-full bg-marca-coral" />
+                    )}
                     <div className="flex gap-3">
+                      {/* A ALÇA. Arrastar a ficha inteira brigaria com a rolagem no celular;
+                          por isso o gesto começa aqui, e só aqui. As setas continuam pra
+                          quem prefere tocar, e pra quem usa teclado. */}
+                      <button
+                        type="button"
+                        {...arraste.pegar(s.chave)}
+                        disabled={gerando}
+                        aria-label={`Arrastar a cena ${i + 1} para mudar a ordem`}
+                        title="Segure e arraste para mudar a ordem"
+                        className="-my-1 -ml-1 flex w-6 shrink-0 cursor-grab items-center justify-center rounded-lg text-neutral-300 transition hover:bg-neutral-100 hover:text-neutral-500 active:cursor-grabbing disabled:opacity-30"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                          <circle cx="9" cy="6" r="1.6" />
+                          <circle cx="15" cy="6" r="1.6" />
+                          <circle cx="9" cy="12" r="1.6" />
+                          <circle cx="15" cy="12" r="1.6" />
+                          <circle cx="9" cy="18" r="1.6" />
+                          <circle cx="15" cy="18" r="1.6" />
+                        </svg>
+                      </button>
                       <div className="flex h-20 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100">
                         {s.miniatura ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -1039,11 +1089,9 @@ export default function PaginaVideo() {
 
           <Cartao>
             <Rotulo>Música e transição</Rotulo>
-            <div className="flex flex-wrap gap-2">
-              {MUSICAS.map((m) => (
-                <Chip key={m.id} ativo={musica === m.id} onClick={() => setMusica(m.id)} title={m.descricao}>{m.rotulo}</Chip>
-              ))}
-            </div>
+            {/* Cada ficha tem o seu ▶: escolher trilha pelo NOME era escolher no escuro, e
+                o corretor só ouvia o que pegou depois do vídeo pronto -- que custa crédito. */}
+            <OuvirMusica escolhida={musica} aoEscolher={setMusica} volume={musicaVolume} desligado={gerando} />
             {musica !== "nenhuma" && (
               <label className="mt-3 block text-xs text-neutral-600">
                 Volume da música · {Math.round(musicaVolume * 100)}%
