@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { ehToken } from "@/lib/compartilhar";
+import { origemPublica } from "@/lib/capa-publica";
 import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
 import { marcaEfetiva } from "@/lib/cobranca";
 import GaleriaPublica, { type FotoPublica } from "@/components/galeria-publica";
@@ -134,9 +135,29 @@ async function carregar(token: string): Promise<Pagina | null> {
 export async function generateMetadata({ params }: PageProps<"/c/[token]">): Promise<Metadata> {
   const { token } = await params;
   const pagina = await carregar(token);
+  if (!pagina) return { title: "Link indisponível", robots: { index: false, follow: false } };
+
+  // A PRÉVIA DO LINK. Sem isto o material chegava no WhatsApp como URL pelada -- quem recebe
+  // não sabe se é o imóvel, um vídeo ou spam, e o corretor parecia estar mandando link
+  // suspeito. Com título, descrição e capa, o link vira um cartão com a foto: é o mais perto
+  // de "anexo" que dá pra chegar sem a API oficial do WhatsApp.
+  //
+  // `noindex` continua: prévia de link não é indexação. O robô que monta o cartão busca a
+  // página de qualquer jeito; o que o noindex impede é o link cair na busca do Google.
+  const descricao = [pagina.subtitulo, pagina.dono.nome ? `Com ${pagina.dono.nome}` : null].filter(Boolean).join(" · ") || "Fotos do imóvel";
+  const capa = `${await origemPublica()}/c/${token}/capa`;
   return {
-    title: pagina ? pagina.titulo : "Link indisponível",
+    title: pagina.titulo,
+    description: descricao,
     robots: { index: false, follow: false },
+    openGraph: {
+      type: "website",
+      title: pagina.titulo,
+      description: descricao,
+      images: [{ url: capa, alt: pagina.titulo }],
+      siteName: "Encena",
+    },
+    twitter: { card: "summary_large_image", title: pagina.titulo, description: descricao, images: [capa] },
   };
 }
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
 import { ehToken } from "@/lib/compartilhar";
+import { origemPublica } from "@/lib/capa-publica";
 import { marcaEfetiva } from "@/lib/cobranca";
 import { limparDocumento, imagensDoDocumento } from "@/lib/book-documento";
 import { fichaDoImovel, type ImovelMontagem } from "@/lib/book-montagem";
@@ -174,11 +175,20 @@ async function carregar(token: string): Promise<Conteudo | null> {
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   const c = await carregar(token);
+  // Link privado: quem tem vê, quem não tem não acha. Fora dos buscadores.
+  if (!c) return { title: "Material do imóvel", robots: { index: false, follow: false } };
+
+  // A prévia do link: sem ela o material chegava no WhatsApp como URL pelada. A capa vem por
+  // um endereço que não vence (/b/[token]/capa), e não pela URL assinada de 1h -- mensagem
+  // reencaminhada dias depois mostraria um retângulo cinza.
+  const descricao = c.descricao ?? "Material do imóvel";
+  const capa = `${await origemPublica()}/b/${token}/capa`;
   return {
-    title: c ? `${c.titulo} · Encena` : "Material do imóvel",
-    description: c?.descricao ?? undefined,
-    // Link privado: quem tem vê, quem não tem não acha. Fora dos buscadores.
+    title: `${c.titulo} · Encena`,
+    description: descricao,
     robots: { index: false, follow: false },
+    openGraph: { type: "website", title: c.titulo, description: descricao, images: [{ url: capa, alt: c.titulo }], siteName: "Encena" },
+    twitter: { card: "summary_large_image", title: c.titulo, description: descricao, images: [capa] },
   };
 }
 
