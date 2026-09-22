@@ -180,6 +180,21 @@ export function linkDaMensagem(numero: string, texto: string): string {
   return `https://wa.me/${numero.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
 }
 
+/**
+ * O mesmo endereço, no esquema que o APLICATIVO instalado no computador atende.
+ *
+ * Não é automação (trava 1 continua de pé): é o mesmo clique do corretor, abrindo o app que
+ * ele já tem em vez de passar pelo navegador. No computador, o wa.me cai numa página
+ * intermediária e depois no WhatsApp Web, que pede pareamento por QR -- duas janelas antes
+ * de escrever qualquer coisa. Este endereço pula as duas.
+ *
+ * Quem não tem o app instalado não vê nada acontecer, e por isso a tela sempre oferece o
+ * caminho do navegador logo ao lado: adivinhar se o programa existe não é possível, avisar é.
+ */
+export function linkDoApp(numero: string, texto: string): string {
+  return `whatsapp://send?phone=${numero.replace(/\D/g, "")}&text=${encodeURIComponent(texto)}`;
+}
+
 /** Documento, conta de banco, senha: a mensagem editada não pode pedir isso. */
 export function pedeDadoSensivel(texto: string): boolean {
   return /\b(cpf|rg|identidade|cnh|documento|senha|conta banc[aá]ria|ag[eê]ncia|pix|cart[aã]o de cr[eé]dito|dados banc[aá]rios)\b/i.test(texto);

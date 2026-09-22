@@ -76,6 +76,14 @@ export default function PrepararEnvio({
   const [erro, setErro] = useState<string | null>(null);
   const [aceito, setAceito] = useState(false);
   const [podeCompartilhar] = useState(() => typeof navigator !== "undefined" && typeof navigator.share === "function");
+  /**
+   * No computador o caminho é outro. No celular, o wa.me abre o app num toque; no
+   * computador ele cai numa página intermediária e depois no WhatsApp Web, que pede
+   * pareamento -- duas janelas antes de escrever qualquer coisa, que foi a reclamação.
+   */
+  const [noComputador] = useState(() => typeof navigator !== "undefined" && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  /** Os caminhos devolvidos pelo servidor no último envio, pra tela do computador. */
+  const [entrega, setEntrega] = useState<{ link: string; qr: string | null } | null>(null);
 
   /**
    * Os modelos de mensagem da casa. O automático da situação vem PREENCHIDO -- é o pedido
@@ -177,20 +185,34 @@ export default function PrepararEnvio({
     setAviso(null);
     if (problema) return;
     setOcupado(true);
+    setEntrega(null);
     // A janela abre no toque: aberta depois do `await`, o navegador do celular bloqueia.
-    const janela = canal === "abrir" ? window.open("", "_blank") : null;
+    // No computador NÃO se abre aba nenhuma: lá o destino é o app instalado, por um esquema
+    // que o navegador entrega ao programa sem sair da página -- uma aba em branco sobraria.
+    const janela = canal === "abrir" && !noComputador ? window.open("", "_blank") : null;
     try {
       if (canal === "copiar") await copiarTexto(texto);
       if (canal === "compartilhar") await navigator.share({ text: texto });
       const d = await post(`/api/crm/leads/${lead.id}/acao`, { acao: "enviar", texto, canal });
       if (canal === "abrir") {
-        if (janela) janela.location.href = d.link;
+        if (noComputador) {
+          // Tenta o app instalado e deixa os outros dois caminhos à vista: não dá pra
+          // saber se o programa existe, mas dá pra não deixar ninguém na mão.
+          setEntrega({ link: d.link, qr: d.qr ?? null });
+          window.location.href = d.linkApp ?? d.link;
+        } else if (janela) janela.location.href = d.link;
         else window.location.href = d.link;
       }
       const nome = lead.nome.trim().split(/\s+/)[0];
       setAviso(
         [
-          canal === "copiar" ? `Mensagem copiada. Cole na conversa com ${nome}.` : canal === "compartilhar" ? "Mensagem entregue pro app que você escolheu." : "Conversa aberta com o texto pronto.",
+          canal === "copiar"
+            ? `Mensagem copiada. Cole na conversa com ${nome}.`
+            : canal === "compartilhar"
+              ? "Mensagem entregue pro app que você escolheu."
+              : noComputador
+                ? `Chamei o WhatsApp do computador na conversa com ${nome}.`
+                : "Conversa aberta com o texto pronto.",
           d.reaberta ? "(Não contou como nova tentativa: foi a mesma mensagem de hoje.)" : "",
           "Quando a pessoa responder, marque em “Ela respondeu”.",
           ...(d.avisos ?? []),
@@ -448,6 +470,27 @@ export default function PrepararEnvio({
               </Botao>
             )}
           </div>
+          {/* OS OUTROS DOIS CAMINHOS, só no computador e só depois de tentar o app.
+              Não dá pra saber se o programa está instalado -- então em vez de adivinhar (ou
+              de abrir duas janelas "por garantia"), a tela mostra a saída ao lado. O QR é do
+              ENDEREÇO da conversa, não de sessão: aponta a câmera e o WhatsApp abre no seu
+              telefone com o texto pronto. Nada é pareado e nada fica conectado -- automatizar
+              o WhatsApp Web é o que a trava 1 do estudo jurídico proíbe. */}
+          {entrega && (
+            <div className="surgir mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+              <div className="min-w-[220px] flex-1 text-sm">
+                <p className="font-medium text-neutral-700">Não abriu o WhatsApp aqui?</p>
+                <a href={entrega.link} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex min-h-9 items-center font-medium text-marca-indigo underline underline-offset-2">
+                  Abrir pelo navegador
+                </a>
+                {entrega.qr && <p className="mt-1 text-xs text-neutral-500">Ou aponte a câmera do celular pro código ao lado: a conversa abre no seu telefone, com o texto pronto.</p>}
+              </div>
+              {entrega.qr && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={entrega.qr} alt="Código para abrir a conversa no celular" className="h-28 w-28 shrink-0 rounded-lg border border-neutral-200 bg-white" />
+              )}
+            </div>
+          )}
         </Passo>
 
         {erro && <Aviso tipo="erro">{erro}</Aviso>}

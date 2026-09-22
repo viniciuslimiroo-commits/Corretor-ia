@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import QRCode from "qrcode";
 import { usuarioDaRota } from "@/lib/auth-rota";
-import { DECLARACAO, depoisDeEnviar, depoisDeResponder, linkDaMensagem, pedeDadoSensivel, temLink, type EtapaId } from "@/lib/crm";
+import { DECLARACAO, depoisDeEnviar, depoisDeResponder, linkDaMensagem, linkDoApp, pedeDadoSensivel, temLink, type EtapaId } from "@/lib/crm";
 import { CAMPOS_DO_LEAD, bloquearNumero, contaCrm, crmLiberado, doLeadsDaConta, registrar, situacaoDeEnvio } from "@/lib/crm-servidor";
 
 // As AÇÕES de um cliente, cada uma com a trava dela:
@@ -73,7 +74,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         canal,
         links: (texto.match(/\bhttps?:\/\//g) ?? []).length,
       });
-      return NextResponse.json({ lead: novo, link: linkDaMensagem(lead.telefone, texto), avisos: situacao.pode.avisos, reaberta: situacao.pode.reabertura });
+      // Três caminhos pro MESMO texto, porque o computador e o celular não são iguais:
+      // `link` (wa.me) serve o celular; `linkApp` abre o programa instalado no computador
+      // sem passar pelo navegador; `qr` joga a conversa pro celular de quem não tem nem um
+      // nem outro -- aponta a câmera e o WhatsApp abre no telefone com o texto pronto.
+      // O QR é do endereço, não de sessão: nada é pareado, nada fica conectado.
+      const link = linkDaMensagem(lead.telefone, texto);
+      const qr = await QRCode.toDataURL(link, { margin: 1, width: 420 }).catch(() => null);
+      return NextResponse.json({ lead: novo, link, linkApp: linkDoApp(lead.telefone, texto), qr, avisos: situacao.pode.avisos, reaberta: situacao.pode.reabertura });
     }
 
     if (acao === "respondeu") {
