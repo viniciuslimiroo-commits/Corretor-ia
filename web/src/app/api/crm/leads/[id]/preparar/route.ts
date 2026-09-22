@@ -63,12 +63,22 @@ async function materiaisDoImovel(db: Db, userId: string, imovelId: string): Prom
   const capa = (fotos ?? []).find((f) => f.id === im.capa_job_id) ?? (fotos ?? [])[0];
   const materiais: Material[] = [];
   if ((fotos ?? []).length) {
+    // O LINK DO IMÓVEL CARREGA TUDO: fotos, vídeos e os books que já têm link público
+    // (livro sem link não é publicado por conta própria -- publicar é escolha da pessoa).
+    // Três endereços soltos na mesma mensagem parecem spam, e só o primeiro ganha prévia.
+    const nBooks = (books ?? []).filter((b) => ehToken(b.share_token)).length;
+    const dentro = [
+      `${fotos!.length} foto${fotos!.length === 1 ? "" : "s"}`,
+      (videos ?? []).length ? `${videos!.length} vídeo${videos!.length === 1 ? "" : "s"}` : "",
+      nBooks ? `${nBooks} material${nBooks === 1 ? "" : "is"}` : "",
+    ].filter(Boolean);
+    const juntaMais = dentro.length > 1;
     materiais.push({
       chave: `imovel:${im.id}`,
       tipo: "imovel",
       id: im.id as string,
-      rotulo: "Fotos do imóvel",
-      detalhe: `${fotos!.length} foto${fotos!.length === 1 ? "" : "s"} numa página só`,
+      rotulo: juntaMais ? "Tudo do imóvel" : "Fotos do imóvel",
+      detalhe: `${dentro.join(", ").replace(/, ([^,]*)$/, " e $1")} num link só`,
       miniatura: capa?.output_path ? await assinar(db, capa.output_path).catch(() => null) : null,
       publico: ehToken(im.share_token),
     });
@@ -121,7 +131,8 @@ async function linkPublico(db: Db, userId: string, origem: string, m: Material):
     if (error) return null;
   }
   const url = m.tipo === "book" ? `${origem.replace(/\/$/, "")}/b/${token}` : urlPublica(origem, token);
-  const rotulo = m.tipo === "imovel" ? "Fotos" : m.tipo === "video" ? "Vídeo" : m.rotulo;
+  // O rótulo é o que aparece ANTES do endereço na mensagem ("Fotos: https://…").
+  const rotulo = m.tipo === "imovel" ? m.rotulo.replace(" do imóvel", "") : m.tipo === "video" ? "Vídeo" : m.rotulo;
   return { rotulo, url };
 }
 

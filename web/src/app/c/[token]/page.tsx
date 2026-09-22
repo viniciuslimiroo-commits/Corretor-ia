@@ -6,6 +6,7 @@ import { assinar } from "@/lib/armazenamento";
 import { ehToken } from "@/lib/compartilhar";
 import { origemPublica } from "@/lib/capa-publica";
 import { ACOES_POR_ID, resumirParametros, rotuloDoTipo } from "@/lib/acoes";
+import { TIPO_POR_ID } from "@/lib/book-tipos";
 import { marcaEfetiva } from "@/lib/cobranca";
 import GaleriaPublica, { type FotoPublica } from "@/components/galeria-publica";
 
@@ -18,13 +19,17 @@ export const dynamic = "force-dynamic";
 
 type Dono = { nome: string | null; creci: string | null; whatsapp: string | null; logo: string | null; cor: string | null };
 
-type VideoPublico = { url: string; poster: string | null; vertical: boolean; duracao: number | null };
+type VideoPublico = { url: string; poster: string | null; vertical: boolean; duracao: number | null; titulo: string | null };
+
+/** Book ou catálogo do mesmo imóvel, que vira um cartão no fim da página. */
+type MaterialPublico = { titulo: string; url: string };
 
 type Pagina = {
   titulo: string;
   subtitulo: string | null;
   fotos: FotoPublica[];
-  video: VideoPublico | null;
+  videos: VideoPublico[];
+  materiais: MaterialPublico[];
   dono: Dono;
 };
 
@@ -49,6 +54,9 @@ async function carregar(token: string): Promise<Pagina | null> {
   let subtitulo: string | null = null;
   type Job = { id: string; tipo: string; parametros: Record<string, string> | null; input_path: string | null; output_path: string | null };
   let jobs: Job[] = [];
+  // Só o link do IMÓVEL junta tudo: foto solta continua sendo foto solta.
+  let videos: VideoPublico[] = [];
+  let materiais: MaterialPublico[] = [];
 
   // Vídeo compartilhado: um player e a marca do corretor, nada mais.
   const { data: video } = await db
@@ -68,12 +76,16 @@ async function carregar(token: string): Promise<Pagina | null> {
       titulo: video.titulo ?? "Vídeo do imóvel",
       subtitulo: sub,
       fotos: [],
-      video: {
-        url: await assinar(db, video.output_path),
-        poster: video.thumb_path ? await assinar(db, video.thumb_path).catch(() => null) : null,
-        vertical: video.formato === "9:16" || video.formato === "4:5",
-        duracao: video.duracao_segundos,
-      },
+      videos: [
+        {
+          url: await assinar(db, video.output_path),
+          poster: video.thumb_path ? await assinar(db, video.thumb_path).catch(() => null) : null,
+          vertical: video.formato === "9:16" || video.formato === "4:5",
+          duracao: video.duracao_segundos,
+          titulo: null,
+        },
+      ],
+      materiais: [],
       dono: await donoDe(db, video.user_id),
     };
   }
@@ -109,6 +121,34 @@ async function carregar(token: string): Promise<Pagina | null> {
       .eq("status", "concluido")
       .order("criado_em", { ascending: false });
     jobs = (lista ?? []) as Job[];
+
+    // UM LINK COM TUDO. Antes, fotos, vídeo e book eram três endereços soltos na mesma
+    // mensagem: parece spam, multiplica a chance de bloqueio e só o primeiro ganha prévia.
+    // O link do imóvel agora carrega os três -- uma mensagem, um cartão, uma página.
+    const [{ data: vids }, { data: books }] = await Promise.all([
+      db.from("videos").select("titulo, formato, output_path, thumb_path, duracao_segundos").eq("property_id", imovel.id).eq("status", "concluido").order("criado_em", { ascending: false }).limit(4),
+      db.from("books").select("titulo, tipo, share_token").eq("property_id", imovel.id).order("atualizado_em", { ascending: false }).limit(6),
+    ]);
+    videos = (
+      await Promise.all(
+        (vids ?? []).map(async (v) => {
+          const url = v.output_path ? await assinar(db, v.output_path).catch(() => null) : null;
+          if (!url) return null;
+          return {
+            url,
+            poster: v.thumb_path ? await assinar(db, v.thumb_path).catch(() => null) : null,
+            vertical: v.formato === "9:16" || v.formato === "4:5",
+            duracao: v.duracao_segundos,
+            titulo: v.titulo ?? null,
+          };
+        })
+      )
+    ).filter((v): v is VideoPublico => v !== null);
+    // Só entra book que JÁ tem link público: esta página só lê, e ligar um link aqui seria
+    // publicar material por conta própria, sem a pessoa ter escolhido.
+    materiais = (books ?? [])
+      .filter((b) => ehToken(b.share_token))
+      .map((b) => ({ titulo: b.titulo || TIPO_POR_ID[b.tipo as string]?.rotulo || "Material do imóvel", url: `/b/${b.share_token}` }));
   }
 
   const fotos = (
@@ -129,7 +169,7 @@ async function carregar(token: string): Promise<Pagina | null> {
     )
   ).filter((f): f is FotoPublica => f !== null);
 
-  return { titulo, subtitulo, fotos, video: null, dono: await donoDe(db, userId!) };
+  return { titulo, subtitulo, fotos, videos, materiais, dono: await donoDe(db, userId!) };
 }
 
 export async function generateMetadata({ params }: PageProps<"/c/[token]">): Promise<Metadata> {
@@ -172,7 +212,7 @@ export default async function PaginaCompartilhada({ params }: PageProps<"/c/[tok
   const pagina = await carregar(token);
   if (!pagina) notFound();
 
-  const { titulo, subtitulo, fotos, video, dono } = pagina;
+  const { titulo, subtitulo, fotos, videos, materiais, dono } = pagina;
   const cor = dono.cor && /^#[0-9a-fA-F]{6}$/.test(dono.cor) ? dono.cor : "#0f2d5b";
 
   return (
@@ -208,22 +248,55 @@ export default async function PaginaCompartilhada({ params }: PageProps<"/c/[tok
       <section className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-semibold sm:text-3xl">{titulo}</h1>
         {subtitulo && <p className="mt-1 text-neutral-600">{subtitulo}</p>}
-        {!video && (
+        {fotos.length > 0 && (
           <p className="mt-2 text-sm text-neutral-500">
-            {fotos.length === 1 ? "Arraste a divisória para comparar antes e depois." : `${fotos.length} fotos. Arraste a divisória para comparar antes e depois.`}
+            {[
+              fotos.length === 1 ? "1 foto" : `${fotos.length} fotos`,
+              videos.length ? (videos.length === 1 ? "1 vídeo" : `${videos.length} vídeos`) : "",
+              materiais.length ? (materiais.length === 1 ? "1 material" : `${materiais.length} materiais`) : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            . Arraste a divisória para comparar antes e depois.
           </p>
         )}
 
-        <div className="mt-6">
-          {video ? (
-            <div className={"mx-auto overflow-hidden rounded-2xl border border-neutral-200 bg-black shadow-sm " + (video.vertical ? "max-w-sm" : "")}>
-              <video src={video.url} poster={video.poster ?? undefined} controls playsInline preload="metadata" className="block w-full" />
+        <div className="mt-6 grid gap-8">
+          {fotos.length > 0 && <GaleriaPublica fotos={fotos} />}
+
+          {videos.map((v, k) => (
+            <div key={k}>
+              {v.titulo && <h2 className="mb-2 font-semibold">{v.titulo}</h2>}
+              <div className={"mx-auto overflow-hidden rounded-2xl border border-neutral-200 bg-black shadow-sm " + (v.vertical ? "max-w-sm" : "")}>
+                <video src={v.url} poster={v.poster ?? undefined} controls playsInline preload="metadata" className="block w-full" />
+              </div>
             </div>
-          ) : fotos.length ? (
-            <GaleriaPublica fotos={fotos} />
-          ) : (
-            <p className="text-sm text-neutral-500">Nenhuma foto pronta ainda.</p>
+          ))}
+
+          {/* Os books do mesmo imóvel, como cartão -- pra a mensagem no WhatsApp continuar
+              tendo UM link só, e não um por material. */}
+          {materiais.length > 0 && (
+            <div>
+              <h2 className="mb-2 font-semibold">Material do imóvel</h2>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {materiais.map((m) => (
+                  <li key={m.url}>
+                    <a
+                      href={m.url}
+                      className="flex min-h-14 items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium shadow-sm transition hover:border-neutral-300 hover:shadow-md"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: cor, color: "#fff" }}>
+                        ↗
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{m.titulo}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
+
+          {fotos.length === 0 && videos.length === 0 && materiais.length === 0 && <p className="text-sm text-neutral-500">Nenhuma foto pronta ainda.</p>}
         </div>
 
         <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
