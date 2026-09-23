@@ -224,6 +224,9 @@ export default function PaginaVideo() {
   const [enviando, setEnviando] = useState(0);
   const [ajustesAbertos, setAjustesAbertos] = useState(false);
   const [montando, setMontando] = useState(false);
+  /** Qual foto está armada pra apagar (o primeiro toque arma, o segundo apaga). */
+  const [apagando, setApagando] = useState<string | null>(null);
+  const [apagandoAgora, setApagandoAgora] = useState(false);
   /** O que o "Montar sozinho" fez da última vez, pra poder contar e desfazer. */
   const [montagem, setMontagem] = useState<{ antes: CenaUI[]; quantas: number; fora: string[]; semOlhar: boolean } | null>(null);
 
@@ -554,6 +557,42 @@ export default function PaginaVideo() {
       return nova;
     });
   }
+  /**
+   * Apaga a foto de vez: sai do banco e do armazenamento. Sem volta, por isso os dois toques.
+   *
+   * Se ela estiver dentro de um book, o servidor recusa na primeira vez e diz em quais --
+   * aí a tela pergunta antes de insistir, em vez de estragar o book calada.
+   */
+  async function apagarFoto(id: string) {
+    setApagandoAgora(true);
+    setErro(null);
+    try {
+      const enviar = (forcar: boolean) =>
+        fetch("/api/materiais/apagar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenAtual}` },
+          body: JSON.stringify({ ids: [id], forcar }),
+        });
+      const tokenAtual = await token();
+      let r = await enviar(false);
+      if (r.status === 409) {
+        const d = await r.json();
+        const onde = Array.isArray(d.books) ? d.books.map((b: { titulo?: string }) => b.titulo ?? "material").join(", ") : "";
+        if (!confirm(`Esta foto está em ${onde || "um material"}. Apagar mesmo assim deixa aquelas páginas sem a imagem.`)) return;
+        r = await enviar(true);
+      }
+      if (!r.ok) throw new Error((await r.json()).error ?? "Não consegui apagar.");
+      // Sai da galeria E das cenas: cena apontando pra foto que não existe mais não gera.
+      setGeracoes((lista) => lista.filter((g) => g.id !== id));
+      setCenas((lista) => lista.filter((s) => s.jobId !== id));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui apagar.");
+    } finally {
+      setApagando(null);
+      setApagandoAgora(false);
+    }
+  }
+
   /**
    * MONTAR SOZINHO: olha as fotos e decide a ordem, a capa, a legenda e o movimento.
    *
@@ -913,12 +952,34 @@ export default function PaginaVideo() {
                   {geracoes.map((g) => {
                     const usada = cenas.some((s) => s.jobId === g.id);
                     return (
-                      <li key={g.id}>
+                      <li key={g.id} className="group relative">
                         <button type="button" onClick={() => adicionarGeracao(g)} disabled={gerando} className={"relative block w-full overflow-hidden rounded-lg border-2 " + (usada ? "border-marca-coral" : "border-transparent hover:border-neutral-400")} title={g.acao}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={g.depois ?? ""} alt="" className="aspect-[4/3] w-full object-cover" loading="lazy" />
                           {usada && <span className="absolute top-1 right-1 rounded-full bg-marca-coral px-1.5 text-[10px] font-semibold text-white">{cenas.filter((s) => s.jobId === g.id).length}×</span>}
                           {g.antes && <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 text-[10px] text-white">antes/depois</span>}
+                        </button>
+                        {/* APAGAR AQUI. Dava pra apagar foto -- só que lá na Galeria, e ele
+                            estava olhando as repetidas AQUI ("1jpg.jpg" e "1jpg (1).jpg").
+                            Ir pra outra tela e voltar é o atrito.
+                            Fora do <button> de propósito: dentro, tocar no × adicionaria a
+                            cena junto. E em DOIS toques, porque apagar tira do banco e do
+                            armazenamento -- não tem volta. */}
+                        <button
+                          type="button"
+                          onClick={() => (apagando === g.id ? apagarFoto(g.id) : setApagando(g.id))}
+                          onBlur={() => apagando === g.id && setApagando(null)}
+                          disabled={gerando || apagandoAgora}
+                          aria-label={apagando === g.id ? "Toque de novo pra apagar de vez" : "Apagar esta foto"}
+                          title={apagando === g.id ? "Toque de novo pra apagar de vez" : "Apagar esta foto"}
+                          className={
+                            "absolute top-1 left-1 flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-xs font-semibold shadow transition disabled:opacity-40 " +
+                            (apagando === g.id
+                              ? "bg-red-600 text-white"
+                              : "bg-black/45 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100")
+                          }
+                        >
+                          {apagando === g.id ? "apagar?" : "×"}
                         </button>
                       </li>
                     );
