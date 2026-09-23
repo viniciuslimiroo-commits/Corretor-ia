@@ -520,9 +520,31 @@ export function pill(o: OpcoesPill): string {
 const SEGUNDOS_DE_POUSO = 0.45;
 
 /** Quantos quadros de movimento a cena tem, já descontado o pouso. */
-function quadrosDeMovimento(duracao: number): number {
+export function quadrosDeMovimento(duracao: number): number {
   const total = Math.round(duracao * FPS);
   return Math.max(2, total - Math.round(Math.min(SEGUNDOS_DE_POUSO, duracao * 0.25) * FPS));
+}
+
+/**
+ * Quanto a câmera anda POR SEGUNDO de movimento. Fração do quadro.
+ *
+ * Era uma amplitude FIXA de 10% em qualquer cena, e amplitude fixa com duração variável é
+ * VELOCIDADE variável: a cena de 4 s andava 10% em 3,55 s (2,8%/s) e a capa, de 5 s, os
+ * mesmos 10% em 4,55 s (2,2%/s) -- 27% mais devagar. Medindo o vídeo quadro a quadro, o do
+ * concorrente fica entre 0,001 e 0,006 do começo ao fim, e o nosso pulava de 0,000 a 0,013.
+ * Ele é monótono no bom sentido; o nosso tinha solavanco a cada troca de cena.
+ *
+ * O número mantém a cena padrão de 4 s exatamente como estava -- quem já gostava do ritmo
+ * dela não vê diferença; o que muda é a cena mais longa ou mais curta acompanhar.
+ */
+const ZOOM_POR_SEGUNDO = 0.1 / 3.55;
+/** Teto e piso: cena de 10 s não pode virar um zoom de 28%, nem a de 2 s ficar parada. */
+const ZOOM_MIN = 0.06;
+const ZOOM_MAX = 0.16;
+
+/** A amplitude que faz ESTA cena andar na mesma velocidade de todas as outras. */
+export function amplitudeDoZoom(segundosDeMovimento: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, ZOOM_POR_SEGUNDO * segundosDeMovimento));
 }
 
 function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string {
@@ -537,16 +559,23 @@ function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string
   const t = `min(on/${m},1)`;
   const p = `(${t}*${t}*(3-2*${t}))`;
 
+  // A amplitude sai da DURAÇÃO do movimento, não de um número fixo: é o que iguala a
+  // velocidade entre cenas de tamanhos diferentes. Nos passeios laterais ela também manda,
+  // porque o quanto a janela pode correr é justamente o quanto se ampliou.
+  const a = amplitudeDoZoom(m / FPS);
+  const az = a.toFixed(4);
+  const zPasseio = (1 + a).toFixed(4);
+
   const receitas: Record<EfeitoId, { z: string; x: string; y: string }> = {
-    aproximar: { z: `1+0.10*${p}`, x: centroX, y: centroY },
-    afastar: { z: `1.10-0.10*${p}`, x: centroX, y: centroY },
-    esquerda: { z: "1.08", x: `(iw-iw/zoom)*(1-${p})`, y: centroY },
-    direita: { z: "1.08", x: `(iw-iw/zoom)*${p}`, y: centroY },
+    aproximar: { z: `1+${az}*${p}`, x: centroX, y: centroY },
+    afastar: { z: `${(1 + a).toFixed(4)}-${az}*${p}`, x: centroX, y: centroY },
+    esquerda: { z: zPasseio, x: `(iw-iw/zoom)*(1-${p})`, y: centroY },
+    direita: { z: zPasseio, x: `(iw-iw/zoom)*${p}`, y: centroY },
     // Subir é do CHÃO pro teto: a janela começa embaixo (y máximo) e sobe até 0. O
     // ambiente alto se olha assim, e é o movimento que a foto vertical de pé-direito
     // duplo pede -- passear na horizontal ali não mostra nada.
-    cima: { z: "1.08", x: centroX, y: `(ih-ih/zoom)*(1-${p})` },
-    baixo: { z: "1.08", x: centroX, y: `(ih-ih/zoom)*${p}` },
+    cima: { z: zPasseio, x: centroX, y: `(ih-ih/zoom)*(1-${p})` },
+    baixo: { z: zPasseio, x: centroX, y: `(ih-ih/zoom)*${p}` },
     parado: { z: "1", x: "0", y: "0" },
   };
   const r = receitas[efeito];
@@ -815,14 +844,27 @@ export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao:
     escrever(`WhatsApp ${formatarWhatsapp(o.whatsapp)}`, medio, y);
   }
   linhas.push(draw("Imagens ilustrativas · feito com Encena", Math.round(o.H * 0.018), 0.93, "0.6"));
+  // A TELA FINAL PARAVA DE VEZ. Medindo quadro a quadro, o vídeo inteiro se move entre 0,004
+  // e 0,013 e os últimos quatro segundos davam 0,000 -- congelados. No vídeo do concorrente o
+  // movimento continua até o último quadro, e até acelera no fim. Quatro segundos parados num
+  // Reels é onde a pessoa desliza pra frente.
+  //
+  // Um afastamento de 3% resolve, e AFASTANDO e não aproximando: assim o último quadro cai
+  // exatamente em 1:1, com o nome e o WhatsApp na nitidez original. O movimento fica onde
+  // ninguém repara; a nitidez, onde todo mundo lê.
+  const quadros = Math.max(2, Math.round(o.duracao * FPS));
+  const t = `min(on/${quadros - 1},1)`;
+  const s = `(${t}*${t}*(3-2*${t}))`;
+  const respiro = `zoompan=z='1.03-0.03*${s}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${o.W}x${o.H}:fps=${FPS}`;
+
   let filtro: string;
   if (o.logo) {
     args.push("-i", o.logo);
     const maxL = Math.round(o.W * 0.42);
     const maxA = Math.round(o.H * 0.16);
-    filtro = `[1:v]scale=${maxL}:${maxA}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=(W-w)/2:${Math.round(o.H * 0.28)}[base];[base]${["format=yuv420p", ...linhas].join(",")}[v]`;
+    filtro = `[1:v]scale=${maxL}:${maxA}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=(W-w)/2:${Math.round(o.H * 0.28)}[base];[base]${["format=yuv420p", ...linhas, respiro].join(",")}[v]`;
   } else {
-    filtro = `[0:v]${["format=yuv420p", ...linhas].join(",")}[v]`;
+    filtro = `[0:v]${["format=yuv420p", ...linhas, respiro].join(",")}[v]`;
   }
   return [...args, "-filter_complex", filtro, "-map", "[v]", "-t", o.duracao.toFixed(2), ...CODEC_VIDEO, o.saida];
 }
