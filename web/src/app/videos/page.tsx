@@ -656,7 +656,15 @@ export default function PaginaVideo() {
         !animavel(s)
           ? s
           : novo === "tour"
-            ? { ...s, tipo: "animada" as const, animacao: "caminhar" as const }
+            // 4 s em TODAS, inclusive a capa. O vídeo que ele tomou como referência tem 10
+            // fotos em 37,3 s -- 3,73 s cada, sem nenhuma segurando mais. A cena animada só
+            // aceita 3, 4 ou 5, e 4 é a mais perto. Uniforme também é o ponto: ele pediu
+            // "parecido em todos os sentidos, tempo de vídeo, cortes pra outra foto".
+            //
+            // `animacao` NÃO entra aqui de propósito: quem escolheu a direção foi a montagem,
+            // olhando o ambiente (sobrevoo na fachada, entrar na sala, aproximar no banheiro).
+            // Fixar "caminhar" aqui desfaria isso a cada toque no botão de estilo.
+            ? { ...s, tipo: "animada" as const, duracao: 4 }
             : { ...s, tipo: "foto" as const }
       )
     );
@@ -715,11 +723,13 @@ export default function PaginaVideo() {
         s.ordem.map((k) => {
           const base = porChave.get(k)!;
           const a = ajustes.get(k);
-          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, duracao: a.duracao } : base;
+          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, animacao: a.animacao, duracao: a.duracao } : base;
           // O estilo vale também pras cenas que a montagem acabou de organizar: escolher
           // "Tour" e DEPOIS mandar as fotos tem que dar o mesmo resultado que o contrário.
           const animavel = !arrumada.ehClipe && !arrumada.eh360 && !arrumada.ehPanoramica;
-          return estilo === "tour" && animavel ? { ...arrumada, tipo: "animada" as const, animacao: "caminhar" as const } : arrumada;
+          // A animação já veio do ambiente (sobrevoo na fachada, entrar na sala, aproximar no
+          // banheiro): aqui só se liga o tipo animado e o tempo.
+          return estilo === "tour" && animavel ? { ...arrumada, tipo: "animada" as const, duracao: 4 } : arrumada;
         })
       );
       if (s.capa) setCapa(s.capa);

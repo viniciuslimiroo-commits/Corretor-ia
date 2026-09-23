@@ -6,7 +6,7 @@
 //
 //   node --import ./scripts/ts-direto.mjs scripts/testar-video-automatico.ts
 
-import { sugerirMontagem, efeitoDe, legendaDe, ORDEM_DO_PASSEIO, type Olhada } from "../src/lib/video-automatico";
+import { sugerirMontagem, efeitoDe, animacaoDe, legendaDe, ORDEM_DO_PASSEIO, type Olhada } from "../src/lib/video-automatico";
 
 let falhas = 0;
 const conferir = (ok: boolean, oque: string, extra = "") => {
@@ -114,6 +114,25 @@ const a2 = sugerirMontagem([...DEZ].reverse(), 4);
 conferir(JSON.stringify(a1.ordem) === JSON.stringify(a2.ordem), "a ordem não depende da ordem em que as fotos chegaram");
 
 conferir(ORDEM_DO_PASSEIO.indexOf("salao") > ORDEM_DO_PASSEIO.indexOf("quarto"), "área comum vem depois do imóvel");
+
+// ---- 10. a DIREÇÃO da câmera na cena animada ----
+//
+// 23/09/2026, comparando com o vídeo do concorrente: "tempo de caminhada, DIREÇÃO QUE VAI".
+// Antes o estilo Tour punha "caminhar" em tudo -- inclusive na fachada, onde avançar a pé
+// contra uma casa não é o que uma câmera faz, e no banheiro, onde andar pra frente bate na
+// parede. A direção agora sai do ambiente.
+conferir(animacaoDe(foto("_", "fachada")) === "drone", "a fachada é sobrevoo, não caminhada: de fora a câmera não entra andando");
+conferir(animacaoDe(foto("_", "piscina")) === "drone", "a piscina também abre de cima");
+conferir(animacaoDe(foto("_", "sala")) === "caminhar", "na sala a câmera entra andando");
+conferir(animacaoDe(foto("_", "cozinha")) === "caminhar", "na cozinha também");
+conferir(animacaoDe(foto("_", "banheiro")) === "aproximar", "banheiro aproxima com profundidade: andar 2 m ali bate na parede");
+conferir(animacaoDe(foto("_", "closet")) === "aproximar", "closet idem");
+conferir(animacaoDe(foto("_", null)) === "caminhar", "ambiente desconhecido entra andando, que é o movimento mais seguro");
+
+// E a montagem entrega essa direção junto com o resto, senão a tela não teria de onde tirar.
+const comDirecao = sugerirMontagem([foto("f", "fachada"), foto("q", "banheiro")], 4);
+conferir(comDirecao.cenas.find((c) => c.chave === "f")?.animacao === "drone", "a montagem devolve a direção de cada cena");
+conferir(comDirecao.cenas.find((c) => c.chave === "q")?.animacao === "aproximar", "e ela é diferente por ambiente");
 
 console.log(falhas ? `\n${falhas} falha(s)` : "\ntudo certo");
 process.exit(falhas ? 1 : 0);

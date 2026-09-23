@@ -1,5 +1,5 @@
 import { AMBIENTES } from "./book-ia";
-import type { EfeitoId } from "./video";
+import type { AnimacaoId, EfeitoId } from "./video";
 
 // MONTAR O VÍDEO SOZINHO: a ordem, a capa, a legenda e o movimento de cada cena.
 //
@@ -88,6 +88,44 @@ const MOVIMENTO: Record<string, EfeitoId> = {
   infantil: "aproximar",
 };
 
+/**
+ * Qual movimento de CÂMERA DE VERDADE cada ambiente pede, quando a cena é animada por IA.
+ *
+ * Isto é outra coisa do `MOVIMENTO` acima. Lá é zoom sobre foto parada -- a imagem é um
+ * plano que desliza. Aqui o modelo de image-to-video recria a profundidade: a porta abre
+ * no fundo, a janela gira, o corredor se aprofunda. Por isso a direção importa de verdade,
+ * e foi o que ele apontou em 23/09/2026: "tempo de caminhada, DIREÇÃO QUE VAI".
+ *
+ * A regra vem do que a câmera poderia fisicamente fazer ali:
+ *
+ *   SOBREVOO    do lado de fora, onde o assunto é grande demais pra caber andando: fachada,
+ *               quintal, piscina. É como o vídeo do concorrente abre.
+ *   ENTRAR      o ambiente em que uma pessoa ENTRA e que tem fundo pra andar.
+ *   APROXIMAR   cômodo pequeno. Andar pra frente num banheiro de 2 m bate na parede em um
+ *               segundo; o avanço com profundidade mostra o acabamento sem esbarrar.
+ */
+const ANIMACAO: Record<string, AnimacaoId> = {
+  fachada: "drone",
+  quintal: "drone",
+  piscina: "drone",
+  playground: "drone",
+  entrada: "caminhar",
+  sala: "caminhar",
+  integrado: "caminhar",
+  jantar: "caminhar",
+  cozinha: "caminhar",
+  quarto: "caminhar",
+  infantil: "caminhar",
+  escritorio: "caminhar",
+  varanda: "caminhar",
+  gourmet: "caminhar",
+  salao: "caminhar",
+  academia: "caminhar",
+  banheiro: "aproximar",
+  closet: "aproximar",
+  area_servico: "aproximar",
+};
+
 /** O que a visão devolveu sobre uma imagem, seja ela de job ou de arquivo solto. */
 export type Olhada = {
   /** A chave da cena na tela — é por ela que o resultado volta pro lugar certo. */
@@ -106,6 +144,8 @@ export type CenaSugerida = {
   chave: string;
   legenda: string;
   efeito: EfeitoId;
+  /** O movimento da câmera quando a cena for animada por IA. Só vale no estilo "Tour". */
+  animacao: AnimacaoId;
   duracao: number;
 };
 
@@ -202,7 +242,7 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     return {
       ordem: olhadas.map((o) => o.chave),
       capa: olhadas[0]?.chave ?? null,
-      cenas: olhadas.map((o) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), duracao: duracaoPadrao })),
+      cenas: olhadas.map((o) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), animacao: animacaoDe(o), duracao: duracaoPadrao })),
       fora: [],
     };
   }
@@ -229,6 +269,7 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     chave: o.chave,
     legenda: legendaDe(o),
     efeito: efeitoDe(o),
+    animacao: animacaoDe(o),
     // A capa segura um pouco mais: é onde a pessoa decide se continua vendo.
     duracao: o.chave === capa ? Math.round(duracaoPadrao * 1.25) : duracaoPadrao,
   }));
@@ -260,6 +301,12 @@ export function efeitoDe(o: Olhada): EfeitoId {
   if (o.eh360 || o.ehClipe) return "parado";
   const m = o.ambiente ? MOVIMENTO[o.ambiente] : null;
   return m ?? "aproximar";
+}
+
+/** O movimento de câmera da cena animada. Ambiente desconhecido entra andando pra frente. */
+export function animacaoDe(o: Olhada): AnimacaoId {
+  const a = o.ambiente ? ANIMACAO[o.ambiente] : null;
+  return a ?? "caminhar";
 }
 
 /** Só pra tela: quantas fotos a visão ainda não viu (cada uma custa uma chamada). */

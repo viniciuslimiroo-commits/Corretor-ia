@@ -20,6 +20,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import ffmpegBin from "ffmpeg-static";
 import { argsTelaFinal, amplitudeDoZoom, quadrosDeMovimento } from "../src/lib/video-ffmpeg";
+import { relogioDoVideo, emendasDoVideo, TRANSICAO_POR_ID } from "../src/lib/video";
 
 const SAIDA = fs.mkdtempSync(path.join(os.tmpdir(), "encena-ritmo-"));
 const FOTO = path.resolve(process.cwd(), "..", "docs", "fotos-origem", "casa.jpg");
@@ -91,6 +92,38 @@ async function main() {
     "controle: com a amplitude fixa de antes, 4 s e 7 s andavam bem diferente",
     `${(velhaRapida * 100).toFixed(1)}%/s contra ${(velhaLenta * 100).toFixed(1)}%/s`
   );
+
+  // ---- 1b. o RELÓGIO bate com o do vídeo que ele tomou como referência ----
+  //
+  // Medido no arquivo dele em 23/09/2026, quadro a quadro (a régua é a diferença contra o
+  // quadro de 1 s antes, porque a transição é suave demais pra aparecer entre vizinhos):
+  //
+  //   10 fotos · 37,33 s · cortes em 4,1 · 7,5 · 11,3 · 15,0 · 19,0 · 22,5 · 26,2 · 30,0 · 33,7
+  //   ou seja ~3,7 s por cena, sem nenhuma segurando mais, e a troca dura 7 quadros = 0,29 s.
+  //
+  // Ele: "quero que fique parecido... em todos os sentidos, tempo de vídeo, cortes pra outra
+  // foto, achei aquele ideal". Isto trava esses dois números.
+  const REF_TOTAL = 37.33;
+  const REF_TRANSICAO = 0.29;
+  const dissolver = TRANSICAO_POR_ID.dissolver;
+  conferir(Math.abs(dissolver.segundos - REF_TRANSICAO) < 0.1, "a troca de foto dura o mesmo que a da referência", `${dissolver.segundos}s contra ${REF_TRANSICAO}s`);
+
+  const dezCenas = Array.from({ length: 10 }, () => ({ tipo: "animada" as const, duracao: 4 }));
+  const relogio = relogioDoVideo(
+    dezCenas.map((c) => c.duracao),
+    emendasDoVideo({ cenas: dezCenas as never, transicao: "dissolver", telaFinal: null })
+  );
+  conferir(Math.abs(relogio.total - REF_TOTAL) < 1, "10 fotos no estilo Tour dão o mesmo tempo TOTAL da referência", `${relogio.total.toFixed(2)}s contra ${REF_TOTAL}s`);
+
+  // E cada cena tem o mesmo tempo: na referência nenhuma segura mais que a outra, nem a capa.
+  const tempos = relogio.clipes.map((c, i) => (i === 0 ? c.fim : c.fim - relogio.clipes[i - 1].fim));
+  const iguais = Math.max(...tempos.slice(1)) - Math.min(...tempos.slice(1));
+  conferir(iguais < 0.05, "e todas as cenas duram igual — inclusive a primeira", `variação de ${iguais.toFixed(3)}s`);
+
+  // CONTROLE: com a transição de 0,6 s de antes, o mesmo vídeo ficava quase 3 s mais curto
+  // do que a referência, e cada passagem demorava o dobro pra entregar a foto nova.
+  const comAntiga = 10 * 4 - 9 * 0.6;
+  conferir(Math.abs(comAntiga - REF_TOTAL) > Math.abs(relogio.total - REF_TOTAL), "controle: com a transição antiga de 0,6 s o total ficava mais longe da referência", `${comAntiga.toFixed(2)}s contra ${relogio.total.toFixed(2)}s`);
 
   // ---- 2. a tela final não pode mais congelar ----
   const final = path.join(SAIDA, "final.mp4");
