@@ -55,7 +55,14 @@ conferir(pos("e") < pos("c"), "entre dois quartos, o de nota melhor vem primeiro
 // ---- 3. a capa ----
 conferir(s.capa === "d", "a capa é a melhor fachada", String(s.capa));
 const semFachada = sugerirMontagem(DEZ.filter((f) => f.ambiente !== "fachada"), 4);
-conferir(semFachada.capa === "b", "sem fachada, a capa é a foto de maior nota", `${semFachada.capa} (cozinha, nota 9)`);
+conferir(semFachada.capa === "f", "sem fachada, a capa é a área externa, não a nota mais alta", `${semFachada.capa} (gourmet, nota 8) em vez de b (cozinha, nota 9)`);
+
+// O QUE MOTIVOU A REGRA: num teste com fotos REAIS dele, a maior nota era um BANHEIRO, e o
+// automático escolheu banheiro como capa de um anúncio de imóvel.
+const soBanheiroEQuintal = sugerirMontagem([foto("ban", "banheiro", 10), foto("qui", "quintal", 6)], 4);
+conferir(soBanheiroEQuintal.capa === "qui", "banheiro nota 10 NÃO vira capa na frente de um quintal nota 6", String(soBanheiroEQuintal.capa));
+const doisQuintais = sugerirMontagem([foto("q1", "quintal", 5), foto("q2", "quintal", 9)], 4);
+conferir(doisQuintais.capa === "q2", "mas dentro do MESMO ambiente, a nota manda", String(doisQuintais.capa));
 
 // ---- 4. o descarte, e o AVISO do descarte ----
 const comRuim = sugerirMontagem([...DEZ, foto("x", "sala", 1), foto("p", "planta", 9)], 4);

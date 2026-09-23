@@ -122,6 +122,47 @@ export type Sugestao = {
 /** Nota mínima pra entrar. Abaixo disso a foto atrapalha mais do que mostra. */
 export const NOTA_MINIMA = 3;
 
+/**
+ * Quem merece ser capa, do melhor (0) pro pior. Menor é melhor.
+ *
+ * A fachada vende o imóvel inteiro numa imagem; a área externa e o social vêm depois; quarto
+ * e banheiro são o que se vê DEPOIS de decidir entrar, e não o que faz entrar. Área de
+ * serviço e closet ficam por último -- foto boa de lavanderia continua sendo lavanderia.
+ */
+function pontoDeCapa(ambiente: string | null): number {
+  switch (ambiente) {
+    case "fachada":
+      return 0;
+    case "piscina":
+    case "gourmet":
+    case "varanda":
+    case "quintal":
+      return 1;
+    case "sala":
+    case "integrado":
+    case "jantar":
+      return 2;
+    case "cozinha":
+      return 3;
+    case "entrada":
+    case "salao":
+    case "academia":
+    case "playground":
+      return 4;
+    case "quarto":
+    case "infantil":
+    case "escritorio":
+      return 5;
+    case "banheiro":
+    case "closet":
+    case "area_servico":
+      return 7;
+    default:
+      // Ambiente que a visão não reconheceu fica no meio: pode ser uma boa fachada torta.
+      return 6;
+  }
+}
+
 /** Onde a foto cai na visita. Ambiente desconhecido vai pro meio, não pro fim. */
 function posicao(ambiente: string | null): number {
   const i = ambiente ? ORDEM_DO_PASSEIO.indexOf(ambiente) : -1;
@@ -173,11 +214,16 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     return b.qualidade - a.qualidade;
   });
 
-  // A capa é a melhor fachada; sem fachada, a melhor foto de todas. É o quadro que aparece
-  // antes de alguém tocar no play, então é ele que decide se tocam.
-  const fachadas = ordenadas.filter((o) => o.ambiente === "fachada" && !o.ehClipe);
-  const candidatas = fachadas.length ? fachadas : ordenadas.filter((o) => !o.ehClipe);
-  const capa = [...candidatas].sort((a, b) => b.qualidade - a.qualidade)[0]?.chave ?? ordenadas[0]?.chave ?? null;
+  // A CAPA é o quadro que aparece antes de alguém tocar no play -- é ele que decide se
+  // tocam. Por isso não basta "a foto de maior nota": num teste com fotos reais, a melhor
+  // nota era um BANHEIRO, e banheiro não é capa de anúncio de imóvel por melhor que esteja
+  // a foto. A preferência é por ambiente, e a nota só desempata dentro dela.
+  const candidatas = ordenadas.filter((o) => !o.ehClipe);
+  const capa =
+    [...candidatas].sort((a, b) => {
+      const d = pontoDeCapa(a.ambiente) - pontoDeCapa(b.ambiente);
+      return d !== 0 ? d : b.qualidade - a.qualidade;
+    })[0]?.chave ?? ordenadas[0]?.chave ?? null;
 
   const cenas = ordenadas.map((o) => ({
     chave: o.chave,

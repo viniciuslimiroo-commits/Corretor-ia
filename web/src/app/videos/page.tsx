@@ -53,6 +53,7 @@ import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
 import OuvirMusica from "@/components/ouvir-musica";
+import { sugerirMontagem, type Olhada } from "@/lib/video-automatico";
 import { useArrastarLista } from "@/components/usar-arrastar-lista";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 
@@ -222,6 +223,9 @@ export default function PaginaVideo() {
   const [escrevendo, setEscrevendo] = useState(false);
   const [enviando, setEnviando] = useState(0);
   const [ajustesAbertos, setAjustesAbertos] = useState(false);
+  const [montando, setMontando] = useState(false);
+  /** O que o "Montar sozinho" fez da última vez, pra poder contar e desfazer. */
+  const [montagem, setMontagem] = useState<{ antes: CenaUI[]; quantas: number; fora: string[]; semOlhar: boolean } | null>(null);
 
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string } | null>(null);
@@ -424,12 +428,18 @@ export default function PaginaVideo() {
         //
         // Não trava o envio: se falhar, a cena entra do mesmo jeito e o vídeo sai. Perder o
         // registro é chato; perder o vídeo por causa do registro seria pior.
+        const ch = chave();
         if (!ehVideo) {
           fetch("/api/video/registrar", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
             body: JSON.stringify({ caminho: d.caminho, imovelId, nome: f.name }),
-          }).catch(() => {});
+          })
+            .then((r) => r.json())
+            // O id volta pra cena: é por ele que o "Montar sozinho" pergunta o que a foto é,
+            // e é na linha dele que a resposta fica guardada pra não perguntar duas vezes.
+            .then((reg) => reg?.jobId && setCenas((lista) => lista.map((s) => (s.chave === ch ? { ...s, jobId: reg.jobId } : s))))
+            .catch(() => {});
         }
         const formato = ehVideo ? "comum" : await formatoDaFoto(f);
         const eh360 = formato === "esferica";
@@ -437,7 +447,7 @@ export default function PaginaVideo() {
         setCenas((lista) => [
           ...lista,
           {
-            chave: chave(),
+            chave: ch,
             tipo: eh360 ? "tour360" : ehVideo ? "clipe" : "foto",
             arquivo: d.caminho,
             miniatura: ehVideo ? null : URL.createObjectURL(f),
@@ -544,6 +554,73 @@ export default function PaginaVideo() {
       return nova;
     });
   }
+  /**
+   * MONTAR SOZINHO: olha as fotos e decide a ordem, a capa, a legenda e o movimento.
+   *
+   * A IA só diz o QUE É cada foto (ambiente, nota, legenda curta); quem decide é a regra em
+   * lib/video-automatico.ts. Se a decisão fosse da IA, o mesmo conjunto daria uma ordem hoje
+   * e outra amanhã, e o corretor veria o vídeo mudar sem ter mexido em nada.
+   *
+   * Nunca perde o que a pessoa fez: guarda a lista de antes e oferece desfazer.
+   */
+  async function montarSozinho() {
+    if (cenas.length === 0 || montando) return;
+    setMontando(true);
+    setErro(null);
+    const antes = cenas;
+    try {
+      const comId = cenas.filter((s) => s.jobId);
+      let olhadas: { jobId: string; ambiente: string | null; qualidade: number; legenda: string }[] = [];
+      if (comId.length > 0) {
+        const r = await fetch("/api/video/montar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ jobIds: comId.map((s) => s.jobId) }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "não consegui olhar as fotos");
+        olhadas = d.olhadas ?? [];
+      }
+      const porJob = new Map(olhadas.map((o) => [o.jobId, o]));
+      // Cena sem análise (clipe, ou foto que a visão não alcançou) entra do mesmo jeito: fica
+      // no meio da ordem e mantém o movimento que já tinha.
+      const entrada: Olhada[] = cenas.map((s) => {
+        const o = s.jobId ? porJob.get(s.jobId) : undefined;
+        return {
+          chave: s.chave,
+          ambiente: o?.ambiente ?? null,
+          qualidade: o?.qualidade ?? 5,
+          legenda: o?.legenda ?? "",
+          ehPanoramica: s.ehPanoramica,
+          eh360: s.eh360,
+          ehClipe: s.ehClipe,
+        };
+      });
+      const s = sugerirMontagem(entrada, LIMITES.duracaoPadrao);
+      const porChave = new Map(cenas.map((c) => [c.chave, c]));
+      const ajustes = new Map(s.cenas.map((c) => [c.chave, c]));
+      setCenas(
+        s.ordem.map((k) => {
+          const base = porChave.get(k)!;
+          const a = ajustes.get(k);
+          return a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, duracao: a.duracao } : base;
+        })
+      );
+      if (s.capa) setCapa(s.capa);
+      const nomeDe = (k: string) => porChave.get(k)?.rotulo ?? "foto";
+      setMontagem({
+        antes,
+        quantas: s.ordem.length,
+        fora: s.fora.map((f) => `${nomeDe(f.chave)} — ${f.motivo}`),
+        semOlhar: comId.length === 0 || olhadas.length === 0,
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui montar agora.");
+    } finally {
+      setMontando(false);
+    }
+  }
+
   /** Tira de uma posição e põe em outra — o que o arraste faz, e as setas não sabiam fazer. */
   function reordenar(de: number, para: number) {
     setCenas((lista) => {
@@ -852,7 +929,51 @@ export default function PaginaVideo() {
           </Cartao>
 
           <Cartao>
-            <Rotulo>2 · Cenas, na ordem</Rotulo>
+            {/* MONTAR SOZINHO EM PRIMEIRO LUGAR. Ele pediu que "aquele estilo de montagem e
+                efeitos" fosse a primeira opção automática -- então o botão fica no alto das
+                cenas, e não escondido num menu. Não custa crédito: olhar foto é visão, não
+                geração, e foto já vista (por um book, por outro vídeo) volta de graça. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Rotulo>2 · Cenas, na ordem</Rotulo>
+              {cenas.length > 1 && (
+                <Botao onClick={montarSozinho} disabled={montando || gerando} className="min-h-9 px-3 text-sm">
+                  <Icone nome="magica" className="h-4 w-4" />
+                  {montando ? "Olhando as fotos…" : "Montar sozinho"}
+                </Botao>
+              )}
+            </div>
+            {cenas.length > 1 && !montagem && !montando && (
+              <p className="mt-1 mb-2 text-xs text-neutral-500">
+                Põe na ordem da visita, escolhe a capa, escreve as legendas e dá movimento a cada foto. Sem crédito.
+              </p>
+            )}
+            {/* O QUE ELE FEZ, dito em voz alta -- e com volta. Montagem automática que troca
+                tudo em silêncio é montagem que a pessoa não confia na segunda vez. */}
+            {montagem && (
+              <div className="surgir mt-1 mb-2 rounded-xl border border-marca-teal/40 bg-marca-teal/5 px-3 py-2 text-sm">
+                <p className="font-medium text-neutral-700">
+                  Montei com {montagem.quantas} {montagem.quantas === 1 ? "cena" : "cenas"}, na ordem da visita.
+                  {montagem.semOlhar && " (Não consegui olhar as fotos desta vez: mantive a ordem em que você mandou.)"}
+                </p>
+                {montagem.fora.length > 0 && (
+                  <ul className="mt-1 text-xs text-neutral-600">
+                    {montagem.fora.map((f) => (
+                      <li key={f}>Fora: {f}</li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCenas(montagem.antes);
+                    setMontagem(null);
+                  }}
+                  className="mt-1 min-h-8 text-xs font-medium text-marca-indigo underline underline-offset-2"
+                >
+                  Desfazer e voltar como estava
+                </button>
+              </div>
+            )}
             {cenas.length === 0 ? (
               <p className="text-sm text-neutral-500">Nenhuma cena ainda. Escolha um imóvel acima ou envie fotos.</p>
             ) : (
