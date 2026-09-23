@@ -416,6 +416,20 @@ export default function PaginaVideo() {
         const { error } = await supabase.storage.from(BUCKET_UPLOADS).uploadToSignedUrl(d.caminho, d.token, f, { contentType: f.type });
         if (error) throw new Error(error.message);
         const ehVideo = !!d.ehVideo;
+        // A FOTO PASSA A EXISTIR. Antes ela subia, servia pra renderizar aquele vídeo e
+        // sumia: o imóvel dele tinha 3 vídeos e ZERO fotos, e a tela dizia "este imóvel
+        // ainda não tem fotos prontas" com razão. Agora vira foto do imóvel, como já
+        // acontece na tela de Materiais -- sem crédito e sem selo.
+        //
+        // Não trava o envio: se falhar, a cena entra do mesmo jeito e o vídeo sai. Perder o
+        // registro é chato; perder o vídeo por causa do registro seria pior.
+        if (!ehVideo) {
+          fetch("/api/video/registrar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+            body: JSON.stringify({ caminho: d.caminho, imovelId, nome: f.name }),
+          }).catch(() => {});
+        }
         const formato = ehVideo ? "comum" : await formatoDaFoto(f);
         const eh360 = formato === "esferica";
         const ehPanoramica = formato === "panoramica";
