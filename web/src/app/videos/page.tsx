@@ -86,6 +86,8 @@ type CenaUI = {
   /** Cena animada cujo clipe já existe no servidor: gerar de novo com o mesmo movimento
    *  e a mesma duração não custa crédito. Vem do servidor ao editar um vídeo pronto. */
   animacaoGuardada?: { animacao: AnimacaoId; duracao: number } | null;
+  /** Por que esta foto está nesta posição. Vem da montagem automática e vai pro roteiro. */
+  motivo?: string;
 };
 
 /** O que o servidor devolve por cena, ao lado do espec, pra reabrir um vídeo pronto. */
@@ -676,15 +678,12 @@ export default function PaginaVideo() {
         !animavel(s)
           ? s
           : novo === "tour"
-            // 4 s em TODAS, inclusive a capa. O vídeo que ele tomou como referência tem 10
-            // fotos em 37,3 s -- 3,73 s cada, sem nenhuma segurando mais. A cena animada só
-            // aceita 3, 4 ou 5, e 4 é a mais perto. Uniforme também é o ponto: ele pediu
-            // "parecido em todos os sentidos, tempo de vídeo, cortes pra outra foto".
-            //
-            // `animacao` NÃO entra aqui de propósito: quem escolheu a direção foi a montagem,
-            // olhando o ambiente (sobrevoo na fachada, entrar na sala, aproximar no banheiro).
-            // Fixar "caminhar" aqui desfaria isso a cada toque no botão de estilo.
-            ? { ...s, tipo: "animada" as const, duracao: 4 }
+            // Só o TIPO muda. `animacao` e `duracao` não entram aqui de propósito: quem
+            // escolheu a direção foi a montagem, olhando o ambiente (sobrevoo na fachada,
+            // entrar na sala, aproximar no banheiro), e quem escolheu o tempo foi a posição
+            // (4 s nas três de abertura e nas três do fim, 3 s no miolo). Fixar valores aqui
+            // desfazia as duas coisas a cada toque no botão de estilo.
+            ? { ...s, tipo: "animada" as const, duracao: Math.min(5, Math.max(3, s.duracao)) }
             : { ...s, tipo: "foto" as const }
       )
     );
@@ -743,13 +742,14 @@ export default function PaginaVideo() {
         s.ordem.map((k) => {
           const base = porChave.get(k)!;
           const a = ajustes.get(k);
-          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, animacao: a.animacao, duracao: a.duracao } : base;
+          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, animacao: a.animacao, duracao: a.duracao, motivo: a.motivo } : base;
           // O estilo vale também pras cenas que a montagem acabou de organizar: escolher
           // "Tour" e DEPOIS mandar as fotos tem que dar o mesmo resultado que o contrário.
           const animavel = !arrumada.ehClipe && !arrumada.eh360 && !arrumada.ehPanoramica;
-          // A animação já veio do ambiente (sobrevoo na fachada, entrar na sala, aproximar no
-          // banheiro): aqui só se liga o tipo animado e o tempo.
-          return estilo === "tour" && animavel ? { ...arrumada, tipo: "animada" as const, duracao: 4 } : arrumada;
+          // A animação já veio do ambiente e a duração veio da POSIÇÃO (4 s nas três de
+          // abertura e nas três do fim, 3 s no miolo): aqui só se liga o tipo animado. Forçar
+          // 4 s aqui, como antes, achatava o ritmo que a montagem tinha acabado de dar.
+          return estilo === "tour" && animavel ? { ...arrumada, tipo: "animada" as const } : arrumada;
         })
       );
       if (s.capa) setCapa(s.capa);
@@ -1119,16 +1119,27 @@ export default function PaginaVideo() {
                 tudo em silêncio é montagem que a pessoa não confia na segunda vez. */}
             {montagem && (
               <div className="surgir mt-1 mb-2 rounded-xl border border-marca-teal/40 bg-marca-teal/5 px-3 py-2 text-sm">
+                {/* DIZER QUANTAS FORAM OLHADAS, e não só quantas entraram. "Montei com 10
+                    cenas" some com o trabalho: quem mandou 12 fotos não sabe se as outras
+                    duas foram esquecidas ou recusadas. O número de partida é o que mostra
+                    que houve escolha -- e é o que dá sentido à lista de recusadas embaixo. */}
                 <p className="font-medium text-neutral-700">
-                  Montei com {montagem.quantas} {montagem.quantas === 1 ? "cena" : "cenas"}, na ordem da visita.
+                  Olhei as {montagem.quantas + montagem.fora.length} fotos e escolhi {montagem.quantas}, na ordem da visita.
                   {montagem.semOlhar && " (Não consegui olhar as fotos desta vez: mantive a ordem em que você mandou.)"}
                 </p>
                 {montagem.fora.length > 0 && (
-                  <ul className="mt-1 text-xs text-neutral-600">
-                    {montagem.fora.map((f) => (
-                      <li key={f}>Fora: {f}</li>
-                    ))}
-                  </ul>
+                  /* Recolhidas: são a exceção, e uma lista aberta de recusas rouba a atenção
+                     do roteiro, que é o que ele precisa conferir. Abre quem quiser saber. */
+                  <details className="mt-1">
+                    <summary className="min-h-7 cursor-pointer text-xs font-medium text-neutral-600">
+                      {montagem.fora.length} {montagem.fora.length === 1 ? "foto não entrou" : "fotos não entraram"}
+                    </summary>
+                    <ul className="mt-1 ml-1 text-xs text-neutral-600">
+                      {montagem.fora.map((f) => (
+                        <li key={f}>· {f}</li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 <button
                   type="button"
@@ -1152,10 +1163,18 @@ export default function PaginaVideo() {
                  ROTEIRO pronto, em miniatura, e não os seis controles de cada cena. Quem
                  quiser mexer abre; quem só quer o vídeo, aperta Gerar e pronto. */
               <div>
-                <ol className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
+                {/* O ROTEIRO MOSTRA O TRABALHO: posição, tempo, ambiente e POR QUÊ.
+                    Antes era uma tira de miniaturas de 96px com uma legenda cortada -- dava
+                    pra ver que algo tinha sido feito, não o que tinha sido decidido. A tela
+                    do concorrente que ele mandou em 23/09/2026 declara foto por foto ("4s ·
+                    Cozinha · Cozinha com bancada, ambiente social importante"), e é isso que
+                    faz a montagem automática parecer trabalho em vez de sorte.
+                    O motivo é escrito pela regra (lib/video-automatico.ts), não pela IA:
+                    explicação que não bate com a decisão é pior que nenhuma. */}
+                <ol className="grid grid-cols-2 gap-2 pb-1 sm:grid-cols-3">
                   {cenas.map((s, i) => (
-                    <li key={s.chave} className="w-24 shrink-0">
-                      <div className="relative overflow-hidden rounded-lg border border-neutral-200">
+                    <li key={s.chave} className="rounded-lg border border-neutral-200 bg-white p-1.5">
+                      <div className="relative overflow-hidden rounded">
                         {s.miniatura ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={s.miniatura} alt="" className="aspect-[4/3] w-full object-cover" />
@@ -1164,13 +1183,23 @@ export default function PaginaVideo() {
                             <Icone nome="video" className="h-5 w-5 text-neutral-400" />
                           </div>
                         )}
-                        <span className="absolute top-0.5 left-0.5 rounded bg-black/55 px-1 text-[10px] font-semibold text-white">{i + 1}</span>
-                        {(capa ?? cenas[0]?.chave) === s.chave && <span className="absolute right-0.5 bottom-0.5 rounded bg-marca-coral px-1 text-[9px] font-semibold text-white">capa</span>}
+                        <span className="absolute top-1 left-1 rounded bg-marca-indigo px-1.5 text-[10px] font-semibold text-white">{i + 1}</span>
+                        {/* O tempo de cada cena, à vista. É o que deixa o ritmo 4-4-4-3-3-3-3-4-4-4
+                            visível em vez de escondido num campo que só aparece se abrir os detalhes. */}
+                        <span className="absolute top-1 right-1 rounded bg-black/60 px-1.5 text-[10px] font-semibold text-white">{s.duracao}s</span>
+                        {(capa ?? cenas[0]?.chave) === s.chave && <span className="absolute bottom-1 left-1 rounded bg-marca-coral px-1.5 text-[9px] font-semibold text-white">capa</span>}
+                        {s.tipo === "animada" && <span className="absolute right-1 bottom-1 rounded bg-white/90 px-1.5 text-[9px] font-semibold text-marca-indigo">câmera</span>}
                       </div>
-                      <p className="mt-1 truncate text-[11px] leading-tight text-neutral-600">{s.legenda || s.rotulo}</p>
+                      <p className="mt-1.5 truncate text-[12px] font-semibold text-neutral-700">{s.legenda || s.rotulo}</p>
+                      {s.motivo && <p className="mt-0.5 text-[11px] leading-tight text-neutral-500">{s.motivo}</p>}
                     </li>
                   ))}
                 </ol>
+                {/* O total, porque é o número que decide se o vídeo serve pro Reels: a faixa
+                    que o algoritmo empurra é de 15 a 30 s, e ninguém soma dez cenas de cabeça. */}
+                <p className="mt-1.5 text-xs text-neutral-500">
+                  {cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · {Math.round(duracao)} s no total
+                </p>
                 <button
                   type="button"
                   onClick={() => setMexendo(true)}

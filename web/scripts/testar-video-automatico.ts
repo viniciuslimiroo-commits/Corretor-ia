@@ -6,7 +6,7 @@
 //
 //   node --import ./scripts/ts-direto.mjs scripts/testar-video-automatico.ts
 
-import { sugerirMontagem, efeitoDe, animacaoDe, legendaDe, ORDEM_DO_PASSEIO, type Olhada } from "../src/lib/video-automatico";
+import { sugerirMontagem, efeitoDe, animacaoDe, legendaDe, duracaoDaPosicao, ORDEM_DO_PASSEIO, type Olhada } from "../src/lib/video-automatico";
 
 let falhas = 0;
 const conferir = (ok: boolean, oque: string, extra = "") => {
@@ -94,10 +94,56 @@ conferir(legendaDe(foto("_", null, 8, { legenda: "sala com lareira" })) === "sal
 conferir(legendaDe(foto("_", null, 8, { legenda: "sala de 32 m2" })) === "", "legenda com NÚMERO é cortada: número é afirmação sobre o imóvel");
 conferir(legendaDe(foto("_", "sala", 8, { ehClipe: true })) === "", "clipe não ganha legenda automática");
 
-// ---- 7. a capa segura mais tempo ----
-const capa = s.cenas.find((c) => c.chave === s.capa)!;
-const outra = s.cenas.find((c) => c.chave !== s.capa)!;
-conferir(capa.duracao > outra.duracao, "a capa fica mais tempo que as outras", `${capa.duracao}s contra ${outra.duracao}s`);
+// ---- 7. o RITMO: abertura e fim seguram, o miolo corre ----
+//
+// Medido no vídeo que ele tomou como referência em 23/09/2026, e confirmado pela tela do
+// concorrente, que declara foto por foto: 4 · 4 · 4 · 3 · 3 · 3 · 3 · 4 · 4 · 4 = 36 s.
+//
+// Antes era a CAPA que segurava mais (4 × 1,25 = 5 s) e o resto igual. Aquilo dava uma
+// abertura longa e um corpo de slides; isto dá a curva que quem edita vídeo usa: tempo pra
+// prender, velocidade pra não cansar, ar pra assentar antes da tela de contato.
+const RITMO = Array.from({ length: 10 }, (_, i) => duracaoDaPosicao(i, 10, 4));
+conferir(JSON.stringify(RITMO) === JSON.stringify([4, 4, 4, 3, 3, 3, 3, 4, 4, 4]), "10 cenas seguem o ritmo 4-4-4-3-3-3-3-4-4-4", RITMO.join("·"));
+conferir(RITMO.reduce((a, b) => a + b, 0) === 36, "e somam os mesmos 36 s da referência", `${RITMO.reduce((a, b) => a + b, 0)}s`);
+// CONTROLE: com a conta antiga (tudo igual, capa 25% maior) davam 41 s -- 5 s a mais, e
+// nenhuma cena curta. Se este controle não acusar, o teste acima não sabe o que mudou.
+const ANTIGO = 4 * 1.25 + 9 * 4;
+conferir(ANTIGO > 36, "controle: a conta antiga dava um vídeo mais longo", `${ANTIGO}s contra 36s`);
+// Vídeo curto não tem miolo pra correr: seis cenas são todas abertura e fim.
+conferir(Array.from({ length: 6 }, (_, i) => duracaoDaPosicao(i, 6, 4)).every((d) => d === 4), "vídeo de até 6 cenas fica todo no tempo cheio");
+// E o piso: a duração mínima da cena é 3 s, nunca menos, mesmo com padrão baixo.
+conferir(duracaoDaPosicao(4, 10, 3) === 3, "com padrão de 3 s o miolo não cai pra 2 s");
+
+// ---- 7b. o MOTIVO de cada cena, que é o que a tela mostra ----
+const comMotivo = sugerirMontagem(DEZ, 4);
+const motivos = comMotivo.cenas.map((c) => c.motivo);
+conferir(motivos.every((m) => m.length > 0), "toda cena sai com um motivo escrito");
+conferir(/Abre o vídeo/.test(motivos[0] ?? ""), "a primeira diz que abre o vídeo", motivos[0]);
+conferir(/Fecha o vídeo/.test(motivos[motivos.length - 1] ?? ""), "a última diz que fecha", motivos[motivos.length - 1]);
+// Duas fotos do mesmo ambiente não podem repetir a mesma frase: é o que denuncia texto de molde.
+// A piscina vira capa e abre; o banheiro entra DEPOIS dos quartos, pra que o segundo quarto
+// nao caia na ultima posicao -- la quem manda e a funcao de fechar, nao a repeticao.
+const doisQuartos = sugerirMontagem([foto("a", "sala"), foto("q1", "quarto", 9), foto("q2", "quarto", 7), foto("b", "banheiro", 6), foto("p", "piscina")], 4);
+const q2 = doisQuartos.cenas.find((c) => c.chave === "q2")!;
+conferir(/Segundo quarto/.test(q2.motivo), "o segundo quarto se apresenta como segundo", q2.motivo);
+conferir(doisQuartos.cenas.find((c) => c.chave === "q1")!.motivo !== q2.motivo, "e nao repete a frase do primeiro");
+
+// GENERO. A tela escreveu "Segundo cozinha" no teste com as fotos reais dele, e esse e o tipo
+// de erro que um corretor brasileiro le como "robo escreveu isto".
+const duasCozinhas = sugerirMontagem([foto("f", "fachada"), foto("c1", "cozinha", 9), foto("c2", "cozinha", 7), foto("p", "piscina")], 4);
+const c2 = duasCozinhas.cenas.find((c) => c.chave === "c2")!;
+conferir(/Segunda cozinha/.test(c2.motivo), "duas cozinhas dao SEGUNDA cozinha, no feminino", c2.motivo);
+// E o ordinal nao pode colidir com o nome: a quarta foto de quarto seria "Quarto quarto".
+const quatroQuartos = sugerirMontagem([foto("f", "fachada"), foto("q1", "quarto", 9), foto("q2", "quarto", 8), foto("q3", "quarto", 7), foto("q4", "quarto", 6), foto("p", "piscina")], 4);
+const frases = quatroQuartos.cenas.filter((c) => c.chave.startsWith("q")).map((c) => c.motivo);
+conferir(!frases.some((m) => /Quarto quarto/i.test(m)), "e nunca sai \"Quarto quarto\"", frases.join(" | "));
+
+// A POSICAO manda na frase, mesmo quando a foto e repetida: quem fecha o video diz que fecha.
+const doisFundos = sugerirMontagem([foto("f", "fachada"), foto("s", "sala"), foto("x1", "quintal", 9), foto("x2", "quintal", 7)], 4);
+const ultima = doisFundos.cenas[doisFundos.cenas.length - 1];
+conferir(/Fecha o v/.test(ultima.motivo), "a ultima cena diz que fecha, e nao que e a segunda", ultima.motivo);
+// O motivo NUNCA pode inventar número: número é afirmação sobre o imóvel.
+conferir(!motivos.some((m) => /\d/.test(m)), "nenhum motivo cita número", motivos.find((m) => /\d/.test(m)) ?? "");
 
 // ---- 8. o que NÃO pode acontecer ----
 const vazio = sugerirMontagem([], 4);

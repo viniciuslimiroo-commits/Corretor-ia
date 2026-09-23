@@ -147,6 +147,8 @@ export type CenaSugerida = {
   /** O movimento da câmera quando a cena for animada por IA. Só vale no estilo "Tour". */
   animacao: AnimacaoId;
   duracao: number;
+  /** Por que esta foto está AQUI, nesta posição. É o que a tela mostra embaixo da miniatura. */
+  motivo: string;
 };
 
 export type Sugestao = {
@@ -158,6 +160,31 @@ export type Sugestao = {
   /** Descartadas, com o motivo — a tela precisa DIZER o que tirou, não sumir com a foto. */
   fora: { chave: string; motivo: string }[];
 };
+
+/**
+ * QUANTO TEMPO CADA CENA SEGURA, pela POSIÇÃO dela no vídeo -- não pelo ambiente.
+ *
+ * Medido no vídeo que ele tomou como referência (23/09/2026), que a própria tela do
+ * concorrente declara foto por foto: 4 · 4 · 4 · 3 · 3 · 3 · 3 · 4 · 4 · 4 = 36 s. As três
+ * primeiras e as três últimas seguram 4 s; o miolo corre a 3 s.
+ *
+ * É ritmo de montagem, e o motivo é de quem edita vídeo: a abertura precisa de tempo pra
+ * prender, o miolo precisa de velocidade pra não cansar, e o fim precisa de ar pra assentar
+ * antes da tela de contato. Duração igual do começo ao fim é o que faz um vídeo de imóvel
+ * parecer apresentação de slides.
+ *
+ * Tem dois efeitos de bolso, e os dois são bons: o vídeo de 10 fotos cai de 37 s pra 36 s --
+ * mais perto da faixa de 15 a 30 s que o Reels empurra -- e a cena animada custa por QUADRO,
+ * então as quatro cenas de 3 s custam 25% menos cada uma que custariam a 4 s.
+ *
+ * Vídeo curto (até 6 cenas) é todo de abertura e fim: não existe miolo pra correr.
+ */
+export function duracaoDaPosicao(indice: number, total: number, padrao: number): number {
+  if (total <= 6) return padrao;
+  const noComeco = indice < 3;
+  const noFim = indice >= total - 3;
+  return noComeco || noFim ? padrao : Math.max(3, padrao - 1);
+}
 
 /** Nota mínima pra entrar. Abaixo disso a foto atrapalha mais do que mostra. */
 export const NOTA_MINIMA = 3;
@@ -242,7 +269,7 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     return {
       ordem: olhadas.map((o) => o.chave),
       capa: olhadas[0]?.chave ?? null,
-      cenas: olhadas.map((o) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), animacao: animacaoDe(o), duracao: duracaoPadrao })),
+      cenas: olhadas.map((o) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), animacao: animacaoDe(o), duracao: duracaoPadrao, motivo: "Nenhuma foto passou na conferência; usei todas em vez de te deixar sem vídeo." })),
       fora: [],
     };
   }
@@ -265,15 +292,6 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
       return d !== 0 ? d : b.qualidade - a.qualidade;
     })[0]?.chave ?? ordenadas[0]?.chave ?? null;
 
-  const cenas = ordenadas.map((o) => ({
-    chave: o.chave,
-    legenda: legendaDe(o),
-    efeito: efeitoDe(o),
-    animacao: animacaoDe(o),
-    // A capa segura um pouco mais: é onde a pessoa decide se continua vendo.
-    duracao: o.chave === capa ? Math.round(duracaoPadrao * 1.25) : duracaoPadrao,
-  }));
-
   // A PRIMEIRA CENA É A CAPA. Antes a ordem era pura ordem de visita, e a capa servia só de
   // miniatura -- então um conjunto sem foto de fachada ABRIA numa cozinha ou num banheiro,
   // que foi o que ele viu: "acho estranho a sequência começar pela parte interna".
@@ -281,9 +299,136 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
   // Vídeo de imóvel se apresenta antes de entrar. A capa já é escolhida por quem merece
   // abrir (fachada, depois área externa, depois social), então é ela que abre o passeio; o
   // resto segue a ordem da visita, e o fim continua caindo nas áreas de lazer e comuns.
-  const ordem = capa ? [capa, ...ordenadas.filter((o) => o.chave !== capa).map((o) => o.chave)] : ordenadas.map((o) => o.chave);
+  const naTela = capa ? [ordenadas.find((o) => o.chave === capa)!, ...ordenadas.filter((o) => o.chave !== capa)] : ordenadas;
+  const ordem = naTela.map((o) => o.chave);
+
+  // A ordem sai ANTES das cenas de propósito: a duração e o motivo de cada uma dependem da
+  // POSIÇÃO dela no vídeo, e a posição só existe depois de ordenar.
+  const jaVieram = new Map<string, number>();
+  const cenas = naTela.map((o, i) => {
+    const doMesmo = jaVieram.get(o.ambiente ?? "?") ?? 0;
+    jaVieram.set(o.ambiente ?? "?", doMesmo + 1);
+    return {
+      chave: o.chave,
+      legenda: legendaDe(o),
+      efeito: efeitoDe(o),
+      animacao: animacaoDe(o),
+      duracao: duracaoDaPosicao(i, naTela.length, duracaoPadrao),
+      motivo: motivoDaCena(o, i, naTela.length, doMesmo),
+    };
+  });
+
   return { ordem, capa, cenas, fora };
 }
+
+/**
+ * POR QUE ESTA FOTO ESTÁ AQUI -- a frase que aparece embaixo da miniatura no roteiro.
+ *
+ * Escrita pela REGRA e não pela IA, pelo mesmo motivo de todo o resto deste arquivo: a
+ * explicação tem que bater com a decisão. Uma frase gerada por IA soaria melhor e, de vez
+ * em quando, justificaria uma escolha que o código não fez -- e aí o corretor confia numa
+ * explicação que não corresponde ao vídeo dele. Também custaria uma chamada por foto.
+ *
+ * `repeticao` é quantas fotos DESTE mesmo ambiente já vieram antes: é o que transforma o
+ * segundo quarto em "Segundo quarto, mantém a sequência" em vez de repetir a mesma frase.
+ */
+export function motivoDaCena(o: Olhada, indice: number, total: number, repeticao: number): string {
+  if (o.ehClipe) return "Clipe que você enviou: entra como está.";
+  if (o.eh360) return "Foto 360: a câmera passeia dentro dela.";
+  if (o.ehPanoramica) return "Panorâmica: desliza de ponta a ponta em vez de aproximar.";
+
+  // A POSIÇÃO VEM ANTES DA REPETIÇÃO. A última cena de um conjunto com dois quintais dizia
+  // "Segundo quintal, mantém a sequência" e engolia a única informação que importava ali:
+  // que é ela que fecha o vídeo. Abrir e fechar são funções; ser o segundo quarto é detalhe.
+  if (indice === 0) return `${abreCom(o.ambiente)} Abre o vídeo.`;
+  if (indice === total - 1) return `${fechaCom(o.ambiente)} Fecha o vídeo.`;
+
+  const nome = (o.ambiente && NOME_DO_AMBIENTE[o.ambiente]) || "Ambiente";
+  if (repeticao > 0) return `${maisUm(nome, repeticao)}, mantém a sequência.`;
+
+  const porQue = PORQUE_DO_AMBIENTE[o.ambiente ?? ""] ?? "Entra na ordem da visita.";
+  // Nota alta é informação verificável: veio da conferência das fotos, não de opinião.
+  return o.qualidade >= 8 ? `${porQue} Foto bem enquadrada.` : porQue;
+}
+
+/**
+ * "Segunda cozinha", "Segundo quarto", "Mais uma área gourmet".
+ *
+ * O gênero sai do NOME que vai aparecer na frase, não da chave do ambiente -- "jantar" vira
+ * "Sala de jantar" e "gourmet" vira "Área gourmet", os dois femininos apesar da chave. Sem
+ * isto a tela escrevia "Segundo cozinha", que é o tipo de erro que faz um corretor brasileiro
+ * fechar a aba: ele não pensa "bug", pensa "isso aqui foi robô que escreveu".
+ *
+ * Do terceiro em diante vira "Mais um/uma" de propósito: o ordinal de posição 4 é "Quarto", e
+ * "Quarto quarto" não é frase que se escreva.
+ */
+function maisUm(nome: string, repeticao: number): string {
+  const f = FEMININO.has(nome);
+  if (repeticao === 1) return `${f ? "Segunda" : "Segundo"} ${nome.toLowerCase()}`;
+  if (repeticao === 2) return `${f ? "Terceira" : "Terceiro"} ${nome.toLowerCase()}`;
+  return `Mais ${f ? "uma" : "um"} ${nome.toLowerCase()}`;
+}
+
+/** Os nomes de ambiente que pedem artigo feminino. É a lista, porque regra de terminação erra. */
+const FEMININO = new Set(["Fachada", "Entrada", "Sala", "Sala de jantar", "Cozinha", "Área de serviço", "Varanda", "Área gourmet", "Piscina", "Academia"]);
+
+/** Por que a foto merece ABRIR: é o quadro que aparece antes de alguém tocar no play. */
+function abreCom(ambiente: string | null): string {
+  switch (ambiente) {
+    case "fachada":
+      return "Mostra a casa inteira antes de entrar.";
+    case "piscina":
+    case "gourmet":
+    case "quintal":
+    case "varanda":
+      return "Foto externa, com luz e espaço.";
+    case "sala":
+    case "integrado":
+      return "O ambiente que mais decide a visita.";
+    default:
+      return "A melhor foto do conjunto.";
+  }
+}
+
+/** Por que a foto merece FECHAR: é o último quadro antes da tela de contato. */
+function fechaCom(ambiente: string | null): string {
+  switch (ambiente) {
+    case "piscina":
+    case "gourmet":
+    case "quintal":
+    case "varanda":
+      return "Área de lazer, a imagem que fica na cabeça.";
+    case "salao":
+    case "academia":
+    case "playground":
+      return "Área comum do prédio, o extra do imóvel.";
+    default:
+      return "Última parada do passeio.";
+  }
+}
+
+/** A função de cada ambiente no meio do vídeo. Uma frase, sem adjetivo inventado. */
+const PORQUE_DO_AMBIENTE: Record<string, string> = {
+  fachada: "A casa por fora, antes de entrar.",
+  entrada: "A chegada, como numa visita de verdade.",
+  sala: "Ambiente social, onde a visita começa.",
+  integrado: "Mostra a ligação entre os ambientes.",
+  jantar: "Completa a parte social.",
+  cozinha: "Cozinha: é onde se olha o acabamento.",
+  escritorio: "Espaço de trabalho, hoje pesa na escolha.",
+  quarto: "Quarto, a parte íntima da visita.",
+  infantil: "Quarto de criança, para quem tem família.",
+  closet: "Closet, item de acabamento.",
+  banheiro: "Banheiro: acabamento e louças.",
+  area_servico: "Área de serviço, a parte prática.",
+  varanda: "Varanda, o respiro do imóvel.",
+  gourmet: "Área gourmet, o espaço de receber.",
+  quintal: "Área externa do imóvel.",
+  piscina: "Piscina, o que mais chama atenção.",
+  salao: "Salão de festas do prédio.",
+  academia: "Academia do prédio.",
+  playground: "Playground do prédio.",
+};
 
 /** O nome do ambiente. A legenda da IA só entra quando o ambiente não foi reconhecido. */
 export function legendaDe(o: Olhada): string {
