@@ -227,6 +227,11 @@ export default function PaginaVideo() {
   /** Qual foto está armada pra apagar (o primeiro toque arma, o segundo apaga). */
   const [apagando, setApagando] = useState<string | null>(null);
   const [apagandoAgora, setApagandoAgora] = useState(false);
+  /** O estilo da geração. "recomendado" é o padrão: a máquina arruma antes de gerar. */
+  const [estilo, setEstilo] = useState<"recomendado" | "meu">("recomendado");
+  /** A lista de agora, pro relógio da montagem automática não ler a de dois renders atrás. */
+  const cenasRef = useRef<CenaUI[]>([]);
+  const relogioDaMontagem = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** O que o "Montar sozinho" fez da última vez, pra poder contar e desfazer. */
   const [montagem, setMontagem] = useState<{ antes: CenaUI[]; quantas: number; fora: string[]; semOlhar: boolean } | null>(null);
 
@@ -238,6 +243,15 @@ export default function PaginaVideo() {
   const [segundosGerando, setSegundosGerando] = useState(0);
 
   // O relógio zera em `gerar()`, na hora do clique; aqui só se conta enquanto gera.
+  // O ref acompanha a lista, e a sincronia vai em efeito: escrever ref durante o render é
+  // proibido pelo compilador do React, e com razão -- ali o valor muda sem a tela saber.
+  useEffect(() => {
+    cenasRef.current = cenas;
+  }, [cenas]);
+
+  // Sair da página com a montagem agendada seria montar uma tela que não existe mais.
+  useEffect(() => () => { if (relogioDaMontagem.current) clearTimeout(relogioDaMontagem.current); }, []);
+
   useEffect(() => {
     if (!gerando) return;
     const t = setInterval(() => setSegundosGerando((v) => v + 1), 1000);
@@ -406,6 +420,14 @@ export default function PaginaVideo() {
         melhorar: false,
       },
     ]);
+    // ESCOLHER DA GALERIA TAMBÉM MONTA SOZINHO. O envio já fazia; escolher uma a uma,
+    // não -- e é esse o caminho de quem já tem as fotos guardadas no imóvel, que passou
+    // a ser a maioria. Espera 1,2 s parado pra não reordenar no meio da escolha.
+    if (relogioDaMontagem.current) clearTimeout(relogioDaMontagem.current);
+    relogioDaMontagem.current = setTimeout(() => {
+      const lista = cenasRef.current;
+      if (estilo === "recomendado" && lista.length > 1 && !montagem) void montarSozinho(lista);
+    }, 1200);
   }
 
   async function enviarArquivos(arquivos: FileList | null) {
@@ -490,7 +512,7 @@ export default function PaginaVideo() {
     // Só quando ele NÃO mexeu ainda: se já arrastou ou já montou, a máquina não passa
     // por cima. E o aviso com "desfazer" continua aparecendo, porque montagem que
     // acontece sozinha e em silêncio é a que assusta.
-    if (juntas.length > 1 && !montagem) await montarSozinho(juntas);
+    if (estilo === "recomendado" && juntas.length > 1 && !montagem) await montarSozinho(juntas);
   }
 
   /**
@@ -1237,6 +1259,40 @@ export default function PaginaVideo() {
               <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
               <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
             </div>
+            {/* O ESTILO, E O RECOMENDADO É O PADRÃO. Ele pediu com todas as letras: "quero que
+                já tenha uma opção de gerar que irá criar essa opção já como recomendada [...]
+                e ser primeira opção de gerar vídeo, somente se a pessoa quiser mudar ela
+                poderá". A montagem automática já acontecia -- só que calada, e escolha que
+                ninguém vê é escolha que ninguém sabe que tem. Aqui ela vira uma decisão de
+                uma linha, ligada por padrão, e desligável. */}
+            <div className="mb-3">
+              <p className="mb-1.5 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Estilo</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "recomendado" as const, titulo: "Recomendado", dica: "Ordem da visita, legendas e movimento escolhidos pra você" },
+                  { id: "meu" as const, titulo: "Do meu jeito", dica: "Nada é mexido: a ordem e os ajustes são seus" },
+                ].map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setEstilo(o.id)}
+                    disabled={gerando}
+                    aria-pressed={estilo === o.id}
+                    className={
+                      "rounded-xl border px-3 py-2 text-left transition disabled:opacity-50 " +
+                      (estilo === o.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                    }
+                  >
+                    <span className="block text-sm font-medium">
+                      {o.titulo}
+                      {o.id === "recomendado" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-tight text-neutral-500">{o.dica}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* COMO TERMINA, aqui fora e não lá dentro. A opção já existia -- um quadradinho
                 dentro de "Textos e marca", dentro dos Ajustes, que começam fechados -- e ele
                 olhou o vídeo pronto e disse "não tem opção". Escolha que muda o vídeo inteiro
