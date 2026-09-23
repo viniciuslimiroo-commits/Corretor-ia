@@ -227,8 +227,16 @@ export default function PaginaVideo() {
   /** Qual foto está armada pra apagar (o primeiro toque arma, o segundo apaga). */
   const [apagando, setApagando] = useState<string | null>(null);
   const [apagandoAgora, setApagandoAgora] = useState(false);
-  /** O estilo da geração. "recomendado" é o padrão: a máquina arruma antes de gerar. */
-  const [estilo, setEstilo] = useState<"recomendado" | "tour" | "meu">("recomendado");
+  /**
+   * O estilo da geração. "tour" é o PADRÃO desde 23/09/2026, a pedido dele: "quero que já
+   * fique então como tour, já padrão, aí caso a pessoa queira modificar modifique".
+   *
+   * É o único estilo que produz o movimento do vídeo que ele tomou como referência -- lá a
+   * câmera tem profundidade de verdade (a porta abre no fundo, a janela gira), e isso não
+   * sai de zoom sobre foto parada por mais rápido que o zoom seja. Custa crédito, e é por
+   * isso que o preço aparece no topo da coluna antes de qualquer geração.
+   */
+  const [estilo, setEstilo] = useState<"recomendado" | "tour" | "meu">("tour");
   /** Abriu os controles de cada cena. Fechado depois da montagem: primeiro o resultado. */
   const [mexendo, setMexendo] = useState(false);
   /** A lista de agora, pro relógio da montagem automática não ler a de dois renders atrás. */
@@ -402,10 +410,22 @@ export default function PaginaVideo() {
     };
   }, [user, imovelId, token]);
 
+  /**
+   * A cena recém-criada já nasce no estilo escolhido.
+   *
+   * Sem isto, mandar UMA foto com o Tour ligado daria uma cena parada: quem aplicava o
+   * estilo era a montagem automática, e ela só roda a partir de duas fotos. O estilo
+   * escrito na tela e o que está na cena têm que ser a mesma coisa em qualquer caminho.
+   */
+  function nascerNoEstilo(nova: CenaUI): CenaUI {
+    const animavel = !nova.ehClipe && !nova.eh360 && !nova.ehPanoramica;
+    return estilo === "tour" && animavel ? { ...nova, tipo: "animada" as const, duracao: 4 } : nova;
+  }
+
   function adicionarGeracao(g: Geracao) {
     setCenas((lista) => [
       ...lista,
-      {
+      nascerNoEstilo({
         chave: chave(),
         tipo: "foto",
         jobId: g.id,
@@ -420,7 +440,7 @@ export default function PaginaVideo() {
         legenda: "",
         duracao: LIMITES.duracaoPadrao,
         melhorar: false,
-      },
+      }),
     ]);
     // ESCOLHER DA GALERIA TAMBÉM MONTA SOZINHO. O envio já fazia; escolher uma a uma,
     // não -- e é esse o caminho de quem já tem as fotos guardadas no imóvel, que passou
@@ -476,7 +496,7 @@ export default function PaginaVideo() {
         const formato = ehVideo ? "comum" : await formatoDaFoto(f);
         const eh360 = formato === "esferica";
         const ehPanoramica = formato === "panoramica";
-        const nova: CenaUI = {
+        const nova: CenaUI = nascerNoEstilo({
             chave: ch,
             jobId: jobIdDaFoto,
             tipo: eh360 ? "tour360" : ehVideo ? "clipe" : "foto",
@@ -495,7 +515,7 @@ export default function PaginaVideo() {
             legenda: "",
             duracao: eh360 ? 10 : ehVideo ? 6 : LIMITES.duracaoPadrao,
           melhorar: ehVideo,
-        };
+        });
         juntas.push(nova);
         setCenas((lista) => [...lista, nova]);
       } catch (e) {
@@ -1340,18 +1360,22 @@ export default function PaginaVideo() {
               <span className="text-neutral-600">{cenas.length} {cenas.length === 1 ? "cena" : "cenas"} · ≈ {Math.round(duracao)} s</span>
               <span className="font-semibold text-marca-indigo">{custo === 0 ? "sem crédito" : `${custo} ${custo === 1 ? "crédito" : "créditos"}`}</span>
             </div>
-            {/* O ESTILO, E O RECOMENDADO É O PADRÃO. Ele pediu com todas as letras: "quero que
-                já tenha uma opção de gerar que irá criar essa opção já como recomendada [...]
-                e ser primeira opção de gerar vídeo, somente se a pessoa quiser mudar ela
-                poderá". A montagem automática já acontecia -- só que calada, e escolha que
-                ninguém vê é escolha que ninguém sabe que tem. Aqui ela vira uma decisão de
-                uma linha, ligada por padrão, e desligável. */}
+            {/* O ESTILO, E O TOUR É O PADRÃO. Ele pediu duas vezes, e a segunda foi decisiva:
+                primeiro "quero que já tenha uma opção de gerar que irá criar essa opção já
+                como recomendada [...] e ser primeira opção de gerar vídeo, somente se a
+                pessoa quiser mudar ela poderá"; depois, ao ver que o Recomendado é zoom
+                sobre foto parada e nunca ia parecer com o vídeo que ele gostou, "quero que
+                já fique então como tour, já padrão".
+
+                O Tour custa crédito, e por isso o preço está no rótulo do botão E na linha
+                de cima da coluna, atualizado a cada foto que entra: padrão que gasta tem que
+                dizer quanto gasta ANTES, não na hora de gerar. */}
             <div className="mb-3">
               <p className="mb-1.5 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Estilo</p>
               <div className="grid gap-2">
                 {[
-                  { id: "recomendado" as const, titulo: "Recomendado", dica: "Ordem da visita e movimento na foto. Sem crédito." },
-                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A IA move a CÂMERA em cada foto, como quem entra. ${CREDITOS.animada} créditos por cena.` },
+                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A câmera anda pelo cômodo em cada foto, como quem entra. ${CREDITOS.animada} créditos por cena.` },
+                  { id: "recomendado" as const, titulo: "Movimento na foto", dica: "Ordem da visita e um movimento leve em cada foto. Sem crédito." },
                   { id: "meu" as const, titulo: "Do meu jeito", dica: "Nada é mexido: a ordem e os ajustes são seus" },
                 ].map((o) => (
                   <button
@@ -1367,7 +1391,7 @@ export default function PaginaVideo() {
                   >
                     <span className="block text-sm font-medium">
                       {o.titulo}
-                      {o.id === "recomendado" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
+                      {o.id === "tour" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
                     </span>
                     <span className="mt-0.5 block text-[11px] leading-tight text-neutral-500">{o.dica}</span>
                   </button>

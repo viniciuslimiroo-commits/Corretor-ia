@@ -111,7 +111,7 @@ async function main() {
   const dezCenas = Array.from({ length: 10 }, () => ({ tipo: "animada" as const, duracao: 4 }));
   const relogio = relogioDoVideo(
     dezCenas.map((c) => c.duracao),
-    emendasDoVideo({ cenas: dezCenas as never, transicao: "dissolver", telaFinal: null })
+    emendasDoVideo({ cenas: dezCenas as never, transicao: "dissolver", telaFinal: false })
   );
   conferir(Math.abs(relogio.total - REF_TOTAL) < 1, "10 fotos no estilo Tour dão o mesmo tempo TOTAL da referência", `${relogio.total.toFixed(2)}s contra ${REF_TOTAL}s`);
 
