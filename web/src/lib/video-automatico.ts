@@ -233,7 +233,15 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     duracao: o.chave === capa ? Math.round(duracaoPadrao * 1.25) : duracaoPadrao,
   }));
 
-  return { ordem: ordenadas.map((o) => o.chave), capa, cenas, fora };
+  // A PRIMEIRA CENA É A CAPA. Antes a ordem era pura ordem de visita, e a capa servia só de
+  // miniatura -- então um conjunto sem foto de fachada ABRIA numa cozinha ou num banheiro,
+  // que foi o que ele viu: "acho estranho a sequência começar pela parte interna".
+  //
+  // Vídeo de imóvel se apresenta antes de entrar. A capa já é escolhida por quem merece
+  // abrir (fachada, depois área externa, depois social), então é ela que abre o passeio; o
+  // resto segue a ordem da visita, e o fim continua caindo nas áreas de lazer e comuns.
+  const ordem = capa ? [capa, ...ordenadas.filter((o) => o.chave !== capa).map((o) => o.chave)] : ordenadas.map((o) => o.chave);
+  return { ordem, capa, cenas, fora };
 }
 
 /** O nome do ambiente. A legenda da IA só entra quando o ambiente não foi reconhecido. */

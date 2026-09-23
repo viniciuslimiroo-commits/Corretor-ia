@@ -229,6 +229,8 @@ export default function PaginaVideo() {
   const [apagandoAgora, setApagandoAgora] = useState(false);
   /** O estilo da geração. "recomendado" é o padrão: a máquina arruma antes de gerar. */
   const [estilo, setEstilo] = useState<"recomendado" | "meu">("recomendado");
+  /** Abriu os controles de cada cena. Fechado depois da montagem: primeiro o resultado. */
+  const [mexendo, setMexendo] = useState(false);
   /** A lista de agora, pro relógio da montagem automática não ler a de dois renders atrás. */
   const cenasRef = useRef<CenaUI[]>([]);
   const relogioDaMontagem = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1070,6 +1072,7 @@ export default function PaginaVideo() {
                   onClick={() => {
                     setCenas(montagem.antes);
                     setMontagem(null);
+                    setMexendo(true);
                   }}
                   className="mt-1 min-h-8 text-xs font-medium text-marca-indigo underline underline-offset-2"
                 >
@@ -1079,6 +1082,41 @@ export default function PaginaVideo() {
             )}
             {cenas.length === 0 ? (
               <p className="text-sm text-neutral-500">Nenhuma cena ainda. Escolha um imóvel acima ou envie fotos.</p>
+            ) : montagem && !mexendo ? (
+              /* O SOFTWARE JÁ FEZ; ELE SÓ CONFERE. Pedido dele: "sinto que o UX conduz
+                 primeiro o usuário a montar e decidir tudo por conta própria antes de gerar
+                 -- quero o contrário". Depois da montagem automática, o que aparece é o
+                 ROTEIRO pronto, em miniatura, e não os seis controles de cada cena. Quem
+                 quiser mexer abre; quem só quer o vídeo, aperta Gerar e pronto. */
+              <div>
+                <ol className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
+                  {cenas.map((s, i) => (
+                    <li key={s.chave} className="w-24 shrink-0">
+                      <div className="relative overflow-hidden rounded-lg border border-neutral-200">
+                        {s.miniatura ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.miniatura} alt="" className="aspect-[4/3] w-full object-cover" />
+                        ) : (
+                          <div className="flex aspect-[4/3] items-center justify-center bg-neutral-100">
+                            <Icone nome="video" className="h-5 w-5 text-neutral-400" />
+                          </div>
+                        )}
+                        <span className="absolute top-0.5 left-0.5 rounded bg-black/55 px-1 text-[10px] font-semibold text-white">{i + 1}</span>
+                        {(capa ?? cenas[0]?.chave) === s.chave && <span className="absolute right-0.5 bottom-0.5 rounded bg-marca-coral px-1 text-[9px] font-semibold text-white">capa</span>}
+                      </div>
+                      <p className="mt-1 truncate text-[11px] leading-tight text-neutral-600">{s.legenda || s.rotulo}</p>
+                    </li>
+                  ))}
+                </ol>
+                <button
+                  type="button"
+                  onClick={() => setMexendo(true)}
+                  disabled={gerando}
+                  className="mt-1 min-h-9 text-sm font-medium text-marca-indigo underline underline-offset-2 disabled:opacity-40"
+                >
+                  Mexer na ordem e nos detalhes
+                </button>
+              </div>
             ) : (
               <ul className="flex flex-col gap-3">
                 {cenas.map((s, i) => (
@@ -1275,7 +1313,7 @@ export default function PaginaVideo() {
                   <button
                     key={o.id}
                     type="button"
-                    onClick={() => setEstilo(o.id)}
+                    onClick={() => { setEstilo(o.id); if (o.id === "meu") setMexendo(true); }}
                     disabled={gerando}
                     aria-pressed={estilo === o.id}
                     className={
@@ -1319,6 +1357,11 @@ export default function PaginaVideo() {
                 </button>
               ))}
             </div>
+            {/* A sugestão está pronta: o botão deixa de ser "o fim de um trabalho" e passa
+                a ser "o começo" -- é a inversão que ele pediu. */}
+            {montagem && !gerando && (
+              <p className="mb-2 text-center text-sm font-medium text-marca-teal">Sugestão pronta. É só gerar.</p>
+            )}
             <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
               {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
             </Botao>

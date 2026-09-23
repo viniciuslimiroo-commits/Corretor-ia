@@ -42,6 +42,16 @@ console.log(`ordem: ${s.ordem.join(" ")}`);
 // ---- 1. a ordem é a da visita ----
 const pos = (c: string) => s.ordem.indexOf(c);
 conferir(pos("d") === 0, "a fachada abre o vídeo", `posição ${pos("d")}`);
+
+// O VÍDEO SE APRESENTA ANTES DE ENTRAR. Ele viu um conjunto sem fachada abrir numa cozinha
+// e reclamou: "acho estranho a sequência começar pela parte interna". A primeira cena é a
+// CAPA -- quem foi escolhido pra abrir -- e o resto segue a visita.
+const semFora = sugerirMontagem([foto("ban", "banheiro", 9), foto("coz", "cozinha", 9), foto("qui", "quintal", 6)], 4);
+conferir(semFora.ordem[0] === "qui", "sem fachada, abre pela área externa e não pela cozinha", `abriu em ${semFora.ordem[0]}`);
+conferir(semFora.ordem[0] === semFora.capa, "a primeira cena é sempre a capa");
+const soDentro = sugerirMontagem([foto("ban2", "banheiro", 9), foto("qua", "quarto", 7), foto("sal", "sala", 6)], 4);
+conferir(soDentro.ordem[0] === "sal", "só com fotos internas, abre pela sala e não pelo banheiro", `abriu em ${soDentro.ordem[0]}`);
+conferir(s.ordem[s.ordem.length - 1] === "i", "e o encerramento cai na área externa", `terminou em ${s.ordem[s.ordem.length - 1]} (quintal)`);
 conferir(pos("j") < pos("g"), "a entrada vem antes da sala");
 conferir(pos("g") < pos("b"), "a sala vem antes da cozinha");
 conferir(pos("b") < pos("e"), "a cozinha vem antes dos quartos");
