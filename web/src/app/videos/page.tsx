@@ -228,7 +228,7 @@ export default function PaginaVideo() {
   const [apagando, setApagando] = useState<string | null>(null);
   const [apagandoAgora, setApagandoAgora] = useState(false);
   /** O estilo da geração. "recomendado" é o padrão: a máquina arruma antes de gerar. */
-  const [estilo, setEstilo] = useState<"recomendado" | "meu">("recomendado");
+  const [estilo, setEstilo] = useState<"recomendado" | "tour" | "meu">("recomendado");
   /** Abriu os controles de cada cena. Fechado depois da montagem: primeiro o resultado. */
   const [mexendo, setMexendo] = useState(false);
   /** A lista de agora, pro relógio da montagem automática não ler a de dois renders atrás. */
@@ -428,7 +428,7 @@ export default function PaginaVideo() {
     if (relogioDaMontagem.current) clearTimeout(relogioDaMontagem.current);
     relogioDaMontagem.current = setTimeout(() => {
       const lista = cenasRef.current;
-      if (estilo === "recomendado" && lista.length > 1 && !montagem) void montarSozinho(lista);
+      if (estilo !== "meu" && lista.length > 1 && !montagem) void montarSozinho(lista);
     }, 1200);
   }
 
@@ -514,7 +514,7 @@ export default function PaginaVideo() {
     // Só quando ele NÃO mexeu ainda: se já arrastou ou já montou, a máquina não passa
     // por cima. E o aviso com "desfazer" continua aparecendo, porque montagem que
     // acontece sozinha e em silêncio é a que assusta.
-    if (estilo === "recomendado" && juntas.length > 1 && !montagem) await montarSozinho(juntas);
+    if (estilo !== "meu" && juntas.length > 1 && !montagem) await montarSozinho(juntas);
   }
 
   /**
@@ -634,6 +634,35 @@ export default function PaginaVideo() {
   }
 
   /**
+   * Trocar de estilo mexe nas CENAS na hora, não só numa variável.
+   *
+   * "Tour pela casa" é o que ele estava pedindo desde o começo e eu não entendi: no vídeo do
+   * concorrente a câmera ANDA pelo cômodo -- a porta abre em profundidade, a janela gira --
+   * e isso não é zoom numa foto parada, é a IA movendo a câmera. O Encena já tinha
+   * ("Mover a câmera"), mas o automático nunca usava porque custa crédito. Agora é uma
+   * escolha, com o preço à vista no próprio botão de gerar.
+   *
+   * Clipe, 360 e panorâmica ficam fora: já têm movimento próprio, e animar não faria sentido.
+   */
+  function aplicarEstilo(novo: "recomendado" | "tour" | "meu") {
+    setEstilo(novo);
+    if (novo === "meu") {
+      setMexendo(true);
+      return;
+    }
+    const animavel = (s: CenaUI) => !s.ehClipe && !s.eh360 && !s.ehPanoramica;
+    setCenas((lista) =>
+      lista.map((s) =>
+        !animavel(s)
+          ? s
+          : novo === "tour"
+            ? { ...s, tipo: "animada" as const, animacao: "caminhar" as const }
+            : { ...s, tipo: "foto" as const }
+      )
+    );
+  }
+
+  /**
    * MONTAR SOZINHO: olha as fotos e decide a ordem, a capa, a legenda e o movimento.
    *
    * A IA só diz o QUE É cada foto (ambiente, nota, legenda curta); quem decide é a regra em
@@ -686,7 +715,11 @@ export default function PaginaVideo() {
         s.ordem.map((k) => {
           const base = porChave.get(k)!;
           const a = ajustes.get(k);
-          return a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, duracao: a.duracao } : base;
+          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, duracao: a.duracao } : base;
+          // O estilo vale também pras cenas que a montagem acabou de organizar: escolher
+          // "Tour" e DEPOIS mandar as fotos tem que dar o mesmo resultado que o contrário.
+          const animavel = !arrumada.ehClipe && !arrumada.eh360 && !arrumada.ehPanoramica;
+          return estilo === "tour" && animavel ? { ...arrumada, tipo: "animada" as const, animacao: "caminhar" as const } : arrumada;
         })
       );
       if (s.capa) setCapa(s.capa);
@@ -1305,15 +1338,16 @@ export default function PaginaVideo() {
                 uma linha, ligada por padrão, e desligável. */}
             <div className="mb-3">
               <p className="mb-1.5 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Estilo</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2">
                 {[
-                  { id: "recomendado" as const, titulo: "Recomendado", dica: "Ordem da visita, legendas e movimento escolhidos pra você" },
+                  { id: "recomendado" as const, titulo: "Recomendado", dica: "Ordem da visita e movimento na foto. Sem crédito." },
+                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A IA move a CÂMERA em cada foto, como quem entra. ${CREDITOS.animada} créditos por cena.` },
                   { id: "meu" as const, titulo: "Do meu jeito", dica: "Nada é mexido: a ordem e os ajustes são seus" },
                 ].map((o) => (
                   <button
                     key={o.id}
                     type="button"
-                    onClick={() => { setEstilo(o.id); if (o.id === "meu") setMexendo(true); }}
+                    onClick={() => aplicarEstilo(o.id)}
                     disabled={gerando}
                     aria-pressed={estilo === o.id}
                     className={
