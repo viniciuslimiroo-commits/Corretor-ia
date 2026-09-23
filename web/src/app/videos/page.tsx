@@ -411,6 +411,8 @@ export default function PaginaVideo() {
   async function enviarArquivos(arquivos: FileList | null) {
     if (!arquivos || !supabase) return;
     setErro(null);
+    // A lista de verdade, acumulada aqui: `cenas` do closure não anda durante o envio.
+    const juntas: CenaUI[] = [...cenas];
     for (const f of Array.from(arquivos)) {
       setEnviando((n) => n + 1);
       try {
@@ -432,25 +434,27 @@ export default function PaginaVideo() {
         // Não trava o envio: se falhar, a cena entra do mesmo jeito e o vídeo sai. Perder o
         // registro é chato; perder o vídeo por causa do registro seria pior.
         const ch = chave();
+        // O id volta pra cena ANTES dela existir: é por ele que o "Montar sozinho" pergunta o
+        // que a foto é, e a montagem automática roda logo depois do envio -- se o id chegasse
+        // atrasado, ela olharia uma lista sem identificação. Se o registro falhar, `undefined`
+        // e a cena entra assim mesmo: perder o vídeo por causa do registro seria pior.
+        let jobIdDaFoto: string | undefined;
         if (!ehVideo) {
-          fetch("/api/video/registrar", {
+          jobIdDaFoto = await fetch("/api/video/registrar", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
             body: JSON.stringify({ caminho: d.caminho, imovelId, nome: f.name }),
           })
             .then((r) => r.json())
-            // O id volta pra cena: é por ele que o "Montar sozinho" pergunta o que a foto é,
-            // e é na linha dele que a resposta fica guardada pra não perguntar duas vezes.
-            .then((reg) => reg?.jobId && setCenas((lista) => lista.map((s) => (s.chave === ch ? { ...s, jobId: reg.jobId } : s))))
-            .catch(() => {});
+            .then((reg) => reg?.jobId as string | undefined)
+            .catch(() => undefined);
         }
         const formato = ehVideo ? "comum" : await formatoDaFoto(f);
         const eh360 = formato === "esferica";
         const ehPanoramica = formato === "panoramica";
-        setCenas((lista) => [
-          ...lista,
-          {
+        const nova: CenaUI = {
             chave: ch,
+            jobId: jobIdDaFoto,
             tipo: eh360 ? "tour360" : ehVideo ? "clipe" : "foto",
             arquivo: d.caminho,
             miniatura: ehVideo ? null : URL.createObjectURL(f),
@@ -466,15 +470,27 @@ export default function PaginaVideo() {
             movimento: "olhar_volta",
             legenda: "",
             duracao: eh360 ? 10 : ehVideo ? 6 : LIMITES.duracaoPadrao,
-            melhorar: ehVideo,
-          },
-        ]);
+          melhorar: ehVideo,
+        };
+        juntas.push(nova);
+        setCenas((lista) => [...lista, nova]);
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Falha no envio.");
       } finally {
         setEnviando((n) => n - 1);
       }
     }
+
+    // MONTA SOZINHO ASSIM QUE AS FOTOS ENTRAM. Ele pediu duas vezes: "deixar isso já
+    // automático" e "quando for gerar o vídeo gerar algo padrão". Mandar dez fotos e
+    // receber dez cenas na ordem do celular, todas com o mesmo movimento, é deixar o
+    // trabalho pra ele -- e era isso que fazia o vídeo do concorrente parecer melhor
+    // já na primeira tela.
+    //
+    // Só quando ele NÃO mexeu ainda: se já arrastou ou já montou, a máquina não passa
+    // por cima. E o aviso com "desfazer" continua aparecendo, porque montagem que
+    // acontece sozinha e em silêncio é a que assusta.
+    if (juntas.length > 1 && !montagem) await montarSozinho(juntas);
   }
 
   /**
@@ -602,13 +618,17 @@ export default function PaginaVideo() {
    *
    * Nunca perde o que a pessoa fez: guarda a lista de antes e oferece desfazer.
    */
-  async function montarSozinho() {
-    if (cenas.length === 0 || montando) return;
+  async function montarSozinho(lista?: CenaUI[]) {
+    // A lista vem por parâmetro quando quem chama acabou de mexer nela: depois de um
+    // `await`, o `cenas` deste closure ainda é o do render anterior, e montar a partir
+    // dele montaria uma lista que não existe mais.
+    const cenasAgora = lista ?? cenas;
+    if (cenasAgora.length === 0 || montando) return;
     setMontando(true);
     setErro(null);
-    const antes = cenas;
+    const antes = cenasAgora;
     try {
-      const comId = cenas.filter((s) => s.jobId);
+      const comId = cenasAgora.filter((s) => s.jobId);
       let olhadas: { jobId: string; ambiente: string | null; qualidade: number; legenda: string }[] = [];
       if (comId.length > 0) {
         const r = await fetch("/api/video/montar", {
@@ -623,7 +643,7 @@ export default function PaginaVideo() {
       const porJob = new Map(olhadas.map((o) => [o.jobId, o]));
       // Cena sem análise (clipe, ou foto que a visão não alcançou) entra do mesmo jeito: fica
       // no meio da ordem e mantém o movimento que já tinha.
-      const entrada: Olhada[] = cenas.map((s) => {
+      const entrada: Olhada[] = cenasAgora.map((s) => {
         const o = s.jobId ? porJob.get(s.jobId) : undefined;
         return {
           chave: s.chave,
@@ -636,7 +656,7 @@ export default function PaginaVideo() {
         };
       });
       const s = sugerirMontagem(entrada, LIMITES.duracaoPadrao);
-      const porChave = new Map(cenas.map((c) => [c.chave, c]));
+      const porChave = new Map(cenasAgora.map((c) => [c.chave, c]));
       const ajustes = new Map(s.cenas.map((c) => [c.chave, c]));
       setCenas(
         s.ordem.map((k) => {
@@ -997,7 +1017,7 @@ export default function PaginaVideo() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Rotulo>2 · Cenas, na ordem</Rotulo>
               {cenas.length > 1 && (
-                <Botao onClick={montarSozinho} disabled={montando || gerando} className="min-h-9 px-3 text-sm">
+                <Botao onClick={() => montarSozinho()} disabled={montando || gerando} className="min-h-9 px-3 text-sm">
                   <Icone nome="magica" className="h-4 w-4" />
                   {montando ? "Olhando as fotos…" : "Montar sozinho"}
                 </Botao>
