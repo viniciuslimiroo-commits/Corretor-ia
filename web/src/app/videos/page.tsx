@@ -144,7 +144,8 @@ async function formatoDaFoto(f: File): Promise<Formato> {
   }
 }
 
-type VideoResumo = { id: string; titulo: string; formato: string; status: string; criadoEm: string; duracao: number | null; miniatura: string | null; compartilhado: boolean; erro: string | null };
+/** `imovel` a rota já mandava; faltava a tela saber que existe pra poder juntar por imóvel. */
+type VideoResumo = { id: string; titulo: string; formato: string; status: string; criadoEm: string; duracao: number | null; miniatura: string | null; compartilhado: boolean; erro: string | null; imovel: { id: string; titulo: string } | null };
 
 type Resultado = { videoId: string; url: string; miniatura: string | null; duracao: number | null; avisos: string[]; formato: string };
 
@@ -1304,14 +1305,28 @@ export default function PaginaVideo() {
           </div>
 
           <Cartao>
-            <Rotulo>Seus vídeos</Rotulo>
+            {/* ESCOLHEU O IMÓVEL, VEJA O QUE JÁ EXISTE DELE. Era uma lista de TODOS os
+                vídeos, sem relação com o imóvel que a pessoa acabou de escolher -- ele
+                perguntou: "não seria legal abrir já as coisas que já criei desse imóvel?".
+                Os do imóvel escolhido sobem pro topo e ganham etiqueta; o resto continua
+                embaixo, porque esconder o que ela tem seria trocar um problema por outro. */}
+            <div className="flex items-baseline justify-between gap-2">
+              <Rotulo>Seus vídeos</Rotulo>
+              {imovelId && (videos ?? []).some((v) => v.imovel?.id === imovelId) && (
+                <span className="text-xs text-neutral-500">
+                  {(videos ?? []).filter((v) => v.imovel?.id === imovelId).length} deste imóvel
+                </span>
+              )}
+            </div>
             {videos === null ? (
               <p className="text-sm text-neutral-500">Carregando…</p>
             ) : videos.length === 0 ? (
               <p className="text-sm text-neutral-500">Nenhum ainda.</p>
             ) : (
               <ul className="divide-y divide-neutral-100">
-                {videos.map((v) => (
+                {[...videos]
+                  .sort((a, b) => Number(b.imovel?.id === imovelId) - Number(a.imovel?.id === imovelId))
+                  .map((v) => (
                   <li key={v.id} className="flex items-center gap-3 py-2">
                     <button onClick={() => abrirVideo(v)} className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100" title="Abrir">
                       {v.miniatura ? (
@@ -1328,6 +1343,7 @@ export default function PaginaVideo() {
                         {v.duracao ? ` · ${Math.round(v.duracao)} s` : ""}
                         {v.status === "gerando" && " · gerando"}
                         {v.status === "falhou" && " · falhou"}
+                        {imovelId && v.imovel?.id === imovelId && <span className="ml-1 rounded-full bg-marca-pessego/60 px-1.5 text-[10px] font-medium text-marca-indigo">deste imóvel</span>}
                       </p>
                     </div>
                     {v.status === "concluido" && (
