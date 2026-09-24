@@ -1170,6 +1170,16 @@ export default function PaginaVideo() {
   const campo = "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none";
   const semSaldo = (c.conta.creditos ?? 0) < custo;
   const vertical = resultado ? resultado.formato === "9:16" || resultado.formato === "4:5" : false;
+  /**
+   * O nome com que o arquivo chega na pasta de downloads.
+   *
+   * Sem isto ele chega como o id do vídeo -- "d2f5e82b-f019-4f67-9967-784b3252e4eb.mp4" --, que
+   * é o que os vídeos dele estavam virando. Com dez imóveis na pasta, nenhum deles é
+   * reconhecível sem abrir um por um.
+   */
+  const nomeDoArquivo = `${(titulo || "video").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "video"}.mp4`;
+  /** `&download=` faz o armazenamento responder "attachment", que e o que o navegador obedece. */
+  const urlParaBaixar = resultado ? `${resultado.url}${resultado.url.includes("?") ? "&" : "?"}download=${encodeURIComponent(nomeDoArquivo)}` : "";
 
   return (
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
@@ -1217,7 +1227,17 @@ export default function PaginaVideo() {
                 {FORMATOS.find((f) => f.id === resultado.formato)?.rotulo ?? resultado.formato}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <a href={resultado.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
+                {/* BAIXA, não abre. Pedido dele em 24/09/2026: "qualquer vídeo que baixe é pra
+                    aparecer naquela parte de downloads e baixar automaticamente, e não abrir
+                    outra janela e a pessoa ter que ver como baixar".
+
+                    O `download` do HTML sozinho não resolve: o navegador o IGNORA quando o
+                    arquivo vem de outro domínio, e o nosso vem do armazenamento. Quem manda é
+                    o servidor -- o `&download=` faz o Supabase responder com
+                    `Content-Disposition: attachment`, e aí o navegador salva em vez de tocar.
+                    Sem `target="_blank"` de propósito: com o cabeçalho certo, a página nem
+                    navega, só aparece na barra de downloads. */}
+                <a href={urlParaBaixar} download={nomeDoArquivo} className="inline-flex items-center gap-2 rounded-lg bg-marca-coral px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-marca-coral-escuro">
                   <Icone nome="download" className="h-4 w-4" />
                   Baixar MP4
                 </a>
@@ -1259,7 +1279,7 @@ export default function PaginaVideo() {
                   ))}
                 </ul>
               )}
-              <p className="mt-3 text-xs text-neutral-500">No celular, toque em Baixar e depois em compartilhar para mandar pelo WhatsApp ou postar no Instagram.</p>
+              <p className="mt-3 text-xs text-neutral-500">O arquivo vai direto pros seus downloads. No celular, toque em Baixar e depois em compartilhar pra mandar no WhatsApp ou postar no Instagram.</p>
             </div>
           </div>
         </Cartao>
@@ -1282,6 +1302,20 @@ export default function PaginaVideo() {
             {geracoes.length > 0 && (
               <>
                 <p className="mt-3 text-xs text-neutral-500">Toque numa foto pra adicionar como cena. Fotos com original guardada podem virar &quot;antes e depois&quot;.</p>
+                {/* COMO CONSEGUIR UMA FOTO QUE VIRA PASSEIO. Ele perguntou em 24/09/2026: "o
+                    software fala em câmera 360 e foto panorâmica, mas não tem essa
+                    possibilidade, se não tiver por que colocou?".
+
+                    Tem, e funciona: a câmera anda DENTRO da esfera, de verdade, sem crédito.
+                    Mas só aparece se a foto for 360 (proporção 2:1) ou panorâmica (2,6:1 ou
+                    mais), e foto normal de celular é 4:3 -- então quem nunca tirou uma no modo
+                    Panorâmica jamais encontra o recurso e conclui, com razão, que ele não
+                    existe. Faltava a única coisa que resolve: dizer onde arrumar a foto. */}
+                {!cenas.some((s) => s.eh360 || s.ehPanoramica) && (
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Foto tirada no modo <strong className="font-medium text-neutral-500">Panorâmica</strong> do celular vira passeio: a câmera anda dentro dela, sem gastar crédito.
+                  </p>
+                )}
                 <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {geracoes.map((g) => {
                     const usada = cenas.some((s) => s.jobId === g.id);
