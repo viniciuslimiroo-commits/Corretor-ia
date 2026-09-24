@@ -58,7 +58,22 @@ export type PipelineVideo = {
   duracoes: number[];
   temporarios: string[];
   avisos: string[];
+  /** A animacao em voo, uma por vez. Mantido pra videos que ja estavam rodando com o modelo
+   *  antigo -- video novo usa `animadas`. */
   animada?: { cena: number; statusUrl: string; responseUrl: string } | null;
+  /**
+   * TODAS as animacoes em voo, por indice de cena. Chave em texto porque isto vira JSON.
+   *
+   * Antes era uma so: o pipeline despachava a cena, voltava, esperava ela ficar pronta e so
+   * entao despachava a proxima. Com a fila do fal variando de 30 s a 11 minutos (medido nos
+   * dois testes de 24/09/2026), um video de quatro cenas animadas podia levar 45 minutos, e
+   * uma unica cena lenta segurava todas as outras que ja poderiam estar prontas.
+   *
+   * Despachando todas de uma vez o video passa a levar o tempo da cena MAIS LENTA, nao a soma.
+   */
+  animadas?: Record<string, { statusUrl: string; responseUrl: string }> | null;
+  /** true quando o despacho em lote ja aconteceu -- inclusive quando nao havia o que despachar. */
+  animadasDespachadas?: boolean;
   narracaoPath?: string | null;
   telaFinalRenderizada?: boolean;
   saldoAntes?: number | null;
@@ -149,6 +164,11 @@ export async function animacoesGuardadas(db: Db, userId: string, espec: EspecVid
   );
 }
 
+/** Quantas animacoes ainda estao na fila do fal. */
+function emVooAgora(p: PipelineVideo): number {
+  return p.animadas ? Object.keys(p.animadas).length : 0;
+}
+
 export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
   const n = espec.cenas.length;
   const tf = espec.telaFinal ? 1 : 0;
@@ -158,9 +178,14 @@ export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
     p.etapa === "cena" ? p.cenaAtual : p.etapa === "marca" ? n : p.etapa === "narracao" ? n + tf : p.etapa === "montar" ? n + tf + nar : p.etapa === "finalizar" ? n + tf + nar + 1 : total;
   const mensagem =
     p.etapa === "cena"
-      ? p.animada
-        ? `Animando a cena ${p.cenaAtual + 1} com IA…`
-        : `Montando a cena ${p.cenaAtual + 1} de ${n}…`
+      ? // QUANTAS ESTAO NA FILA DA IA AGORA. Com o despacho em lote, "Animando a cena 1" seria
+        // mentira: as quatro estao sendo feitas ao mesmo tempo, e dizer isso e o que explica
+        // por que a barra fica parada um tempo e depois anda varias casas de uma vez.
+        emVooAgora(p) > 1
+        ? `Animando ${emVooAgora(p)} cenas com IA ao mesmo tempo…`
+        : emVooAgora(p) === 1 || p.animada
+          ? `Animando a cena ${p.cenaAtual + 1} com IA…`
+          : `Montando a cena ${p.cenaAtual + 1} de ${n}…`
       : p.etapa === "marca"
         ? "Criando a tela final com sua marca…"
         : p.etapa === "narracao"
@@ -264,9 +289,65 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
     await db.from("videos").update({ pipeline: p }).eq("id", video.id);
   }
 
+  /** O pedido que vai pro fal, identico pro lote e pro caminho antigo. */
+  function corpoDaAnimacao(cena: Cena, dur: number, urlImagem: string) {
+    const preset = ANIMACOES.find((a) => a.id === cena.animacao) ?? ANIMACOES[1];
+    return {
+      prompt: preset.prompt,
+      // O que segura gente, bicho e parede nova. Faltava, e era a causa do "Caminhar" gerar
+      // uma pessoa andando: a proibicao estava so no positivo.
+      negative_prompt: NEGATIVO_VIDEO,
+      image_url: urlImagem,
+      aspect_ratio: aspectoDaAnimacao(espec.formato),
+      resolution: "720p" as const,
+      num_frames: quadrosDaAnimacao(dur),
+      frames_per_second: 24,
+      video_write_mode: "balanced" as const,
+      enable_safety_checker: false,
+      // Expansao desligada: o modelo reescrevendo o prompt e o modelo desfazendo as
+      // proibicoes que acabamos de escrever.
+      enable_prompt_expansion: false,
+    };
+  }
+
   try {
     // ---------- cenas ----------
     if (p.etapa === "cena") {
+      // TODAS AS ANIMACOES DE UMA VEZ, antes de montar a primeira cena.
+      //
+      // A fila do fal varia muito -- 29 s numa geracao e 11 minutos em outra, medido nos dois
+      // testes de 24/09/2026 com a MESMA foto e o mesmo modelo. Em serie, essa variacao se
+      // soma: quatro cenas animadas podiam levar 45 minutos, e uma cena azarada segurava
+      // todas as outras. Despachadas juntas, o video leva o tempo da mais lenta.
+      //
+      // Custa o mesmo: e a mesma quantidade de geracoes, so que sem fila interna.
+      if (!p.animadasDespachadas) {
+        const aDespachar = espec.cenas
+          .map((c, k) => ({ c, k }))
+          .filter(({ c, k }) => c.tipo === "animada" && !(p.animadasGratis?.includes(k) ?? false));
+        const emVoo: Record<string, { statusUrl: string; responseUrl: string }> = { ...(p.animadas ?? {}) };
+        // Uma que falhe nao pode derrubar as outras: o laco por cena trata a ausencia dela
+        // gerando na hora, pelo caminho antigo, e o pior caso vira o comportamento de antes.
+        await Promise.all(
+          aDespachar.map(async ({ c, k }) => {
+            if (emVoo[String(k)]) return;
+            try {
+              const fontes = await fontesDaCena(db, userId, c);
+              const urlImagem = await assinar(db, fontes[0]);
+              const d = await despachar(MODELO_ANIMACAO, corpoDaAnimacao(c, duracaoDaCena(c), urlImagem), falKey);
+              emVoo[String(k)] = { statusUrl: d.status_url, responseUrl: d.response_url };
+            } catch {
+              // Sem aviso aqui: quem nao entrou no lote e despachado na vez dele, e o aviso
+              // (se houver) sai de la, junto do motivo de verdade.
+            }
+          })
+        );
+        await salvar({ animadas: emVoo, animadasDespachadas: true });
+        // Volta pra tela saber que o pedido foi feito. Nada se perde: a proxima consulta
+        // comeca a montar as cenas enquanto a IA trabalha.
+        if (aDespachar.length > 0) return progressoDe(espec, p);
+      }
+
       const i = p.cenaAtual;
       const cena = espec.cenas[i];
       if (!cena) {
@@ -353,39 +434,24 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }
 
         if (!reaproveitado) {
-          if (!p.animada || p.animada.cena !== i) {
-            // despacha pro fal e volta; a próxima consulta pergunta se acabou
+          // O LOTE JA DESPACHOU ESTA CENA. Se por acaso nao despachou -- uma falha de rede no
+          // lote, ou um video antigo que comecou no modelo de uma por vez --, despacha aqui e
+          // o pior caso vira exatamente o comportamento anterior.
+          const emVoo =
+            p.animadas?.[String(i)] ??
+            (p.animada && p.animada.cena === i ? { statusUrl: p.animada.statusUrl, responseUrl: p.animada.responseUrl } : null);
+          if (!emVoo) {
             const urlImagem = await assinar(db, fontes[0]);
-            const preset = ANIMACOES.find((a) => a.id === cena.animacao) ?? ANIMACOES[1];
-            const d = await despachar(
-              MODELO_ANIMACAO,
-              {
-                prompt: preset.prompt,
-                // O que segura gente, bicho e parede nova. Faltava, e era a causa do
-                // "Caminhar" gerar uma pessoa andando: a proibição estava só no positivo.
-                negative_prompt: NEGATIVO_VIDEO,
-                image_url: urlImagem,
-                aspect_ratio: aspectoDaAnimacao(espec.formato),
-                resolution: "720p",
-                num_frames: quadrosDaAnimacao(dur),
-                frames_per_second: 24,
-                video_write_mode: "balanced",
-                enable_safety_checker: false,
-                // Expansão desligada: o modelo reescrevendo o prompt é o modelo desfazendo
-                // as proibições que acabamos de escrever.
-                enable_prompt_expansion: false,
-              },
-              falKey
-            );
-            await salvar({ animada: { cena: i, statusUrl: d.status_url, responseUrl: d.response_url } });
+            const d = await despachar(MODELO_ANIMACAO, corpoDaAnimacao(cena, dur, urlImagem), falKey);
+            await salvar({ animadas: { ...(p.animadas ?? {}), [String(i)]: { statusUrl: d.status_url, responseUrl: d.response_url } } });
             return progressoDe(espec, p);
           }
-          const estado = await consultar(p.animada.statusUrl, falKey);
+          const estado = await consultar(emVoo.statusUrl, falKey);
           if (estado.estado === "esperando") return progressoDe(espec, p);
 
           if (estado.estado === "pronto") {
             try {
-              const saida = (await resultado(p.animada.responseUrl, falKey)) as { video?: { url?: string } };
+              const saida = (await resultado(emVoo.responseUrl, falKey)) as { video?: { url?: string } };
               const url = saida?.video?.url ?? extrairImagem(saida).url;
               clipeLocal = local(`animada${i}.mp4`);
               await baixarUrl(url, clipeLocal);
@@ -421,7 +487,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const r = await rodarFfmpeg(argsCenaFoto({ foto, saida, W, H, duracao: dur, efeito: "aproximar", textos: textosDaCena(cena), topoOcupado: !!espec.titulo, cor, artes, ...forma , pecas }));
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         }
+        // Esta cena saiu do ar: nao pode ser consultada de novo se a etapa repetir.
         p.animada = null;
+        if (p.animadas) delete p.animadas[String(i)];
       } else if (cena.tipo === "antes_depois") {
         const [antesPath, depoisPath] = await fontesDaCena(db, userId, cena);
         const antes = local("antes.jpg");
