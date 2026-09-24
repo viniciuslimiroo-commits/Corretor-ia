@@ -110,10 +110,18 @@ const REGRA_CAMERA =
   // simplesmente sendo ampliada ou deslocada para os lados". A diferenca entre as duas coisas
   // e uma so: o ponto de vista muda, e o que esta perto anda mais que o que esta longe.
   "Real three-dimensional camera translation with natural parallax: near objects shift more than far ones as the viewpoint changes, the way a real camera moving through a room behaves, not a flat image being panned or zoomed. " +
-  // O MOVIMENTO TEM QUE SER VISIVEL. A primeira versao desta regra dizia "small and subtle", e
-  // o clipe de teste saiu andando 8 por segundo contra os 16,4 da referencia: sem invencao
-  // nenhuma, e sem tour nenhum tambem. Timidez nao era o pedido -- o pedido era nao inventar.
-  "The camera travel is clear and confident, covering enough distance across the shot that the change of viewpoint is obvious, like a real camera crossing part of the room. " +
+  // O TAMANHO DO MOVIMENTO E O BOTAO QUE LIGA A INVENCAO. Medido em 24/09/2026, com duas
+  // geracoes reais da MESMA foto (comodo com porta aberta e segunda porta pro fundo):
+  //
+  //   "small and subtle"              8,0 de movimento/s  ·  nada inventado, comodo intacto
+  //   "clear and confident travel"    4,9 de movimento/s  ·  quase parado 3,7s e DERRETEU no
+  //                                                          fim: parede nova no meio do
+  //                                                          comodo, geometria torta, cor lavada
+  //
+  // Pedir mais distancia nao deu mais tour: deu alucinacao. O wan 2.2-5b e o modelo barato, e
+  // ele so mantem a geometria enquanto a camera anda pouco. Entao o prompt fica no lado seguro
+  // -- a distancia que falta vem do zoom do ffmpeg por cima do clipe, que nao sabe inventar.
+  "The movement is small and controlled. " +
   // E A TRAVA, que e outra coisa do tamanho do movimento: a paralaxe pode redesenhar de outro
   // angulo o que a foto JA MOSTRA; o que ela nao pode e continuar a casa pra fora do
   // enquadramento. Foi dai que sairam os corredores que o imovel nao tem.
