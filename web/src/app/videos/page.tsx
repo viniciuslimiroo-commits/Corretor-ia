@@ -51,7 +51,8 @@ import {
   type VozId,
 } from "@/lib/video";
 import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
-import { restanteDaGeracao, falta } from "@/lib/espera-da-geracao";
+import { falta } from "@/lib/espera-da-geracao";
+import { useGeracao } from "@/components/geracao-em-andamento";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -274,21 +275,25 @@ export default function PaginaVideo() {
   /** O que o "Montar sozinho" fez da última vez, pra poder contar e desfazer. */
   const [montagem, setMontagem] = useState<{ antes: CenaUI[]; quantas: number; fora: string[]; semOlhar: boolean } | null>(null);
 
-  const [gerando, setGerando] = useState(false);
+  /** O pedido POST esta em voo. Dura um instante; o resto da espera e do provedor. */
+  const [pedindo, setPedindo] = useState(false);
   /**
-   * `restante` é em segundos e sai do ritmo MEDIDO desta geração, não de uma fórmula.
+   * O acompanhamento vive no LAYOUT RAIZ, nao aqui.
    *
-   * Antes a tela mostrava "9min16s de cerca de 9 min esperados", e ele viu o número pular de
-   * 9 pra 8 pra 11. Comparar o relógio com um palpite é o que faz uma espera normal parecer
-   * defeito: na hora em que o decorrido passa do estimado, a frase se contradiz sozinha e o
-   * corretor conclui que travou. Aqui não existe número de comparação -- existe o que já
-   * passou e, quando dá pra saber, quanto falta.
+   * Enquanto o laco morava nesta pagina, sair dela matava a geracao: clicar em Clientes ou
+   * Imoveis destruia a pagina e, com ela, quem perguntava ao servidor. Ele bateu nisso em
+   * 24/09/2026 -- recarregou no meio, o video congelou em "gerando" e os creditos ficaram
+   * presos. Agora a pagina so PEDE pra acompanhar e LE o que o provedor devolve.
    */
-  const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string; restante: number | null } | null>(null);
-  /** Segundos desde que a geração começou. Barra que anda sozinha não distingue
-   *  "processando" de "travado" -- quem paga 2 créditos e olha isso por três minutos
-   *  conclui que quebrou. O relógio e a estimativa fazem essa distinção. */
-  const [segundosGerando, setSegundosGerando] = useState(0);
+  const geracao = useGeracao();
+  /**
+   * "Gerando" e uma coisa so pra tela: pedindo OU acompanhando.
+   *
+   * O relogio de quanto tempo passou tambem vem do provedor -- ele que sabe quando comecou,
+   * e continua sabendo mesmo se a pessoa passar pelo CRM no meio e voltar.
+   */
+  const gerando = pedindo || !!geracao.andamento;
+  const segundosGerando = Math.round(geracao.decorrido);
 
   // O relógio zera em `gerar()`, na hora do clique; aqui só se conta enquanto gera.
   // O ref acompanha a lista, e a sincronia vai em efeito: escrever ref durante o render é
@@ -299,12 +304,6 @@ export default function PaginaVideo() {
 
   // Sair da página com a montagem agendada seria montar uma tela que não existe mais.
   useEffect(() => () => { if (relogioDaMontagem.current) clearTimeout(relogioDaMontagem.current); }, []);
-
-  useEffect(() => {
-    if (!gerando) return;
-    const t = setInterval(() => setSegundosGerando((v) => v + 1), 1000);
-    return () => clearInterval(t);
-  }, [gerando]);
 
   // Relógio da gravação. Para sozinho no teto: gravação esquecida virava arquivo grande
   // e espera longa, e ninguém narra um Reel por três minutos.
@@ -318,7 +317,23 @@ export default function PaginaVideo() {
     }, 1000);
     return () => clearInterval(t);
   }, [gravando]);
-  const [resultado, setResultado] = useState<Resultado | null>(null);
+  /**
+   * O vídeo pronto que a tela mostra.
+   *
+   * Duas origens: o que ESTA tela abriu (`resultadoAberto`) e o que o acompanhamento em
+   * segundo plano terminou (`geracao.pronto`). É derivado em vez de copiado com setState
+   * dentro de efeito -- que o compilador do React proíbe, e proíbe com razão.
+   */
+  const [resultadoAberto, setResultado] = useState<Resultado | null>(null);
+  /**
+   * O video pronto que a tela mostra: o que ELA abriu, ou o que o provedor terminou.
+   *
+   * Derivado, e nao copiado com setState dentro de efeito -- que o compilador do React
+   * proibe. `musica` vem do estado da tela porque o provedor nao tem por que saber de
+   * trilha: ele acompanha, nao monta.
+   */
+  const resultado: Resultado | null =
+    resultadoAberto ?? (geracao.pronto ? { ...geracao.pronto, musica } : null);
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
 
@@ -927,11 +942,10 @@ export default function PaginaVideo() {
 
   async function gerar() {
     if (cenas.length === 0 || gerando) return;
-    setSegundosGerando(0);
-    setGerando(true);
     setErro(null);
     setResultado(null);
-    setProgresso({ feitas: 0, total: cenas.length + 1, mensagem: "Enviando o pedido…", restante: null });
+    geracao.limpar();
+    setPedindo(true);
     try {
       const t = await token();
       const r = await fetch("/api/video", {
@@ -940,108 +954,41 @@ export default function PaginaVideo() {
         body: JSON.stringify({ imovelId, espec }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Não consegui iniciar o vídeo.");
+      if (!r.ok) throw new Error(d.error || "Nao consegui iniciar o video.");
       c.recarregar();
-      await acompanhar(d.videoId as string);
+      // Daqui em diante quem acompanha e o provedor do layout raiz: a geracao sobrevive a
+      // sair desta tela.
+      geracao.acompanhar(d.videoId as string, token);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro desconhecido.");
-      setProgresso(null);
-      setGerando(false);
-      c.recarregar();
-    }
-  }
-
-  /**
-   * O LAÇO QUE FAZ O VÍDEO ANDAR. E é literal: nada no servidor empurra o vídeo sozinho --
-   * cada consulta desta aba avança no máximo uma etapa (api/video/[id]).
-   *
-   * Era por isso que recarregar a página matava a geração. Em 24/09/2026 ele recarregou uma
-   * de 12 cenas "pois não estava evoluindo", e ela ficou parada em "gerando" na lista, sem
-   * abrir, sem responder ao clique e sem devolver os créditos -- porque o estorno também mora
-   * no caminho da consulta, e ninguém estava consultando.
-   *
-   * Separar o laço de `gerar` é o que permite RETOMAR: o vídeo continua de onde parou, sem
-   * refazer nada e sem cobrar de novo, porque cada etapa pronta já está guardada no servidor.
-   */
-  async function acompanhar(id: string) {
-    try {
-      const inicio = Date.now();
-      let tropecos = 0;
-      // O menor "falta isso" já mostrado. É o que segura o número pra ele não subir.
-      let menorRestante = Infinity;
-      while (Date.now() - inicio < 30 * 60 * 1000) {
-        // Instabilidade de rede ou do servidor (5xx) não é o vídeo falhando: tenta de
-        // novo algumas vezes antes de desistir. Só 4xx (falhou de verdade) encerra.
-        let rr: Response;
-        let dd: { status?: string; error?: string; url?: string; miniatura?: string | null; duracao?: number | null; avisos?: string[]; formato?: string; feitas?: number; total?: number; mensagem?: string };
-        try {
-          rr = await fetch(`/api/video/${id}`, { headers: { Authorization: `Bearer ${await c.token()}` } });
-          dd = await rr.json();
-        } catch {
-          if (++tropecos > 6) throw new Error("Perdi a conexão com o servidor. Recarregue a página e veja em Seus vídeos.");
-          await new Promise((res) => setTimeout(res, 4000));
-          continue;
-        }
-        if (!rr.ok) {
-          if (rr.status >= 500 && ++tropecos <= 6) {
-            await new Promise((res) => setTimeout(res, 4000));
-            continue;
-          }
-          throw new Error(dd.error || "O vídeo falhou.");
-        }
-        tropecos = 0;
-        if (dd.status === "concluido" && dd.url) {
-          setResultado({ videoId: id, url: dd.url, miniatura: dd.miniatura ?? null, duracao: dd.duracao ?? null, avisos: dd.avisos ?? [], formato: dd.formato ?? formato, musica });
-          setMusicaDoPronto(musica);
-          setProgresso(null);
-          carregarVideos().then(setVideos).catch(() => {});
-          return;
-        }
-        // QUANTO FALTA, PELO RITMO DESTA GERAÇÃO.
-        //
-        // Uma etapa pronta já diz quanto custa uma etapa NESTA fila, hoje, com estas fotos --
-        // que é uma informação melhor que qualquer fórmula, porque a fila da IA varia de hora
-        // em hora. Antes da primeira etapa fechar não dá pra saber, e aí a tela não inventa:
-        // mostra o que está fazendo e o tempo que já passou, e mais nada.
-        //
-        // E o número só DESCE. Estimativa que sobe é a que faz o corretor achar que travou,
-        // mesmo quando está tudo certo; se a fila piorar de verdade, quem avisa é a mensagem
-        // de demora embaixo, que é honesta e não vira um número maior piscando na cara dele.
-        const feitas = dd.feitas ?? 0;
-        const total = Math.max(1, dd.total ?? 1);
-        const restante = restanteDaGeracao(feitas, total, (Date.now() - inicio) / 1000, menorRestante);
-        if (restante !== null) menorRestante = restante;
-        setProgresso({ feitas, total, mensagem: dd.mensagem ?? "Gerando…", restante });
-        await new Promise((res) => setTimeout(res, 2500));
-      }
-      throw new Error("Passou de 30 minutos. Recarregue a página e veja em Seus vídeos.");
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro desconhecido.");
-      setProgresso(null);
       c.recarregar();
     } finally {
-      setGerando(false);
-      carregarVideos().then(setVideos).catch(() => {});
+      setPedindo(false);
     }
   }
 
   /**
-   * RETOMAR UM VÍDEO QUE FICOU PARADO.
+   * RETOMAR UM VIDEO QUE FICOU PARADO.
    *
-   * Não recomeça: continua. Cada etapa concluída está guardada no servidor, então voltar a
-   * consultar pega de onde parou -- e não cobra crédito de novo, porque o crédito foi cobrado
-   * quando o vídeo foi pedido e as cenas animadas já feitas estão no armazenamento.
-   *
-   * É também o único jeito de um vídeo abandonado acabar: se ele estourar o prazo, quem
-   * devolve o crédito é o servidor, na consulta. Sem alguém consultar, ele fica parado pra
-   * sempre e o crédito não volta -- que foi exatamente o que aconteceu com ele.
+   * Nao recomeca: continua. Cada etapa concluida esta guardada no servidor, e o credito foi
+   * cobrado no pedido -- entao continuar nao cobra de novo. E e o unico jeito de um video
+   * abandonado acabar: quem estorna o credito de um video que estourou o prazo e o servidor,
+   * na consulta. Sem ninguem consultar, ele fica parado pra sempre e o credito nao volta.
    */
+  function retomarVideo(v: VideoResumo) {
+    if (gerando || v.status !== "gerando") return;
+    setErro(null);
+    setResultado(null);
+    geracao.limpar();
+    geracao.acompanhar(v.id, token);
+  }
+
   /**
-   * Trocar a trilha do vídeo que já está pronto, sem refazer nada.
+   * Trocar a trilha do video que ja esta pronto, sem refazer nada.
    *
-   * Recarrega o `src` com um parâmetro novo de propósito: o arquivo foi gravado no MESMO
-   * caminho (pro link já compartilhado continuar valendo), e sem mudar a URL o navegador
-   * tocaria o que tem em cache -- a música velha, com a tela dizendo que trocou.
+   * Recarrega o `src` com um parametro novo de proposito: o arquivo foi gravado no MESMO
+   * caminho (pro link ja compartilhado continuar valendo), e sem mudar a URL o navegador
+   * tocaria o que tem em cache -- a musica velha, com a tela dizendo que trocou.
    */
   async function trocarMusica() {
     if (!resultado || trocandoMusica) return;
@@ -1054,24 +1001,17 @@ export default function PaginaVideo() {
         body: JSON.stringify({ musica: musicaDoPronto === "nenhuma" ? null : musicaDoPronto, volume: musicaVolume }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Não consegui trocar a música.");
+      if (!r.ok) throw new Error(d.error || "Nao consegui trocar a musica.");
+      // Promove pra estado local: o resultado pode ter vindo do provedor, que nao guarda
+      // musica nem tem por que guardar.
       setResultado({ ...resultado, musica: musicaDoPronto, url: `${d.url as string}${(d.url as string).includes("?") ? "&" : "?"}t=${Date.now()}` });
+      geracao.limpar();
       carregarVideos().then(setVideos).catch(() => {});
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não consegui trocar a música.");
+      setErro(e instanceof Error ? e.message : "Nao consegui trocar a musica.");
     } finally {
       setTrocandoMusica(false);
     }
-  }
-
-  async function retomarVideo(v: VideoResumo) {
-    if (gerando || v.status !== "gerando") return;
-    setSegundosGerando(0);
-    setGerando(true);
-    setErro(null);
-    setResultado(null);
-    setProgresso({ feitas: 0, total: 1, mensagem: "Continuando de onde parou…", restante: null });
-    await acompanhar(v.id);
   }
 
   async function abrirVideo(v: VideoResumo) {
@@ -1741,7 +1681,7 @@ export default function PaginaVideo() {
               <p className="mb-2 text-center text-sm font-medium text-marca-teal">Sugestão pronta. É só gerar.</p>
             )}
             <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
-              {gerando ? progresso?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
+              {gerando ? geracao.andamento?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}
             </Botao>
             {cenas.length === 0 && !gerando && (
               <p className="mt-2 text-center text-xs text-neutral-500">Envie as fotos ao lado. O resto já vem pronto.</p>
@@ -1768,20 +1708,20 @@ export default function PaginaVideo() {
                 Costuma levar {esperaTotal <= 60 ? "menos de 1 min" : `cerca de ${Math.round(esperaTotal / 60)} min`}.
               </p>
             )}
-            {gerando && progresso && (
+            {geracao.andamento && (
               <div className="mt-3">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
-                  <div className="h-full rounded-full bg-marca-coral transition-all" style={{ width: `${Math.max(6, Math.round((progresso.feitas / Math.max(1, progresso.total)) * 100))}%` }} />
+                  <div className="h-full rounded-full bg-marca-coral transition-all" style={{ width: `${Math.max(6, Math.round((geracao.andamento.feitas / Math.max(1, geracao.andamento.total)) * 100))}%` }} />
                 </div>
                 <p className="mt-2 text-xs text-neutral-500">
                   {/* "Mantenha esta aba aberta" era um pedido sem consequência dita. Agora diz
                       o que acontece se fechar E que dá pra voltar -- porque dá, e não saber
                       disso foi o que fez ele achar que tinha perdido o vídeo e os créditos. */}
-                  {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Deixe esta aba aberta: o vídeo anda enquanto ela está aqui. Se fechar, ele pausa e você continua em “Seus vídeos”.
+                  {geracao.andamento.mensagem} Etapa {Math.min(geracao.andamento.feitas + 1, geracao.andamento.total)} de {geracao.andamento.total}. Pode ir usar o resto do Encena: o vídeo continua andando e aparece uma barrinha em qualquer tela. Só não feche a aba — aí ele pausa, e volta com um toque em “Seus vídeos”.
                 </p>
                 <p className="mt-1 text-xs text-neutral-400">
                   {relogio(segundosGerando)} rodando
-                  {progresso.restante !== null && ` · faltam ${falta(progresso.restante)}`}
+                  {geracao.andamento.restante !== null && ` · faltam ${falta(geracao.andamento.restante)}`}
                 </p>
                 {segundosGerando > esperaTotal * 2 && (
                   <p className="mt-1 text-xs text-amber-600">

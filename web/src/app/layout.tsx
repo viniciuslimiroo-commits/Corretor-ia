@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import "./globals.css";
 import { IdiomaProvider } from "@/i18n/cliente";
+import { GeracaoProvider } from "@/components/geracao-em-andamento";
 import { COOKIE_IDIOMA, ehIdioma, idiomaDoNavegador, langHtml } from "@/i18n/idiomas";
 
 const geistSans = Geist({
@@ -34,7 +35,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang={langHtml(idioma)} className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <IdiomaProvider inicial={idioma}>{children}</IdiomaProvider>
+        <IdiomaProvider inicial={idioma}>
+          <GeracaoProvider>{children}</GeracaoProvider>
+        </IdiomaProvider>
       </body>
     </html>
   );
