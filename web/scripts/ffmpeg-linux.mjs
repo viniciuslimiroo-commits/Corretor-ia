@@ -16,11 +16,50 @@ import { fileURLToPath } from "node:url";
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const destino = path.join(raiz, "bin", "ffmpeg");
 
-// Ordem: menor primeiro. Todos são builds estáticos com libfreetype.
+/**
+ * As fontes, na ordem em que valem a pena tentar.
+ *
+ * O BtbN vem PRIMEIRO desde 24/09/2026. O johnvansickle vinha na frente por ser menor, mas o
+ * build dele perdeu o drawtext: o deploy baixava 42 MB, levava 15 s, e descartava. Ele fica
+ * como reserva porque pode voltar, e porque duas fontes vivas valem mais que uma.
+ *
+ * A terceira é a MESMA do BtbN por outra rota. `/releases/latest/download/` passa pelo
+ * ponteiro de "último release", e esse ponteiro fica quebrado por alguns segundos toda vez que
+ * eles republicam -- o que acontece todo dia, automático. Foi exatamente isso que derrubou o
+ * deploy de hoje: 404 às 14:19, autobuild publicado às 14:14. `/releases/download/latest/`
+ * aponta pra TAG fixa e não depende do ponteiro.
+ */
 const FONTES = [
-  { nome: "johnvansickle", url: "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz", padrao: "*/ffmpeg" },
   { nome: "BtbN", url: "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz", padrao: "*/bin/ffmpeg" },
+  { nome: "BtbN (tag fixa)", url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz", padrao: "*/bin/ffmpeg" },
+  { nome: "johnvansickle", url: "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz", padrao: "*/ffmpeg" },
 ];
+
+/** Quantas vezes tentar cada fonte, e quanto esperar entre as tentativas. */
+const TENTATIVAS = 3;
+const ESPERA_MS = 4000;
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Baixa com repetição.
+ *
+ * O deploy de 24/09/2026 morreu num 404 que durou segundos, porque uma tentativa era tudo o
+ * que existia. Baixar é a parte do build que depende da internet de terceiros, e é a única
+ * que merece insistir: o resto ou compila ou não.
+ */
+async function baixarComTeimosia(url, nome) {
+  for (let k = 1; k <= TENTATIVAS; k++) {
+    try {
+      const r = await fetch(url, { redirect: "follow" });
+      if (r.ok) return Buffer.from(await r.arrayBuffer());
+      console.log(`[ffmpeg-linux] ${nome}: tentativa ${k}/${TENTATIVAS} devolveu ${r.status}`);
+    } catch (e) {
+      console.log(`[ffmpeg-linux] ${nome}: tentativa ${k}/${TENTATIVAS} falhou (${e instanceof Error ? e.message : e})`);
+    }
+    if (k < TENTATIVAS) await dormir(ESPERA_MS * k);
+  }
+  return null;
+}
 
 function diagnostico(bin) {
   try {
@@ -51,13 +90,13 @@ for (const fonte of FONTES) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ffmpeg-"));
   try {
     console.log(`[ffmpeg-linux] baixando (${fonte.nome})`, fonte.url);
-    const r = await fetch(fonte.url, { redirect: "follow" });
-    if (!r.ok) {
-      console.log(`[ffmpeg-linux] ${fonte.nome}: download falhou (${r.status})`);
+    const conteudo = await baixarComTeimosia(fonte.url, fonte.nome);
+    if (!conteudo) {
+      console.log(`[ffmpeg-linux] ${fonte.nome}: desisti depois de ${TENTATIVAS} tentativas`);
       continue;
     }
     const tarLocal = path.join(tmp, "ffmpeg.tar.xz");
-    fs.writeFileSync(tarLocal, Buffer.from(await r.arrayBuffer()));
+    fs.writeFileSync(tarLocal, conteudo);
     console.log(`[ffmpeg-linux] ${fonte.nome}: ${Math.round(fs.statSync(tarLocal).size / 1e6)} MB, extraindo`);
     execFileSync("tar", ["-xJf", tarLocal, "-C", tmp, "--wildcards", fonte.padrao], { stdio: "inherit" });
     const achado = acharBinario(tmp);
@@ -81,7 +120,8 @@ for (const fonte of FONTES) {
   }
 }
 if (!ok) {
-  console.error("[ffmpeg-linux] nenhuma fonte deu um ffmpeg com drawtext");
+  console.error(`[ffmpeg-linux] nenhuma das ${FONTES.length} fontes deu um ffmpeg com drawtext, mesmo com ${TENTATIVAS} tentativas cada.`);
+  console.error("[ffmpeg-linux] sem drawtext o vídeo sai sem texto nenhum, então o build para aqui de propósito.");
   process.exit(1);
 }
 
