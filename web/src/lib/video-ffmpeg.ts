@@ -1346,3 +1346,62 @@ export function caminhoMiniatura(userId: string, videoId: string) {
 export function nomeLocal(dir: string, nome: string) {
   return path.join(dir, nome);
 }
+
+/**
+ * TROCAR A MÚSICA DE UM VÍDEO QUE JÁ ESTÁ PRONTO, sem refazer o vídeo.
+ *
+ * Pedido dele em 24/09/2026: "quero ter opção de trocar música ou áudio do vídeo mesmo depois
+ * que o vídeo for feito, até porque é algo simples". É simples mesmo, e a razão é técnica: a
+ * imagem e o som são faixas separadas dentro do mp4. Dá pra copiar a faixa de vídeo byte a
+ * byte (`-c:v copy`) e escrever só a de áudio.
+ *
+ * O que isso significa na prática, e é o ponto todo:
+ *
+ *   NÃO recodifica a imagem  ->  nenhuma perda de qualidade, por mais vezes que troque;
+ *   NÃO chama a IA           ->  nenhum crédito, mesmo num vídeo cheio de cena animada;
+ *   leva segundos            ->  contra os minutos de uma geração inteira.
+ *
+ * A cadeia do som é a MESMA da montagem (mesmo corte, mesmos fades, mesmo loudnorm a -14
+ * LUFS), pra que um vídeo com a música trocada soe idêntico a um gerado com ela desde o
+ * começo -- senão o corretor trocaria a música e ouviria o volume mudar junto.
+ *
+ * Só serve pra vídeo cuja trilha é SÓ música. Vídeo com narração ou com blocos de áudio tem
+ * voz misturada na mesma faixa, e trocar a faixa levaria a voz embora; esse caso é da rota,
+ * que recusa antes de chegar aqui.
+ */
+export function argsTrocarMusica(o: {
+  /** O mp4 pronto, já baixado. */
+  video: string;
+  /** A música nova, já baixada. Sem ela o vídeo fica mudo, que é uma escolha válida. */
+  musica?: string;
+  saida: string;
+  /** A duração do vídeo, em segundos: é ela que corta e posiciona o fade de saída. */
+  duracao: number;
+  /** 0 a 1. O mesmo padrão da montagem. */
+  volume?: number;
+}): string[] {
+  const args = ["-i", o.video];
+  if (!o.musica) {
+    // Sem música: tira o som e devolve o vídeo intacto. Também é "trocar a música".
+    return [...args, "-map", "0:v", "-c:v", "copy", "-an", "-movflags", "+faststart", o.saida];
+  }
+  // `-stream_loop -1` faz a faixa curta dar a volta até cobrir o vídeo, como na montagem.
+  args.push("-stream_loop", "-1", "-i", o.musica);
+  const total = Math.max(0.1, o.duracao);
+  const fadeOut = Math.max(0, total - 2).toFixed(2);
+  const vol = Math.min(1, Math.max(0, o.volume ?? 0.8));
+  const cadeia =
+    `[1:a]atrim=0:${total.toFixed(2)},afade=t=in:d=1,afade=t=out:st=${fadeOut}:d=2,volume=${vol.toFixed(2)},` +
+    // loudnorm entrega 192 kHz se ninguém pedir outra coisa -- o mesmo cuidado da montagem.
+    `loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]`;
+  return [
+    ...args,
+    "-filter_complex", cadeia,
+    "-map", "0:v", "-map", "[a]",
+    "-c:v", "copy",
+    "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+    "-shortest",
+    "-movflags", "+faststart",
+    o.saida,
+  ];
+}

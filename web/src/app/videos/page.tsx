@@ -153,7 +153,10 @@ async function formatoDaFoto(f: File): Promise<Formato> {
 /** `imovel` a rota já mandava; faltava a tela saber que existe pra poder juntar por imóvel. */
 type VideoResumo = { id: string; titulo: string; formato: string; status: string; criadoEm: string; duracao: number | null; miniatura: string | null; compartilhado: boolean; erro: string | null; imovel: { id: string; titulo: string } | null };
 
-type Resultado = { videoId: string; url: string; miniatura: string | null; duracao: number | null; avisos: string[]; formato: string };
+// `musica` entra aqui porque o painel do vídeo pronto precisa saber qual trilha ESTE vídeo
+// tem -- e não qual está escolhida na montagem lá em cima, que a pessoa pode ter mexido
+// depois de gerar. É o que faz o botão "Trocar a música" saber quando não há nada a trocar.
+type Resultado = { videoId: string; url: string; miniatura: string | null; duracao: number | null; avisos: string[]; formato: string; musica: MusicaId };
 
 let contador = 0;
 const chave = () => `c${Date.now()}-${contador++}`;
@@ -198,6 +201,16 @@ export default function PaginaVideo() {
   const [cenas, setCenas] = useState<CenaUI[]>([]);
   const [formato, setFormato] = useState<FormatoId>("9:16");
   const [musica, setMusica] = useState<MusicaId>("calma");
+  /**
+   * A música escolhida no painel do vídeo PRONTO.
+   *
+   * É um estado separado do `musica` da montagem de propósito: aqui a pessoa está ouvindo e
+   * comparando trilhas num vídeo que já existe, e a escolha só vale quando ela aperta
+   * "Trocar a música". Usar o mesmo estado faria o seletor mexer na próxima geração sem
+   * ninguém ter pedido.
+   */
+  const [musicaDoPronto, setMusicaDoPronto] = useState<MusicaId>("calma");
+  const [trocandoMusica, setTrocandoMusica] = useState(false);
   // "suave" virou "dissolver" quando as transições passaram de duas pra cinco.
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   const [titulo, setTitulo] = useState("");
@@ -900,7 +913,8 @@ export default function PaginaVideo() {
         }
         tropecos = 0;
         if (dd.status === "concluido" && dd.url) {
-          setResultado({ videoId: id, url: dd.url, miniatura: dd.miniatura ?? null, duracao: dd.duracao ?? null, avisos: dd.avisos ?? [], formato: dd.formato ?? formato });
+          setResultado({ videoId: id, url: dd.url, miniatura: dd.miniatura ?? null, duracao: dd.duracao ?? null, avisos: dd.avisos ?? [], formato: dd.formato ?? formato, musica });
+          setMusicaDoPronto(musica);
           setProgresso(null);
           carregarVideos().then(setVideos).catch(() => {});
           return;
@@ -944,6 +958,34 @@ export default function PaginaVideo() {
    * devolve o crédito é o servidor, na consulta. Sem alguém consultar, ele fica parado pra
    * sempre e o crédito não volta -- que foi exatamente o que aconteceu com ele.
    */
+  /**
+   * Trocar a trilha do vídeo que já está pronto, sem refazer nada.
+   *
+   * Recarrega o `src` com um parâmetro novo de propósito: o arquivo foi gravado no MESMO
+   * caminho (pro link já compartilhado continuar valendo), e sem mudar a URL o navegador
+   * tocaria o que tem em cache -- a música velha, com a tela dizendo que trocou.
+   */
+  async function trocarMusica() {
+    if (!resultado || trocandoMusica) return;
+    setTrocandoMusica(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/video/${resultado.videoId}/musica`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ musica: musicaDoPronto === "nenhuma" ? null : musicaDoPronto, volume: musicaVolume }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não consegui trocar a música.");
+      setResultado({ ...resultado, musica: musicaDoPronto, url: `${d.url as string}${(d.url as string).includes("?") ? "&" : "?"}t=${Date.now()}` });
+      carregarVideos().then(setVideos).catch(() => {});
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui trocar a música.");
+    } finally {
+      setTrocandoMusica(false);
+    }
+  }
+
   async function retomarVideo(v: VideoResumo) {
     if (gerando || v.status !== "gerando") return;
     setSegundosGerando(0);
@@ -959,7 +1001,10 @@ export default function PaginaVideo() {
     const rr = await fetch(`/api/video/${v.id}`, { headers: { Authorization: `Bearer ${await token()}` } });
     const dd = await rr.json();
     if (rr.ok && dd.status === "concluido") {
-      setResultado({ videoId: v.id, url: dd.url, miniatura: dd.miniatura, duracao: dd.duracao, avisos: dd.avisos ?? [], formato: dd.formato });
+      const guardada = dd.espec?.musica;
+      const musicaDele: MusicaId = MUSICAS.some((m) => m.id === guardada) ? (guardada as MusicaId) : "nenhuma";
+      setResultado({ videoId: v.id, url: dd.url, miniatura: dd.miniatura, duracao: dd.duracao, avisos: dd.avisos ?? [], formato: dd.formato, musica: musicaDele });
+      setMusicaDoPronto(musicaDele);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
@@ -1103,6 +1148,28 @@ export default function PaginaVideo() {
                   Editar
                 </Botao>
                 <Botao variante="discreta" onClick={() => setResultado(null)}>Fechar</Botao>
+              </div>
+              {/* TROCAR A MÚSICA COM O VÍDEO JÁ PRONTO. Pedido dele em 24/09/2026: "quero ter
+                  opção de trocar música ou áudio do vídeo mesmo depois que o vídeo for feito,
+                  até porque é algo simples".
+
+                  É simples por um motivo técnico que vale a pena aproveitar: num mp4 a imagem
+                  e o som são faixas separadas, então dá pra copiar a imagem byte a byte e
+                  reescrever só o som. Leva segundos, não perde qualidade e não custa crédito
+                  nenhum -- nem num vídeo cheio de cena animada. Refazer o vídeo pra ouvir
+                  outra trilha seria minutos de fila de IA pra trocar uma faixa de áudio. */}
+              <div className="mt-3 rounded-xl border border-neutral-200 p-3">
+                <p className="mb-2 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Música</p>
+                <OuvirMusica escolhida={musicaDoPronto} aoEscolher={setMusicaDoPronto} volume={musicaVolume} desligado={trocandoMusica} />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Botao variante="secundaria" onClick={trocarMusica} disabled={trocandoMusica || musicaDoPronto === resultado.musica}>
+                    {trocandoMusica ? "Trocando…" : "Trocar a música deste vídeo"}
+                  </Botao>
+                  {musicaDoPronto === resultado.musica && <span className="text-xs text-neutral-400">É a que está tocando.</span>}
+                </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  Leva segundos e não gasta crédito: só a faixa de som é reescrita, a imagem fica intacta. O link que você já mandou passa a tocar a nova.
+                </p>
               </div>
               <div className="mt-3">
                 <Compartilhar token={token} videoId={resultado.videoId} texto="Olha o vídeo do imóvel:" />
