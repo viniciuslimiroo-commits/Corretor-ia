@@ -318,7 +318,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
        * dois no saneamento e só estava escrito num deles: a cena animada congelada
        * sairia correndo, sem erro nenhum, que é o defeito mais caro de achar.
        */
-      async function renderizarComVideo(clipe: string, saida: string, extras: { melhorar?: boolean } = {}) {
+      async function renderizarComVideo(clipe: string, saida: string, extras: { melhorar?: boolean; efeito?: EfeitoId } = {}) {
         if (cena.congelar) {
           // Congelar é PARAR no quadro onde a pessoa deixou o cabeçote: tira aquele
           // quadro do arquivo e daí em diante a cena é uma foto, com o mesmo caminho de
@@ -403,7 +403,14 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
         if (clipeLocal) {
           const saida = local(nomeClipe);
-          const r = await renderizarComVideo(clipeLocal, saida);
+          // O MOVIMENTO DO FFMPEG POR CIMA DO CLIPE DA IA. A IA da a paralaxe (que e o que
+          // faz parecer camera de verdade) e o ffmpeg da a distancia (que e o que faz parecer
+          // tour). Pedir as duas coisas pro modelo foi o que fez ele alucinar uma parede nova
+          // no meio do comodo -- medido em 24/09/2026, em duas geracoes reais.
+          //
+          // So no clipe da IA: o video que a PESSOA enviou ja tem o movimento que ela filmou,
+          // e ampliar por cima cortaria o enquadramento dela sem ninguem ter pedido.
+          const r = await renderizarComVideo(clipeLocal, saida, { efeito: cena.efeito });
           await guardarClipe(saida, nomeClipe, dur, r.segundos);
         } else {
           // devolve os créditos da animação (se foi cobrada) e renderiza como foto

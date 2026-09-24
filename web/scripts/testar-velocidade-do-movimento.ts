@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import ffmpegBin from "ffmpeg-static";
-import { argsCenaFoto, amplitudeDoZoom, quadrosDeMovimento } from "../src/lib/video-ffmpeg";
+import { argsCenaFoto, argsCenaClipe, amplitudeDoZoom, quadrosDeMovimento } from "../src/lib/video-ffmpeg";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "encena-veloc-"));
 const FOTO = path.resolve(process.cwd(), "..", "docs", "fotos-origem", "casa.jpg");
@@ -120,6 +120,44 @@ function main() {
   const faixa = [3, 4, 5, 6].map(veloc);
   const dif = (Math.max(...faixa) - Math.min(...faixa)) / Math.max(...faixa);
   conferir(dif < 0.01, "cenas de 3 a 6 s continuam andando na MESMA velocidade", `${(dif * 100).toFixed(2)}% de diferença`);
+
+  // ---- 7. O CLIPE DA IA GANHA MOVIMENTO POR CIMA ----
+  //
+  // A divisao que saiu de duas geracoes reais em 24/09/2026: a IA da a PARALAXE (pouca, mas
+  // real, e sem inventar) e o ffmpeg da a DISTANCIA. Pedir distancia pro modelo fez ele
+  // alucinar uma parede nova no meio do comodo -- o ffmpeg, por construcao, nao sabe inventar.
+  //
+  // Aqui o "clipe da IA" e simulado: uma cena de foto com movimento vira a entrada, que e um
+  // clipe que JA se move. E o bastante pra testar o que importa: se o ffmpeg SOMA ou CANCELA.
+  const clipeQueJaAnda = path.join(TMP, "clipe-que-anda.mp4");
+  execFileSync(String(ffmpegBin), ["-y", "-hide_banner", "-loglevel", "error", ...argsCenaFoto({ foto: FOTO, saida: clipeQueJaAnda, W: 540, H: 960, duracao: 4, efeito: "aproximar" })], { maxBuffer: 1 << 26 });
+
+  const doClipe = (efeito?: "aproximar" | "direita" | "afastar") => {
+    const video = path.join(TMP, `clipe-${efeito ?? "sem"}.mp4`);
+    execFileSync(String(ffmpegBin), ["-y", "-hide_banner", "-loglevel", "error", ...argsCenaClipe({ clipe: clipeQueJaAnda, saida: video, W: 540, H: 960, duracao: 4, efeito })], { maxBuffer: 1 << 26 });
+    const cru = path.join(TMP, `clipe-${efeito ?? "sem"}.gray`);
+    execFileSync(String(ffmpegBin), ["-y", "-hide_banner", "-loglevel", "error", "-i", video, "-vf", `fps=${AMOSTRAS},scale=${L}:${A}`, "-pix_fmt", "gray", "-f", "rawvideo", cru]);
+    const todo = fs.readFileSync(cru);
+    const q: Buffer[] = [];
+    for (let o = 0; o + PX <= todo.length; o += PX) q.push(todo.subarray(o, o + PX));
+    const d: number[] = [];
+    for (let i = AMOSTRAS; i < q.length; i++) {
+      let s = 0;
+      for (let k = 0; k < PX; k += 3) s += Math.abs(q[i][k] - q[i - AMOSTRAS][k]);
+      d.push(s / (PX / 3));
+    }
+    return d.reduce((a, b) => a + b, 0) / d.length;
+  };
+
+  const semNada = doClipe();
+  const comLateral = doClipe("direita");
+  const comAfastar = doClipe("afastar");
+  console.log(`
+   clipe sozinho ${semNada.toFixed(1)} · com passeio lateral ${comLateral.toFixed(1)} · com afastar ${comAfastar.toFixed(1)}`);
+  conferir(comLateral > semNada * 1.2, "o passeio lateral SOMA ao movimento que o clipe ja tem", `${semNada.toFixed(1)} -> ${comLateral.toFixed(1)}`);
+  // CONTROLE do conserto: no clipe da IA, `afastar` derrubava o total de 16,7 pra 8,1, porque
+  // a janela abrindo cancela a camera avancando. `efeitoNoClipe` o traduz pra passeio lateral.
+  conferir(Math.abs(comAfastar - comLateral) < 0.5, "e afastar vira passeio lateral, que somava, em vez de cancelar", `${comAfastar.toFixed(1)} contra ${comLateral.toFixed(1)}`);
 
   console.log(`\narquivos em ${TMP}`);
   console.log(falhas ? `${falhas} falha(s)` : "tudo certo");

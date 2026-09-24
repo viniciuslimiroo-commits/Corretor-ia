@@ -562,22 +562,28 @@ export function amplitudeDoZoom(segundosDeMovimento: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, ZOOM_POR_SEGUNDO * segundosDeMovimento));
 }
 
-function zoompan(efeito: EfeitoId, frames: number, W: number, H: number): string {
-  const d = frames;
+function zoompan(efeito: EfeitoId, frames: number, W: number, H: number, opcoes: { porQuadro?: boolean; fracao?: number } = {}): string {
+  // `d=1` quando a entrada e VIDEO: ali cada quadro que chega sai uma vez, e `on` conta o
+  // quadro de saida. Com `d=frames` (o modo da foto) o ffmpeg expandiria CADA quadro do clipe
+  // em `frames` copias, e o clipe de 4 s viraria um de 6 minutos.
+  const d = opcoes.porQuadro ? 1 : frames;
   const centroX = `iw/2-(iw/zoom/2)`;
   const centroY = `ih/2-(ih/zoom/2)`;
 
   // `p` é o andamento do movimento: vai de 0 a 1 ANTES do fim da cena (o resto é o pouso)
   // e segue uma curva em S -- começa devagar, acelera, desacelera. Era linear, e linear
   // significa velocidade máxima no último quadro: o movimento parava de supetão.
-  const m = quadrosDeMovimento(d / FPS);
+  // O tempo de movimento sai de `frames` e NAO de `d`: no modo video `d` vale 1, e usar ele
+  // aqui fazia `min(on/m,1)` saturar no primeiro quadro -- o clipe saia ampliado e PARADO,
+  // com o medidor acusando exatamente o mesmo movimento de antes.
+  const m = quadrosDeMovimento(frames / FPS);
   const t = `min(on/${m},1)`;
   const p = `(${t}*${t}*(3-2*${t}))`;
 
   // A amplitude sai da DURAÇÃO do movimento, não de um número fixo: é o que iguala a
   // velocidade entre cenas de tamanhos diferentes. Nos passeios laterais ela também manda,
   // porque o quanto a janela pode correr é justamente o quanto se ampliou.
-  const a = amplitudeDoZoom(m / FPS);
+  const a = amplitudeDoZoom(m / FPS) * (opcoes.fracao ?? 1);
   const az = a.toFixed(4);
   const zPasseio = (1 + a).toFixed(4);
 
@@ -691,12 +697,58 @@ export function argsCenaAntesDepois(o: { antes: string; depois: string; saida: s
  * completa clonando o último quadro se for mais curto, tira o áudio (a música é nossa).
  * `melhorar` é uma correção leve de cor e nitidez, sem IA.
  */
-export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[]; semPouso?: boolean }): string[] {
+/**
+ * O MOVIMENTO DE FFMPEG QUE VAI POR CIMA DO CLIPE DA IA.
+ *
+ * A ideia, e o motivo dela: pedir DISTANCIA pro modelo foi o que fez ele alucinar uma parede
+ * nova no meio do comodo (medido em 24/09/2026, duas geracoes reais). Entao a divisao passa a
+ * ser esta, e cada um faz o que sabe:
+ *
+ *   A IA da a PARALAXE   o batente ganha espessura, o sofa sai da frente da parede.
+ *   O FFMPEG da a DISTANCIA   recorta e desliza, e nao sabe inventar parede nenhuma.
+ *
+ * Medido somando os dois no clipe de teste (a IA sozinha anda 8,1; o alvo e 16,4, que e o que
+ * as cenas de zoom do video da referencia andam):
+ *
+ *                 fracao 0,55   0,80   1,00
+ *   direita            13,3    15,4   16,7     <- soma limpo
+ *   cima               12,7    15,5   17,4     <- soma limpo
+ *   aproximar          10,5    11,7   12,6     <- soma pouco: e redundante com o avanco da IA
+ *   afastar             7,5     7,8    8,1     <- CANCELA: o zoom saindo briga com a IA entrando
+ *
+ * Dai as duas decisoes: fracao cheia, e `afastar` nunca vai por cima de clipe animado.
+ */
+const FRACAO_DO_ZOOM_NO_CLIPE = 1;
+
+/**
+ * O movimento que faz sentido POR CIMA de um clipe que ja se move.
+ *
+ * `afastar` sai de cena: medido, ele derruba o movimento total de 16,7 pra 8,1, porque a
+ * janela abrindo cancela a camera da IA avancando. Vira passeio lateral, que soma.
+ */
+function efeitoNoClipe(efeito: EfeitoId): EfeitoId {
+  return efeito === "afastar" ? "direita" : efeito;
+}
+
+export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[]; semPouso?: boolean; efeito?: EfeitoId; fracaoDoZoom?: number }): string[] {
   // Velocidade é `setpts`, e vem ANTES do `fps`: primeiro os carimbos de tempo mudam,
   // depois o ffmpeg reamostra pra taxa fixa. Na ordem inversa o vídeo fica aos trancos,
   // porque a reamostragem acontece contra um relógio que ainda vai mudar.
   const vel = Math.min(2, Math.max(0.5, o.velocidade ?? 1));
-  const filtros = [...(vel !== 1 ? [`setpts=PTS/${vel}`] : []), `fps=${FPS}`, ...geometria(o.giro, o.espelho), enquadrar(o.W, o.H), ...filtrosDeImagem(o.cor), "format=yuv420p"];
+  // COM MOVIMENTO POR CIMA quando vem `efeito`: e o que faz o clipe da IA parecer tour sem
+  // pedir ao modelo uma distancia que ele nao consegue andar sem inventar. Sem `efeito` o
+  // caminho e o de antes, sem ampliar nada -- clipe que a pessoa enviou entra como esta.
+  const comMovimento = !!o.efeito && o.efeito !== "parado";
+  const quadros = Math.round(o.duracao * FPS);
+  const filtros = [
+    ...(vel !== 1 ? [`setpts=PTS/${vel}`] : []),
+    `fps=${FPS}`,
+    ...geometria(o.giro, o.espelho),
+    enquadrar(o.W, o.H, comMovimento ? ESCALA_ZOOM : 1),
+    ...(comMovimento ? [zoompan(efeitoNoClipe(o.efeito!), quadros, o.W, o.H, { porQuadro: true, fracao: o.fracaoDoZoom ?? FRACAO_DO_ZOOM_NO_CLIPE })] : []),
+    ...filtrosDeImagem(o.cor),
+    "format=yuv420p",
+  ];
   if (o.melhorar) filtros.push("eq=contrast=1.06:brightness=0.02:saturation=1.12", "unsharp=5:5:0.6:5:5:0.0");
   filtros.push(`tpad=stop_mode=clone:stop_duration=${o.duracao}`);
   filtros.push(...filtrosDeTexto(textosSemArte(o.textos), o.W, o.H, o.topoOcupado, o.duracao));
