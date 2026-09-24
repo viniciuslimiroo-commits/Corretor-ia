@@ -1298,24 +1298,25 @@ export default function PaginaVideo() {
                 <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple className="hidden" onChange={(e) => enviarArquivos(e.target.files)} disabled={gerando} />
               </label>
             </div>
+            {/* O AVISO DO 360 MORA AQUI, e não lá embaixo perto da galeria.
+
+                Ele perguntou por que o software fala em 360 e panorâmica se não dá pra usar.
+                Dá -- mas só aparece DEPOIS de subir uma foto na proporção certa, e ninguém
+                sobe uma foto que não sabe que serve. E o argumento que fechou a questão foi
+                dele: "eu mesmo não sabia". Se o dono do produto não sabia, o corretor não vai
+                descobrir sozinho.
+
+                Então fica colado no botão de enviar, que é onde a pessoa decide O QUE mandar,
+                e some assim que existe uma 360 na lista -- aí o aviso já cumpriu o papel. */}
+            {!cenas.some((s) => s.eh360 || s.ehPanoramica) && (
+              <p className="mt-2 text-xs text-neutral-500">
+                Tem foto <strong className="font-medium text-neutral-700">360</strong> ou tirada no modo <strong className="font-medium text-neutral-700">Panorâmica</strong> do celular? Manda também: ela vira um passeio com a câmera andando por dentro, e não gasta crédito.
+              </p>
+            )}
             {imovelId && geracoes.length === 0 && <p className="mt-3 text-sm text-neutral-500">Este imóvel ainda não tem fotos prontas. Envie fotos ou edite algumas primeiro.</p>}
             {geracoes.length > 0 && (
               <>
                 <p className="mt-3 text-xs text-neutral-500">Toque numa foto pra adicionar como cena. Fotos com original guardada podem virar &quot;antes e depois&quot;.</p>
-                {/* COMO CONSEGUIR UMA FOTO QUE VIRA PASSEIO. Ele perguntou em 24/09/2026: "o
-                    software fala em câmera 360 e foto panorâmica, mas não tem essa
-                    possibilidade, se não tiver por que colocou?".
-
-                    Tem, e funciona: a câmera anda DENTRO da esfera, de verdade, sem crédito.
-                    Mas só aparece se a foto for 360 (proporção 2:1) ou panorâmica (2,6:1 ou
-                    mais), e foto normal de celular é 4:3 -- então quem nunca tirou uma no modo
-                    Panorâmica jamais encontra o recurso e conclui, com razão, que ele não
-                    existe. Faltava a única coisa que resolve: dizer onde arrumar a foto. */}
-                {!cenas.some((s) => s.eh360 || s.ehPanoramica) && (
-                  <p className="mt-1 text-xs text-neutral-400">
-                    Foto tirada no modo <strong className="font-medium text-neutral-500">Panorâmica</strong> do celular vira passeio: a câmera anda dentro dela, sem gastar crédito.
-                  </p>
-                )}
                 <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {geracoes.map((g) => {
                     const usada = cenas.some((s) => s.jobId === g.id);
