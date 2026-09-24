@@ -180,5 +180,47 @@ const comDirecao = sugerirMontagem([foto("f", "fachada"), foto("q", "banheiro")]
 conferir(comDirecao.cenas.find((c) => c.chave === "f")?.animacao === "drone", "a montagem devolve a direção de cada cena");
 conferir(comDirecao.cenas.find((c) => c.chave === "q")?.animacao === "aproximar", "e ela é diferente por ambiente");
 
+
+// ---- 7c. A MESCLA: a camera cara so nas fotos que vendem ----
+//
+// 24/09/2026, ele observando o concorrente: "vi que nem todos eles usaram o efeito mais caro
+// de tour, mesclam com aproximacao que da pra enganar; pegaram as imagens mais importantes e
+// gastaram o tour mais caro, outras fizeram aproximacao".
+//
+// Eu tinha desaconselhado a mescla dizendo que o video ficaria remendado. A prova de que eu
+// estava errado e o proprio video que ele chamou de ideal: metade dele e zoom, e ele nao
+// percebeu. Isto trava a regra que saiu dai.
+const mescla = sugerirMontagem(DEZ, 4);
+const comCamera = mescla.cenas.filter((c) => c.camera);
+conferir(comCamera.length === 4, "de 10 fotos, so 4 ganham a camera de IA", `${comCamera.length} de ${mescla.cenas.length}`);
+conferir(mescla.cenas[0].camera, "a capa sempre ganha: e ela que decide se a pessoa assiste");
+conferir(mescla.cenas[mescla.cenas.length - 1].camera, "e a ultima tambem: e a imagem que fica");
+
+// Repeticao NUNCA ganha camera: o segundo quarto animado custa o mesmo e mostra a mesma coisa.
+const repetido = mescla.cenas.find((c) => /mantem a sequencia|mant.m a sequ.ncia/.test(c.motivo));
+conferir(!repetido || !repetido.camera, "foto repetida do MIOLO nao gasta camera", repetido ? repetido.motivo : "(sem repetida neste conjunto)");
+// Mas a POSICAO manda: num conjunto com dois quintais, a ultima cena e o SEGUNDO quintal e
+// mesmo assim leva a camera. Sem isto o video acabava num zoom e a camera cara ia pra cena 9,
+// que ninguem lembra.
+const fechaRepetida = sugerirMontagem([foto("f", "fachada"), foto("s", "sala"), foto("c", "cozinha"), foto("x1", "quintal", 9), foto("x2", "quintal", 7)], 4);
+const ultimaCena = fechaRepetida.cenas[fechaRepetida.cenas.length - 1];
+conferir(ultimaCena.camera, "a que FECHA leva camera mesmo sendo repetida do mesmo ambiente", ultimaCena.motivo);
+
+// Banheiro nao gasta camera na frente de sala ou cozinha, por melhor que esteja a foto.
+const comBanheiroBom = sugerirMontagem([foto("f", "fachada", 7), foto("s", "sala", 6), foto("c", "cozinha", 6), foto("b", "banheiro", 10), foto("q", "quarto", 6), foto("x", "quintal", 6)], 4);
+const banheiro = comBanheiroBom.cenas.find((c) => c.chave === "b")!;
+conferir(!banheiro.camera, "banheiro nota 10 nao toma a camera da sala nota 6", `banheiro camera=${banheiro.camera}`);
+
+// O TETO segura o preco: nem 20 fotos passam de 4 cenas com camera.
+const vinte = sugerirMontagem(Array.from({ length: 20 }, (_, i) => foto(`v${i}`, ORDEM_DO_PASSEIO[i % ORDEM_DO_PASSEIO.length], 8)), 4);
+conferir(vinte.cenas.filter((c) => c.camera).length === 4, "20 fotos tambem param em 4 cenas com camera", `${vinte.cenas.filter((c) => c.camera).length}`);
+
+// E video curto nao vira todo animado: seria mais caro POR FOTO que o de dez.
+const tres = sugerirMontagem([foto("a", "fachada"), foto("b", "sala"), foto("c", "quintal")], 4);
+conferir(tres.cenas.filter((c) => c.camera).length === 2, "video de 3 fotos gasta 2 cameras, nao 3", `${tres.cenas.filter((c) => c.camera).length}`);
+
+// CONTROLE: animar TUDO custaria 20 creditos; a mescla custa 8. Se este controle nao acusar,
+// os testes acima nao sabem o que mudou.
+conferir(mescla.cenas.length * 2 === 20 && comCamera.length * 2 === 8, "controle: 20 creditos animando tudo contra 8 com a mescla");
 console.log(falhas ? `\n${falhas} falha(s)` : "\ntudo certo");
 process.exit(falhas ? 1 : 0);

@@ -88,6 +88,8 @@ type CenaUI = {
   animacaoGuardada?: { animacao: AnimacaoId; duracao: number } | null;
   /** Por que esta foto está nesta posição. Vem da montagem automática e vai pro roteiro. */
   motivo?: string;
+  /** A montagem decidiu que esta cena merece a câmera de IA (que custa) e não o zoom. */
+  camera?: boolean;
 };
 
 /** O que o servidor devolve por cena, ao lado do espec, pra reabrir um vídeo pronto. */
@@ -678,12 +680,16 @@ export default function PaginaVideo() {
         !animavel(s)
           ? s
           : novo === "tour"
-            // Só o TIPO muda. `animacao` e `duracao` não entram aqui de propósito: quem
-            // escolheu a direção foi a montagem, olhando o ambiente (sobrevoo na fachada,
-            // entrar na sala, aproximar no banheiro), e quem escolheu o tempo foi a posição
-            // (4 s nas três de abertura e nas três do fim, 3 s no miolo). Fixar valores aqui
+            // Só o TIPO muda, e só nas cenas que a montagem marcou pra câmera. `animacao` e
+            // `duracao` não entram aqui de propósito: quem escolheu a direção foi a montagem,
+            // olhando o ambiente, e quem escolheu o tempo foi a posição. Fixar valores aqui
             // desfazia as duas coisas a cada toque no botão de estilo.
-            ? { ...s, tipo: "animada" as const, duracao: Math.min(5, Math.max(3, s.duracao)) }
+            //
+            // `?? true` é pra cena que nunca passou pela montagem -- uma foto só, por exemplo.
+            // Nesse caso ela É a capa, e a capa sempre ganha câmera.
+            ? (s.camera ?? true)
+              ? { ...s, tipo: "animada" as const, duracao: Math.min(5, Math.max(3, s.duracao)) }
+              : { ...s, tipo: "foto" as const }
             : { ...s, tipo: "foto" as const }
       )
     );
@@ -742,14 +748,20 @@ export default function PaginaVideo() {
         s.ordem.map((k) => {
           const base = porChave.get(k)!;
           const a = ajustes.get(k);
-          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, animacao: a.animacao, duracao: a.duracao, motivo: a.motivo } : base;
+          const arrumada = a ? { ...base, legenda: base.legenda || a.legenda, efeito: a.efeito, animacao: a.animacao, duracao: a.duracao, motivo: a.motivo, camera: a.camera } : base;
           // O estilo vale também pras cenas que a montagem acabou de organizar: escolher
           // "Tour" e DEPOIS mandar as fotos tem que dar o mesmo resultado que o contrário.
           const animavel = !arrumada.ehClipe && !arrumada.eh360 && !arrumada.ehPanoramica;
-          // A animação já veio do ambiente e a duração veio da POSIÇÃO (4 s nas três de
-          // abertura e nas três do fim, 3 s no miolo): aqui só se liga o tipo animado. Forçar
-          // 4 s aqui, como antes, achatava o ritmo que a montagem tinha acabado de dar.
-          return estilo === "tour" && animavel ? { ...arrumada, tipo: "animada" as const } : arrumada;
+          // A CÂMERA SÓ VAI NAS QUE VALEM. A animação veio do ambiente, a duração veio da
+          // posição, e agora o direito à câmera vem da montagem também: no Tour de dez fotos
+          // são quatro cenas animadas e seis com movimento na foto, não dez animadas.
+          //
+          // As duas pontas são escritas de propósito. A cena NASCE animada (nascerNoEstilo,
+          // que é o que faz uma foto só já entrar com câmera), então deixar a que não ganhou
+          // câmera "como estava" a mantinha animada -- e o vídeo saía todo caro do mesmo
+          // jeito, com a tela dizendo o contrário.
+          if (!(estilo === "tour" && animavel)) return arrumada;
+          return (arrumada.camera ?? true) ? { ...arrumada, tipo: "animada" as const } : { ...arrumada, tipo: "foto" as const };
         })
       );
       if (s.capa) setCapa(s.capa);
@@ -1188,7 +1200,13 @@ export default function PaginaVideo() {
                             visível em vez de escondido num campo que só aparece se abrir os detalhes. */}
                         <span className="absolute top-1 right-1 rounded bg-black/60 px-1.5 text-[10px] font-semibold text-white">{s.duracao}s</span>
                         {(capa ?? cenas[0]?.chave) === s.chave && <span className="absolute bottom-1 left-1 rounded bg-marca-coral px-1.5 text-[9px] font-semibold text-white">capa</span>}
-                        {s.tipo === "animada" && <span className="absolute right-1 bottom-1 rounded bg-white/90 px-1.5 text-[9px] font-semibold text-marca-indigo">câmera</span>}
+                        {/* CÂMERA ou ZOOM, dito nas duas. Mostrar o selo só nas animadas
+                            deixaria as outras parecendo esquecidas; dizer nas duas mostra que
+                            a mescla foi decidida -- e é onde ele vai conferir se a câmera cara
+                            caiu nas fotos certas antes de gastar crédito. */}
+                        <span className={"absolute right-1 bottom-1 rounded px-1.5 text-[9px] font-semibold " + (s.tipo === "animada" ? "bg-marca-indigo text-white" : "bg-white/90 text-neutral-500")}>
+                          {s.tipo === "animada" ? "câmera" : "zoom"}
+                        </span>
                       </div>
                       <p className="mt-1.5 truncate text-[12px] font-semibold text-neutral-700">{s.legenda || s.rotulo}</p>
                       {s.motivo && <p className="mt-0.5 text-[11px] leading-tight text-neutral-500">{s.motivo}</p>}
@@ -1403,7 +1421,7 @@ export default function PaginaVideo() {
               <p className="mb-1.5 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Estilo</p>
               <div className="grid gap-2">
                 {[
-                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A câmera anda pelo cômodo em cada foto, como quem entra. ${CREDITOS.animada} créditos por cena.` },
+                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A câmera anda pelo cômodo nas fotos que vendem; o resto ganha movimento na foto. ${CREDITOS.animada} créditos por cena com câmera.` },
                   { id: "recomendado" as const, titulo: "Movimento na foto", dica: "Ordem da visita e um movimento leve em cada foto. Sem crédito." },
                   { id: "meu" as const, titulo: "Do meu jeito", dica: "Nada é mexido: a ordem e os ajustes são seus" },
                 ].map((o) => (

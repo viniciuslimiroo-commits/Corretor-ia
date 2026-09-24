@@ -149,6 +149,8 @@ export type CenaSugerida = {
   duracao: number;
   /** Por que esta foto está AQUI, nesta posição. É o que a tela mostra embaixo da miniatura. */
   motivo: string;
+  /** Esta cena merece a câmera de IA (que custa) ou o movimento na foto (que é grátis). */
+  camera: boolean;
 };
 
 export type Sugestao = {
@@ -184,6 +186,44 @@ export function duracaoDaPosicao(indice: number, total: number, padrao: number):
   const noComeco = indice < 3;
   const noFim = indice >= total - 3;
   return noComeco || noFim ? padrao : Math.max(3, padrao - 1);
+}
+
+/**
+ * QUANTAS CENAS GANHAM CÂMERA DE VERDADE -- o movimento de IA, que é o único que custa.
+ *
+ * Ele observou o concorrente em 24/09/2026 e desmontou uma objeção minha: "vi que nem todos
+ * eles usaram o efeito mais caro de tour, mesclam com aproximação que dá pra enganar; pegaram
+ * as imagens mais importantes e gastaram o tour mais caro, outras fizeram aproximação".
+ *
+ * Eu tinha desaconselhado a mescla dizendo que o vídeo ficaria remendado. Estava errado, e a
+ * prova é o vídeo que ele mesmo achou ideal: metade dele é zoom, e ele não percebeu.
+ *
+ * Quatro é o teto e tem razão de ser: é o que cabe na abertura e no fecho -- os lugares onde
+ * a pessoa decide se assiste e o que ela leva na cabeça. Cena de miolo com câmera de IA custa
+ * o mesmo e é vista por quem já decidiu ficar. Abaixo de cinco fotos o teto cai junto, senão
+ * um vídeo de três fotos sairia todo animado e mais caro por foto que um de dez.
+ */
+export function quantasComCamera(total: number): number {
+  if (total <= 1) return total;
+  return Math.min(4, Math.max(2, Math.round(total * 0.4)));
+}
+
+/**
+ * QUEM merece a câmera, em ordem de prioridade. Menor é melhor.
+ *
+ * Primeiro a função no vídeo (quem abre, quem fecha), depois o ambiente. Repetição nunca
+ * ganha: o segundo quarto animado gasta o mesmo que o primeiro e mostra a mesma coisa.
+ */
+function pontoDeCamera(o: Olhada, indice: number, total: number, repeticao: number): number {
+  if (o.ehClipe || o.eh360 || o.ehPanoramica) return 99; // já têm movimento próprio
+  // POSIÇÃO ANTES DE REPETIÇÃO, o mesmo que vale pro motivo da cena. Num conjunto com dois
+  // quintais, a última era o SEGUNDO quintal e a regra a descartava por repetida -- o vídeo
+  // acabava num zoom e a câmera cara ia pra cena 9, que ninguém lembra. Quem fecha é a
+  // imagem que fica na cabeça, seja ela a segunda foto do mesmo lugar ou não.
+  if (indice === 0) return 0; // a capa decide se a pessoa assiste
+  if (indice === total - 1) return 1; // a última é a imagem que fica
+  if (repeticao > 0) return 90;
+  return pontoDeCapa(o.ambiente) + 2;
 }
 
 /** Nota mínima pra entrar. Abaixo disso a foto atrapalha mais do que mostra. */
@@ -269,7 +309,7 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     return {
       ordem: olhadas.map((o) => o.chave),
       capa: olhadas[0]?.chave ?? null,
-      cenas: olhadas.map((o) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), animacao: animacaoDe(o), duracao: duracaoPadrao, motivo: "Nenhuma foto passou na conferência; usei todas em vez de te deixar sem vídeo." })),
+      cenas: olhadas.map((o, i) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), animacao: animacaoDe(o), duracao: duracaoPadrao, motivo: "Nenhuma foto passou na conferência; usei todas em vez de te deixar sem vídeo.", camera: i === 0 })),
       fora: [],
     };
   }
@@ -302,21 +342,38 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
   const naTela = capa ? [ordenadas.find((o) => o.chave === capa)!, ...ordenadas.filter((o) => o.chave !== capa)] : ordenadas;
   const ordem = naTela.map((o) => o.chave);
 
-  // A ordem sai ANTES das cenas de propósito: a duração e o motivo de cada uma dependem da
-  // POSIÇÃO dela no vídeo, e a posição só existe depois de ordenar.
+  // A ordem sai ANTES das cenas de propósito: a duração, o motivo e o direito à câmera
+  // dependem da POSIÇÃO de cada uma, e a posição só existe depois de ordenar.
   const jaVieram = new Map<string, number>();
-  const cenas = naTela.map((o, i) => {
+  const comPosicao = naTela.map((o, i) => {
     const doMesmo = jaVieram.get(o.ambiente ?? "?") ?? 0;
     jaVieram.set(o.ambiente ?? "?", doMesmo + 1);
-    return {
-      chave: o.chave,
-      legenda: legendaDe(o),
-      efeito: efeitoDe(o),
-      animacao: animacaoDe(o),
-      duracao: duracaoDaPosicao(i, naTela.length, duracaoPadrao),
-      motivo: motivoDaCena(o, i, naTela.length, doMesmo),
-    };
+    return { o, i, doMesmo };
   });
+
+  // A CÂMERA VAI PRAS QUE VENDEM, e o resto anda na foto mesmo. É o que o concorrente faz, e
+  // ele confirmou olhando: "pegaram as imagens mais importantes e gastaram o tour mais caro,
+  // outras fizeram aproximação... dá pra enganar". Empate no ponto se desfaz pela nota.
+  const comCamera = new Set(
+    [...comPosicao]
+      .sort((a, b) => {
+        const d = pontoDeCamera(a.o, a.i, naTela.length, a.doMesmo) - pontoDeCamera(b.o, b.i, naTela.length, b.doMesmo);
+        return d !== 0 ? d : b.o.qualidade - a.o.qualidade;
+      })
+      .filter((c) => pontoDeCamera(c.o, c.i, naTela.length, c.doMesmo) < 90)
+      .slice(0, quantasComCamera(naTela.length))
+      .map((c) => c.o.chave)
+  );
+
+  const cenas = comPosicao.map(({ o, i, doMesmo }) => ({
+    chave: o.chave,
+    legenda: legendaDe(o),
+    efeito: efeitoDe(o),
+    animacao: animacaoDe(o),
+    duracao: duracaoDaPosicao(i, naTela.length, duracaoPadrao),
+    motivo: motivoDaCena(o, i, naTela.length, doMesmo),
+    camera: comCamera.has(o.chave),
+  }));
 
   return { ordem, capa, cenas, fora };
 }
