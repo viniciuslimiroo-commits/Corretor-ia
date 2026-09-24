@@ -110,8 +110,13 @@ const REGRA_CAMERA =
   // simplesmente sendo ampliada ou deslocada para os lados". A diferenca entre as duas coisas
   // e uma so: o ponto de vista muda, e o que esta perto anda mais que o que esta longe.
   "Real three-dimensional camera translation with natural parallax: near objects shift more than far ones as the viewpoint changes, the way a real camera moving through a room behaves, not a flat image being panned or zoomed. " +
-  // E A TRAVA: a paralaxe pode redesenhar o que a foto JA MOSTRA de outro angulo; o que ela
-  // nao pode e continuar a casa pra fora do enquadramento. Foi dai que sairam os corredores.
+  // O MOVIMENTO TEM QUE SER VISIVEL. A primeira versao desta regra dizia "small and subtle", e
+  // o clipe de teste saiu andando 8 por segundo contra os 16,4 da referencia: sem invencao
+  // nenhuma, e sem tour nenhum tambem. Timidez nao era o pedido -- o pedido era nao inventar.
+  "The camera travel is clear and confident, covering enough distance across the shot that the change of viewpoint is obvious, like a real camera crossing part of the room. " +
+  // E A TRAVA, que e outra coisa do tamanho do movimento: a paralaxe pode redesenhar de outro
+  // angulo o que a foto JA MOSTRA; o que ela nao pode e continuar a casa pra fora do
+  // enquadramento. Foi dai que sairam os corredores que o imovel nao tem.
   "The camera stays inside the space the photograph already shows and never travels far enough to expose anything beyond its edges; whatever is not visible in the original photograph must never appear. " +
   "The room, the architecture, the furniture, the walls, doors, windows, floor and ceiling stay exactly as in the original photo, unchanged and undistorted: nothing opens, nothing closes, nothing is added, removed or animated. " +
   "Consistent natural lighting. Photorealistic real-estate footage. The shot ends by decelerating smoothly to a still frame.";
