@@ -851,7 +851,29 @@ export default function PaginaVideo() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Não consegui iniciar o vídeo.");
       c.recarregar();
-      const id: string = d.videoId;
+      await acompanhar(d.videoId as string);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro desconhecido.");
+      setProgresso(null);
+      setGerando(false);
+      c.recarregar();
+    }
+  }
+
+  /**
+   * O LAÇO QUE FAZ O VÍDEO ANDAR. E é literal: nada no servidor empurra o vídeo sozinho --
+   * cada consulta desta aba avança no máximo uma etapa (api/video/[id]).
+   *
+   * Era por isso que recarregar a página matava a geração. Em 24/09/2026 ele recarregou uma
+   * de 12 cenas "pois não estava evoluindo", e ela ficou parada em "gerando" na lista, sem
+   * abrir, sem responder ao clique e sem devolver os créditos -- porque o estorno também mora
+   * no caminho da consulta, e ninguém estava consultando.
+   *
+   * Separar o laço de `gerar` é o que permite RETOMAR: o vídeo continua de onde parou, sem
+   * refazer nada e sem cobrar de novo, porque cada etapa pronta já está guardada no servidor.
+   */
+  async function acompanhar(id: string) {
+    try {
       const inicio = Date.now();
       let tropecos = 0;
       // O menor "falta isso" já mostrado. É o que segura o número pra ele não subir.
@@ -907,7 +929,29 @@ export default function PaginaVideo() {
       c.recarregar();
     } finally {
       setGerando(false);
+      carregarVideos().then(setVideos).catch(() => {});
     }
+  }
+
+  /**
+   * RETOMAR UM VÍDEO QUE FICOU PARADO.
+   *
+   * Não recomeça: continua. Cada etapa concluída está guardada no servidor, então voltar a
+   * consultar pega de onde parou -- e não cobra crédito de novo, porque o crédito foi cobrado
+   * quando o vídeo foi pedido e as cenas animadas já feitas estão no armazenamento.
+   *
+   * É também o único jeito de um vídeo abandonado acabar: se ele estourar o prazo, quem
+   * devolve o crédito é o servidor, na consulta. Sem alguém consultar, ele fica parado pra
+   * sempre e o crédito não volta -- que foi exatamente o que aconteceu com ele.
+   */
+  async function retomarVideo(v: VideoResumo) {
+    if (gerando || v.status !== "gerando") return;
+    setSegundosGerando(0);
+    setGerando(true);
+    setErro(null);
+    setResultado(null);
+    setProgresso({ feitas: 0, total: 1, mensagem: "Continuando de onde parou…", restante: null });
+    await acompanhar(v.id);
   }
 
   async function abrirVideo(v: VideoResumo) {
@@ -1526,7 +1570,10 @@ export default function PaginaVideo() {
                   <div className="h-full rounded-full bg-marca-coral transition-all" style={{ width: `${Math.max(6, Math.round((progresso.feitas / Math.max(1, progresso.total)) * 100))}%` }} />
                 </div>
                 <p className="mt-2 text-xs text-neutral-500">
-                  {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Mantenha esta aba aberta.
+                  {/* "Mantenha esta aba aberta" era um pedido sem consequência dita. Agora diz
+                      o que acontece se fechar E que dá pra voltar -- porque dá, e não saber
+                      disso foi o que fez ele achar que tinha perdido o vídeo e os créditos. */}
+                  {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Deixe esta aba aberta: o vídeo anda enquanto ela está aqui. Se fechar, ele pausa e você continua em “Seus vídeos”.
                 </p>
                 <p className="mt-1 text-xs text-neutral-400">
                   {relogio(segundosGerando)} rodando
@@ -1779,12 +1826,25 @@ export default function PaginaVideo() {
                   .sort((a, b) => Number(b.imovel?.id === imovelId) - Number(a.imovel?.id === imovelId))
                   .map((v) => (
                   <li key={v.id} className="flex items-center gap-3 py-2">
-                    <button onClick={() => abrirVideo(v)} className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100" title="Abrir">
+                    {/* O VÍDEO PARADO TEM QUE RESPONDER AO CLIQUE. Em 24/09/2026 ele
+                        recarregou a página no meio de uma geração e o vídeo ficou aqui em
+                        "gerando" pra sempre: "não é possível fazer nada, não abre e ao clicar
+                        não acontece nada, e os créditos não foram devolvidos".
+
+                        Não era travamento nenhum -- o vídeo só anda enquanto uma aba pergunta
+                        por ele, e ninguém estava perguntando. Agora o clique retoma de onde
+                        parou, e o texto diz isso em português antes de ele precisar descobrir. */}
+                    <button
+                      onClick={() => (v.status === "gerando" ? retomarVideo(v) : abrirVideo(v))}
+                      disabled={gerando && v.status === "gerando"}
+                      className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100 disabled:opacity-50"
+                      title={v.status === "gerando" ? "Continuar de onde parou" : "Abrir"}
+                    >
                       {v.miniatura ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={v.miniatura} alt="" className="h-full w-full object-cover" />
                       ) : (
-                        <Icone nome="play" className="h-5 w-5 text-neutral-400" />
+                        <Icone nome={v.status === "gerando" ? "video" : "play"} className="h-5 w-5 text-neutral-400" />
                       )}
                     </button>
                     <div className="min-w-0 flex-1">
@@ -1792,7 +1852,7 @@ export default function PaginaVideo() {
                       <p className="text-xs text-neutral-500">
                         {dataCurta(v.criadoEm)} · {v.formato}
                         {v.duracao ? ` · ${Math.round(v.duracao)} s` : ""}
-                        {v.status === "gerando" && " · gerando"}
+                        {v.status === "gerando" && (gerando ? " · continuando…" : <span className="font-medium text-marca-indigo"> · parou no meio — toque pra continuar</span>)}
                         {v.status === "falhou" && " · falhou"}
                         {imovelId && v.imovel?.id === imovelId && <span className="ml-1 rounded-full bg-marca-pessego/60 px-1.5 text-[10px] font-medium text-marca-indigo">deste imóvel</span>}
                       </p>
