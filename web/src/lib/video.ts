@@ -650,6 +650,40 @@ export const CATEGORIAS_MUSICA: { id: CategoriaMusica; rotulo: string; para: str
  * scripts/gerar-picos-audio.ts da contagem de amostras): a linha do tempo precisa dela pra
  * saber onde a música sem laço acaba, sem baixar o arquivo. Sem arquivo = null.
  */
+/**
+ * FAIXAS APOSENTADAS: saem da escolha, continuam existindo.
+ *
+ * Ele ouviu e pediu em 24/09/2026: "essas músicas acho muito ruins, queria tirar calmo,
+ * sereno e minimal".
+ *
+ * Apagar da lista seria o caminho curto e errado. Quinze dos vinte vídeos dele usam "calma" --
+ * não por escolha, por ser o padrão --, e um espec guardado que aponta pra faixa inexistente
+ * não dá erro: sai MUDO. O corretor reabriria um vídeo antigo, mandaria gerar de novo e
+ * receberia um vídeo sem trilha, sem nada na tela explicando.
+ *
+ * Escondidas, elas somem de onde se escolhe e continuam resolvendo em quem já as tem.
+ */
+const APOSENTADAS = new Set<MusicaId>(["calma", "sereno", "minimal"]);
+
+/**
+ * A trilha que vem marcada quando ninguém escolheu.
+ *
+ * Era "calma", e é por isso que 15 dos 20 vídeos dele estavam com ela -- padrão não é
+ * preferência, é ausência de escolha. A nova é "elegante" porque é a única que ele escolheu
+ * de propósito alguma vez (3 vídeos), que é a evidência mais forte que existe aqui.
+ *
+ * Existe como constante pra aposentar uma faixa não deixar um padrão apontando pro vazio: um
+ * espec com música inexistente sai MUDO, sem erro nenhum na tela.
+ */
+// O tipo exclui "nenhuma" de proposito: quem usa o padrao e quem precisa de uma FAIXA --
+// a linha de audio do editor, por exemplo, nao sabe o que fazer com silencio.
+export const MUSICA_PADRAO: Exclude<MusicaId, "nenhuma"> = "elegante";
+
+/** As faixas que a pessoa pode ESCOLHER hoje. É esta lista que vai pra tela. */
+export function musicasOferecidas() {
+  return MUSICAS.filter((m) => !APOSENTADAS.has(m.id));
+}
+
 export const MUSICAS = comSegundos<{ id: MusicaId; rotulo: string; descricao: string; arquivo: string | null; categoria?: CategoriaMusica }>(SEGUNDOS_MUSICA, [
   { id: "nenhuma", rotulo: "Sem música", descricao: "Só a sua voz, ou silêncio", arquivo: null },
 

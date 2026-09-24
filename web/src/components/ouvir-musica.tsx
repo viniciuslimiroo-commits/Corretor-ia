@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MUSICAS, type MusicaId } from "@/lib/video";
+import { musicasOferecidas, type MusicaId } from "@/lib/video";
 
 // ESCOLHER MÚSICA SEM OUVIR é escolher pelo nome. "Sereno", "Aconchego" e "Minimal" não
 // dizem nada até soarem -- e hoje o corretor só descobria o que escolheu depois do vídeo
@@ -66,7 +66,7 @@ export default function OuvirMusica({
 
   return (
     <div className="flex flex-wrap gap-2">
-      {MUSICAS.map((m) => {
+      {musicasOferecidas().map((m) => {
         const ativa = escolhida === m.id;
         const soando = tocando === m.id;
         return (

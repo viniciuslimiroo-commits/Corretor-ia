@@ -14,6 +14,7 @@ import {
   type MusicaId,
   type PosicaoTexto,
   type TransicaoId,
+  MUSICA_PADRAO,
 } from "./video";
 
 /**
@@ -138,7 +139,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     para: "Lote, chácara, área",
     descricao: "A câmera anda de lado pra mostrar extensão, e o texto grande é a metragem.",
     formato: "9:16",
-    musica: "calma",
+    musica: MUSICA_PADRAO,
     transicao: "deslizar",
     filtro: "natural",
     duracaoCena: 5,
@@ -157,7 +158,7 @@ export const TEMPLATES_VIDEO: TemplateVideo[] = [
     para: "Casa de praia, sítio, temporada",
     descricao: "Cena longa e câmera abrindo: o que vende aqui é a vista, não a contagem de quartos.",
     formato: "9:16",
-    musica: "calma",
+    musica: MUSICA_PADRAO,
     transicao: "dissolver",
     filtro: "quente",
     duracaoCena: 5,

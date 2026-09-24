@@ -23,6 +23,7 @@ import {
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
+  MUSICA_PADRAO,
   EFEITOS_SONOROS,
   POSICOES_TEXTO,
   SELOS_IMOVEL,
@@ -406,7 +407,7 @@ export default function EditorDeVideo() {
    * começo ao fim. Antes era um valor só (`musica`): a música não aparecia na linha do tempo,
    * não cortava e não tocava no Play.
    */
-  const [audios, setAudios] = useState<ItemAudio[]>(() => [musicaNova("calma", LIMITES.musicaVolumePadrao, "musica00")]);
+  const [audios, setAudios] = useState<ItemAudio[]>(() => [musicaNova(MUSICA_PADRAO, LIMITES.musicaVolumePadrao, "musica00")]);
   /** A música "da vez" (a do primeiro trecho), pro que pensa em uma música só: resumo, modelos, biblioteca. */
   const musicaDoPrimeiroTrecho = audios.find((a) => a.fonte.tipo === "musica");
   const musica: MusicaId = musicaDoPrimeiroTrecho && musicaDoPrimeiroTrecho.fonte.tipo === "musica" ? musicaDoPrimeiroTrecho.fonte.id : "nenhuma";
@@ -1578,7 +1579,7 @@ export default function EditorDeVideo() {
     setOrigemVoz("ia");
     setVozArquivo(null);
     // A música volta ao começo também (antes ficava a do vídeo anterior).
-    setAudios([musicaNova("calma", LIMITES.musicaVolumePadrao, "musica00")]);
+    setAudios([musicaNova(MUSICA_PADRAO, LIMITES.musicaVolumePadrao, "musica00")]);
     setSelecao(null);
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setLegendas(null);

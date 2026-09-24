@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icone } from "@/components/ui";
 import { Pilula, Segmentado } from "./ui-editor";
-import { CATEGORIAS_MUSICA, MUSICAS, type CategoriaMusica, type MusicaId } from "@/lib/video";
+import { CATEGORIAS_MUSICA, musicasOferecidas, type CategoriaMusica, type MusicaId } from "@/lib/video";
 
 // A BIBLIOTECA DE ÁUDIO: ouvir antes de escolher.
 //
@@ -133,7 +133,7 @@ export default function BibliotecaAudio({
     setTocando(item.id);
   }
 
-  const musicas = MUSICAS.filter((m) => m.id !== "nenhuma" && (categoria === "todas" || m.categoria === categoria));
+  const musicas = musicasOferecidas().filter((m) => m.id !== "nenhuma" && (categoria === "todas" || m.categoria === categoria));
   const lista: Item[] = aba === "musicas" ? musicas : efeitos;
   const pasta = aba === "musicas" ? "musica" : "efeitos";
   const marcado = aba === "musicas" ? escolhida : efeito;

@@ -30,6 +30,7 @@ import {
   LIMITES,
   MOVIMENTOS_360,
   MUSICAS,
+  MUSICA_PADRAO,
   VOZES,
   custoDoVideo,
   duracaoEstimada,
@@ -200,7 +201,7 @@ export default function PaginaVideo() {
   const [geracoes, setGeracoes] = useState<Geracao[]>([]);
   const [cenas, setCenas] = useState<CenaUI[]>([]);
   const [formato, setFormato] = useState<FormatoId>("9:16");
-  const [musica, setMusica] = useState<MusicaId>("calma");
+  const [musica, setMusica] = useState<MusicaId>(MUSICA_PADRAO);
   /**
    * A música escolhida no painel do vídeo PRONTO.
    *
@@ -209,7 +210,7 @@ export default function PaginaVideo() {
    * "Trocar a música". Usar o mesmo estado faria o seletor mexer na próxima geração sem
    * ninguém ter pedido.
    */
-  const [musicaDoPronto, setMusicaDoPronto] = useState<MusicaId>("calma");
+  const [musicaDoPronto, setMusicaDoPronto] = useState<MusicaId>(MUSICA_PADRAO);
   const [trocandoMusica, setTrocandoMusica] = useState(false);
   /**
    * O preço conferido no servidor, com a assinatura das cenas que ele respondeu.
