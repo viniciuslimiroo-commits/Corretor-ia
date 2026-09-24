@@ -45,8 +45,8 @@ export default function CaminhoEtapas({ etapa, ocupado, aoMudar }: { etapa: Etap
           que é dele -- e os degraus ganharam cursor, hover e um tracejado que respira no
           próximo. Affordance que só existe no código não existe. */}
       <p className="mt-2 text-xs text-neutral-500">
-        Toque na etapa quando ela acontecer. <strong className="font-semibold text-neutral-700">Novo → Em conversa</strong> o Encena marca sozinho quando você manda a
-        primeira mensagem ou diz que ela respondeu; visita, proposta e fechado só você sabe.
+        <strong className="font-semibold text-neutral-700">Você avança no toque.</strong> O Encena marca sozinho só o <strong className="font-semibold text-neutral-700">Novo → Em conversa</strong>, quando
+        você manda a primeira mensagem ou diz que ela respondeu. Visita, proposta e fechado só você sabe que aconteceram.
       </p>
 
       <div className="relative mt-5 px-1">
@@ -60,8 +60,15 @@ export default function CaminhoEtapas({ etapa, ocupado, aoMudar }: { etapa: Etap
           {CAMINHO.map((e, k) => {
             const feito = i >= 0 && k < i;
             const atual = e === etapa;
-            /** O degrau seguinte ao atual: é o que a pessoa vai marcar quando acontecer. */
-            const proximo = i >= 0 && k === i + 1;
+            /**
+             * O degrau seguinte: é o que a pessoa vai marcar quando acontecer.
+             *
+             * Sai de `ate` e não de `i` porque num DESVIO (sem resposta, perdido) o `i` é -1 e
+             * nenhum degrau seria o próximo -- justo quando o convite é mais necessário, que é
+             * a conversa parada esperando alguém retomar. Lá `ate` vale 1, então o convite cai
+             * em "Visita", que é o próximo passo de verdade.
+             */
+            const proximo = k === ate + 1 && ate + 1 < CAMINHO.length;
             return (
               <li key={e} className="flex flex-col items-center">
                 <button
@@ -91,6 +98,20 @@ export default function CaminhoEtapas({ etapa, ocupado, aoMudar }: { etapa: Etap
                   <span className={`text-center text-[11px] leading-tight transition sm:text-xs ${atual ? "font-semibold text-neutral-900" : "text-neutral-500 group-hover:text-marca-indigo"}`}>
                     {ETAPA_POR_ID[e].rotulo}
                   </span>
+                  {/* O CONVITE ESCRITO, embaixo do próximo degrau.
+
+                      Esta é a segunda tentativa. Na primeira eu dei cursor, hover e um
+                      tracejado que respira -- e ele voltou dizendo "eu mesmo não havia
+                      percebido e acho que continua escondido". A lição: animação sutil não
+                      ensina o que fazer, ela só sugere que algo é vivo. Quem ensina é frase.
+
+                      Fica sempre visível, não no hover: no celular não existe hover, e é no
+                      celular que o corretor mexe no cliente depois da visita. */}
+                  {proximo && !ocupado && (
+                    <span className="-mt-0.5 rounded-full bg-marca-coral/10 px-1.5 py-px text-[9px] font-semibold text-marca-coral sm:text-[10px]">
+                      toque aqui
+                    </span>
+                  )}
                 </button>
               </li>
             );
