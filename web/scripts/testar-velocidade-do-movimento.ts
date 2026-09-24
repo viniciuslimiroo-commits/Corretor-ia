@@ -42,7 +42,13 @@ const AMOSTRAS = 4;
  * que um que ancora no centro (zoom). Com a mesma amplitude, o passeio vertical mede o dobro
  * do zoom -- e nenhum dos dois está errado.
  *
- * Por isso o piso é o que vale como regra: nada pode ficar abaixo do que as cenas quietas da
+ * E POR ISSO OS SEIS NAO SAO NIVELADOS. Subir/descer mede 27,8 e aproximar mede 13,8 -- o
+ * dobro --, e a tentacao e igualar. Mas medido em FRACAO DO QUADRO os dois ja sao iguais: o
+ * zoom amplia 20% e o passeio percorre 20% da largura. A diferenca esta no medidor, que pesa
+ * mais deslocar o quadro inteiro do que amplia-lo, e nivelar por ele deixaria o passeio
+ * andando 7% da foto -- de volta ao "muito lento" de onde se partiu.
+ *
+ * Por isso o piso e o que vale como regra: nada pode ficar abaixo do que as cenas quietas da
  * referência andam. O teto existe só pra segurar o exagero -- 28 é o nível das cenas de IA
  * dela (27,1), que é o limite do que um vídeo de imóvel suporta sem enjoar.
  */

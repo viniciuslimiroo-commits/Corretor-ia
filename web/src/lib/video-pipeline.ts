@@ -15,7 +15,7 @@ import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import type { ResumoEdicao } from "./resumo-edicao";
-import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type EfeitoId, type EspecVideo, type Projecao360 } from "./video";
 import { resolverAudiosDaMontagem } from "./audio-montagem";
 import { estornoDaNarracao } from "./pedido-video";
 import type { AudioNaMontagem } from "./video-ffmpeg";

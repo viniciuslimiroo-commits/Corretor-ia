@@ -211,6 +211,15 @@ export default function PaginaVideo() {
    */
   const [musicaDoPronto, setMusicaDoPronto] = useState<MusicaId>("calma");
   const [trocandoMusica, setTrocandoMusica] = useState(false);
+  /**
+   * O preço conferido no servidor, com a assinatura das cenas que ele respondeu.
+   *
+   * Guardar a assinatura junto é o que faz o preço se invalidar sozinho: mudou a cena, a
+   * assinatura não bate mais e a conta local volta a valer até a resposta nova chegar. Sem
+   * isso seria preciso zerar o estado dentro do efeito -- que o compilador do React proíbe,
+   * e proíbe com razão: é um render a mais a cada mudança.
+   */
+  const [precoDoServidor, setPrecoDoServidor] = useState<{ assinatura: string; custo: number } | null>(null);
   // "suave" virou "dissolver" quando as transições passaram de duas pra cinco.
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   const [titulo, setTitulo] = useState("");
@@ -352,9 +361,62 @@ export default function PaginaVideo() {
   // Cena animada reaberta de um vídeo pronto, com o mesmo movimento e duração: o clipe já
   // existe e o servidor não cobra (ele confere por conta própria; isto só mostra a conta).
   const animadasGratis = cenas.filter((s) => s.tipo === "animada" && s.animacaoGuardada && s.animacaoGuardada.animacao === s.animacao && s.animacaoGuardada.duracao === s.duracao).length;
-  const custo = Math.max(0, custoDoVideo(espec) - animadasGratis * CREDITOS.animada);
+  // O PREÇO QUE O SERVIDOR VAI COBRAR, e não o que a tela consegue adivinhar sozinha.
+  //
+  // A conta local só enxerga clipe guardado quando o vídeo foi REABERTO -- é de lá que vem
+  // `animacaoGuardada`. Escolhendo fotos da galeria ela não tem como saber, e em 24/09/2026
+  // isso fez o botão prometer 8 créditos num vídeo que o servidor cobrou 4: duas das quatro
+  // cenas animadas já tinham clipe dos testes do mesmo dia.
+  //
+  // Cobrar menos do que promete é o erro de preço que ninguém reclama -- e por isso ninguém
+  // descobre. Mas quem olha o preço cheio e desiste, desiste de um vídeo mais barato.
+  const custoLocal = Math.max(0, custoDoVideo(espec) - animadasGratis * CREDITOS.animada);
   const esperaTotal = esperaEmSegundos(espec.cenas.map((c) => ({ tipo: c.tipo, duracao: c.duracao ?? 4 })));
   const duracao = duracaoEstimada(espec);
+
+  // PERGUNTAR O PRECO AO SERVIDOR quando o conjunto de cenas ANIMADAS muda.
+  //
+  // A assinatura e o que o servidor usa pra achar clipe guardado: quais cenas sao animadas,
+  // de qual foto, com qual movimento, por quanto tempo, em qual formato. Trocar o titulo ou
+  // a musica nao muda preco nenhum, entao nao pergunta.
+  const assinaturaAnimadas = useMemo(
+    () =>
+      espec.cenas
+        .map((c, k) => (c.tipo === "animada" ? `${k}:${c.jobId ?? c.arquivo ?? ""}:${c.animacao}:${c.duracao}` : ""))
+        .filter(Boolean)
+        .join("|") + `@${espec.formato}`,
+    [espec]
+  );
+  // O espec vive num ref pra este efeito nao depender dele: dependendo, cada tecla digitada
+  // no titulo dispararia uma consulta de preco que nao mudou.
+  const especRef = useRef(espec);
+  useEffect(() => {
+    especRef.current = espec;
+  }, [espec]);
+  useEffect(() => {
+    if (!user || !assinaturaAnimadas.includes(":")) return;
+    let vivo = true;
+    const relogio = setTimeout(async () => {
+      try {
+        const r = await fetch("/api/video/preco", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ espec: especRef.current }),
+        });
+        const d = await r.json();
+        // Falhar aqui nao pode atrapalhar: sem resposta, vale a conta local, que e a de antes.
+        if (vivo && r.ok && typeof d.custo === "number") setPrecoDoServidor({ assinatura: assinaturaAnimadas, custo: d.custo });
+      } catch {
+        /* o preco local continua valendo */
+      }
+    }, 700);
+    return () => {
+      vivo = false;
+      clearTimeout(relogio);
+    };
+  }, [assinaturaAnimadas, user, token]);
+
+  const custo = precoDoServidor?.assinatura === assinaturaAnimadas ? precoDoServidor.custo : custoLocal;
 
   const carregarVideos = useCallback(async () => {
     const t = await token();
