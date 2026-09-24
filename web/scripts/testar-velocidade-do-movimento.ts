@@ -57,7 +57,7 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
 };
 
 /** Quanto a cena se move por segundo. Mede no arquivo renderizado, não na fórmula. */
-function movimento(efeito: "aproximar" | "afastar" | "direita" | "cima", duracao: number): number {
+function movimento(efeito: "aproximar" | "afastar" | "esquerda" | "direita" | "cima" | "baixo", duracao: number): number {
   const video = path.join(TMP, `${efeito}-${duracao}.mp4`);
   execFileSync(
     String(ffmpegBin),
@@ -87,7 +87,9 @@ function main() {
 
   console.log(`alvo: ${ALVO} por segundo (as cenas de zoom do vídeo dele)\n`);
   const medidas: Record<string, number> = {};
-  for (const efeito of ["aproximar", "afastar", "direita", "cima"] as const) {
+  // TODOS os seis, e nao quatro com dois assumidos: ele perguntou "esse tempo esta em todas
+  // as opcoes, cima baixo, passear?" e a resposta so vale se os seis forem medidos.
+  for (const efeito of ["aproximar", "afastar", "esquerda", "direita", "cima", "baixo"] as const) {
     medidas[efeito] = movimento(efeito, 4);
     console.log(`   ${efeito.padEnd(10)} ${medidas[efeito].toFixed(1)}`);
   }
@@ -100,8 +102,13 @@ function main() {
 
   // Os passeios laterais dependem da MESMA amplitude -- o quanto a janela corre é o quanto se
   // ampliou. Ele reclamou dos dois grupos junto, e é por isso: é um número só.
-  conferir(medidas.direita >= MIN && medidas.direita <= MAX, "o passeio pra direita anda junto", `${medidas.direita.toFixed(1)}`);
-  conferir(medidas.cima >= MIN && medidas.cima <= MAX, "e o de baixo pra cima também", `${medidas.cima.toFixed(1)}`);
+  for (const lado of ["esquerda", "direita", "cima", "baixo"] as const) {
+    conferir(medidas[lado] >= MIN && medidas[lado] <= MAX, `o passeio “${lado}” anda junto`, `${medidas[lado].toFixed(1)}`);
+  }
+  // Os pares OPOSTOS tem que andar igual: esquerda e direita sao o mesmo movimento em sentidos
+  // contrarios, e uma diferenca ali seria erro de conta, nao escolha.
+  conferir(Math.abs(medidas.esquerda - medidas.direita) < 1.5, "esquerda e direita andam o mesmo", `${medidas.esquerda.toFixed(1)} e ${medidas.direita.toFixed(1)}`);
+  conferir(Math.abs(medidas.cima - medidas.baixo) < 1.5, "e subir e descer também", `${medidas.cima.toFixed(1)} e ${medidas.baixo.toFixed(1)}`);
 
   // CONTROLE: com os 10% de antes o movimento ficava bem abaixo do alvo. Se este controle não
   // acusar, os testes acima não sabem reconhecer o defeito que dizem ter consertado.
