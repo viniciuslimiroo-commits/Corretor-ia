@@ -7,6 +7,7 @@
 //   node --import ./scripts/ts-direto.mjs scripts/testar-video-automatico.ts
 
 import { sugerirMontagem, efeitoDe, animacaoDe, legendaDe, duracaoDaPosicao, ORDEM_DO_PASSEIO, type Olhada } from "../src/lib/video-automatico";
+import { animacoesOferecidas } from "../src/lib/video";
 
 let falhas = 0;
 const conferir = (ok: boolean, oque: string, extra = "") => {
@@ -169,7 +170,15 @@ conferir(ORDEM_DO_PASSEIO.indexOf("salao") > ORDEM_DO_PASSEIO.indexOf("quarto"),
 // parede. A direção agora sai do ambiente.
 conferir(animacaoDe(foto("_", "fachada")) === "drone", "a fachada é sobrevoo, não caminhada: de fora a câmera não entra andando");
 conferir(animacaoDe(foto("_", "piscina")) === "drone", "a piscina também abre de cima");
-conferir(animacaoDe(foto("_", "sala")) === "lateral", "na sala a câmera passa de lado: ambiente largo, e a paralaxe faz o trabalho sem inventar o que vem depois do fundo");
+conferir(animacaoDe(foto("_", "sala")) === "caminhar", "na sala a câmera entra andando");
+// NENHUM ambiente pode apontar pra um movimento aposentado. Ele durou um dia -- criado em
+// 24/09/2026 e tirado no mesmo dia, depois que ele assistiu: "tem o mesmo resultado que
+// fotos". Se a tabela de ambientes voltar a aponta-lo, a pessoa recebe no automatico o que
+// nao consegue nem escolher na mao.
+const OFERECIDOS = new Set(animacoesOferecidas().map((a) => a.id));
+const todosOsAmbientes = ORDEM_DO_PASSEIO.map((a) => ({ a, m: animacaoDe(foto("_", a)) }));
+const forasDaLista = todosOsAmbientes.filter((x) => !OFERECIDOS.has(x.m));
+conferir(forasDaLista.length === 0, "nenhum ambiente cai num movimento aposentado", forasDaLista.map((x) => `${x.a}=${x.m}`).join(", ") || "todos ok");
 conferir(animacaoDe(foto("_", "cozinha")) === "caminhar", "na cozinha também");
 conferir(animacaoDe(foto("_", "banheiro")) === "aproximar", "banheiro aproxima com profundidade: andar 2 m ali bate na parede");
 conferir(animacaoDe(foto("_", "closet")) === "aproximar", "closet idem");

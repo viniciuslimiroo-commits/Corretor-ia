@@ -44,7 +44,8 @@ for (const id of APOSENTADAS) {
 // novo nasce apontando pra algo que ninguém pode escolher.
 conferir(!APOSENTADAS.includes(MUSICA_PADRAO), "o padrão não é uma faixa aposentada", MUSICA_PADRAO);
 conferir(oferecidas.includes(MUSICA_PADRAO), "e está entre as que dá pra escolher");
-conferir(MUSICA_PADRAO !== "nenhuma", "e não é silêncio");
+// O tipo de MUSICA_PADRAO já exclui "nenhuma", então o teste seria comparação morta.
+conferir(!!MUSICAS.find((m) => m.id === MUSICA_PADRAO)?.arquivo, "e tem arquivo: padrão sem arquivo sai mudo");
 
 // ---- 4. sobrou música suficiente ----
 conferir(oferecidas.length >= 10, "ainda há pelo menos dez opções", `${oferecidas.length} de ${todas.length}`);

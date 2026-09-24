@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import {
   ANIMACOES,
+  animacoesOferecidas,
   BUCKET_UPLOADS,
   CHAMADAS,
   CREDITOS,
@@ -220,7 +221,7 @@ export default function PaginaVideo() {
    * isso seria preciso zerar o estado dentro do efeito -- que o compilador do React proíbe,
    * e proíbe com razão: é um render a mais a cada mudança.
    */
-  const [precoDoServidor, setPrecoDoServidor] = useState<{ assinatura: string; custo: number } | null>(null);
+  const [precoDoServidor, setPrecoDoServidor] = useState<{ assinatura: string; custo: number; gratis: number[] } | null>(null);
   // "suave" virou "dissolver" quando as transições passaram de duas pra cinco.
   const [transicao, setTransicao] = useState<TransicaoId>("dissolver");
   const [titulo, setTitulo] = useState("");
@@ -406,7 +407,7 @@ export default function PaginaVideo() {
         });
         const d = await r.json();
         // Falhar aqui nao pode atrapalhar: sem resposta, vale a conta local, que e a de antes.
-        if (vivo && r.ok && typeof d.custo === "number") setPrecoDoServidor({ assinatura: assinaturaAnimadas, custo: d.custo });
+        if (vivo && r.ok && typeof d.custo === "number") setPrecoDoServidor({ assinatura: assinaturaAnimadas, custo: d.custo, gratis: Array.isArray(d.gratis) ? d.gratis : [] });
       } catch {
         /* o preco local continua valendo */
       }
@@ -417,7 +418,21 @@ export default function PaginaVideo() {
     };
   }, [assinaturaAnimadas, user, token]);
 
-  const custo = precoDoServidor?.assinatura === assinaturaAnimadas ? precoDoServidor.custo : custoLocal;
+  const precoConferido = precoDoServidor?.assinatura === assinaturaAnimadas ? precoDoServidor : null;
+  const custo = precoConferido ? precoConferido.custo : custoLocal;
+  /**
+   * As cenas cujo clipe da IA JÁ existe -- essas não geram de novo e não cobram.
+   *
+   * Pedido dele em 24/09/2026: "a última cena ficou ruim, existe uma forma de editar apenas
+   * essa cena sem precisar gerar o vídeo inteiro novamente? [...] algo pra a pessoa ver que é
+   * possível ajustar, bem interativo de fácil observação".
+   *
+   * O sistema JÁ fazia isso: o clipe é guardado por foto + movimento + duração + formato, e
+   * mudar uma cena só invalida a dela. O que faltava era inteiramente a tela DIZER -- sem
+   * isso, quem trocasse o movimento da última cena olharia o preço cheio e concluiria que ia
+   * pagar o vídeo inteiro de novo.
+   */
+  const cenasProntas = new Set(precoConferido?.gratis ?? []);
 
   const carregarVideos = useCallback(async () => {
     const t = await token();
@@ -1515,12 +1530,25 @@ export default function PaginaVideo() {
                             <>
                               <Chip ativo={s.tipo === "foto"} onClick={() => mudarCena(s.chave, { tipo: "foto" })}>Foto</Chip>
                               {s.temAntes && <Chip ativo={s.tipo === "antes_depois"} onClick={() => mudarCena(s.chave, { tipo: "antes_depois" })}>Antes e depois</Chip>}
+                              {/* O PREÇO DESTA CENA, e não o do vídeo. Pedido dele em 24/09/2026:
+                                  "a última cena ficou ruim, existe uma forma de editar apenas essa
+                                  cena sem gerar o vídeo inteiro? [...] algo pra a pessoa ver que é
+                                  possível ajustar, bem interativo de fácil observação".
+
+                                  O sistema já fazia: o clipe fica guardado por foto + movimento +
+                                  duração + formato, então trocar o movimento de UMA cena invalida
+                                  só a dela. Faltava a tela dizer -- sem isso, quem mexe numa cena
+                                  olha o preço cheio e conclui que vai pagar o vídeo todo de novo. */}
                               <Chip
                                 ativo={s.tipo === "animada"}
                                 onClick={() => mudarCena(s.chave, { tipo: "animada" })}
-                                title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`}
+                                title={
+                                  cenasProntas.has(i)
+                                    ? "Esta cena já foi gerada com este movimento e esta duração: o clipe está guardado e não cobra de novo. Mudar o movimento ou o tempo faz ela gerar outra vez."
+                                    : `+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`
+                                }
                               >
-                                ✨ Mover a câmera (+{CREDITOS.animada})
+                                ✨ Mover a câmera {s.tipo === "animada" && cenasProntas.has(i) ? "· pronta" : `(+${CREDITOS.animada})`}
                               </Chip>
                             </>
                           )}
@@ -1553,7 +1581,7 @@ export default function PaginaVideo() {
                           )}
                           {s.tipo === "animada" && (
                             <select value={s.animacao} onChange={(e) => mudarCena(s.chave, { animacao: e.target.value as AnimacaoId })} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm" aria-label="Animação" title={ANIMACOES.find((a) => a.id === s.animacao)?.descricao}>
-                              {ANIMACOES.map((a) => (
+                              {animacoesOferecidas().map((a) => (
                                 <option key={a.id} value={a.id}>{a.rotulo}</option>
                               ))}
                             </select>
@@ -1685,6 +1713,17 @@ export default function PaginaVideo() {
             )}
             {custo === 0 && !gerando && cenas.length > 0 && (
               <p className="mt-2 text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e narração ({CREDITOS.narracao}).</p>
+            )}
+            {/* QUANTAS CENAS JÁ ESTÃO PRONTAS. É a frase que transforma "posso mexer numa cena
+                só?" em algo que a pessoa VÊ antes de mexer.
+
+                Só aparece quando há o que dizer: sem cena pronta ela seria ruído, e com todas
+                prontas o botão já diz "grátis", que é mais forte que qualquer explicação. */}
+            {!gerando && cenasProntas.size > 0 && cenasProntas.size < cenas.filter((s) => s.tipo === "animada").length && (
+              <p className="mt-2 rounded-lg bg-marca-teal/10 px-2.5 py-1.5 text-center text-xs text-neutral-600">
+                <strong className="font-medium text-neutral-700">{cenasProntas.size} de {cenas.filter((s) => s.tipo === "animada").length} cenas com câmera já estão prontas.</strong>{" "}
+                Só as que você mudou vão ser geradas de novo — o resto é reaproveitado.
+              </p>
             )}
             {/* O TEMPO TÍPICO, ANTES de apertar. É aqui que o número da fórmula serve: como
                 aviso de quanto costuma levar, pra ninguém ser pego de surpresa. Durante a

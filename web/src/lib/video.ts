@@ -131,6 +131,41 @@ const REGRA_CAMERA =
 
 export type AnimacaoId = "drone" | "caminhar" | "lateral" | "girar" | "aproximar";
 
+/**
+ * MOVIMENTOS APOSENTADOS: saem da escolha, continuam resolvendo.
+ *
+ * "lateral" durou um dia. Criei em 24/09/2026 apostando que a paralaxe do passeio de lado
+ * daria a sensacao de tour com o menor risco de invencao -- e a aposta so estava meia certa.
+ * Nao inventa mesmo, mas ele assistiu e disse: "queria tirar a opcao de passar pelo ambiente,
+ * tem o mesmo resultado que fotos, achei ruim tambem".
+ *
+ * Faz sentido com o que ja estava medido: o clipe da IA sozinho anda 8,0 e o zoom do ffmpeg
+ * por cima leva pra 25. No passeio lateral, a maior parte do que se ve E o zoom do ffmpeg --
+ * entao ele parece mesmo uma foto deslizando, porque em boa parte e isso.
+ *
+ * "girar" saiu no mesmo dia, e pelo argumento DELE, que e melhor que o sintoma. Ele gerou,
+ * viu que nao girou, e escreveu: "mesmo que girasse, a IA por nao conhecer o lugar nao iria
+ * criar coisas? nao e melhor tirar a opcao".
+ *
+ * E melhor, sim. Orbitar mostra os LADOS e o FUNDO do que esta na cena -- justamente o que a
+ * foto nunca teve. E uma maquina de inventar por construcao, e nao tem prompt que resolva:
+ * ou ela gira e precisa desenhar o que nao existe, ou nao gira e nao e orbita. O clipe dele
+ * confirmou o segundo caso.
+ *
+ * Sobram tres: sobrevoo (fora, onde o que aparece a mais e ceu e mais fachada), entrar no
+ * ambiente (um passo, sem chegar no fundo) e aproximar com profundidade (que so amplia).
+ *
+ * Os dois ficam na lista pra os videos que ja apontam pra eles nao trocarem de movimento
+ * sozinhos: a busca cai no padrao quando nao acha, e um video refeito sairia com outra camera
+ * e cobrando de novo, sem nada na tela explicando.
+ */
+const ANIMACOES_APOSENTADAS = new Set<AnimacaoId>(["lateral", "girar"]);
+
+/** Os movimentos que a pessoa pode ESCOLHER hoje. E esta lista que vai pra tela. */
+export function animacoesOferecidas() {
+  return ANIMACOES.filter((a) => !ANIMACOES_APOSENTADAS.has(a.id));
+}
+
 export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; prompt: string }[] = [
   {
     id: "drone",

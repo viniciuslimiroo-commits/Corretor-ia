@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useConta } from "@/lib/use-conta";
 import {
   ANIMACOES,
+  animacoesOferecidas,
   ANIMACOES_TEXTO,
   BUCKET_UPLOADS,
   CANTOS_APRESENTADOR,
@@ -3401,7 +3402,7 @@ export default function EditorDeVideo() {
             <label className="col-span-2 block">
               <span className={rotuloCampo}>Câmera</span>
               <select value={cenaAtual.animacao} onChange={(e) => mudarCena(k, { animacao: e.target.value as AnimacaoId })} className={seletorEd} title={ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao}>
-                {ANIMACOES.map((a) => (
+                {animacoesOferecidas().map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.rotulo}
                   </option>
