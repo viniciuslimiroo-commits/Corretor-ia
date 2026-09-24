@@ -49,6 +49,7 @@ import {
   type VozId,
 } from "@/lib/video";
 import { resumoDaFicha, valorComPeriodo } from "@/lib/ficha-imovel";
+import { restanteDaGeracao, falta } from "@/lib/espera-da-geracao";
 import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
@@ -250,7 +251,16 @@ export default function PaginaVideo() {
   const [montagem, setMontagem] = useState<{ antes: CenaUI[]; quantas: number; fora: string[]; semOlhar: boolean } | null>(null);
 
   const [gerando, setGerando] = useState(false);
-  const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string } | null>(null);
+  /**
+   * `restante` é em segundos e sai do ritmo MEDIDO desta geração, não de uma fórmula.
+   *
+   * Antes a tela mostrava "9min16s de cerca de 9 min esperados", e ele viu o número pular de
+   * 9 pra 8 pra 11. Comparar o relógio com um palpite é o que faz uma espera normal parecer
+   * defeito: na hora em que o decorrido passa do estimado, a frase se contradiz sozinha e o
+   * corretor conclui que travou. Aqui não existe número de comparação -- existe o que já
+   * passou e, quando dá pra saber, quanto falta.
+   */
+  const [progresso, setProgresso] = useState<{ feitas: number; total: number; mensagem: string; restante: number | null } | null>(null);
   /** Segundos desde que a geração começou. Barra que anda sozinha não distingue
    *  "processando" de "travado" -- quem paga 2 créditos e olha isso por três minutos
    *  conclui que quebrou. O relógio e a estimativa fazem essa distinção. */
@@ -830,7 +840,7 @@ export default function PaginaVideo() {
     setGerando(true);
     setErro(null);
     setResultado(null);
-    setProgresso({ feitas: 0, total: cenas.length + 1, mensagem: "Enviando o pedido…" });
+    setProgresso({ feitas: 0, total: cenas.length + 1, mensagem: "Enviando o pedido…", restante: null });
     try {
       const t = await token();
       const r = await fetch("/api/video", {
@@ -844,6 +854,8 @@ export default function PaginaVideo() {
       const id: string = d.videoId;
       const inicio = Date.now();
       let tropecos = 0;
+      // O menor "falta isso" já mostrado. É o que segura o número pra ele não subir.
+      let menorRestante = Infinity;
       while (Date.now() - inicio < 30 * 60 * 1000) {
         // Instabilidade de rede ou do servidor (5xx) não é o vídeo falhando: tenta de
         // novo algumas vezes antes de desistir. Só 4xx (falhou de verdade) encerra.
@@ -871,7 +883,21 @@ export default function PaginaVideo() {
           carregarVideos().then(setVideos).catch(() => {});
           return;
         }
-        setProgresso({ feitas: dd.feitas ?? 0, total: dd.total ?? 1, mensagem: dd.mensagem ?? "Gerando…" });
+        // QUANTO FALTA, PELO RITMO DESTA GERAÇÃO.
+        //
+        // Uma etapa pronta já diz quanto custa uma etapa NESTA fila, hoje, com estas fotos --
+        // que é uma informação melhor que qualquer fórmula, porque a fila da IA varia de hora
+        // em hora. Antes da primeira etapa fechar não dá pra saber, e aí a tela não inventa:
+        // mostra o que está fazendo e o tempo que já passou, e mais nada.
+        //
+        // E o número só DESCE. Estimativa que sobe é a que faz o corretor achar que travou,
+        // mesmo quando está tudo certo; se a fila piorar de verdade, quem avisa é a mensagem
+        // de demora embaixo, que é honesta e não vira um número maior piscando na cara dele.
+        const feitas = dd.feitas ?? 0;
+        const total = Math.max(1, dd.total ?? 1);
+        const restante = restanteDaGeracao(feitas, total, (Date.now() - inicio) / 1000, menorRestante);
+        if (restante !== null) menorRestante = restante;
+        setProgresso({ feitas, total, mensagem: dd.mensagem ?? "Gerando…", restante });
         await new Promise((res) => setTimeout(res, 2500));
       }
       throw new Error("Passou de 30 minutos. Recarregue a página e veja em Seus vídeos.");
@@ -1486,6 +1512,14 @@ export default function PaginaVideo() {
             {custo === 0 && !gerando && cenas.length > 0 && (
               <p className="mt-2 text-center text-xs text-neutral-500">Vídeo e tour 360 não gastam crédito. Só cena animada por IA ({CREDITOS.animada}) e narração ({CREDITOS.narracao}).</p>
             )}
+            {/* O TEMPO TÍPICO, ANTES de apertar. É aqui que o número da fórmula serve: como
+                aviso de quanto costuma levar, pra ninguém ser pego de surpresa. Durante a
+                geração ele some, porque lá vale o ritmo medido e não o palpite. */}
+            {!gerando && cenas.length > 0 && (
+              <p className="mt-1 text-center text-xs text-neutral-400">
+                Costuma levar {esperaTotal <= 60 ? "menos de 1 min" : `cerca de ${Math.round(esperaTotal / 60)} min`}.
+              </p>
+            )}
             {gerando && progresso && (
               <div className="mt-3">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
@@ -1495,7 +1529,8 @@ export default function PaginaVideo() {
                   {progresso.mensagem} Etapa {Math.min(progresso.feitas + 1, progresso.total)} de {progresso.total}. Mantenha esta aba aberta.
                 </p>
                 <p className="mt-1 text-xs text-neutral-400">
-                  {relogio(segundosGerando)} de {esperaTotal <= 60 ? "menos de 1 min" : `cerca de ${Math.round(esperaTotal / 60)} min`} esperados.
+                  {relogio(segundosGerando)} rodando
+                  {progresso.restante !== null && ` · faltam ${falta(progresso.restante)}`}
                 </p>
                 {segundosGerando > esperaTotal * 2 && (
                   <p className="mt-1 text-xs text-amber-600">
