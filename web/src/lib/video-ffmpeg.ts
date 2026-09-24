@@ -537,10 +537,25 @@ export function quadrosDeMovimento(duracao: number): number {
  * O número mantém a cena padrão de 4 s exatamente como estava -- quem já gostava do ritmo
  * dela não vê diferença; o que muda é a cena mais longa ou mais curta acompanhar.
  */
-const ZOOM_POR_SEGUNDO = 0.1 / 3.55;
-/** Teto e piso: cena de 10 s não pode virar um zoom de 28%, nem a de 2 s ficar parada. */
-const ZOOM_MIN = 0.06;
-const ZOOM_MAX = 0.16;
+// 17,5% de ampliação nos 3,55 s de movimento de uma cena de 4 s -- eram 10%.
+//
+// 24/09/2026, ele: "acho que a opção aproximar está muito lenta, aumentar um pouco a
+// velocidade", e em seguida "todas as opções de fotos passear, subir, descer e etc, muito
+// lentas". Esta constante manda em todos: nos passeios laterais o quanto a janela pode
+// correr É o quanto se ampliou, então subir aqui acelera o grupo inteiro.
+//
+// O número não é chute. Medindo o vídeo que ele tomou como referência cena por cena, com a
+// régua de 1 segundo, as seis cenas mais quietas (as de zoom, que é o que se compara com o
+// nosso) andam 16,4 por segundo e as três agitadas -- câmera de IA, outra técnica -- andam
+// 27,1. O nosso "aproximar" media 9,3. A relação entre amplitude e movimento é linear, então
+// 0,10 x 16,4/9,3 = 0,176; 0,175 é o valor redondo mais perto.
+//
+// O teto subiu junto porque ele existe pra cena LONGA não virar um zoom absurdo, e a conta de
+// absurdo mudou de escala. O piso também: 6% numa cena curta continuava sendo quase parado.
+const ZOOM_POR_SEGUNDO = 0.20 / 3.55;
+/** Teto e piso: cena de 10 s não pode virar um zoom que come metade da foto, nem a de 2 s ficar parada. */
+const ZOOM_MIN = 0.10;
+const ZOOM_MAX = 0.32;
 
 /** A amplitude que faz ESTA cena andar na mesma velocidade de todas as outras. */
 export function amplitudeDoZoom(segundosDeMovimento: number): number {

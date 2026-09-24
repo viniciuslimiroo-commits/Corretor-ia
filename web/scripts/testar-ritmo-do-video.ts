@@ -78,11 +78,15 @@ async function main() {
   // As DUAS travas existem de propósito, e cada uma tem o seu motivo:
   conferir(velocidade(10) < velocidade(4), "cena muito longa anda mais devagar (teto): sem ele, 10 s viraria um zoom de 28%", `${(velocidade(10) * 100).toFixed(2)}%/s contra ${(velocidade(4) * 100).toFixed(2)}%/s`);
   conferir(velocidade(2) > velocidade(4), "cena muito curta anda mais rápido (piso): 4% de zoom em 2 s é quase parado", `${(velocidade(2) * 100).toFixed(2)}%/s contra ${(velocidade(4) * 100).toFixed(2)}%/s`);
-  conferir(amplitudeDoZoom(quadrosDeMovimento(10) / 24) <= 0.16, "e o zoom nunca passa de 16% do quadro");
+  conferir(amplitudeDoZoom(quadrosDeMovimento(10) / 24) <= 0.32, "e o zoom nunca passa de 32% do quadro");
 
-  // A cena padrão de 4 s NÃO pode ter mudado: quem já gostava do ritmo dela não deve notar.
+  // A cena padrão de 4 s anda 20% do quadro. Eram 10% até 24/09/2026, quando ele viu o vídeo
+  // pronto e disse que "aproximar está muito lenta" e depois que "todas as opções de fotos
+  // passear, subir, descer e etc" também estavam. Quem calibra o número é
+  // scripts/testar-velocidade-do-movimento.ts, que mede no arquivo renderizado contra o vídeo
+  // da referência; aqui só se confere que ele não mudou por acidente.
   const amp4 = amplitudeDoZoom(quadrosDeMovimento(4) / 24);
-  conferir(Math.abs(amp4 - 0.1) < 0.005, "e a cena padrão de 4 s continua com os mesmos 10% de antes", `${(amp4 * 100).toFixed(1)}%`);
+  conferir(Math.abs(amp4 - 0.2) < 0.005, "e a cena padrão de 4 s anda 20% do quadro", `${(amp4 * 100).toFixed(1)}%`);
 
   // CONTROLE: com a amplitude FIXA de antes, 4 s e 7 s andavam bem diferente. Se este
   // controle não acusar, o teste acima não sabe reconhecer o defeito que diz ter consertado.
