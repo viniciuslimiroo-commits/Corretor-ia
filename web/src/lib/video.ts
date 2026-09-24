@@ -77,44 +77,94 @@ export const NEGATIVO_VIDEO = [
   "animals, pets, dog, cat",
   "new furniture, furniture appearing or disappearing, moving furniture, new doors, new windows, new walls",
   "changing architecture, morphing walls, warping geometry, distorted perspective, floating objects",
+  // O IMOVEL NAO PODE GANHAR COMODO. Pedido dele em 24/09/2026, depois de ver videos prontos:
+  // "quando a camera se movimenta para uma area que nao aparece claramente na foto, a IA acaba
+  // criando janelas, portas, comodos, entradas, corredores ou outros espacos que nao existem
+  // no imovel".
+  //
+  // Isto nao e questao de gosto. Um anuncio que mostra um corredor que a casa nao tem e
+  // propaganda enganosa, e quem responde por ela e o corretor que postou -- nao o software.
+  "new room, extra room, hidden room, new corridor, new hallway, new doorway, new entrance, new staircase",
+  "revealing unseen space, camera passing through a doorway, space extending beyond the photograph, invented architecture, extrapolated room",
+  // IMOVEL NAO E CENA ANIMADA. "Nao quero efeitos ou animacoes artificiais, como janelas
+  // abrindo, portas abrindo, ambientes surgindo, paredes aparecendo ou qualquer outro elemento
+  // do imovel sendo criado ou modificado durante o video."
+  "door opening, door closing, window opening, window closing, curtain moving, blinds opening, gate opening, drawer opening, cabinet opening",
+  "objects animating, appliances turning on, lights turning on or off, water moving, fire, smoke",
+  // A CAMERA E DE TRIPE, NAO DE MAO. "Gerei um video de aproximacao e o resultado parecia uma
+  // pessoa segurando uma camera na mao, com tremores e movimentos instaveis."
+  "handheld camera, camera shake, shaky footage, unstable camera, wobble, bounce, vibration, micro-jitter",
+  "sudden camera movement, abrupt motion, erratic motion, random drift, whip pan, camera rotation, tilted horizon, dutch angle, rolling camera",
   "text, captions, subtitles, watermark, logo, price tag, phone number, call to action, end card, title card",
   "cartoon, illustration, painting, oversaturated, flicker, jitter",
 ].join(", ");
 
 /** O que TODO preset repete: é câmera, e o imóvel fica como está. */
-const REGRA_CAMERA =
-  "Only the camera moves. The room, the architecture, the furniture, the walls, doors, windows, floor and ceiling stay exactly as in the original photo, unchanged and undistorted. Consistent natural lighting. Photorealistic real-estate footage. The shot ends by decelerating smoothly to a still frame.";
+const REGRA_CAMERA =
+  "Only the camera moves, mounted on a motorised dolly with a stabilised gimbal. " +
+  // Velocidade constante e uma direcao so: e o que separa "camera profissional" de "pessoa
+  // segurando o celular", que foi o que ele viu no video de aproximacao.
+  "The motion is a single continuous glide in one direction at a constant slow speed, perfectly smooth and stable, with no shake, no wobble, no bounce, no sudden change of direction, no rotation and a level horizon. " +
+  // A PARALAXE E O PRODUTO. Ele, em 24/09/2026: "a ideia e que o resultado passe a sensacao
+  // de uma camera profissional se movimentando pelo ambiente, e nao de uma imagem
+  // simplesmente sendo ampliada ou deslocada para os lados". A diferenca entre as duas coisas
+  // e uma so: o ponto de vista muda, e o que esta perto anda mais que o que esta longe.
+  "Real three-dimensional camera translation with natural parallax: near objects shift more than far ones as the viewpoint changes, the way a real camera moving through a room behaves, not a flat image being panned or zoomed. " +
+  // E A TRAVA: a paralaxe pode redesenhar o que a foto JA MOSTRA de outro angulo; o que ela
+  // nao pode e continuar a casa pra fora do enquadramento. Foi dai que sairam os corredores.
+  "The camera stays inside the space the photograph already shows and never travels far enough to expose anything beyond its edges; whatever is not visible in the original photograph must never appear. " +
+  "The room, the architecture, the furniture, the walls, doors, windows, floor and ceiling stay exactly as in the original photo, unchanged and undistorted: nothing opens, nothing closes, nothing is added, removed or animated. " +
+  "Consistent natural lighting. Photorealistic real-estate footage. The shot ends by decelerating smoothly to a still frame.";
 
-export type AnimacaoId = "drone" | "caminhar" | "girar" | "aproximar";
+export type AnimacaoId = "drone" | "caminhar" | "lateral" | "girar" | "aproximar";
 
-export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; prompt: string }[] = [
-  {
-    id: "drone",
-    rotulo: "Sobrevoo",
-    descricao: "A câmera sobe e avança devagar sobre a fachada ou o terreno.",
-    prompt: `Slow cinematic aerial drone shot: the camera glides forward and rises gently over the property, smooth and steady. ${REGRA_CAMERA}`,
-  },
-  {
-    id: "caminhar",
-    rotulo: "Entrar no ambiente",
-    descricao: "A câmera avança pelo cômodo, como quem entra. Não entra ninguém na cena.",
-    // "as if the camera operator were walking" e não "a person walking": a diferença entre
-    // descrever o MOVIMENTO e pedir um PERSONAGEM.
-    prompt: `Simulate a smooth forward camera movement through the room, as if the camera operator were slowly walking into the space, steady dolly-in, no camera shake. ${REGRA_CAMERA}`,
-  },
-  {
-    id: "girar",
-    rotulo: "Girar em volta",
-    descricao: "A câmera gira devagar no próprio eixo, mostrando o ambiente.",
-    prompt: `Slow smooth camera orbit panning around the space to reveal the room, steady motion. ${REGRA_CAMERA}`,
-  },
-  {
-    id: "aproximar",
-    rotulo: "Aproximar com profundidade",
-    descricao: "Zoom lento com parallax de verdade, como se a câmera avançasse.",
-    prompt: `Slow cinematic push-in towards the centre of the scene with subtle parallax and real depth. ${REGRA_CAMERA}`,
-  },
-];
+export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; prompt: string }[] = [
+  {
+    id: "drone",
+    rotulo: "Sobrevoo",
+    descricao: "A câmera sobe e avança devagar sobre a fachada ou o terreno.",
+    prompt: `Slow cinematic aerial shot on a stabilised drone: the camera glides gently forward and slightly upward over the property at a constant speed, locked and smooth. ${REGRA_CAMERA}`,
+  },
+  {
+    id: "caminhar",
+    rotulo: "Entrar no ambiente",
+    descricao: "A câmera dá um passo pra dentro do cômodo, como quem entra. Não entra ninguém na cena.",
+    // "as if the camera operator were walking" e não "a person walking": a diferença entre
+    // descrever o MOVIMENTO e pedir um PERSONAGEM.
+    //
+    // E "slightly forward" e não "through the room", desde 24/09/2026: atravessar o cômodo
+    // inteiro OBRIGA o modelo a desenhar o que está além do enquadramento, e foi assim que
+    // apareceram corredores e portas que a casa não tem. Um passo pra dentro dá a mesma
+    // sensação de entrar sem pedir que o modelo invente o resto.
+    prompt: `Slow steady dolly-in on rails: the camera glides slightly forward into the room at a constant speed, staying within the space already visible in the photograph. ${REGRA_CAMERA}`,
+  },
+  {
+    id: "lateral",
+    rotulo: "Passar pelo ambiente",
+    descricao: "A câmera desliza de lado, como quem atravessa o cômodo olhando em volta.",
+    // O MOVIMENTO QUE MAIS PARECE TOUR, e ele apontou por que: "se a IA conseguir criar uma
+    // movimentação de câmera lateral bem executada, suave e natural, o resultado pode
+    // transmitir a sensação de que a câmera está realmente percorrendo o ambiente".
+    //
+    // E é também o mais seguro contra invencionice, o que não é coincidência: andando de
+    // lado, a paralaxe redesenha de outro ângulo o que a foto JÁ mostra -- o sofá sai da
+    // frente da parede, a quina do móvel gira. Avançar em linha reta, não: a certa altura
+    // o fundo acaba e o modelo precisa inventar o que vem depois.
+    prompt: `Slow lateral tracking shot: the camera trucks sideways on a motorised slider at a constant speed, keeping the same part of the room framed, with strong natural parallax between foreground and background. ${REGRA_CAMERA}`,
+  },
+  {
+    id: "girar",
+    rotulo: "Girar em volta",
+    descricao: "A câmera gira devagar no próprio eixo, mostrando o ambiente.",
+    prompt: `Very slow smooth camera orbit on a motorised head, a small arc around the space at a constant speed, revealing nothing beyond what the photograph already shows. ${REGRA_CAMERA}`,
+  },
+  {
+    id: "aproximar",
+    rotulo: "Aproximar com profundidade",
+    descricao: "Zoom lento com parallax de verdade, como se a câmera avançasse.",
+    prompt: `Slow cinematic push-in towards the centre of the scene on a motorised slider, constant speed, with subtle natural parallax and real depth, no shake. ${REGRA_CAMERA}`,
+  },
+];
 
 // Tour 360: a foto (ou o vídeo) equirretangular tem a cena inteira, então dá pra mover
 // uma câmera de verdade dentro dela -- giro e inclinação reais, com a perspectiva

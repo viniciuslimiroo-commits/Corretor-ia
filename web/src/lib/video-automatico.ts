@@ -101,6 +101,10 @@ const MOVIMENTO: Record<string, EfeitoId> = {
  *   SOBREVOO    do lado de fora, onde o assunto é grande demais pra caber andando: fachada,
  *               quintal, piscina. É como o vídeo do concorrente abre.
  *   ENTRAR      o ambiente em que uma pessoa ENTRA e que tem fundo pra andar.
+ *   LATERAL     ambiente largo, onde a câmera passa de lado e a paralaxe faz o trabalho:
+ *               é o movimento que mais parece tour, e o mais seguro -- andando de lado ela
+ *               redesenha de outro ângulo o que a foto JÁ mostra, em vez de precisar
+ *               inventar o que vem depois do fundo.
  *   APROXIMAR   cômodo pequeno. Andar pra frente num banheiro de 2 m bate na parede em um
  *               segundo; o avanço com profundidade mostra o acabamento sem esbarrar.
  */
@@ -110,16 +114,16 @@ const ANIMACAO: Record<string, AnimacaoId> = {
   piscina: "drone",
   playground: "drone",
   entrada: "caminhar",
-  sala: "caminhar",
-  integrado: "caminhar",
+  sala: "lateral",
+  integrado: "lateral",
   jantar: "caminhar",
   cozinha: "caminhar",
   quarto: "caminhar",
   infantil: "caminhar",
   escritorio: "caminhar",
-  varanda: "caminhar",
-  gourmet: "caminhar",
-  salao: "caminhar",
+  varanda: "lateral",
+  gourmet: "lateral",
+  salao: "lateral",
   academia: "caminhar",
   banheiro: "aproximar",
   closet: "aproximar",

@@ -169,7 +169,7 @@ conferir(ORDEM_DO_PASSEIO.indexOf("salao") > ORDEM_DO_PASSEIO.indexOf("quarto"),
 // parede. A direção agora sai do ambiente.
 conferir(animacaoDe(foto("_", "fachada")) === "drone", "a fachada é sobrevoo, não caminhada: de fora a câmera não entra andando");
 conferir(animacaoDe(foto("_", "piscina")) === "drone", "a piscina também abre de cima");
-conferir(animacaoDe(foto("_", "sala")) === "caminhar", "na sala a câmera entra andando");
+conferir(animacaoDe(foto("_", "sala")) === "lateral", "na sala a câmera passa de lado: ambiente largo, e a paralaxe faz o trabalho sem inventar o que vem depois do fundo");
 conferir(animacaoDe(foto("_", "cozinha")) === "caminhar", "na cozinha também");
 conferir(animacaoDe(foto("_", "banheiro")) === "aproximar", "banheiro aproxima com profundidade: andar 2 m ali bate na parede");
 conferir(animacaoDe(foto("_", "closet")) === "aproximar", "closet idem");
