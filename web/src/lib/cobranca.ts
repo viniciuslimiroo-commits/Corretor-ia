@@ -128,7 +128,23 @@ export async function contaPorStripeCustomer(db: Db, customerId: string): Promis
   return null;
 }
 
-export type Marca = { nome: string | null; creci: string | null; whatsapp: string | null; logo_path: string | null; cor_marca: string | null; deImobiliaria: boolean };
+export type Marca = {
+  nome: string | null;
+  creci: string | null;
+  whatsapp: string | null;
+  logo_path: string | null;
+  cor_marca: string | null;
+  deImobiliaria: boolean;
+  /**
+   * A imobiliária crua, quando a pessoa é de uma equipe.
+   *
+   * Vem junto porque a TELA precisa distinguir o que é dela do que é herdado -- e não
+   * distinguir foi o defeito: um corretor que entrou numa equipe com logo viu "Enviar meu
+   * logo" e concluiu que precisava de um. Não precisava; os materiais dele já saíam com o da
+   * imobiliária. A regra sempre esteve certa; quem não contava era a tela.
+   */
+  org: { nome: string; creci: string | null; whatsapp: string | null; temLogo: boolean; cor: string | null } | null;
+};
 
 /**
  * A marca que vai pra foto, pro vídeo e pra página compartilhada: a da pessoa, e o que
@@ -151,5 +167,6 @@ export async function marcaEfetiva(db: Db, userId: string): Promise<Marca> {
     logo_path: u?.logo_path ?? org?.logo_path ?? null,
     cor_marca: u?.cor_marca ?? org?.cor_marca ?? null,
     deImobiliaria: !u?.logo_path && !!org?.logo_path,
+    org: org ? { nome: org.nome, creci: org.creci, whatsapp: org.whatsapp, temLogo: !!org.logo_path, cor: org.cor_marca } : null,
   };
 }

@@ -21,6 +21,20 @@ export default function Configuracoes() {
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  /**
+   * O que JÁ vem da imobiliária, quando a pessoa é de uma equipe.
+   *
+   * Sem isto a tela pedia logo pra todo mundo como se cada um estivesse sozinho -- e quem
+   * entrou numa equipe que já tem logo concluía que precisava enviar um. Não precisava: os
+   * materiais dele já saíam com o da imobiliária. A regra sempre esteve certa (a pessoa
+   * vence, a imobiliária preenche o que falta); quem não contava era a tela.
+   */
+  const [daEquipe, setDaEquipe] = useState<{
+    imobiliaria: { nome: string; creci: string | null; whatsapp: string | null; temLogo: boolean; cor: string | null } | null;
+    nomeNosMateriais: string | null;
+    creciNosMateriais: string | null;
+    logoDaImobiliaria: boolean;
+  } | null>(null);
   const { user, token } = c;
 
   useEffect(() => {
@@ -34,6 +48,12 @@ export default function Configuracoes() {
         setNome(d.nome ?? "");
         setCreci(d.creci ?? "");
         setWhatsapp(d.whatsapp ?? "");
+        setDaEquipe({
+          imobiliaria: d.imobiliaria ?? null,
+          nomeNosMateriais: d.nomeNosMateriais ?? null,
+          creciNosMateriais: d.creciNosMateriais ?? null,
+          logoDaImobiliaria: !!d.logoDaImobiliaria,
+        });
       })
       .catch(() => {});
   }, [user, token]);
@@ -88,6 +108,36 @@ export default function Configuracoes() {
     <AppShell conta={c.conta} aoAssinar={c.assinar} aoSair={c.sair} ocupado={c.ocupado}>
       <h1 className="text-2xl font-semibold">Minha marca</h1>
       <p className="mt-1 text-sm text-neutral-500">Seu logo nas fotos que você baixa e seus dados na página que o cliente abre pelo link.</p>
+
+      {/* O QUE JA SAI, ANTES DE PEDIR QUALQUER COISA.
+
+          Ele criou uma equipe, entrou com um segundo e-mail como corretor e a tela pediu
+          logo -- sendo que a imobiliaria ja tinha um. A regra nunca esteve errada (a pessoa
+          vence, a imobiliaria preenche o que falta); errada estava a tela, que pedia como se
+          cada um estivesse sozinho e nao dizia o que ja estava valendo.
+
+          Mostrar o resultado ANTES dos campos muda a pergunta que a pessoa se faz: de "o que
+          eu preciso configurar?" para "quero trocar alguma coisa disso?". */}
+      {daEquipe?.imobiliaria && (
+        <div className="mt-4 rounded-xl border border-marca-teal/40 bg-marca-teal/5 p-4">
+          <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">Você é da equipe {daEquipe.imobiliaria.nome}</p>
+          <p className="mt-2 text-sm text-neutral-700">
+            Teus materiais já saem com <strong className="font-semibold">{daEquipe.nomeNosMateriais ?? daEquipe.imobiliaria.nome}</strong>
+            {daEquipe.creciNosMateriais ? <> — CRECI {daEquipe.creciNosMateriais}</> : null}.
+          </p>
+          <ul className="mt-2 flex flex-col gap-0.5 text-xs text-neutral-600">
+            {daEquipe.logoDaImobiliaria && <li>· O logo é o da imobiliária. Envie o seu abaixo só se quiser o seu no lugar.</li>}
+            {!creci && daEquipe.imobiliaria.creci && (
+              <li>
+                · O CRECI que está saindo é o <strong className="font-medium text-neutral-700">da imobiliária</strong>, porque o seu está em branco.{" "}
+                <strong className="font-medium text-neutral-700">Se você anuncia em nome próprio, preencha o seu abaixo</strong> — ele passa a valer no lugar.
+              </li>
+            )}
+            {!whatsapp && daEquipe.imobiliaria.whatsapp && <li>· O WhatsApp é o da imobiliária. Preencha o seu abaixo pra receber direto.</li>}
+          </ul>
+          <p className="mt-2 text-xs text-neutral-500">Tudo o que você preencher aqui vale mais que o da imobiliária. O que deixar em branco, ela completa.</p>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-12">
         <section className="flex flex-col gap-4 lg:col-span-7">

@@ -43,7 +43,19 @@ export async function GET(req: NextRequest) {
   // pessoa OU da imobiliária. O editor usa isto pra linha do tempo durar o que o vídeo dura.
   const efetiva = await marcaEfetiva(db, userId).catch(() => null);
   const corpo = await r.json();
-  return NextResponse.json({ ...corpo, telaFinalPossivel: efetiva ? !!(efetiva.nome || efetiva.whatsapp || efetiva.logo_path) : true });
+  return NextResponse.json({
+    ...corpo,
+    telaFinalPossivel: efetiva ? !!(efetiva.nome || efetiva.whatsapp || efetiva.logo_path) : true,
+    // O QUE JÁ VEM DA IMOBILIÁRIA, pra tela poder dizer. Sem isto ela pedia logo pra todo
+    // mundo como se cada um estivesse sozinho -- e quem entrou numa equipe que já tem logo
+    // concluía que precisava de um.
+    imobiliaria: efetiva?.org ?? null,
+    // O nome como ele SAI nos materiais: "Pessoa · Imobiliária" quando os dois existem.
+    nomeNosMateriais: efetiva?.nome ?? null,
+    creciNosMateriais: efetiva?.creci ?? null,
+    // De onde veio o logo que está valendo: dela ou da imobiliária.
+    logoDaImobiliaria: !!efetiva?.deImobiliaria,
+  });
 }
 
 export async function POST(req: NextRequest) {
