@@ -17,10 +17,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Encena.ai · o imóvel inteiro, pronto para anunciar", template: "%s · Encena.ai" },
+  title: { default: "Encena · o imóvel inteiro, pronto para anunciar", template: "%s · Encena" },
   description:
     "Da foto ao anúncio, com a sua marca: mobílie ambientes vazios, remova objetos, troque piso e parede, monte o vídeo, o tour 360°, a planta baixa e as medidas do terreno — e exporte no tamanho dos portais.",
-  applicationName: "Encena.ai",
+  applicationName: "Encena",
 };
 
 // O idioma é decidido AQUI, no servidor, e desce por prop. Ler o cookie só no navegador

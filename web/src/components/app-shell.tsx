@@ -348,7 +348,7 @@ export default function AppShell({
                     </div>
                     <div className="border-t border-neutral-100 py-1">
                       <a
-                        href={linkDeSuporte(`Suporte Encena.ai · ${conta.email ?? ""}`.trim())}
+                        href={linkDeSuporte(`Suporte Encena · ${conta.email ?? ""}`.trim())}
                         onClick={() => setMenu(null)}
                         className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
                       >
