@@ -231,9 +231,13 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
     **25.427 arquivos** a menos no disco.
   - **`5072e46`** grava as cinco provas do selo que estavam soltas desde 20/09 (mesmas
     imagens, mesmas medidas, só regeradas).
-  - **`a8d4c8a`** tira o "Encena.ai" do título da aba, do `applicationName` e de três
-    assuntos de e-mail. **`encena.ai` não está registrado e não é do dono** (conferido:
-    não resolve). O e-mail real não mudou (`contato@limirobrasil.com`).
+  - **`a8d4c8a` + `b664965`** tiram o "Encena.ai" do produto. **`encena.ai` não está
+    registrado e não é do dono** (conferido: não resolve) — a assinatura mandava a pessoa
+    pra lugar nenhum hoje, e pro site de outra empresa no dia em que alguém registrar.
+    O primeiro commit pegou o título da aba, o `applicationName` e três assuntos de e-mail.
+    O segundo pegou **o logo**, que o grep não achou: em `components/marca.tsx` o `.ai` é um
+    `<span>` separado, então "Encena.ai" nunca existe como texto contínuo no código. Só
+    apareceu ao abrir o site e olhar. O e-mail real não mudou (`contato@limirobrasil.com`).
   - **`faa6058` + `49c5e26`** consertam `bancada-linha.tsx`, que citava
     `/exemplos/quarto-depois.jpg` — arquivo que não existia no `main`. No primeiro commit eu
     remendei apontando para outra foto; **estava errado**: as fotos `quarto-antes.jpg` e
