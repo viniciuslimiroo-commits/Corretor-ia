@@ -26,7 +26,7 @@ type Caso = "seis" | "nenhuma" | "curto";
 
 // ---------- o vídeo da bancada: fotos reais de /exemplos ----------
 
-const FOTOS = ["/exemplos/sala-depois.jpg", "/exemplos/quarto-depois.jpg", "/exemplos/cozinha-depois.jpg", "/exemplos/parede-depois.jpg", "/exemplos/sala-antes.jpg"];
+const FOTOS = ["/exemplos/sala-depois.jpg", "/exemplos/jantar-depois.jpg", "/exemplos/cozinha-depois.jpg", "/exemplos/parede-depois.jpg", "/exemplos/sala-antes.jpg"];
 const LEGENDAS = ["Sala ampla e iluminada", "Quarto com closet", "Cozinha planejada", "Parede em terracota", "Varanda gourmet", "Agende sua visita"];
 
 function especDoCaso(caso: Caso): EspecVideo {
