@@ -1,8 +1,12 @@
 # Continuar o Encena daqui
 
-> **Chegando agora, 20/09/2026?** Leia primeiro `PASSAGEM-ANTIGRAVITY.md`, na raiz: estado
-> de hoje, o que está no branch `editor-2026` (nada publicado), o que está pendente com os
-> comandos prontos, e as regras do dono. Este arquivo aqui é o histórico longo.
+> **Chegando agora, 28/09/2026?** O trabalho voltou para o Claude Code, na pasta de sempre.
+> Trabalhe no branch **`trabalho`** (era `antigravity`; renomeado em 28/09). Tudo até
+> `0c01c8e` **já está publicado** — `main` e produção estão no mesmo ponto, não há nada
+> represado. `PASSAGEM-ANTIGRAVITY.md` virou histórico: as regras do dono (seção 2) e as
+> armadilhas (seção 5) continuam valendo, mas o "onde está o projeto" e o link de teste
+> daquele arquivo estão vencidos. O estado de hoje é o [Diário](#diário-de-quem-continuou),
+> no fim deste arquivo.
 
 Arquivo de passagem de bastão, escrito em 18/09/2026 pelo Claude (Claude Code) pra outra
 ferramenta (Antigravity ou qualquer agente) continuar o trabalho, e pra o Claude retomar
@@ -213,6 +217,52 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
+
+- **28/09/2026 — Claude Code (volta do Antigravity: faxina do repositório e três consertos, branch `trabalho`, NADA publicado):**
+  o dono pediu para voltar a tocar o projeto por aqui. Antes de qualquer coisa, o estado:
+  `antigravity` e `origin/main` estavam **no mesmo commit** (`0c01c8e`) — todo o trabalho do
+  Antigravity já estava no ar, nada represado. `main` local era só um ponteiro velho.
+  - **Faxina.** `main` local adiantado para `origin/main`. Apagados seis branches já contidos
+    no `main` (`crm`, `crm-painel`, `editor-2026`, `integracao`, `p7-faixas`, `publica`).
+    Os três `worktree-wf_0b8f6638-632-*` viraram etiquetas antes de sumir
+    (`arquivo/linha-p2`, `arquivo/textos-oferta-gratis`, `arquivo/linha-p4`) — os commits
+    continuam alcançáveis por elas. Branch `antigravity` renomeado para `trabalho`.
+    Removidas as pastas `.claude/worktrees/brave-clarke-501698` e `revisao-ag`:
+    **25.427 arquivos** a menos no disco.
+  - **`5072e46`** grava as cinco provas do selo que estavam soltas desde 20/09 (mesmas
+    imagens, mesmas medidas, só regeradas).
+  - **`a8d4c8a`** tira o "Encena.ai" do título da aba, do `applicationName` e de três
+    assuntos de e-mail. **`encena.ai` não está registrado e não é do dono** (conferido:
+    não resolve). O e-mail real não mudou (`contato@limirobrasil.com`).
+  - **`faa6058` + `49c5e26`** consertam `bancada-linha.tsx`, que citava
+    `/exemplos/quarto-depois.jpg` — arquivo que não existia no `main`. No primeiro commit eu
+    remendei apontando para outra foto; **estava errado**: as fotos `quarto-antes.jpg` e
+    `quarto-depois.jpg` existiam, presas nos branches `worktree-wf`, e se perderam quando a
+    linha do tempo foi refeita pelo caminho do `p7-faixas`. O segundo commit devolve as duas
+    e volta a bancada a citar o quarto. Agora as 10 fotos citadas em `web/src` existem.
+  - **Trabalho quase perdido, salvo em `2a3360b`** (branch `claude/brave-clarke-501698`): o
+    worktree parado tinha 4 arquivos modificados e nunca commitados — 206 linhas, uma
+    implementação *alternativa* do conserto de `react-hooks` que o Antigravity publicou por
+    outro caminho. Não está publicada e ninguém depende dela; existe para não sumir.
+  - **Duas armadilhas novas, que custaram retrabalho aqui:**
+    1. `git rev-list origin/main..BRANCH` responde "tem commit solto?", **não** "tem coisa a
+       perder?". Um worktree guarda também index, árvore de trabalho e não rastreados.
+       Antes de apagar container, ou sonda-se cada espécie de estado, ou se preserva antes.
+    2. `git diff origin/main...BRANCH` (três pontos) compara com o **ancestral comum**, então
+       mostra como "novo" o que o `main` também ganhou por outro caminho — e **esconde** o que
+       só existe no branch. Para "o que tem aqui que não tem lá", comparar as árvores:
+       `comm -23 <(git ls-tree -r --name-only B | sort) <(git ls-tree -r --name-only main | sort)`.
+       Foi assim que as fotos do quarto apareceram.
+    3. O heredoc do Git Bash desta máquina **corrompe acento** ao escrever arquivo. Texto em
+       português vai por ferramenta que escreve UTF-8 de verdade, não por `cat <<EOF`.
+  - **Achado não consertado:** `web/src/app/dev/*` (três bancadas) não tem trava de ambiente
+    — são rotas alcançáveis em produção. Não mexi; decidir se ganham trava ou saem do build.
+  - **Provas:** `npx tsc --noEmit -p .` — 0 erros, código de saída 0 (medido no `tsc`, não no
+    `tail`: em pipeline, `$?` é do último comando). `npx next build` — código de saída 0, sem
+    erro nem aviso. A lista de rotas do build confirma que as três bancadas `/dev/*` são
+    publicadas junto com o site.
+  - **Pendente com o dono:** DNS do `encena.app.br`, repor crédito na conta de teste, troca de
+    plano no portal da Stripe, abrir o CRM. E a decisão de publicar estes quatro commits.
 
 - **20/09/2026 — Antigravity (casa pronta contemporânea e publicação em produção, `main` e `antigravity`):**
   executadas as tarefas 3.1 e 3.2 de PASSAGEM-ANTIGRAVITY.md.
