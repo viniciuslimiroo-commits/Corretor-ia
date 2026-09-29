@@ -1036,8 +1036,18 @@ export default function PaginaVideo() {
     setErro(null);
     try {
       const rr = await fetch(`/api/video/${id}`, { headers: { Authorization: `Bearer ${await token()}` } });
-      const dd = await rr.json();
-      if (!rr.ok || dd.status !== "concluido" || !dd.espec) throw new Error(dd.error ?? "Esse vídeo ainda não pode ser editado.");
+      // Resposta que não é JSON (500 do Next vem em HTML): `rr.json()` estouraria com
+      // "Unexpected token '<'", que não diz nada a ninguém. Lê como texto e conta o que deu.
+      const cru = await rr.text();
+      let dd: { status?: string; espec?: unknown; error?: string; titulo?: string; edicao?: { imovelId?: string | null; cenas?: unknown; vozUrl?: string | null } };
+      try {
+        dd = JSON.parse(cru);
+      } catch {
+        throw new Error(`O servidor respondeu ${rr.status} sem JSON ao abrir este vídeo. Começo da resposta: ${cru.slice(0, 120)}`);
+      }
+      if (!rr.ok) throw new Error(dd.error ?? `O servidor recusou abrir este vídeo (${rr.status}).`);
+      if (dd.status !== "concluido") throw new Error(dd.error ?? `Este vídeo está como "${dd.status ?? "sem status"}", e só dá pra editar vídeo concluído.`);
+      if (!dd.espec) throw new Error("Este vídeo foi gravado sem a receita das cenas (espec), então não dá pra reabrir. Dá pra baixar e trocar a música normalmente.");
       const e = dd.espec as EspecVideo;
       // Vídeo com coisa que esta página não conhece (textos, peças, legendas, Você, cor,
       // cortes): abre no EDITOR. Reabrir aqui e gerar de novo apagava tudo isso calado.
@@ -1071,6 +1081,11 @@ export default function PaginaVideo() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não consegui abrir o vídeo pra editar.");
+      // O aviso de erro mora no TOPO da página; o cartão do vídeo pronto fica bem abaixo.
+      // Sem rolar, quem clica em "Editar" olhando pro cartão não vê nada acontecer -- foi
+      // exatamente o que o dono relatou em 29/09/2026 ("clico em editar e não acontece
+      // nada"). O caminho que dá certo já rolava pro topo; o que falha, não.
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
