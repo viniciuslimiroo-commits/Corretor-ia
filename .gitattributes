@@ -1,0 +1,40 @@
+# Fim de linha: LF no repositório, sempre.
+#
+# POR QUE ESTE ARQUIVO EXISTE (29/09/2026): `src/lib/video.ts` apareceu gravado no git com
+# `\r\r\n` -- CR duplicado -- em 1600 lugares. Não era coisa do checkout de ninguém: os bytes
+# no commit eram esses. É o efeito clássico de `core.autocrlf=true` sem um .gitattributes:
+# o autocrlf converte LF -> CRLF ao sair e CRLF -> LF ao entrar, mas um arquivo que já entrou
+# com CRLF ganha CR de novo a cada volta, e o dobrado fica gravado.
+#
+# O estrago é silencioso. O TypeScript compila igual (\r é quebra de linha válida), o build
+# passa, o site funciona -- e qualquer ferramenta que edite por casamento de texto para de
+# achar as linhas, porque o separador não é o que ela espera.
+#
+# Com `text=auto eol=lf` a decisão deixa de depender da configuração de cada máquina: o que
+# entra no repositório é sempre LF, venha de Windows, Mac ou Linux.
+
+* text=auto eol=lf
+
+# Binários NÃO são texto e não podem ser convertidos -- uma conversão de fim de linha dentro
+# de um JPEG ou de um MP4 corrompe o arquivo. O git detecta binário sozinho na maioria dos
+# casos, mas detecção por heurística erra, e aqui o repositório guarda prova de teste (fotos
+# e vídeos reais) que não pode ser perdida por um palpite errado.
+*.jpg  -text
+*.jpeg -text
+*.png  -text
+*.webp -text
+*.gif  -text
+*.ico  -text
+*.mp4  -text
+*.mov  -text
+*.mp3  -text
+*.m4a  -text
+*.wav  -text
+*.webm -text
+*.pdf  -text
+*.zip  -text
+*.ttf  -text
+*.otf  -text
+*.woff -text
+*.woff2 -text
+*.cube -text
