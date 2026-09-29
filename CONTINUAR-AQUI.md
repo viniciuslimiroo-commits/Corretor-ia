@@ -218,6 +218,45 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **29/09/2026 — Claude Code (publicação, conserto do "Editar" e marca d'água no vídeo, branch `trabalho`):**
+  - **PUBLICADO** com o "sim" dele: `0c01c8e` → `6b78aa9` no `main`. A Vercel levou ~1 min.
+    Conferido no ar: logo lê "Encena", a string "Encena.ai" não existe mais no HTML, e as
+    9 fotos de exemplo respondem 200.
+  - **`6b78aa9`** — o "Editar" do cartão de vídeo pronto parecia não fazer nada. O botão
+    funcionava: `editarVideo()` falhava e chamava `setErro`, mas o aviso é desenhado no
+    **topo da página** e o cartão fica bem abaixo. O caminho de sucesso já rolava pro topo;
+    o de falha, não. Agora rola junto, e a mensagem separa as três causas (recusa do
+    servidor com código HTTP, vídeo não concluído, vídeo sem espec) em vez de cair todas
+    num texto genérico — e um 500 do Next, que vem em HTML, não estoura mais no
+    `rr.json()`. **A causa de a chamada falhar continua desconhecida**; isto conserta a
+    invisibilidade, não a falha.
+  - **`dee09e0`** — `src/lib/video.ts` estava gravado NO GIT com `\r\r\n` (CR duplicado) em
+    1600 lugares, efeito de `core.autocrlf=true` sem `.gitattributes`. Único arquivo assim
+    em 381 versionados; a convenção do repositório é LF puro. Normalizado em commit
+    separado, provado que só o fim de linha mudou (mesmas 1766 linhas). **Era isso que
+    impedia ferramenta de edição por casamento de texto de funcionar neste arquivo.**
+  - **`7c7b865`** — **MARCA D'ÁGUA**: o logo por cima do vídeo INTEIRO, pedido dele. O logo
+    já ia na capa montada e na tela final — as duas pontas —, então quem corta o começo e o
+    fim ficava com o imóvel sem nada do corretor. Escolhas: canto, tamanho (10/16/24% da
+    largura) e transparência (piso 0,15). O espec guarda só a decisão; o arquivo vem de
+    `marcaEfetiva()` na montagem, então trocar de logo não invalida vídeo antigo. Entrada
+    com `-loop 1` e sobreposição **depois** do apresentador. `precisaDoEditor()` passou a
+    reconhecer a marca — sem isso, reabrir na página rápida e gerar de novo a apagaria
+    calado.
+  - **Provas:** `scripts/testar-marca-dagua.ts` — **28 conferências com render de verdade**
+    no ffmpeg, sem rede e sem crédito. A marca está no começo, **no meio** e no fim; o
+    tamanho medido bate (3477 px contra ~3364 esperados); o canto escolhido muda o
+    resultado; com opacidade 0,35 a cor média dá 171/82 contra 172/83 da conta teórica.
+    `tsc --noEmit` e `eslint` zerados.
+  - **Armadilha nova:** teste que roda ffmpeg **não pode ter `await` no topo do arquivo** —
+    somado ao `require` dinâmico de `caminhoFfmpeg()`, o Node recusa por formato ambíguo.
+    O jeito do projeto é o de `testar-audio-blocos.ts`: `import ffmpegStatic` e
+    `process.env.FFMPEG_PATH ??= ...`, mais o corpo dentro de uma função async.
+  - **O que NÃO foi verificado:** a tela da marca d'água. O editor exige login pelo Supabase
+    e eu não crio conta nem uso credencial dele em serviço externo. Compila, passa no lint,
+    entra no build e a página monta sem erro no console — mas **ninguém clicou nos botões
+    ainda**. É a primeira coisa a fazer: Editor → Ajustes → Marca d'água.
+
 - **28/09/2026 — Claude Code (volta do Antigravity: faxina do repositório e três consertos, branch `trabalho`, NADA publicado):**
   o dono pediu para voltar a tocar o projeto por aqui. Antes de qualquer coisa, o estado:
   `antigravity` e `origin/main` estavam **no mesmo commit** (`0c01c8e`) — todo o trabalho do

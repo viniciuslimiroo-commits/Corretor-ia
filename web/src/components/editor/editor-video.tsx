@@ -20,6 +20,8 @@ import {
   FORMATOS,
   FORMATOS_APRESENTADOR,
   TAMANHOS_APRESENTADOR,
+  TAMANHOS_MARCA_DAGUA,
+  OPACIDADE_MARCA_DAGUA_PADRAO,
   DURACOES_CENA,
   LIMITES,
   MOVIMENTOS_360,
@@ -42,6 +44,7 @@ import {
   type AnimacaoId,
   type AnimacaoTexto,
   type Apresentador,
+  type MarcaDagua,
   type Cena,
   type EfeitoId,
   type EspecVideo,
@@ -425,6 +428,9 @@ export default function EditorDeVideo() {
   const [preco, setPreco] = useState("");
   const [local, setLocal] = useState("");
   const [telaFinal, setTelaFinal] = useState(true);
+  // A marca d'água: nula = desligada. Nasce desligada porque ela escreve por cima do
+  // imóvel, e ninguém deve ganhar isso sem pedir.
+  const [marcaDagua, setMarcaDagua] = useState<MarcaDagua | null>(null);
   const [chamada, setChamada] = useState(CHAMADAS[0]);
   /** Chave da cena que vira a miniatura. null = a primeira. */
   const [capa, setCapa] = useState<string | null>(null);
@@ -606,13 +612,14 @@ export default function EditorDeVideo() {
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
       legendas,
       apresentador,
+      marcaDagua,
       filtro,
       intensidadeFiltro: filtro !== "natural" && intensidadeFiltro < 1 ? intensidadeFiltro : undefined,
       ajustes: ajustesVideo,
       capaMontada,
       efeitoSonoro,
     }),
-    [formato, cenas, audios, narracaoBase, musicaVolume, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, filtro, intensidadeFiltro, ajustesVideo, capaMontada, efeitoSonoro]
+    [formato, cenas, audios, narracaoBase, musicaVolume, titulo, preco, local, telaFinal, chamada, transicao, capa, legendas, apresentador, marcaDagua, filtro, intensidadeFiltro, ajustesVideo, capaMontada, efeitoSonoro]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   // As peças que o editor oferece: o que está preenchido na ficha e na marca, e nada mais.
@@ -1553,6 +1560,9 @@ export default function EditorDeVideo() {
       setVozArquivo(dd.edicao?.vozArquivo && dd.edicao?.vozUrl ? { caminho: dd.edicao.vozArquivo, url: dd.edicao.vozUrl, nome: e.narracao?.arquivo ? "Áudio deste vídeo" : "Narração de IA deste vídeo" } : null);
       setLegendas(e.legendas ?? null);
       setApresentador(e.apresentador ?? null);
+      // Sem esta linha, reabrir um vídeo com marca d'água e gerar de novo devolvia o vídeo
+      // SEM ela, sem avisar: o estado nascia nulo e sobrescrevia o que o espec trazia.
+      setMarcaDagua(e.marcaDagua ?? null);
       setFiltro(e.filtro ?? "natural");
       setIntensidadeFiltro(e.intensidadeFiltro ?? 1);
       setAjustesVideo(e.ajustes);
@@ -1585,6 +1595,7 @@ export default function EditorDeVideo() {
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setLegendas(null);
     setApresentador(null);
+    setMarcaDagua(null);
     setFiltro("natural");
     setIntensidadeFiltro(1);
     setAjustesVideo(undefined);
@@ -1687,14 +1698,15 @@ export default function EditorDeVideo() {
 
   // ---- DESFAZER (P6): tudo que muda o vídeo; não o tempo, a seleção, a aba nem o zoom ----
   const docEdicao = useMemo(
-    () => ({ cenas, audios, apresentador, legendas, telaFinal, chamada, efeitoSonoro, transicao, musicaVolume, titulo, preco, local, narrar, origemVoz, roteiro, voz, vozArquivo, capa, filtro, intensidadeFiltro, ajustesVideo, capaMontada, formato }),
-    [cenas, audios, apresentador, legendas, telaFinal, chamada, efeitoSonoro, transicao, musicaVolume, titulo, preco, local, narrar, origemVoz, roteiro, voz, vozArquivo, capa, filtro, intensidadeFiltro, ajustesVideo, capaMontada, formato]
+    () => ({ cenas, audios, apresentador, marcaDagua, legendas, telaFinal, chamada, efeitoSonoro, transicao, musicaVolume, titulo, preco, local, narrar, origemVoz, roteiro, voz, vozArquivo, capa, filtro, intensidadeFiltro, ajustesVideo, capaMontada, formato }),
+    [cenas, audios, apresentador, marcaDagua, legendas, telaFinal, chamada, efeitoSonoro, transicao, musicaVolume, titulo, preco, local, narrar, origemVoz, roteiro, voz, vozArquivo, capa, filtro, intensidadeFiltro, ajustesVideo, capaMontada, formato]
   );
   const restaurar = useCallback(
     (d: typeof docEdicao) => {
       setCenas(d.cenas);
       setAudios(d.audios);
       setApresentador(d.apresentador);
+      setMarcaDagua(d.marcaDagua);
       setLegendas(d.legendas);
       setTelaFinal(d.telaFinal);
       setChamada(d.chamada);
@@ -3210,6 +3222,83 @@ export default function EditorDeVideo() {
                 <input value={preco} onChange={(e) => setPreco(e.target.value)} maxLength={30} placeholder="Preço" className={campoEd} aria-label="Preço" />
                 <input value={local} onChange={(e) => setLocal(e.target.value)} maxLength={50} placeholder="Bairro · Cidade" className={campoEd} aria-label="Bairro e cidade" />
               </div>
+            </Secao>
+            <Divisor />
+            <Secao
+              titulo="Marca d'água"
+              descricao="O seu logo por cima do vídeo inteiro. A capa e a tela final já levam a sua marca, mas quem corta as pontas do vídeo fica com o imóvel sem nada seu."
+            >
+              {/* Sem logo cadastrado não há o que carimbar, e ligar o botão só produziria um
+                  aviso depois de esperar o vídeo montar. Melhor dizer aqui. */}
+              {!marca?.logo ? (
+                <Nota>
+                  Para usar marca d&apos;água, primeiro envie seu logo em <strong>Minha marca</strong>.
+                </Nota>
+              ) : (
+                <>
+                  <Alternar
+                    ligado={!!marcaDagua}
+                    aoMudar={(v) => setMarcaDagua(v ? { canto: "inferior_direito", tamanho: "media", opacidade: OPACIDADE_MARCA_DAGUA_PADRAO } : null)}
+                    titulo="Logo durante o vídeo todo"
+                    descricao="Do primeiro ao último quadro, por cima de tudo."
+                  />
+                  {marcaDagua && (
+                    <div className="flex flex-col gap-3.5 rounded-2xl bg-[var(--ed-elevado)] p-3.5">
+                      <div>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Canto</p>
+                        <div className="flex flex-wrap gap-2">
+                          {CANTOS_APRESENTADOR.map((cn) => (
+                            <Pilula key={cn.id} ativo={marcaDagua.canto === cn.id} onClick={() => setMarcaDagua({ ...marcaDagua, canto: cn.id })}>
+                              {cn.rotulo}
+                            </Pilula>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Tamanho</p>
+                        <div className="flex flex-wrap gap-2">
+                          {TAMANHOS_MARCA_DAGUA.map((t) => (
+                            <Pilula key={t.id} ativo={marcaDagua.tamanho === t.id} onClick={() => setMarcaDagua({ ...marcaDagua, tamanho: t.id })} title={`${Math.round(t.fracao * 100)}% da largura do vídeo`}>
+                              {t.rotulo}
+                            </Pilula>
+                          ))}
+                        </div>
+                      </div>
+                      <Deslizante
+                        rotulo="Transparência"
+                        valor={marcaDagua.opacidade}
+                        min={0.15}
+                        max={1}
+                        passo={0.05}
+                        formatar={(v) => `${Math.round(v * 100)}%`}
+                        aoMudar={(v) => setMarcaDagua({ ...marcaDagua, opacidade: v })}
+                      />
+                      {/* O logo de verdade, no canto escolhido, sobre um retângulo com a
+                          proporção do formato: é mais honesto que descrever em palavras. */}
+                      <div>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Como vai ficar</p>
+                        <div
+                          className="relative mx-auto overflow-hidden rounded-xl bg-[var(--ed-fundo)] ring-1 ring-[var(--ed-linha)]"
+                          style={{ width: 132, aspectRatio: `${FORMATOS.find((f) => f.id === formato)?.largura ?? 1080} / ${FORMATOS.find((f) => f.id === formato)?.altura ?? 1920}` }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element -- URL assinada do bucket, some em minutos */}
+                          <img
+                            src={marca.logo}
+                            alt=""
+                            style={{
+                              position: "absolute",
+                              width: `${(TAMANHOS_MARCA_DAGUA.find((t) => t.id === marcaDagua.tamanho)?.fracao ?? 0.16) * 100}%`,
+                              opacity: marcaDagua.opacidade,
+                              ...(marcaDagua.canto.startsWith("superior") ? { top: "3.5%" } : { bottom: "6%" }),
+                              ...(marcaDagua.canto.endsWith("direito") ? { right: "3.5%" } : { left: "3.5%" }),
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </Secao>
             <Divisor />
             <Secao titulo="Capa e tela final">
