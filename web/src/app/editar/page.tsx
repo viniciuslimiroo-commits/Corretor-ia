@@ -9,6 +9,7 @@ import { ACOES, ACOES_POR_ID, GRUPOS, SUGESTOES_REFINO, type DefAcao } from "@/l
 import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
 import { guardarArquivos } from "@/lib/entrega-arquivos";
+import { guardarLogoNaFoto, logoNaFotoPadrao } from "@/lib/preferencia-logo";
 import Comparador from "@/components/comparador";
 import PainelParametros from "@/components/painel-parametros";
 import SeletorImovel from "@/components/seletor-imovel";
@@ -153,7 +154,13 @@ export default function Editor() {
     obterToken()
       .then((t) => fetch("/api/marca", { headers: { Authorization: `Bearer ${t}` } }))
       .then((r) => r.json())
-      .then((d) => setTemLogo(!!d.logoUrl))
+      .then((d) => {
+        const tem = !!d.logoUrl;
+        setTemLogo(tem);
+        // A caixa só pode nascer certa DEPOIS de saber se há logo -- é por isso que o
+        // padrão é aplicado aqui, e não no useState lá em cima.
+        setComLogo(logoNaFotoPadrao(tem));
+      })
       .catch(() => {});
   }, [usuarioAtual, obterToken]);
 
@@ -580,7 +587,18 @@ export default function Editor() {
                       />
                       {temLogo && (
                         <label className="flex items-center gap-2 text-sm text-neutral-700">
-                          <input type="checkbox" checked={comLogo} onChange={(e) => setComLogo(e.target.checked)} className="accent-marca-coral" />
+                          <input
+                            type="checkbox"
+                            checked={comLogo}
+                            onChange={(e) => {
+                              setComLogo(e.target.checked);
+                              // A escolha fica guardada: antes, desmarcado era o começo de
+                              // toda exportação, e esquecer uma vez punha a foto no portal
+                              // sem a marca dele.
+                              guardarLogoNaFoto(e.target.checked);
+                            }}
+                            className="accent-marca-coral"
+                          />
                           Com meu logo
                         </label>
                       )}
@@ -732,6 +750,26 @@ export default function Editor() {
               <SeletorImovel token={c.token} valor={imovelId} onChange={setImovelId} disabled={carregando} />
               <p className="mt-1.5 text-xs text-neutral-500">Fotos do mesmo anúncio ficam juntas e viram um link só pro cliente.</p>
             </div>
+            {/* A SUA MARCA, DITA ANTES DE GASTAR O CRÉDITO.
+                O dono procurou onde se põe o logo e não achou (29/09/2026) -- e não achava
+                mesmo: a caixa "Com meu logo" só é montada DEPOIS que a foto fica pronta,
+                lá embaixo, ao lado do campo de legenda. Aqui não é o controle; é o aviso
+                de que ele existe e em que estado está, colado no botão que gasta o
+                crédito, que é onde a pessoa está olhando. */}
+            <p className="mb-2 flex items-start gap-1.5 text-xs text-neutral-500">
+              {/* "marca" e "check" existem no catálogo de ui.tsx. Nome que não existe não
+                  quebra: cai num círculo vazio, que é pior -- parece enfeite sem sentido. */}
+              <Icone nome={temLogo && comLogo ? "check" : "marca"} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {!temLogo ? (
+                <span>
+                  Sem logo na sua marca. <Link href="/marca" className="underline">Envie o seu</Link> para as fotos saírem com ele.
+                </span>
+              ) : comLogo ? (
+                <span>Vai sair com o seu logo no canto. Dá pra desmarcar na hora de baixar.</span>
+              ) : (
+                <span>Vai sair SEM o seu logo. Dá pra marcar na hora de baixar.</span>
+              )}
+            </p>
             <Botao onClick={() => gerar()} disabled={!podeGerar} className="w-full py-3 text-base">
               {carregando ? (etapa ?? "Gerando…") : `Gerar · 1 crédito`}
             </Botao>

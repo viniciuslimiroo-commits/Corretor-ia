@@ -252,10 +252,37 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
     somado ao `require` dinâmico de `caminhoFfmpeg()`, o Node recusa por formato ambíguo.
     O jeito do projeto é o de `testar-audio-blocos.ts`: `import ffmpegStatic` e
     `process.env.FFMPEG_PATH ??= ...`, mais o corpo dentro de uma função async.
-  - **O que NÃO foi verificado:** a tela da marca d'água. O editor exige login pelo Supabase
-    e eu não crio conta nem uso credencial dele em serviço externo. Compila, passa no lint,
-    entra no build e a página monta sem erro no console — mas **ninguém clicou nos botões
-    ainda**. É a primeira coisa a fazer: Editor → Ajustes → Marca d'água.
+  - **`bd12c90`** — `.gitattributes` com `* text=auto eol=lf`, que é a CAUSA do CR duplicado
+    (`core.autocrlf=true` sem nenhum `.gitattributes`). Binários listados com `-text`
+    explícito: a detecção do git é heurística e aqui o repositório guarda prova de teste em
+    foto e vídeo. Provado inofensivo: `git add --renormalize .` deixou **zero** arquivos no
+    índice.
+  - **Logo na FOTO, achável.** O dono foi procurar onde se põe o logo na foto e não achou —
+    e com razão. A caixa "Com meu logo" só é montada **depois** que a foto fica pronta, lá
+    embaixo ao lado do campo de legenda, some por completo pra quem não tem logo, e nascia
+    **desmarcada em toda exportação**, sem guardar a escolha. Esquecer uma vez punha a foto
+    no portal sem a marca. Pior: o ZIP do imóvel inteiro sempre mandou `logo=1` fixo, então
+    o lote saía carimbado e a foto avulsa saía limpa — defaults opostos no mesmo produto.
+    - `lib/preferencia-logo.ts`: três estados, não dois — ligado, desligado e **"nunca
+      decidiu"** (`null`). É o `null` que deixa o padrão valer sem apagar um "não"
+      deliberado; com `boolean` o "não" da pessoa viraria "não decidiu" e o logo voltaria
+      sozinho. Com logo e sem escolha registrada, vem **ligado** — igual ao que o ZIP já
+      fazia. Mora no navegador, não no banco: guardar no perfil exigiria migração SQL que
+      só o dono aplica à mão, e o recurso ficaria quebrado no intervalo.
+    - Um aviso **colado no botão "Gerar"**, que é onde a pessoa está olhando e onde o
+      crédito é gasto, dizendo em que estado a marca está — e, sem logo, mandando pra
+      `/marca`. Não é o controle; é a placa de que ele existe.
+    - Provas: `scripts/testar-preferencia-logo.ts`, 19 conferências, inclusive navegador
+      hostil (janela anônima, armazenamento bloqueado) — ler ou gravar estourando **não
+      pode derrubar a página**, preferência é conforto.
+    - Armadilha: `Icone` com nome que não existe **não quebra** — cai num círculo vazio, que
+      é pior, porque parece enfeite sem sentido. Usei `info` primeiro; ela não existe. O
+      catálogo está no `switch` de `components/ui.tsx`.
+  - **O que NÃO foi verificado:** as duas telas novas (marca d'água no editor, aviso do logo
+    na tela de editar foto). As duas exigem login pelo Supabase e eu não crio conta nem uso
+    credencial dele em serviço externo. Compilam, passam no lint, entram no build e montam
+    sem erro no console — mas **ninguém clicou nos botões ainda**. É a primeira coisa a
+    fazer: Editor → Ajustes → Marca d'água, e a tela de editar foto com e sem logo na conta.
 
 - **28/09/2026 — Claude Code (volta do Antigravity: faxina do repositório e três consertos, branch `trabalho`, NADA publicado):**
   o dono pediu para voltar a tocar o projeto por aqui. Antes de qualquer coisa, o estado:
