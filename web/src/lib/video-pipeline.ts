@@ -15,7 +15,7 @@ import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import type { ResumoEdicao } from "./resumo-edicao";
-import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type EfeitoId, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, TAMANHOS_MARCA_DAGUA, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type CantoApresentador, type EfeitoId, type EspecVideo, type Projecao360 } from "./video";
 import { resolverAudiosDaMontagem } from "./audio-montagem";
 import { estornoDaNarracao } from "./pedido-video";
 import type { AudioNaMontagem } from "./video-ffmpeg";
@@ -690,6 +690,34 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           apresentador = null;
         }
       }
+      // A MARCA D'ÁGUA: o logo por cima do vídeo inteiro. O espec guarda só a decisão; o
+      // arquivo vem de `marcaEfetiva` agora, na montagem -- o mesmo logo que a capa e a
+      // tela final usam, da pessoa ou da imobiliária.
+      //
+      // Pedida sem logo cadastrado, o vídeo sai SEM ela e com aviso, nunca falhando: o
+      // espec pode ter sido montado quando havia logo, e quem apagou o logo depois não
+      // devia perder o vídeo por isso.
+      let marcaDagua: { arquivo: string; canto: CantoApresentador; fracao: number; opacidade: number } | null = null;
+      if (espec.marcaDagua) {
+        const m = await marcaEfetiva(db, userId).catch(() => null);
+        if (m?.logo_path) {
+          const arquivo = local("marca-dagua.png");
+          try {
+            await baixar(db, m.logo_path, arquivo);
+            marcaDagua = {
+              arquivo,
+              canto: espec.marcaDagua.canto,
+              fracao: TAMANHOS_MARCA_DAGUA.find((t) => t.id === espec.marcaDagua!.tamanho)?.fracao ?? 0.16,
+              opacidade: espec.marcaDagua.opacidade,
+            };
+          } catch {
+            p.avisos.push("Não consegui baixar o logo pra marca d'água; o vídeo saiu sem ela.");
+          }
+        } else {
+          p.avisos.push("Você pediu marca d'água, mas não há logo em Minha marca; o vídeo saiu sem ela.");
+        }
+      }
+
       // ---- trechos de áudio da linha do tempo ----
       //
       // Conferidos contra a duração REAL (`total`), que pode ser menor que a estimada pelo
@@ -749,6 +777,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           audios,
           legendas: espec.legendas,
           apresentador,
+          marcaDagua,
         }),
         280_000
       );

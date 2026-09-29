@@ -3,7 +3,7 @@ import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
 import { larguraDoTexto } from "./texto-svg";
 import { anguloDaVinheta } from "./filtros";
-import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, TAMANHOS_APRESENTADOR } from "./video";
+import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, type CantoApresentador, TAMANHOS_APRESENTADOR } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -1036,6 +1036,12 @@ export function argsMontagem(o: {
    * são ignorados. O `efeitoSonoro` continua igual.
    */
   audios?: AudioNaMontagem[];
+  /**
+   * A marca d'água: o logo por cima do vídeo inteiro. `arquivo` é o caminho local já
+   * baixado; sem ele não há marca. Vem DEPOIS do apresentador na ordem de sobreposição --
+   * marca d'água que o rosto tapa não é marca d'água.
+   */
+  marcaDagua?: { arquivo: string; canto: CantoApresentador; fracao: number; opacidade: number } | null;
 }): string[] {
   const n = o.clipes.length;
   // Uma emenda por par, cada uma com a sua duração: a cena escolhe a transição.
@@ -1095,6 +1101,16 @@ export function argsMontagem(o: {
   if (temVozApre && (o.audios || (apre!.inicio ?? 0) > 0)) {
     args.push("-i", apre!.arquivoLocal);
     idxApreAudio = idx++;
+  }
+
+  // A marca d'água é uma imagem parada que precisa durar o vídeo inteiro: `-loop 1` repete
+  // o PNG, e o `-t total` que já existe na saída é quem encerra. Sem o loop, o overlay
+  // recebe um quadro só e a marca some depois do primeiro instante.
+  let idxMarca = -1;
+  const marca = o.marcaDagua ?? null;
+  if (marca) {
+    args.push("-loop", "1", "-i", marca.arquivo);
+    idxMarca = idx++;
   }
 
   const partes: string[] = [];
@@ -1173,6 +1189,27 @@ export function argsMontagem(o: {
       partes.push(`[vout][pv]overlay=${x}:${y}:eof_action=pass:${janela}[vfinal]`);
     }
     saidaVideo = "vfinal";
+  }
+
+  // ---- marca d'água ----
+  //
+  // POR ÚLTIMO, depois do apresentador: é a última camada a entrar, então nada fica por
+  // cima dela. Vale o vídeo todo -- não tem `enable`, ao contrário do apresentador e do
+  // carimbo de título, que têm janela de tempo. É esse o ponto dela: a capa e a tela final
+  // já levavam o logo, mas quem corta as pontas fica com o imóvel limpo.
+  if (idxMarca >= 0 && marca) {
+    const largura = Math.max(24, Math.round(o.W * marca.fracao));
+    const margem = Math.round(o.W * 0.035);
+    const x = marca.canto.endsWith("direito") ? `main_w-overlay_w-${margem}` : `${margem}`;
+    // Embaixo, a marca sobe mais que a margem simples: ali moram a legenda queimada e a
+    // barra de interface do Instagram, que comeria o canto inferior.
+    const y = marca.canto.startsWith("superior") ? `${margem}` : `main_h-overlay_h-${Math.round(o.H * 0.06)}`;
+    // A transparência entra no canal alfa do PNG, multiplicando o que ele já tem: logo
+    // recortado continua recortado, e o fundo dele não vira um quadrado cinza.
+    // `-2` na altura preserva a proporção e mantém a dimensão par, que o yuv420p exige.
+    partes.push(`[${idxMarca}:v]scale=${largura}:-2,format=rgba,colorchannelmixer=aa=${marca.opacidade.toFixed(2)}[marca]`);
+    partes.push(`[${saidaVideo}][marca]overlay=${x}:${y}:eof_action=pass:format=auto,format=yuv420p[vmarca]`);
+    saidaVideo = "vmarca";
   }
 
   // ---- áudio ----

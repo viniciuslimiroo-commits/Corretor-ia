@@ -932,6 +932,44 @@ export const TAMANHOS_APRESENTADOR: { id: TamanhoApresentador; rotulo: string; f
   { id: "grande", rotulo: "Grande", fracao: 0.44 },
 ];
 
+/**
+ * A MARCA D'ÁGUA: o logo por cima do vídeo INTEIRO, do primeiro quadro ao último.
+ *
+ * Não se confunde com o logo que já existia na capa montada e na tela final: aqueles dois
+ * ficam nas PONTAS. Quem baixa o vídeo e corta os primeiros e os últimos segundos leva o
+ * imóvel inteiro sem nada do corretor -- e é exatamente isso que se faz com um vídeo que
+ * se quer reusar. Esta fica na imagem o tempo todo.
+ *
+ * O ARQUIVO NÃO MORA AQUI. O espec guarda só a decisão (onde, que tamanho, quão
+ * transparente); o logo é lido de `users.logo_path` na hora de montar, pela mesma
+ * `marcaEfetiva` que decide entre o da pessoa e o da imobiliária. Assim trocar de logo não
+ * invalida o espec de nenhum vídeo antigo, e reabrir um vídeo pra editar não precisa
+ * carregar imagem nenhuma.
+ *
+ * Ausente ou nulo = sem marca d'água. É o que todo vídeo feito até 29/09/2026 tem.
+ */
+export type MarcaDagua = {
+  canto: CantoApresentador;
+  tamanho: TamanhoMarcaDagua;
+  /** 0,15 a 1. Quanto menor, mais discreta. */
+  opacidade: number;
+};
+
+export type TamanhoMarcaDagua = "discreta" | "media" | "grande";
+
+/**
+ * As frações são bem menores que as do apresentador de propósito: ali o rosto é conteúdo,
+ * aqui a marca não pode competir com o imóvel -- o cômodo é o que vende. A maior daqui
+ * (24%) é menor que a menor de lá (26%).
+ */
+export const TAMANHOS_MARCA_DAGUA: { id: TamanhoMarcaDagua; rotulo: string; fracao: number }[] = [
+  { id: "discreta", rotulo: "Discreta", fracao: 0.1 },
+  { id: "media", rotulo: "Média", fracao: 0.16 },
+  { id: "grande", rotulo: "Grande", fracao: 0.24 },
+];
+
+export const OPACIDADE_MARCA_DAGUA_PADRAO = 0.7;
+
 export type EspecVideo = {
   formato: FormatoId;
   cenas: Cena[];
@@ -955,6 +993,8 @@ export type EspecVideo = {
   efeitoSonoro?: EfeitoSonoroId;
   /** Você aparecendo por cima do vídeo. */
   apresentador?: Apresentador | null;
+  /** O logo do corretor por cima do vídeo inteiro. Ausente ou nulo = sem marca d'água. */
+  marcaDagua?: MarcaDagua | null;
   /** Filtro do vídeo inteiro. Uma cena pode ter o dela. */
   filtro?: IdFiltro;
   /** Quanto do filtro do vídeo entra, 0 a 1. Ausente = inteiro. */
@@ -1177,6 +1217,10 @@ export function relogioDoEspec(e: Pick<EspecVideo, "cenas" | "telaFinal" | "tran
  */
 export function precisaDoEditor(e: Partial<EspecVideo> & { versao?: number; visuais?: unknown; audios?: unknown }): boolean {
   if (e.versao === 2 || e.visuais || e.audios || e.legendas || e.apresentador) return true;
+  // A marca d'água só se configura no editor. Sem esta linha, reabrir na página rápida um
+  // vídeo com marca e gerar de novo devolveria o vídeo SEM ela, calado -- que é o mesmo
+  // buraco que textos, peças e legendas já tinham.
+  if (e.marcaDagua) return true;
   if (e.efeitoSonoro && e.efeitoSonoro !== "nenhum") return true;
   // A página rápida não manda o campo, e o saneador o liga de novo.
   if (e.capaMontada === false) return true;
@@ -1375,6 +1419,26 @@ export function limparApresentador(bruto: unknown): Apresentador | null {
     inicio: num(b.inicio, 0, 0, LIMITES.aparaMax),
     volume: num(b.volume, 1, 0, 2),
     fundo: "manter",
+  };
+}
+
+/**
+ * A marca d'água, limpa. Nula quando não foi pedida.
+ *
+ * Não confere logo nenhum: quem monta é que vai ler `users.logo_path`, e quem não tem logo
+ * recebe um aviso na montagem em vez de um espec recusado -- do contrário, apagar o logo
+ * depois de gerar um vídeo tornaria aquele vídeo impossível de reabrir.
+ */
+export function limparMarcaDagua(bruto: unknown): MarcaDagua | null {
+  const b = (bruto && typeof bruto === "object" ? bruto : null) as Record<string, unknown> | null;
+  if (!b) return null;
+  const o = Number(b.opacidade);
+  return {
+    canto: CANTOS_APRESENTADOR.some((c) => c.id === b.canto) ? (b.canto as CantoApresentador) : "inferior_direito",
+    tamanho: TAMANHOS_MARCA_DAGUA.some((t) => t.id === b.tamanho) ? (b.tamanho as TamanhoMarcaDagua) : "media",
+    // Piso em 0,15: abaixo disso não se enxerga nada e o vídeo sai "sem marca" com a
+    // pessoa achando que pôs uma.
+    opacidade: Number.isFinite(o) ? Math.min(1, Math.max(0.15, Math.round(o * 100) / 100)) : OPACIDADE_MARCA_DAGUA_PADRAO,
   };
 }
 
@@ -1753,6 +1817,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null; av
       capa,
       legendas: limparLegendas(b.legendas),
       apresentador: limparApresentador(b.apresentador),
+      marcaDagua: limparMarcaDagua(b.marcaDagua),
       filtro: filtroValido(b.filtro),
       intensidadeFiltro: numeroEntre(b.intensidadeFiltro, 0, 1),
       ajustes: limparAjustes(b.ajustes),
