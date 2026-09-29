@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import BancadaBarra from "./bancada-barra";
 
 // Bancada das PEÇAS DE EDIÇÃO da linha do tempo (docs/planos/linha-do-tempo-spec.md, P6):
@@ -9,9 +8,10 @@ import BancadaBarra from "./bancada-barra";
 //
 //   /dev/barra-da-selecao?parte=antigos|novos&flutuante=aviso|lista
 //
-// `notFound()` em produção, no caminho do render.
+// Fechada em produção pelo `notFound()` de `../layout.tsx`, que vale pra toda bancada de
+// /dev. SEM trava própria de propósito: é isso que faz o 404 desta rota ser prova de que o
+// layout funciona, e não uma coincidência.
 export default async function Pagina({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  if (process.env.NODE_ENV === "production") notFound();
   const q = await searchParams;
   const parte = q.parte === "novos" ? "novos" : "antigos";
   return <BancadaBarra parte={parte} flutuante={q.flutuante === "lista" ? "lista" : "aviso"} />;
