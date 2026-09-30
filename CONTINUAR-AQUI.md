@@ -218,6 +218,21 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **30/09/2026 — Claude Code (publicação da marca d'água e do logo na foto):**
+  - **PUBLICADO** com o "sim" dele: `6b78aa9` → `af37055` no `main`. Seis commits: o motor e
+    a tela da marca d'água, o logo na foto achável, o `.gitattributes`, a normalização do
+    `video.ts` e os dois roteiros de conferência no navegador.
+  - **Conferido EM PRODUÇÃO**, não só localmente: `conferir-marca-dagua-na-tela.mjs` (22/22)
+    e `conferir-aviso-do-logo.mjs` (11/11) com `BASE=https://corretor-ia-gilt.vercel.app`.
+    Os dois sobem logo de teste e apagam; a conta voltou sem logo nas duas vezes.
+  - **Armadilha (custou 7 minutos):** pra saber se o deploy tinha subido, montei um laço
+    comparando o `buildId` do HTML. Esta versão do Next serve por `/_next/static/immutable/`
+    e **não expõe `buildId`** — então eu comparei string vazia com string vazia 40 vezes, e
+    o laço respondeu "ainda a anterior" 40 vezes. **Um laço de espera que só sabe dizer
+    "ainda não" nunca diz "quebrei"**: as duas situações produzem a mesma saída. O deploy
+    estava no ar desde o começo. O jeito certo é o que a seção 4 já manda: rodar o
+    `conferir-*` contra `BASE=produção` — ele falha por motivo legível.
+
 - **29/09/2026 — Claude Code (publicação, conserto do "Editar" e marca d'água no vídeo, branch `trabalho`):**
   - **PUBLICADO** com o "sim" dele: `0c01c8e` → `6b78aa9` no `main`. A Vercel levou ~1 min.
     Conferido no ar: logo lê "Encena", a string "Encena.ai" não existe mais no HTML, e as
