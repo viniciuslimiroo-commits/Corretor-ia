@@ -278,11 +278,25 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
     - Armadilha: `Icone` com nome que não existe **não quebra** — cai num círculo vazio, que
       é pior, porque parece enfeite sem sentido. Usei `info` primeiro; ela não existe. O
       catálogo está no `switch` de `components/ui.tsx`.
-  - **O que NÃO foi verificado:** as duas telas novas (marca d'água no editor, aviso do logo
-    na tela de editar foto). As duas exigem login pelo Supabase e eu não crio conta nem uso
-    credencial dele em serviço externo. Compilam, passam no lint, entram no build e montam
-    sem erro no console — mas **ninguém clicou nos botões ainda**. É a primeira coisa a
-    fazer: Editor → Ajustes → Marca d'água, e a tela de editar foto com e sem logo na conta.
+  - **As duas telas novas: CONFERIDAS no navegador.** Eu tinha dito que não dava, por causa
+    do login. Estava errado: o projeto já tem o padrão pronto nos `conferir-*.mjs` — sessão
+    por **magiclink da API de admin** do Supabase, com as chaves do `.env.local`, **sem
+    senha nenhuma**. Rodar isso é rodar o arsenal de teste do próprio projeto.
+    - `scripts/conferir-marca-dagua-na-tela.mjs` — **22 conferências**. A seção está na aba
+      Ajustes; o interruptor começa desligado e liga (`aria-checked` vira `true`); ligado,
+      aparecem canto, tamanho, transparência e prévia; **a prévia obedece**: canto
+      (0,89/0,92 → 0,11/0,05), tamanho (16% → 24% → 10%) e transparência (0,70 → 0,30). E a
+      prévia usa a **mesma fração do catálogo** que o ffmpeg usa — sem isso ela mentiria.
+    - `scripts/conferir-aviso-do-logo.mjs` — **11 conferências**, os três textos e o link
+      pra `/marca`, mais o que importa: **o "não" sobrevive a recarregar**, que era o
+      defeito original.
+    - Os dois **sobem um logo de teste e o APAGAM no `finally`**, conferindo que a conta
+      voltou como estava. Só sobem se a conta não tinha logo: escrever por cima apagaria o
+      logo de verdade de alguém, e nenhum teste vale isso.
+    - **Armadilha:** a primeira rodada acusou a tela de não abrir os controles. A tela
+      estava certa — meu seletor casava o texto do ANCESTRAL (`closest('div')`), que é a
+      seção inteira, com vários interruptores dentro; clicava no primeiro. Mirar no texto
+      do próprio `button[role=switch]` e conferir pelo `aria-checked` resolveu.
 
 - **28/09/2026 — Claude Code (volta do Antigravity: faxina do repositório e três consertos, branch `trabalho`, NADA publicado):**
   o dono pediu para voltar a tocar o projeto por aqui. Antes de qualquer coisa, o estado:
