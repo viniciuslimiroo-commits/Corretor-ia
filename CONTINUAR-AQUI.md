@@ -354,12 +354,18 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
        Foi assim que as fotos do quarto apareceram.
     3. O heredoc do Git Bash desta máquina **corrompe acento** ao escrever arquivo. Texto em
        português vai por ferramenta que escreve UTF-8 de verdade, não por `cat <<EOF`.
-  - **Achado não consertado:** `web/src/app/dev/*` (três bancadas) não tem trava de ambiente
-    — são rotas alcançáveis em produção. Não mexi; decidir se ganham trava ou saem do build.
+  - ~~**Achado não consertado:** `web/src/app/dev/*` (três bancadas) não tem trava de
+    ambiente — são rotas alcançáveis em produção.~~ **ERRADO, corrigido em 09/10/2026.** As
+    três JÁ tinham `notFound()` em produção, cada uma dentro do seu `page.tsx`. Eu procurei
+    a trava em `web/src/app/dev/layout.tsx` — arquivo que **não existe** —, o grep voltou
+    vazio e eu li isso como "não há trava em `/dev/`". Conferido depois no `origin/main`: as
+    três têm `if (process.env.NODE_ENV === "production") notFound();`. **Nunca houve
+    exposição.** Com esta linha errada eu abri a tarefa das bancadas, que custou uma sessão.
   - **Provas:** `npx tsc --noEmit -p .` — 0 erros, código de saída 0 (medido no `tsc`, não no
     `tail`: em pipeline, `$?` é do último comando). `npx next build` — código de saída 0, sem
-    erro nem aviso. A lista de rotas do build confirma que as três bancadas `/dev/*` são
-    publicadas junto com o site.
+    erro nem aviso. A lista de rotas do build mostra `/dev/*` entre as rotas publicadas — e
+    **eu li isso como "acessíveis", que é outra coisa**: a rota existir no build e responder
+    404 em produção são compatíveis, e é exatamente o que elas fazem.
   - **Pendente com o dono:** DNS do `encena.app.br`, repor crédito na conta de teste, troca de
     plano no portal da Stripe, abrir o CRM. E a decisão de publicar estes quatro commits.
 
