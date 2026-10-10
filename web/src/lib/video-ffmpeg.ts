@@ -3,7 +3,7 @@ import path from "node:path";
 import { caminhoFonte } from "./ffmpeg";
 import { larguraDoTexto } from "./texto-svg";
 import { anguloDaVinheta } from "./filtros";
-import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, type CantoApresentador, TAMANHOS_APRESENTADOR } from "./video";
+import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, type PosicaoMarcaDagua, TAMANHOS_APRESENTADOR } from "./video";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -1041,7 +1041,7 @@ export function argsMontagem(o: {
    * baixado; sem ele não há marca. Vem DEPOIS do apresentador na ordem de sobreposição --
    * marca d'água que o rosto tapa não é marca d'água.
    */
-  marcaDagua?: { arquivo: string; canto: CantoApresentador; fracao: number; opacidade: number } | null;
+  marcaDagua?: { arquivo: string; canto: PosicaoMarcaDagua; fracao: number; opacidade: number } | null;
 }): string[] {
   const n = o.clipes.length;
   // Uma emenda por par, cada uma com a sua duração: a cena escolhe a transição.
@@ -1200,10 +1200,13 @@ export function argsMontagem(o: {
   if (idxMarca >= 0 && marca) {
     const largura = Math.max(24, Math.round(o.W * marca.fracao));
     const margem = Math.round(o.W * 0.035);
-    const x = marca.canto.endsWith("direito") ? `main_w-overlay_w-${margem}` : `${margem}`;
+    // NO MEIO é outra conta, não um canto a mais: centra nos dois eixos e ignora as margens,
+    // que existem pra fugir das bordas. Quem escolhe o meio quer a marca em cima do cômodo.
+    const noMeio = marca.canto === "centro";
+    const x = noMeio ? "(main_w-overlay_w)/2" : marca.canto.endsWith("direito") ? `main_w-overlay_w-${margem}` : `${margem}`;
     // Embaixo, a marca sobe mais que a margem simples: ali moram a legenda queimada e a
     // barra de interface do Instagram, que comeria o canto inferior.
-    const y = marca.canto.startsWith("superior") ? `${margem}` : `main_h-overlay_h-${Math.round(o.H * 0.06)}`;
+    const y = noMeio ? "(main_h-overlay_h)/2" : marca.canto.startsWith("superior") ? `${margem}` : `main_h-overlay_h-${Math.round(o.H * 0.06)}`;
     // A transparência entra no canal alfa do PNG, multiplicando o que ele já tem: logo
     // recortado continua recortado, e o fundo dele não vira um quadrado cinza.
     // `-2` na altura preserva a proporção e mantém a dimensão par, que o yuv420p exige.

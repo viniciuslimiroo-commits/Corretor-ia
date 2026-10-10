@@ -10,6 +10,7 @@ import {
   ANIMACOES_TEXTO,
   BUCKET_UPLOADS,
   CANTOS_APRESENTADOR,
+  POSICOES_MARCA_DAGUA,
   CHAMADAS,
   CREDITOS,
   EFEITOS,
@@ -3287,14 +3288,23 @@ export default function EditorDeVideo() {
                   {marcaDagua && (
                     <div className="flex flex-col gap-3.5 rounded-2xl bg-[var(--ed-elevado)] p-3.5">
                       <div>
-                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Canto</p>
+                        <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Onde fica</p>
                         <div className="flex flex-wrap gap-2">
-                          {CANTOS_APRESENTADOR.map((cn) => (
-                            <Pilula key={cn.id} ativo={marcaDagua.canto === cn.id} onClick={() => setMarcaDagua({ ...marcaDagua, canto: cn.id })}>
+                          {POSICOES_MARCA_DAGUA.map((cn) => (
+                            <Pilula key={cn.id} ativo={marcaDagua.canto === cn.id} onClick={() => setMarcaDagua({ ...marcaDagua, canto: cn.id })} title={cn.dica}>
                               {cn.rotulo}
                             </Pilula>
                           ))}
                         </div>
+                        {/* O meio não é mais um canto: é outra INTENÇÃO. Canto assina, meio
+                            protege -- e protege atrapalhando a vista, que é o ponto. Dizer
+                            isso aqui evita a pessoa escolher o meio achando que é só
+                            posição e só descobrir ao ver o vídeo pronto. */}
+                        {marcaDagua.canto === "centro" && (
+                          <p className="mt-2 text-[12px] leading-relaxed text-[var(--ed-texto-3)]">
+                            No meio ela fica <strong>em cima do cômodo</strong> o vídeo inteiro. É pra proteger a foto de ser reusada, não pra assinar — quem quer assinar discreto usa um canto. Baixe a transparência se ficar pesado.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <p className="mb-2 text-[12.5px] font-medium text-[var(--ed-texto-2)]">Tamanho</p>
@@ -3331,8 +3341,14 @@ export default function EditorDeVideo() {
                               position: "absolute",
                               width: `${(TAMANHOS_MARCA_DAGUA.find((t) => t.id === marcaDagua.tamanho)?.fracao ?? 0.16) * 100}%`,
                               opacity: marcaDagua.opacidade,
-                              ...(marcaDagua.canto.startsWith("superior") ? { top: "3.5%" } : { bottom: "6%" }),
-                              ...(marcaDagua.canto.endsWith("direito") ? { right: "3.5%" } : { left: "3.5%" }),
+                              // As MESMAS contas do montador (video-ffmpeg.ts, "marca d'agua"):
+                              // no meio, centra nos dois eixos; nos cantos, as margens de la'.
+                              ...(marcaDagua.canto === "centro"
+                                ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+                                : {
+                                    ...(marcaDagua.canto.startsWith("superior") ? { top: "3.5%" } : { bottom: "6%" }),
+                                    ...(marcaDagua.canto.endsWith("direito") ? { right: "3.5%" } : { left: "3.5%" }),
+                                  }),
                             }}
                           />
                         </div>

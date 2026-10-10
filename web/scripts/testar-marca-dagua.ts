@@ -39,6 +39,10 @@ const H = 640;
   conferir(padrao?.tamanho === "media", "tamanho padrão é médio", padrao?.tamanho);
   conferir(padrao?.opacidade === OPACIDADE_MARCA_DAGUA_PADRAO, "opacidade padrão", String(padrao?.opacidade));
   conferir(limparMarcaDagua({ canto: "coisa" })?.canto === "inferior_direito", "canto inventado cai no padrão");
+  // O centro só existe na lista da marca d'água. Se o saneador validasse contra a lista
+  // do apresentador (que não tem centro), ele apagaria em silêncio a opção que a tela
+  // oferece -- e a pessoa escolheria "No meio" e receberia o canto.
+  conferir(limparMarcaDagua({ canto: "centro" })?.canto === "centro", "o CENTRO sobrevive ao saneador");
   conferir(limparMarcaDagua({ tamanho: "gigante" })?.tamanho === "media", "tamanho inventado cai no padrão");
   // O piso da opacidade: abaixo dele a marca não se enxerga e o vídeo sai "sem marca" com
   // a pessoa achando que pôs uma.
@@ -144,6 +148,40 @@ async function main() {
     const cy = somaY / n / info.height;
     conferir(cx > 0.6, "o centro da marca está na METADE DIREITA", `x=${cx.toFixed(2)}`);
     conferir(cy > 0.6, "o centro da marca está na METADE DE BAIXO", `y=${cy.toFixed(2)}`);
+  }
+
+  // NO MEIO: pedido dele em 10/10/2026. Não é "mais um canto" -- é outra conta no ffmpeg,
+  // e só o render diz se ela está certa.
+  {
+    const meio = local("meio.mp4");
+    await rodarFfmpeg(
+      argsMontagem({
+        clipes,
+        duracoes: [2, 2],
+        saida: meio,
+        W,
+        H,
+        emendas: [{ xfade: "dissolve", segundos: 0.6 }],
+        marcaDagua: { arquivo: logo, canto: "centro", fracao: fracaoMedia, opacidade: 1 },
+      }),
+      120_000
+    );
+    const quadro = local("q-meio.png");
+    await rodarFfmpeg(["-ss", "1.70", "-i", meio, "-frames:v", "1", "-y", quadro]);
+    const { data, info } = await sharp(quadro).raw().toBuffer({ resolveWithObject: true });
+    let somaX = 0, somaY = 0, n = 0;
+    for (let p = 0; p < info.width * info.height; p++) {
+      const i = p * info.channels;
+      if (data[i] > 150 && data[i + 1] < 90 && data[i + 2] < 90) {
+        somaX += p % info.width;
+        somaY += Math.floor(p / info.width);
+        n++;
+      }
+    }
+    const cx = somaX / n / info.width;
+    const cy = somaY / n / info.height;
+    conferir(Math.abs(cx - 0.5) < 0.04, "RENDER: no meio, a marca fica CENTRADA na horizontal", `x=${cx.toFixed(3)}`);
+    conferir(Math.abs(cy - 0.5) < 0.04, "RENDER: e centrada na vertical", `y=${cy.toFixed(3)}`);
   }
 
   // Canto oposto: a escolha muda mesmo o resultado, não é enfeite na tela.

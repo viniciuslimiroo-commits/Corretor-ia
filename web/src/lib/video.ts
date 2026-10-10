@@ -949,11 +949,30 @@ export const TAMANHOS_APRESENTADOR: { id: TamanhoApresentador; rotulo: string; f
  * Ausente ou nulo = sem marca d'água. É o que todo vídeo feito até 29/09/2026 tem.
  */
 export type MarcaDagua = {
-  canto: CantoApresentador;
+  canto: PosicaoMarcaDagua;
   tamanho: TamanhoMarcaDagua;
   /** 0,15 a 1. Quanto menor, mais discreta. */
   opacidade: number;
 };
+
+/**
+ * Onde a marca d'água fica. Os quatro cantos MAIS o centro.
+ *
+ * O centro entrou a pedido dele em 10/10/2026 ("poderia ser centro da imagem, ou a pessoa
+ * poder escolher o lugar"), e não é só mais uma posição: canto é ASSINATURA -- discreta, no
+ * canto, fácil de cortar fora. Centro é PROTEÇÃO -- fica em cima do cômodo e quem quiser
+ * reusar a foto tem que lidar com ela. São usos diferentes, e por isso o centro vem com um
+ * aviso na tela: ele atrapalha a vista do imóvel de propósito.
+ */
+export type PosicaoMarcaDagua = CantoApresentador | "centro";
+
+export const POSICOES_MARCA_DAGUA: { id: PosicaoMarcaDagua; rotulo: string; dica: string }[] = [
+  { id: "inferior_direito", rotulo: "Baixo · direita", dica: "O canto de sempre. Discreto." },
+  { id: "inferior_esquerdo", rotulo: "Baixo · esquerda", dica: "Discreto, do outro lado." },
+  { id: "superior_direito", rotulo: "Cima · direita", dica: "Longe da barra do Instagram." },
+  { id: "superior_esquerdo", rotulo: "Cima · esquerda", dica: "Longe da barra do Instagram." },
+  { id: "centro", rotulo: "No meio", dica: "Em cima do cômodo. Atrapalha a vista de propósito: é pra proteger a foto, não pra assinar." },
+];
 
 export type TamanhoMarcaDagua = "discreta" | "media" | "grande";
 
@@ -1434,7 +1453,9 @@ export function limparMarcaDagua(bruto: unknown): MarcaDagua | null {
   if (!b) return null;
   const o = Number(b.opacidade);
   return {
-    canto: CANTOS_APRESENTADOR.some((c) => c.id === b.canto) ? (b.canto as CantoApresentador) : "inferior_direito",
+    // POSICOES_MARCA_DAGUA, não CANTOS_APRESENTADOR: o centro só existe aqui, e saneador
+    // que valida contra a lista errada apaga em silêncio a opção que a tela oferece.
+    canto: POSICOES_MARCA_DAGUA.some((c) => c.id === b.canto) ? (b.canto as PosicaoMarcaDagua) : "inferior_direito",
     tamanho: TAMANHOS_MARCA_DAGUA.some((t) => t.id === b.tamanho) ? (b.tamanho as TamanhoMarcaDagua) : "media",
     // Piso em 0,15: abaixo disso não se enxerga nada e o vídeo sai "sem marca" com a
     // pessoa achando que pôs uma.

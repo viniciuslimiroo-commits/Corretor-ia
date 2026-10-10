@@ -15,7 +15,7 @@ import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import type { ResumoEdicao } from "./resumo-edicao";
-import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, TAMANHOS_MARCA_DAGUA, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type CantoApresentador, type EfeitoId, type EspecVideo, type Projecao360 } from "./video";
+import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, TAMANHOS_MARCA_DAGUA, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type PosicaoMarcaDagua, type EfeitoId, type EspecVideo, type Projecao360 } from "./video";
 import { resolverAudiosDaMontagem } from "./audio-montagem";
 import { estornoDaNarracao } from "./pedido-video";
 import type { AudioNaMontagem } from "./video-ffmpeg";
@@ -697,7 +697,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       // Pedida sem logo cadastrado, o vídeo sai SEM ela e com aviso, nunca falhando: o
       // espec pode ter sido montado quando havia logo, e quem apagou o logo depois não
       // devia perder o vídeo por isso.
-      let marcaDagua: { arquivo: string; canto: CantoApresentador; fracao: number; opacidade: number } | null = null;
+      let marcaDagua: { arquivo: string; canto: PosicaoMarcaDagua; fracao: number; opacidade: number } | null = null;
       if (espec.marcaDagua) {
         const m = await marcaEfetiva(db, userId).catch(() => null);
         if (m?.logo_path) {
