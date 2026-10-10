@@ -1884,6 +1884,8 @@ export default function EditorDeVideo() {
     const x0 = e.clientX;
     const y0 = e.clientY;
     const t0 = performance.now();
+    // Lido AGORA, não dentro do `terminar`: ali o evento do React já passou.
+    const comODedo = e.pointerType === "touch";
     const cx = ((caixa.left + caixa.width / 2 - palco.left) / palco.width) * 100;
     const cy = ((caixa.top + caixa.height / 2 - palco.top) / palco.height) * 100;
     // O texto inteiro fica dentro do quadro, como o vídeo faz (min/max no drawtext e na arte):
@@ -1912,7 +1914,12 @@ export default function EditorDeVideo() {
       el.removeEventListener("pointercancel", cancelar);
       if (quadro) cancelAnimationFrame(quadro);
       if (arrastou && pendente && indice >= 0) mudarTexto(k, indice, pendente);
-      if (!arrastou && !cancelado && performance.now() - t0 < 450) abrirEdicaoTexto(k, indice, texto);
+      // O meio segundo vale SÓ PRO DEDO, porque só no dedo abre um menu aos 450ms
+      // (`onTouchStart` em menu-contexto.tsx; no mouse o menu é botão direito). Valendo
+      // também pro mouse, um clique pensado -- e clique pensado passa de meio segundo
+      // com folga -- não fazia NADA: nem editava, nem abria menu, nem avisava. Foi o
+      // "clico e não acontece nada" do Vinicius em 10/10/2026, medido em 0,7 s.
+      if (!arrastou && !cancelado && (!comODedo || performance.now() - t0 < 450)) abrirEdicaoTexto(k, indice, texto);
     };
     const soltar = () => terminar(false);
     const cancelar = () => terminar(true);
@@ -3941,9 +3948,15 @@ export default function EditorDeVideo() {
                       abrirEdicaoTexto(cenaAtual.chave, indice, t.texto || "");
                     }
                   }}
-                  title="Arraste pra mover · toque pra editar"
+                  title={indice < 0 ? "Clique pra editar a legenda · botão direito pra mais" : "Arraste pra mover · clique pra editar"}
                   data-texto-palco="1"
-                  className="pointer-events-auto max-w-full cursor-grab touch-none select-none truncate rounded-md px-2.5 py-1 shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70 active:cursor-grabbing"
+                  className={
+                    // A LEGENDA NÃO ARRASTA (`mover` sai cedo quando o índice é -1), então
+                    // mão de agarrar nela é promessa falsa: parece peça pra mover e some o
+                    // convite de clicar. Quem não arrasta mostra a mãozinha de clicar.
+                    "pointer-events-auto max-w-full touch-none select-none truncate rounded-md px-2.5 py-1 shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70 " +
+                    (indice < 0 ? "cursor-pointer" : "cursor-grab active:cursor-grabbing")
+                  }
                   style={(() => {
                     // A PRÉVIA TEM QUE LER OS MESMOS CAMPOS QUE O MONTADOR.
                     //

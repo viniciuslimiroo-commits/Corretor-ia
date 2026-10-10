@@ -181,6 +181,8 @@ export default function ElementosNoPalco({
               const x0 = e.clientX;
               const y0 = e.clientY;
               const t0 = performance.now();
+              // Lido AGORA, não dentro do `terminar`: ali o evento do React já passou.
+              const comODedo = e.pointerType === "touch";
               // O arraste parte de onde a peça ESTÁ desenhada (perto da borda, a conta a mantém
               // dentro do quadro, e o centro guardado pode estar um pouco além).
               const cx = ((rectEl.left + rectEl.width / 2 - rectPai.left) / rectPai.width) * 100;
@@ -207,7 +209,10 @@ export default function ElementosNoPalco({
                 el.removeEventListener("pointercancel", cancelar);
                 if (quadro) cancelAnimationFrame(quadro);
                 if (arrastou && pendente) aoMudar(p.i, pendente);
-                if (!arrastou && !cancelado && performance.now() - t0 < 450) aoSelecionar?.(p.i);
+                // O meio segundo vale SÓ PRO DEDO (o menu de 450ms é `onTouchStart`). No
+                // mouse, ele só fazia o clique demorado não selecionar nada -- o mesmo
+                // defeito que o texto do palco tinha.
+                if (!arrastou && !cancelado && (!comODedo || performance.now() - t0 < 450)) aoSelecionar?.(p.i);
               };
               const soltar = () => terminar(false);
               const cancelar = () => terminar(true);
