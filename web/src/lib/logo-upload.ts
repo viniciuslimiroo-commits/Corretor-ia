@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { valeTirarFundo, tirarFundo, type Veredito } from "./fundo-do-logo";
 import { coresDaLogo } from "./cores-da-logo";
 import { LOGO_MAX_BYTES, LOGO_LADO_MIN, LOGO_LADO_MAX, LOGO_LADO_SAIDA } from "./logo-upload-limites";
 
@@ -20,7 +21,13 @@ const LADO_MIN = LOGO_LADO_MIN;
 const LADO_MAX = LOGO_LADO_MAX;
 const LADO_SAIDA = LOGO_LADO_SAIDA;
 
-export type LogoPronta = { png: Buffer; cores: string[] };
+export type LogoPronta = {
+  png: Buffer;
+  cores: string[];
+  /** Dá pra tirar o fundo deste logo? Vem junto do upload pra a tela poder oferecer -- ou
+   *  não oferecer, com o motivo, em vez de prometer e entregar um buraco na letra. */
+  fundo: Veredito;
+};
 
 /**
  * Valida e normaliza o arquivo. Devolve `{ erro }` com uma frase pra mostrar na tela --
@@ -70,5 +77,56 @@ export async function prepararLogo(arquivo: File): Promise<LogoPronta | { erro: 
     cores = []; // sem paleta é um recurso a menos, não um upload perdido
   }
 
-  return { png, cores };
+  // DÁ PRA TIRAR O FUNDO DESTE LOGO? Responde aqui, no upload, pra tela poder oferecer --
+  // e não oferecer quando não daria certo. Só a resposta: tirar de fato é outra chamada,
+  // porque a decisão é da pessoa (o logo dela pode ser um selo escuro de propósito).
+  let fundo: Veredito = { vale: false, motivo: "Não consegui analisar o fundo deste logo." };
+  try {
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let transp = 0;
+    for (let i = 3; i < data.length; i += info.channels) if (data[i] < 40) transp++;
+    fundo = valeTirarFundo(data, info.width, info.height, info.channels, transp / (info.width * info.height));
+  } catch {
+    // Fica o veredito negativo: a tela só não oferece o recurso, e o upload segue válido.
+  }
+
+  return { png, cores, fundo };
+}
+
+/**
+ * Tira o fundo de um PNG já preparado. Devolve `null` quando não vale a pena -- quem chama
+ * trata isso como "não mexi", não como erro.
+ *
+ * Separada de `prepararLogo` porque é ESCOLHA: o logo dele é dourado sobre fundo escuro, e
+ * tirar o fundo de um selo que a pessoa desenhou como selo seria estragar o trabalho dela.
+ */
+/**
+ * Da' pra tirar o fundo DESTE png? A mesma analise do upload, chamavel depois -- e' o que
+ * permite a tela oferecer o botao pra quem ja' tinha logo guardado.
+ */
+export async function vereditoDoLogo(png: Buffer): Promise<Veredito> {
+  try {
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let transp = 0;
+    for (let i = 3; i < data.length; i += info.channels) if (data[i] < 40) transp++;
+    return valeTirarFundo(data, info.width, info.height, info.channels, transp / (info.width * info.height));
+  } catch {
+    return { vale: false, motivo: "Não consegui analisar o fundo deste logo." };
+  }
+}
+
+export async function logoSemFundo(png: Buffer): Promise<Buffer | null> {
+  try {
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let transp = 0;
+    for (let i = 3; i < data.length; i += info.channels) if (data[i] < 40) transp++;
+    const v = valeTirarFundo(data, info.width, info.height, info.channels, transp / (info.width * info.height));
+    if (!v.vale) return null;
+    const limpo = tirarFundo(data, info.channels, v.cor, v.tolerancia);
+    return await sharp(limpo, { raw: { width: info.width, height: info.height, channels: info.channels as 4 } })
+      .png()
+      .toBuffer();
+  } catch {
+    return null;
+  }
 }

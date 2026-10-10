@@ -14,6 +14,12 @@ import { Aviso, Botao, Cartao, Rotulo } from "@/components/ui";
 export default function Configuracoes() {
   const c = useConta();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  /**
+   * Da' pra tirar o fundo deste logo? Vem do upload. `null` = ainda nao se sabe (o logo
+   * foi carregado numa visita anterior, e a resposta so' chega quando um upload acontece).
+   */
+  const [fundo, setFundo] = useState<{ vale: boolean; motivo?: string } | null>(null);
+  const [limpando, setLimpando] = useState(false);
   const [cor, setCor] = useState<string>("#0F2D5B");
   const [nome, setNome] = useState("");
   const [creci, setCreci] = useState("");
@@ -44,6 +50,7 @@ export default function Configuracoes() {
       .then((r) => r.json())
       .then((d) => {
         setLogoUrl(d.logoUrl ?? null);
+        setFundo(d.fundo ?? null);
         if (d.cor) setCor(d.cor);
         setNome(d.nome ?? "");
         setCreci(d.creci ?? "");
@@ -74,11 +81,41 @@ export default function Configuracoes() {
       if (!resp.ok) throw new Error(d.error);
       setLogoUrl(d.logoUrl ?? null);
       setWhatsapp(d.whatsapp ?? "");
+      if (logo) setFundo(d.fundo ?? null);
       setMensagem(logo ? "Logo salvo. Ele aparece como opção na hora de baixar." : "Salvo.");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally {
       setSalvando(false);
+    }
+  }
+
+  /**
+   * TIRAR O FUNDO. Pedido dele em 10/10/2026, depois de ver a marca d'agua sair como um selo
+   * retangular: "nao pode ter opcao de voce transformar no SaaS a logo em marca d'agua?".
+   *
+   * Nao acontece sozinho no upload: o logo dele e' dourado sobre fundo escuro, e ha' quem
+   * queira exatamente esse selo. Limpar sem perguntar destruiria o desenho de quem quis.
+   */
+  async function tirarFundoDoLogo() {
+    setLimpando(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const form = new FormData();
+      form.append("tirarFundo", "1");
+      const resp = await fetch("/api/marca", { method: "POST", headers: { Authorization: `Bearer ${await c.token()}` }, body: form });
+      const d = await resp.json();
+      if (!resp.ok) throw new Error(d.error);
+      // O caminho do arquivo nao muda, entao a URL de antes serviria a versao velha do
+      // cache. `?v=` força o navegador a buscar a nova.
+      setLogoUrl(d.logoUrl ? `${d.logoUrl}${d.logoUrl.includes("?") ? "&" : "?"}v=${Date.now()}` : null);
+      setFundo({ vale: false, motivo: "Fundo tirado." });
+      setMensagem("Fundo tirado. O logo agora entra recortado na marca d'água e nas fotos.");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui tirar o fundo.");
+    } finally {
+      setLimpando(false);
     }
   }
 
@@ -149,15 +186,28 @@ export default function Configuracoes() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={logoUrl} alt="Seu logo" className="max-h-24 max-w-[220px]" />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Dropzone compacto rotulo="Trocar logo" onArquivo={(f) => enviar(f)} />
+                  {/* TIRAR O FUNDO. Só aparece quando a análise do upload disse que dá --
+                      oferecer e entregar um buraco no meio da letra seria pior que não
+                      oferecer. E nunca acontece sozinho: há quem queira o selo escuro. */}
+                  {fundo?.vale && (
+                    <Botao onClick={tirarFundoDoLogo} disabled={limpando || salvando}>
+                      {limpando ? "Tirando…" : "Tirar o fundo"}
+                    </Botao>
+                  )}
                   <Botao variante="perigo" onClick={removerLogo} disabled={salvando}>Remover</Botao>
                 </div>
               </div>
             ) : (
               <Dropzone rotulo="Enviar meu logo" onArquivo={(f) => enviar(f)} />
             )}
-            <p className="mt-3 text-xs text-neutral-500">PNG com fundo transparente fica melhor. Ele é redimensionado para no máximo 18% da largura da foto.</p>
+            {/* O MOTIVO quando não dá. Botão que some sem explicação faz a pessoa procurar
+                um recurso que ela viu existir noutro logo. */}
+            {fundo && !fundo.vale && fundo.motivo && <p className="mt-3 text-xs text-neutral-500">{fundo.motivo}</p>}
+            <p className="mt-3 text-xs text-neutral-500">
+              Logo com fundo transparente fica melhor na foto e na marca d&apos;água do vídeo. Se o seu veio com fundo, o botão <strong>Tirar o fundo</strong> aparece aqui depois de enviar. Ele é redimensionado para no máximo 18% da largura da foto.
+            </p>
           </Cartao>
 
           <Cartao>

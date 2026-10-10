@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { assinar } from "@/lib/armazenamento";
-import { prepararLogo } from "@/lib/logo-upload";
+import { prepararLogo, logoSemFundo, vereditoDoLogo } from "@/lib/logo-upload";
+import type { Veredito } from "@/lib/fundo-do-logo";
 import { marcaEfetiva } from "@/lib/cobranca";
 
 // Marca do corretor (a Pedra chama de Branding): o logo que ele pode carimbar nas fotos
@@ -39,12 +40,28 @@ export async function GET(req: NextRequest) {
   if (erro || !db || !userId) return erro!;
   const { data } = await db.from("users").select(CAMPOS).eq("id", userId).single();
   const r = await resposta(db, data as Perfil | null);
+  // O VEREDITO DO LOGO JÁ GUARDADO. Sem isto, "Tirar o fundo" só aparecia logo depois de um
+  // upload: quem já tinha logo abria a tela e não achava o botão -- teria que subir o mesmo
+  // arquivo de novo pra destravar um recurso que existe. É o mesmo erro de esconder que a
+  // marca d'água tinha. Custa uma varredura por abertura de uma tela de ajustes, que
+  // ninguém abre em laço.
+  const caminhoLogo = (data as Perfil | null)?.logo_path ?? null;
+  let fundo: Veredito | null = null;
+  if (caminhoLogo) {
+    try {
+      const { data: arq } = await db.storage.from(BUCKET_RESULTADOS).download(caminhoLogo);
+      if (arq) fundo = await vereditoDoLogo(Buffer.from(await arq.arrayBuffer()));
+    } catch {
+      fundo = null; // sem veredito a tela só não oferece; a página segue inteira
+    }
+  }
   // Se o vídeo vai ter tela final: a montagem só a faz com nome, WhatsApp ou logo -- da
   // pessoa OU da imobiliária. O editor usa isto pra linha do tempo durar o que o vídeo dura.
   const efetiva = await marcaEfetiva(db, userId).catch(() => null);
   const corpo = await r.json();
   return NextResponse.json({
     ...corpo,
+    ...(fundo ? { fundo } : {}),
     telaFinalPossivel: efetiva ? !!(efetiva.nome || efetiva.whatsapp || efetiva.logo_path) : true,
     // O QUE JÁ VEM DA IMOBILIÁRIA, pra tela poder dizer. Sem isto ela pedia logo pra todo
     // mundo como se cada um estivesse sozinho -- e quem entrou numa equipe que já tem logo
@@ -83,16 +100,37 @@ export async function POST(req: NextRequest) {
   }
 
   let cores: string[] | undefined;
+  let fundo: Veredito | undefined;
   if (logo && typeof logo === "object") {
     const pronta = await prepararLogo(logo);
     if ("erro" in pronta) return NextResponse.json({ error: pronta.erro }, { status: 400 });
     cores = pronta.cores;
+    fundo = pronta.fundo;
     // O caminho leva o id de quem está autenticado, nunca um id vindo do formulário: é o
     // que impede uma pessoa de escrever por cima do logo da outra.
     const caminho = `marca/${userId}/logo.png`;
     const { error: erroUpload } = await db.storage.from(BUCKET_RESULTADOS).upload(caminho, pronta.png, { contentType: "image/png", upsert: true });
     if (erroUpload) return NextResponse.json({ error: `Erro guardando o logo: ${erroUpload.message}` }, { status: 500 });
     atualizacao.logo_path = caminho;
+  }
+
+  // TIRAR O FUNDO do logo JÁ guardado. É uma segunda chamada, e não um passo do upload,
+  // porque é escolha da pessoa: o logo dela pode ser um selo escuro de propósito, e limpar
+  // sozinho destruiria o desenho que ela mandou. A tela só oferece quando `fundo.vale`.
+  if (form.get("tirarFundo") === "1") {
+    const { data: atual } = await db.from("users").select("logo_path").eq("id", userId).single();
+    const caminho = (atual?.logo_path as string | null) ?? null;
+    if (!caminho) return NextResponse.json({ error: "Não há logo pra limpar." }, { status: 400 });
+    const { data: arq } = await db.storage.from(BUCKET_RESULTADOS).download(caminho);
+    if (!arq) return NextResponse.json({ error: "Não consegui ler o logo guardado." }, { status: 500 });
+    const limpo = await logoSemFundo(Buffer.from(await arq.arrayBuffer()));
+    if (!limpo) return NextResponse.json({ error: "O fundo deste logo não dá pra tirar sem comer parte do desenho." }, { status: 400 });
+    const { error: erroSubida } = await db.storage.from(BUCKET_RESULTADOS).upload(caminho, limpo, { contentType: "image/png", upsert: true });
+    if (erroSubida) return NextResponse.json({ error: `Erro guardando o logo: ${erroSubida.message}` }, { status: 500 });
+    // O caminho é o mesmo, então a URL assinada antiga continuaria servindo o arquivo velho
+    // do cache. Quem lê depois pede uma nova; a tela recebe a de agora.
+    const { data: depois } = await db.from("users").select(CAMPOS).eq("id", userId).single();
+    return resposta(db, depois as Perfil | null);
   }
 
   // A tela de boas-vindas avisa por aqui que já foi vista: 'feito' quando salvou alguma
@@ -109,7 +147,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { data } = await db.from("users").select(CAMPOS).eq("id", userId).single();
-  return resposta(db, data as Perfil | null, cores);
+  const r = await resposta(db, data as Perfil | null, cores);
+  if (!fundo) return r;
+  // O veredito vai junto do upload: a tela decide na hora se oferece "tirar o fundo",
+  // sem uma segunda ida ao servidor só pra perguntar.
+  return NextResponse.json({ ...(await r.json()), fundo });
 }
 
 export async function DELETE(req: NextRequest) {
