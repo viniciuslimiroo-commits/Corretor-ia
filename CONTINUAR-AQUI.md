@@ -95,8 +95,12 @@ npm run dev          # http://localhost:3000
   `testar-historico.ts`, `testar-relogio.ts`.
 - **Testes no navegador** (precisam do `npm run dev` na porta 3000; usam o Chrome instalado,
   sem Playwright): `node scripts/conferir-faixas-no-navegador.mjs` (32 conferências) e
-  `node scripts/conferir-barra-no-navegador.mjs` (26). Bancadas de desenvolvimento (404 em
-  produção): `/dev/linha-do-tempo`, `/dev/barra-da-selecao`, `/dev/previa-audio`.
+  `node scripts/conferir-barra-no-navegador.mjs` (26). Bancadas de desenvolvimento:
+  `/dev/linha-do-tempo`, `/dev/barra-da-selecao`, `/dev/previa-audio`.
+- **Bancada nova entra em `/dev/<nome>` e já nasce fechada:** quem dá 404 em produção é o
+  `notFound()` de `src/app/dev/layout.tsx`, que vale pra toda rota abaixo dele -- as páginas
+  NÃO têm trava própria, de propósito. Prova no ar: `node scripts/conferir-bancadas-fechadas.mjs`
+  (sem `BASE`, bate no site publicado; com `BASE=http://localhost:3000`, num `next start`).
 - **Antes de commitar:** `npx tsc --noEmit -p .` e `npx eslint <arquivos>` sem erro.
 - **Build:** `npx next build` (o `npm run build` baixa o ffmpeg de Linux, só serve na Vercel).
   **Pare o `npm run dev` antes de buildar:** os dois escrevem em `.next` e o build quebra.
@@ -397,6 +401,29 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
     404 em produção são compatíveis, e é exatamente o que elas fazem.
   - **Pendente com o dono:** DNS do `encena.app.br`, repor crédito na conta de teste, troca de
     plano no portal da Stripe, abrir o CRM. E a decisão de publicar estes quatro commits.
+- **29/09/2026 — Claude Code:** ramo `claude/great-jemison-7b88a7` (nasceu do `0c01c8e`). Pedido:
+  fechar as bancadas de `/dev`, que estariam abertas no site publicado. **A premissa não se
+  confirmou** -- as três já tinham `if (process.env.NODE_ENV === "production") notFound();`
+  desde o commit que criou cada uma (`18ee920`, `c2adc34`, `f2072e4`), este arquivo já dizia
+  "404 em produção", e `curl` no ar devolveu 404 nas três. O buraco real era outro: a trava
+  era **por página**, então bancada nova nasceria aberta e ninguém notaria.
+  - Feito: `web/src/app/dev/layout.tsx` com a trava, e as três páginas ficaram SEM trava
+    própria de propósito -- assim o 404 delas é prova de que o layout funciona, em vez de
+    coincidência. Novo `scripts/conferir-bancadas-fechadas.mjs`: lista as bancadas do disco
+    (não uma lista escrita à mão, que envelhece calada) e bate na porta de cada uma; para se
+    `/` não der 200, pra não passar com o site fora do ar.
+  - Por que NÃO tirei as bancadas do build por configuração (a outra opção): este projeto já
+    apanhou de exclusão em `outputFileTracing` (o comentário do `next.config.ts` conta), e
+    regra de empacotamento não se lê, se mede. `notFound()` se prova com um `curl`.
+  - Provas: build de produção com a trava desligada (`=== "test"`) -> as rotas em **HTTP 200**;
+    trava religada -> **404**, inclusive numa bancada descartável criada na hora, sem trava
+    própria, que era o ponto. `npm run dev` -> as três em 200 (os testes de navegador
+    continuam de pé; nenhum deles lê `BASE`, todos montam `http://localhost:<porta>` fixo).
+    `npx next build`, `npx tsc --noEmit -p .` e `npx eslint` limpos.
+  - **NÃO publicado.** Falta juntar no `trabalho` e, quando o Vinicius liberar, no `main`.
+  - Armadilha nova: o Turbopack recusa junction de `node_modules` num worktree **também no
+    build** (`Symlink [project]/node_modules is invalid`). Copiar a pasta de verdade
+    (`robocopy /MIR /MT:16`) levou 46s -- mais barato que mexer no `next.config.ts`.
 
 - **20/09/2026 — Antigravity (casa pronta contemporânea e publicação em produção, `main` e `antigravity`):**
   executadas as tarefas 3.1 e 3.2 de PASSAGEM-ANTIGRAVITY.md.
