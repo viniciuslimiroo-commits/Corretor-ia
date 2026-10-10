@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ehPosicaoLogo, ondePorOLogo, POSICAO_LOGO_PADRAO } from "@/lib/marca-na-foto";
 import sharp from "sharp";
 import JSZip from "jszip";
 import { usuarioDaRota } from "@/lib/auth-rota";
@@ -47,6 +48,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const preset = PRESETS[portal];
   if (!preset) return NextResponse.json({ error: "Portal inválido." }, { status: 400 });
   const comLogo = req.nextUrl.searchParams.get("logo") === "1";
+  const bruta = req.nextUrl.searchParams.get("posicaoLogo");
+  const posicaoLogo = ehPosicaoLogo(bruta) ? bruta : POSICAO_LOGO_PADRAO;
 
   const { data: imovel } = await db.from("properties").select("id, titulo").eq("id", id).eq("user_id", userId).maybeSingle();
   if (!imovel) return NextResponse.json({ error: "Imóvel não encontrado." }, { status: 404 });
@@ -96,8 +99,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       const maxA = Math.round(info.height * 0.12);
       const marcaPng = await sharp(logo).resize(maxL, maxA, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
       const dim = await sharp(marcaPng).metadata();
-      const margem = Math.max(10, Math.round(info.width * 0.015));
-      imagem = sharp(base).composite([{ input: marcaPng, left: margem, top: info.height - (dim.height ?? 0) - margem }]);
+      const onde = ondePorOLogo(posicaoLogo, { largura: info.width, altura: info.height }, { largura: dim.width ?? 0, altura: dim.height ?? 0 });
+      imagem = sharp(base).composite([{ input: marcaPng, ...onde }]);
       final = await imagem.jpeg({ quality: 92 }).toBuffer();
     }
     zip.file(nome, final);

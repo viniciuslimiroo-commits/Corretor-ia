@@ -3,6 +3,7 @@ import sharp, { type OverlayOptions } from "sharp";
 import { supabaseServer, BUCKET_RESULTADOS } from "@/lib/supabase-server";
 import { marcaEfetiva } from "@/lib/cobranca";
 import { textoSvg } from "@/lib/texto-svg";
+import { ehPosicaoLogo, ondePorOLogo, POSICAO_LOGO_PADRAO } from "@/lib/marca-na-foto";
 
 
 // Export por portal (Sprint 4, adiantado). Specs reais pesquisadas antes de
@@ -43,6 +44,9 @@ export async function POST(req: NextRequest) {
   const corpo = await req.json();
   const { jobId, portal } = corpo;
   const comLogo = corpo.comLogo === true;
+  // Posição inválida ou ausente cai no padrão, nunca recusa a exportação: a foto é o
+  // que a pessoa veio buscar, e um canto errado não vale um erro na cara dela.
+  const posicaoLogo = ehPosicaoLogo(corpo.posicaoLogo) ? corpo.posicaoLogo : POSICAO_LOGO_PADRAO;
   const legenda = typeof corpo.legenda === "string" ? corpo.legenda.replace(/[\r\n]+/g, " ").trim().slice(0, 80) : "";
   const preset = PRESETS[portal];
   if (!jobId || !preset) return NextResponse.json({ error: "jobId ou portal inválido." }, { status: 400 });
@@ -86,8 +90,11 @@ export async function POST(req: NextRequest) {
           .png()
           .toBuffer();
         const dimLogo = await sharp(logo).metadata();
-        const margem = Math.max(10, Math.round(L * 0.015));
-        camadas.push({ input: logo, left: margem, top: A - (dimLogo.height ?? 0) - margem });
+        // A conta de onde o logo cai mora em lib/marca-na-foto.ts, compartilhada com o ZIP
+        // do imóvel: duas cópias da mesma conta passam a discordar sem ninguém notar, e aí
+        // a foto avulsa sai com o logo num canto e o lote no outro.
+        const onde = ondePorOLogo(posicaoLogo, { largura: L, altura: A }, { largura: dimLogo.width ?? 0, altura: dimLogo.height ?? 0 });
+        camadas.push({ input: logo, ...onde });
       }
     }
   }

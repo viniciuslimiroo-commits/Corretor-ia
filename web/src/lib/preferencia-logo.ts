@@ -60,3 +60,30 @@ export function logoNaFotoPadrao(temLogo: boolean): boolean {
   const guardado = logoNaFotoGuardado();
   return guardado === null ? true : guardado;
 }
+
+/**
+ * ONDE o logo cai na foto -- a escolha da pessoa, lembrada como a de usá-lo ou não.
+ *
+ * Mora ao lado de `logoNaFoto` pelo mesmo motivo e com os mesmos cuidados: é conforto, não
+ * função, e por isso falhar aqui nunca pode derrubar a exportação. A diferença é que aqui
+ * não há três estados -- não escolher é o padrão, e o padrão é uma posição de verdade.
+ */
+const CHAVE_POSICAO = "encena.logo-posicao";
+
+export function posicaoLogoGuardada(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(CHAVE_POSICAO);
+  } catch {
+    return null;
+  }
+}
+
+export function guardarPosicaoLogo(valor: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHAVE_POSICAO, valor);
+  } catch {
+    // janela anônima: vale nesta sessão e pronto
+  }
+}

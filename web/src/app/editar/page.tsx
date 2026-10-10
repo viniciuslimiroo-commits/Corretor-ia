@@ -9,7 +9,8 @@ import { ACOES, ACOES_POR_ID, GRUPOS, SUGESTOES_REFINO, type DefAcao } from "@/l
 import AppShell from "@/components/app-shell";
 import Dropzone from "@/components/dropzone";
 import { guardarArquivos } from "@/lib/entrega-arquivos";
-import { guardarLogoNaFoto, logoNaFotoPadrao } from "@/lib/preferencia-logo";
+import { guardarLogoNaFoto, logoNaFotoPadrao, guardarPosicaoLogo, posicaoLogoGuardada } from "@/lib/preferencia-logo";
+import { POSICOES_LOGO_FOTO, POSICAO_LOGO_PADRAO, ehPosicaoLogo, type PosicaoLogoFoto } from "@/lib/marca-na-foto";
 import Comparador from "@/components/comparador";
 import PainelParametros from "@/components/painel-parametros";
 import SeletorImovel from "@/components/seletor-imovel";
@@ -77,6 +78,10 @@ export default function Editor() {
   const [exportando, setExportando] = useState<string | null>(null);
   const [legenda, setLegenda] = useState("");
   const [comLogo, setComLogo] = useState(false);
+  const [posicaoLogo, setPosicaoLogo] = useState<PosicaoLogoFoto>(() => {
+    const g = posicaoLogoGuardada();
+    return ehPosicaoLogo(g) ? g : POSICAO_LOGO_PADRAO;
+  });
   const [temLogo, setTemLogo] = useState(false);
   const [reportando, setReportando] = useState(false);
   const [reportado, setReportado] = useState<string | null>(null);
@@ -328,7 +333,7 @@ export default function Editor() {
       const resp = await fetch("/api/exportar", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await c.token()}` },
-        body: JSON.stringify({ jobId, portal, legenda, comLogo }),
+        body: JSON.stringify({ jobId, portal, legenda, comLogo, posicaoLogo }),
       });
       if (!resp.ok) throw new Error((await resp.json()).error || "Falha ao exportar.");
       const blob = await resp.blob();
@@ -601,7 +606,44 @@ export default function Editor() {
                           />
                           Com meu logo
                         </label>
-                      ) : (
+                      ) : null}
+                      {/* ONDE o logo cai. Antes era cravado no canto inferior esquerdo, e ele
+                          perguntou "onde escolho a posição?" -- no vídeo escolhia, na foto
+                          não escolhia em lugar nenhum.
+
+                          O inferior DIREITO não está na lista de propósito: ali mora o selo
+                          "imagem ilustrativa", que já vem queimado no resultado. Deixar o
+                          logo cobri-lo esconderia a marca que diz que a foto foi editada por
+                          IA -- e é ela que permite mobiliar um cômodo sem enganar ninguém. */}
+                      {temLogo && comLogo && (
+                        <label className="flex items-center gap-1.5 text-sm text-neutral-600">
+                          <span className="text-xs text-neutral-500">Onde:</span>
+                          <select
+                            value={posicaoLogo}
+                            onChange={(e) => {
+                              const v = e.target.value as PosicaoLogoFoto;
+                              setPosicaoLogo(v);
+                              guardarPosicaoLogo(v);
+                            }}
+                            className="rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-sm focus:border-marca-indigo focus:outline-none"
+                            aria-label="Onde o logo fica na foto"
+                            title={POSICOES_LOGO_FOTO.find((p) => p.id === posicaoLogo)?.dica}
+                          >
+                            {POSICOES_LOGO_FOTO.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.rotulo}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {/* O choque é CONDICIONAL: o alto-esquerdo só atrapalha quando existe
+                          legenda. Avisar sempre seria ruído; proibir seria tirar uma escolha
+                          legítima de quem não usa legenda. Avisa quando acontece. */}
+                      {temLogo && comLogo && posicaoLogo === "superior_esquerdo" && legenda.trim() && (
+                        <span className="w-full text-xs text-neutral-500">A legenda também fica no alto à esquerda: os dois vão se empilhar nesta foto.</span>
+                      )}
+                      {!temLogo && (
                         /* SEM LOGO, A OPÇÃO SUMIA POR COMPLETO -- e com ela a notícia de que
                            existe. Quem nunca enviou logo não descobria que dava: a tela de
                            baixar não dizia nada, e a pessoa concluía que o produto não
