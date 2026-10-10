@@ -59,34 +59,10 @@ export const NOME_DO_AMBIENTE: Record<string, string> = {
   playground: "Playground",
 };
 
-/**
- * O movimento de câmera que cada ambiente pede.
- *
- * A regra é simples e tem motivo: ambiente que se entende pelo CONJUNTO abre (afastar);
- * ambiente que se vende pelo ACABAMENTO fecha (aproximar). Fachada precisa mostrar a casa
- * inteira; bancada de cozinha precisa mostrar a pedra.
- */
-const MOVIMENTO: Record<string, EfeitoId> = {
-  fachada: "afastar",
-  entrada: "afastar",
-  quintal: "afastar",
-  piscina: "afastar",
-  gourmet: "afastar",
-  varanda: "afastar",
-  salao: "afastar",
-  academia: "afastar",
-  playground: "afastar",
-  sala: "afastar",
-  integrado: "afastar",
-  cozinha: "aproximar",
-  banheiro: "aproximar",
-  closet: "aproximar",
-  escritorio: "aproximar",
-  area_servico: "aproximar",
-  jantar: "aproximar",
-  quarto: "aproximar",
-  infantil: "aproximar",
-};
+// O MAPA DE MOVIMENTO POR AMBIENTE foi removido em 10/10/2026, quando toda foto passou a
+// passear pro lado (ver `efeitoDe`). Ele dizia: fachada, sala e áreas externas AFASTAM
+// (vende-se o espaço); cozinha, banho, quarto e closet APROXIMAM (vende-se o acabamento).
+// Fica no git, não aqui: mapa morto que parece vivo é pior que mapa nenhum.
 
 /**
  * Qual movimento de CÂMERA DE VERDADE cada ambiente pede, quando a cena é animada por IA.
@@ -310,7 +286,7 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
     return {
       ordem: olhadas.map((o) => o.chave),
       capa: olhadas[0]?.chave ?? null,
-      cenas: olhadas.map((o, i) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o), animacao: animacaoDe(o), duracao: duracaoPadrao, motivo: "Nenhuma foto passou na conferência; usei todas em vez de te deixar sem vídeo.", camera: i === 0 })),
+      cenas: olhadas.map((o, i) => ({ chave: o.chave, legenda: "", efeito: efeitoDe(o, i), animacao: animacaoDe(o), duracao: duracaoPadrao, motivo: "Nenhuma foto passou na conferência; usei todas em vez de te deixar sem vídeo.", camera: i === 0 })),
       fora: [],
     };
   }
@@ -369,7 +345,7 @@ export function sugerirMontagem(olhadas: Olhada[], duracaoPadrao: number): Suges
   const cenas = comPosicao.map(({ o, i, doMesmo }) => ({
     chave: o.chave,
     legenda: legendaDe(o),
-    efeito: efeitoDe(o),
+    efeito: efeitoDe(o, i),
     animacao: animacaoDe(o),
     duracao: duracaoDaPosicao(i, naTela.length, duracaoPadrao),
     motivo: motivoDaCena(o, i, naTela.length, doMesmo),
@@ -498,12 +474,26 @@ export function legendaDe(o: Olhada): string {
   return /\d/.test(o.legenda) ? "" : o.legenda;
 }
 
-/** O movimento da cena. Panorâmica desliza; o resto segue o ambiente. */
-export function efeitoDe(o: Olhada): EfeitoId {
-  if (o.ehPanoramica) return "direita";
+/**
+ * O movimento da cena: TODA FOTO PASSEIA PRO LADO, alternando a direção.
+ *
+ * Pedido dele em 10/10/2026: "que todos os movimentos fossem passear pro lado, não importa
+ * se direito ou esquerdo". Antes isto seguia o ambiente pelo mapa `MOVIMENTO` -- fachada e
+ * sala AFASTAVAM pra revelar o espaço, cozinha e quarto APROXIMAVAM pro acabamento. Era
+ * desenho deliberado e fica registrado aqui, porque a troca tem um custo: o movimento deixa
+ * de comentar o que a foto mostra. O que se ganha é constância -- o vídeo inteiro com o
+ * mesmo gesto, que é o que ele quis.
+ *
+ * ALTERNA em vez de fixar um lado só. "Não importa se direito ou esquerdo" libera a escolha,
+ * e dez cenas deslizando todas pro mesmo lado viram esteira: a alternância dá respiro sem
+ * desobedecer ao pedido. Pela POSIÇÃO, não por sorteio -- o mesmo conjunto de fotos tem que
+ * dar o mesmo vídeo hoje e amanhã, que é a regra desta montagem inteira.
+ *
+ * 360 e clipe continuam parados: já têm movimento próprio, e empurrar outro por cima briga.
+ */
+export function efeitoDe(o: Olhada, indice = 0): EfeitoId {
   if (o.eh360 || o.ehClipe) return "parado";
-  const m = o.ambiente ? MOVIMENTO[o.ambiente] : null;
-  return m ?? "aproximar";
+  return indice % 2 === 0 ? "direita" : "esquerda";
 }
 
 /** O movimento de câmera da cena animada. Ambiente desconhecido entra andando pra frente. */

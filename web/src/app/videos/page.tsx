@@ -258,15 +258,20 @@ export default function PaginaVideo() {
   const [apagando, setApagando] = useState<string | null>(null);
   const [apagandoAgora, setApagandoAgora] = useState(false);
   /**
-   * O estilo da geração. "tour" é o PADRÃO desde 23/09/2026, a pedido dele: "quero que já
-   * fique então como tour, já padrão, aí caso a pessoa queira modificar modifique".
+   * O estilo da geração.
    *
-   * É o único estilo que produz o movimento do vídeo que ele tomou como referência -- lá a
-   * câmera tem profundidade de verdade (a porta abre no fundo, a janela gira), e isso não
-   * sai de zoom sobre foto parada por mais rápido que o zoom seja. Custa crédito, e é por
-   * isso que o preço aparece no topo da coluna antes de qualquer geração.
+   * "tour" FOI o padrão de 23/09 a 10/10/2026, a pedido dele: "quero que já fique então como
+   * tour, já padrão, aí caso a pessoa queira modificar modifique". Ele viu o resultado por
+   * duas semanas e pediu o contrário em 10/10: "gostaria que o padrão fosse Movimento na
+   * foto (...) e a parte de tour pela casa não fosse mais padrão".
+   *
+   * O argumento de antes continua de pé e por isso o Tour continua ali, a um toque: é o
+   * único estilo que dá profundidade de verdade (a porta abre no fundo, a janela gira), e
+   * isso não sai de zoom sobre foto parada. O que mudou foi quem paga pela escolha quando
+   * ninguém escolhe: Tour custa {CREDITOS.animada} créditos por cena com câmera, e padrão
+   * que gasta cobra de quem só apertou "gerar". "Movimento na foto" é grátis.
    */
-  const [estilo, setEstilo] = useState<"recomendado" | "tour" | "meu">("tour");
+  const [estilo, setEstilo] = useState<"recomendado" | "tour" | "meu">("recomendado");
   /** Abriu os controles de cada cena. Fechado depois da montagem: primeiro o resultado. */
   const [mexendo, setMexendo] = useState(false);
   /** A lista de agora, pro relógio da montagem automática não ler a de dois renders atrás. */
@@ -1663,7 +1668,10 @@ export default function PaginaVideo() {
                   >
                     <span className="block text-sm font-medium">
                       {o.titulo}
-                      {o.id === "tour" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
+                      {/* O selo acompanha o padrão de verdade (o `useState` lá em cima). Em
+                          10/10/2026 o padrão passou de "tour" pra "recomendado"; o selo tem
+                          que ir junto, senão a tela anuncia um padrão e o código usa outro. */}
+                      {o.id === "recomendado" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
                     </span>
                     <span className="mt-0.5 block text-[11px] leading-tight text-neutral-500">{o.dica}</span>
                   </button>
