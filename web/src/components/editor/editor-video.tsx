@@ -61,6 +61,7 @@ import {
   type OrigemVoz,
   type PosicaoTexto,
   type TextoCena,
+  type VisualTexto,
   type TransicaoId,
   type VozId,
 } from "@/lib/video";
@@ -136,6 +137,34 @@ import { escolherMusica, inicioDaVoz, itensDaPrevia, marcasDaPrevia, musicaNova,
 // custam crédito extra e o botão mostra a conta antes de cobrar.
 
 type Geracao = { id: string; acao: string; detalhe: string; status: string; antes: string | null; depois: string | null };
+
+/**
+ * O `visual` que REPRODUZ exatamente o estilo atual do texto.
+ *
+ * Serve pra ligar "cores próprias" sem mudar nada na tela: a pessoa abre os controles e vê
+ * o que já estava valendo, em vez de ver o texto saltar pra um padrão qualquer e ter que
+ * reconstruir o que tinha. Quem muda o vídeo é o controle que ela mexer depois, não o ato
+ * de abrir.
+ *
+ * Os nomes dos campos são os que `video-ffmpeg.ts` lê (ver "o ACABAMENTO", por volta da
+ * linha 412): `cor` é a LETRA e tem branco como padrão; `caixa` é o fundo, e a cor dele
+ * quando o estilo pede caixa é a `cor` DO ESTILO -- que não é a cor da letra. `null` em
+ * `caixa`/`contorno` é a escolha de não ter, diferente de ausente, que é "o estilo decide".
+ */
+function visualDoEstilo(t: TextoCena): VisualTexto {
+  const est = ESTILO_TEXTO_POR_ID[t.estilo ?? "faixa"] ?? ESTILO_TEXTO_POR_ID.faixa;
+  return {
+    cor: t.visual?.cor ?? "ffffff",
+    caixa: t.visual?.caixa !== undefined ? t.visual.caixa : est.fundo === "caixa" ? est.cor.replace("0x", "") : null,
+    contorno: t.visual?.contorno !== undefined ? t.visual.contorno : est.fundo === "contorno" ? "000000" : null,
+    ...(t.visual?.sombra ?? est.fundo === "sombra" ? { sombra: true } : {}),
+    tamanho: t.visual?.tamanho ?? est.tamanho,
+  };
+}
+
+/** `#RRGGBB` do seletor de cor do navegador <-> `rrggbb` do espec. */
+const paraSeletor = (hex: string | null | undefined, sePreto = "#000000") => (hex ? `#${hex}` : sePreto);
+const doSeletor = (v: string) => v.replace("#", "").toLowerCase();
 
 type CenaUI = {
   chave: string;
@@ -3601,6 +3630,71 @@ export default function EditorDeVideo() {
                   ))}
                 </select>
               </div>
+
+              {/* CORES E TAMANHO PRÓPRIOS. O motor já lia tudo isto (`visual`, em
+                  video-ffmpeg.ts); só não havia como mexer depois que o texto estava posto,
+                  e foi a queixa dele em 10/10/2026: "adiciono etiquetas e depois não é
+                  possível editar elas".
+
+                  Ligar NÃO muda o vídeo: `visualDoEstilo` semeia exatamente o que o estilo
+                  já produzia. Desligar devolve o texto ao estilo, em vez de deixar cores
+                  órfãs grudadas nele. */}
+              <Pilula ativo={!!t.visual} onClick={() => mudarTexto(k, i, { visual: t.visual ? undefined : visualDoEstilo(t) })}>
+                {t.visual ? "Cores próprias · ligado" : "Cores e tamanho próprios"}
+              </Pilula>
+              {t.visual && (
+                <div className="flex flex-col gap-2.5 rounded-xl bg-[var(--ed-fundo)] p-2.5">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { campo: "cor" as const, rotulo: "Letra", podeTirar: false },
+                      { campo: "caixa" as const, rotulo: "Fundo", podeTirar: true },
+                      { campo: "contorno" as const, rotulo: "Contorno", podeTirar: true },
+                    ].map(({ campo, rotulo, podeTirar }) => {
+                      const valor = t.visual?.[campo] ?? null;
+                      return (
+                        <div key={campo} className="flex flex-col gap-1">
+                          <span className="text-[11.5px] text-[var(--ed-texto-3)]">{rotulo}</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="color"
+                              value={paraSeletor(valor, campo === "cor" ? "#ffffff" : "#0f2d5b")}
+                              onChange={(e) => mudarTexto(k, i, { visual: { ...t.visual, [campo]: doSeletor(e.target.value) } })}
+                              className="h-8 w-8 shrink-0 cursor-pointer rounded-md border-0 bg-transparent p-0"
+                              aria-label={`${rotulo} do texto ${i + 1}`}
+                            />
+                            {/* "Sem fundo" e "sem contorno" precisam existir como ESCOLHA: no
+                                espec isso é `null`, que o montador distingue de ausente. */}
+                            {podeTirar && (
+                              <BotaoIcone
+                                rotulo={valor ? `Tirar o ${rotulo.toLowerCase()}` : `${rotulo} desligado`}
+                                icone={valor ? "fechar" : "mais"}
+                                tamanho="p"
+                                ativo={!valor}
+                                onClick={() => mudarTexto(k, i, { visual: { ...t.visual, [campo]: valor ? null : campo === "caixa" ? "0f2d5b" : "000000" } })}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Deslizante
+                    rotulo="Tamanho da letra"
+                    valor={t.visual?.tamanho ?? 0.03}
+                    min={0.015}
+                    max={0.12}
+                    passo={0.005}
+                    formatar={(v) => `${Math.round(v * 100)}% da altura`}
+                    aoMudar={(v) => mudarTexto(k, i, { visual: { ...t.visual, tamanho: v } })}
+                  />
+                  <Alternar
+                    ligado={!!t.visual?.sombra}
+                    aoMudar={(v) => mudarTexto(k, i, { visual: { ...t.visual, sombra: v } })}
+                    titulo="Sombra"
+                    descricao="Ajuda a letra clara a não sumir em parede clara."
+                  />
+                </div>
+              )}
             </div>
           ))}
           {(cenaAtual.textos ?? []).length < LIMITES.textosPorCena ? (
@@ -3820,13 +3914,32 @@ export default function EditorDeVideo() {
                   }}
                   title="Arraste pra mover · toque pra editar"
                   data-texto-palco="1"
-                  className="pointer-events-auto max-w-full cursor-grab touch-none select-none truncate rounded-md px-2.5 py-1 text-white shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70 active:cursor-grabbing"
-                  style={{
-                    // As cores do vídeo (video.ts, ESTILOS_TEXTO): etiqueta é coral lá, então é aqui.
-                    background: est.id === "etiqueta" ? "rgba(240,107,79,0.88)" : "rgba(15,45,91,0.88)",
-                    fontSize: est.id === "destaque" ? 20 : est.id === "etiqueta" ? 10 : 12,
-                    fontWeight: est.id === "destaque" ? 700 : 500,
-                  }}
+                  className="pointer-events-auto max-w-full cursor-grab touch-none select-none truncate rounded-md px-2.5 py-1 shadow backdrop-blur-sm transition hover:ring-2 hover:ring-white/70 active:cursor-grabbing"
+                  style={(() => {
+                    // A PRÉVIA TEM QUE LER OS MESMOS CAMPOS QUE O MONTADOR.
+                    //
+                    // Isto aqui era fixo em `est.id` e ignorava `t.visual` por completo: com
+                    // os controles de cor na tela, a pessoa mexeria na cor e o palco não se
+                    // mexeria. Prévia que não acompanha o controle é pior que prévia nenhuma,
+                    // porque ensina a coisa errada. A regra de cada campo é a de
+                    // video-ffmpeg.ts ("o ACABAMENTO"): o visual vence o estilo, `null` é
+                    // escolha de não ter, ausente é "o estilo decide".
+                    const v = t.visual ?? {};
+                    const temCaixa = v.caixa !== undefined ? v.caixa !== null : est.fundo === "caixa";
+                    const corCaixa = v.caixa ?? est.cor.replace("0x", "");
+                    const temContorno = v.contorno !== undefined ? v.contorno !== null : est.fundo === "contorno";
+                    // O palco é uma miniatura do quadro: a fração da altura do vídeo vira
+                    // fração da altura do palco, e não um px fixo por estilo.
+                    const fracao = v.tamanho ?? est.tamanho;
+                    return {
+                      color: `#${v.cor ?? "ffffff"}`,
+                      background: temCaixa ? `#${corCaixa}e0` : "transparent",
+                      fontSize: `${Math.max(8, Math.round(fracao * 340))}px`,
+                      fontWeight: est.id === "destaque" || est.id === "gigante" ? 700 : 500,
+                      ...(temContorno ? { WebkitTextStroke: `1px #${v.contorno ?? "000000"}` } : {}),
+                      ...(!temCaixa && !temContorno ? { textShadow: "0 1px 3px rgba(0,0,0,0.75)" } : {}),
+                    } as React.CSSProperties;
+                  })()}
                 >
                   {t.texto || "texto"}
                 </span>
