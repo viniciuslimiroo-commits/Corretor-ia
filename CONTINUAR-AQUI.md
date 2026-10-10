@@ -222,6 +222,34 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **10/10/2026 (madrugada) — Claude Code (`b717aa7`, publicado e conferido no ar):**
+  Ele subiu o logo da imobiliária (dourado sobre fundo escuro, quadrado, sem alfa). Montei a
+  marca d'água com o logo DELE sobre uma foto DELE e mandei a imagem: saiu um **selo
+  retangular escuro** sobre o cômodo. Daí os dois pedidos.
+  - **`dff5ede` — marca d'água NO MEIO**, além dos quatro cantos. Não é mais uma posição:
+    canto é **assinatura** (discreta, fácil de cortar fora), meio é **proteção** (fica em
+    cima do cômodo e atrapalha a vista de propósito). A tela diz isso quando o meio é
+    escolhido. Tipo novo `PosicaoMarcaDagua`; o saneador valida contra a lista CERTA (contra
+    a do apresentador, que não tem centro, ele apagaria a opção em silêncio). Render mediu
+    **x=0,499 · y=0,500**.
+  - **`b717aa7` — "Tirar o fundo"** em `/marca`. A cor do fundo vem dos quatro cantos, não
+    de palpite; faixa de meio-tom na borda, senão a letra sai serrilhada. Determinístico e
+    local: sem IA, sem rede, sem crédito.
+    - **O que mais importa é quando RECUSA:** logo que já tem alfa, cantos que são imagem e
+      não fundo, ou fundo da cor do desenho. Com motivo na tela. Oferecer e entregar um
+      buraco no meio do nome é pior que não oferecer.
+    - **Não acontece sozinho.** O logo dele é um selo desenhado como selo; limpar sem
+      perguntar destruiria o trabalho de quem quis.
+  - **Erro que quase foi publicado:** o botão só aparecia logo DEPOIS de um upload, porque o
+    veredito vinha junto dele. Quem já tinha logo — o caso dele — abriria a tela e não
+    acharia o recurso. **É o mesmo defeito de esconder que eu tinha consertado uma hora
+    antes** (`90d82e9`), repetido em código novo. O GET passou a analisar o logo guardado.
+  - Provas: `testar-fundo-do-logo.ts` (13, inclusive o caso de DEGRADÊ, que é o logo real
+    dele) e `conferir-tirar-fundo.mjs` (9, de ponta a ponta até o storage: 0% → 76%
+    transparente com o centro em alfa 255). **123 conferências verdes no conjunto.**
+  - Armadilha do próprio teste: a conferência do meio-tom reprovava porque meu logo
+    sintético tinha borda DURA — faltava o caso, não o código. Trocado por um círculo em SVG.
+
 - **10/10/2026 (fim da noite) — Claude Code (`90d82e9`, publicado e conferido no ar):**
   Ele: "é onde está a parte de colocar marca d'água e etc nos vídeos e fotos, **não vejo!!**".
   Conferido no banco: a conta dele tem nome, CRECI, WhatsApp e cor — e **nenhum logo**.
