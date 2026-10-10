@@ -11,7 +11,7 @@
 //   node --import ./scripts/ts-direto.mjs scripts/testar-fundo-do-logo.ts
 
 import sharp from "sharp";
-import { fundoDosCantos, valeTirarFundo, tirarFundo, distancia } from "../src/lib/fundo-do-logo.ts";
+import { fundoDosCantos, valeTirarFundo, tirarFundo, tirarIlhasPequenas, contornoNecessario, contornar, distancia } from "../src/lib/fundo-do-logo.ts";
 
 let falhas = 0;
 const conferir = (ok: boolean, oque: string, extra = "") => {
@@ -121,6 +121,76 @@ async function main() {
       for (let i = 3; i < limpo.length; i += l.info.channels) if (limpo[i] > 10 && limpo[i] < 245) meios++;
       conferir(meios > 0, "existe faixa de MEIO-TOM na borda", `${meios} px — sem ela o recorte sai serrilhado`);
     }
+  }
+
+  // ---- a SUJEIRA que sobra do recorte ----
+  {
+    // Fundo com RUÍDO, que é o que o logo real tem: textura que não sai inteira na
+    // tolerância e deixa pontinhos soltos.
+    const L = 240;
+    const base = Buffer.alloc(L * L * 4);
+    for (let y = 0; y < L; y++) {
+      for (let x = 0; x < L; x++) {
+        const i = (y * L + x) * 4;
+        const dentro = x > L * 0.3 && x < L * 0.7 && y > L * 0.35 && y < L * 0.65;
+        // Ruído forte em ~1% do fundo: são essas manchas que passam da tolerância.
+        const ruido = !dentro && (x * 7 + y * 13) % 97 === 0 ? 150 : 0;
+        const c = dentro ? [212, 175, 55] : [20 + ruido, 24 + ruido, 32 + ruido];
+        base[i] = c[0]; base[i + 1] = c[1]; base[i + 2] = c[2]; base[i + 3] = 255;
+      }
+    }
+    const png = await sharp(base, { raw: { width: L, height: L, channels: 4 } }).png().toBuffer();
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const v = valeTirarFundo(data, info.width, info.height, info.channels, 0);
+    if (v.vale) {
+      const cru = tirarFundo(data, info.channels, v.cor, v.tolerancia);
+      const r = tirarIlhasPequenas(cru, info.width, info.height, info.channels);
+      conferir(r.tiradas > 0, "acha e tira as ilhas de sujeira", `${r.tiradas} ilhas, ${r.pixels} px`);
+      // O desenho NÃO pode ir junto: é uma ilha grande, e some num limiar mal escolhido.
+      const meio = r.saida[(Math.round(info.height / 2) * info.width + Math.round(info.width / 2)) * info.channels + 3];
+      conferir(meio > 200, "e o desenho continua inteiro", `alfa ${meio}`);
+    }
+  }
+
+  // ---- quem precisa de contorno, e de que cor ----
+  {
+    // Chapado e CLARO: some na parede branca. Precisa de contorno escuro.
+    const claro = Buffer.alloc(100 * 100 * 4);
+    for (let i = 0; i < claro.length; i += 4) { claro[i] = 255; claro[i + 1] = 255; claro[i + 2] = 255; claro[i + 3] = 255; }
+    const c1 = contornoNecessario(claro, 4);
+    conferir(!!c1 && c1[0] < 60, "logo CHAPADO e claro pede contorno ESCURO", c1 ? `rgb(${c1.join(",")})` : "nenhum");
+
+    // Chapado e ESCURO: some na foto noturna. Precisa de contorno claro.
+    const escuro = Buffer.alloc(100 * 100 * 4);
+    for (let i = 0; i < escuro.length; i += 4) { escuro[i] = 18; escuro[i + 1] = 18; escuro[i + 2] = 20; escuro[i + 3] = 255; }
+    const c2 = contornoNecessario(escuro, 4);
+    conferir(!!c2 && c2[0] > 200, "logo CHAPADO e escuro pede contorno CLARO", c2 ? `rgb(${c2.join(",")})` : "nenhum");
+
+    // COM MODELADO: tem claro e escuro dentro de si, se lê sobre qualquer coisa. É o caso do
+    // logo real do dono (faixa interna 139), e contorno ali PIORA -- medido em 10/10/2026.
+    const modelado = Buffer.alloc(100 * 100 * 4);
+    for (let p = 0; p < 100 * 100; p++) {
+      const i = p * 4;
+      const v2 = p % 2 === 0 ? 230 : 90; // faixa interna 140
+      modelado[i] = v2; modelado[i + 1] = v2 - 30; modelado[i + 2] = 40; modelado[i + 3] = 255;
+    }
+    conferir(contornoNecessario(modelado, 4) === null, "logo COM MODELADO não leva contorno", "faixa interna larga basta");
+  }
+
+  // ---- o contorno desenha ATRÁS, nunca por cima ----
+  {
+    const L = 60;
+    const b = Buffer.alloc(L * L * 4);
+    for (let y = 0; y < L; y++) for (let x = 0; x < L; x++) {
+      const i = (y * L + x) * 4;
+      const dentro = x > 20 && x < 40 && y > 20 && y < 40;
+      b[i] = 255; b[i + 1] = 255; b[i + 2] = 255; b[i + 3] = dentro ? 255 : 0;
+    }
+    const com = contornar(b, L, L, 4, [0, 0, 0], 3);
+    const centro = (30 * L + 30) * 4;
+    conferir(com[centro] === 255 && com[centro + 1] === 255, "o DESENHO sai intacto do contorno", "é o “sem mudar a logo”");
+    const fora = (30 * L + 42) * 4;
+    conferir(com[fora + 3] > 200 && com[fora] < 40, "e a auréola aparece ao redor", `alfa ${com[fora + 3]}`);
   }
 }
 

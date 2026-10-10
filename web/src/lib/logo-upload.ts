@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { valeTirarFundo, tirarFundo, type Veredito } from "./fundo-do-logo";
+import { valeTirarFundo, tirarFundo, tirarIlhasPequenas, contornoNecessario, contornar, type Veredito } from "./fundo-do-logo";
 import { coresDaLogo } from "./cores-da-logo";
 import { LOGO_MAX_BYTES, LOGO_LADO_MIN, LOGO_LADO_MAX, LOGO_LADO_SAIDA } from "./logo-upload-limites";
 
@@ -122,8 +122,16 @@ export async function logoSemFundo(png: Buffer): Promise<Buffer | null> {
     for (let i = 3; i < data.length; i += info.channels) if (data[i] < 40) transp++;
     const v = valeTirarFundo(data, info.width, info.height, info.channels, transp / (info.width * info.height));
     if (!v.vale) return null;
-    const limpo = tirarFundo(data, info.channels, v.cor, v.tolerancia);
-    return await sharp(limpo, { raw: { width: info.width, height: info.height, channels: info.channels as 4 } })
+    const cru = tirarFundo(data, info.channels, v.cor, v.tolerancia);
+    // LIMPAR A SUJEIRA. Fundo texturizado nunca sai inteiro: no logo do dono sobravam 42
+    // ilhas minúsculas somando 949 px, visíveis como pontinhos acima do telhado.
+    const { saida: limpo } = tirarIlhasPequenas(cru, info.width, info.height, info.channels);
+    // CONTORNO só pra logo CHAPADO, que é o que some no fundo da mesma tonalidade. Logo com
+    // modelado próprio (o dourado dele, faixa interna 139) não leva nada -- medido: contorno
+    // ali piora nos dois fundos.
+    const cor = contornoNecessario(limpo, info.channels);
+    const final = cor ? contornar(limpo, info.width, info.height, info.channels, cor, Math.max(2, Math.round(info.width * 0.006))) : limpo;
+    return await sharp(final, { raw: { width: info.width, height: info.height, channels: info.channels as 4 } })
       .png()
       .toBuffer();
   } catch {
