@@ -1077,7 +1077,14 @@ export default function PaginaVideo() {
       setVozArquivo(e.narracao?.arquivo && dd.edicao?.vozUrl ? { caminho: e.narracao.arquivo, url: dd.edicao.vozUrl, nome: "Áudio deste vídeo" } : null);
       setCapa(novas[e.capa ?? 0]?.chave ?? null);
       setEditandoDe({ id, titulo: dd.titulo || e.titulo || "Vídeo" });
+      // FECHA O CARTÃO PELAS DUAS PONTAS. `resultado` é derivado de DUAS origens
+      // (`resultadoAberto ?? geracao.pronto`, lá em cima), e `setResultado(null)` só apaga a
+      // primeira. Num vídeo recém-gerado o cartão vem da segunda, então ele CONTINUAVA na
+      // tela: a edição abria de verdade, a página rolava pro topo, e a pessoa via o mesmo
+      // cartão de antes -- "cliquei em Editar e não acontece nada" (relatado em 29/09/2026).
+      // `gerar` e `retomarVideo` já limpavam as duas; só esta aqui esquecia.
       setResultado(null);
+      geracao.limpar();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não consegui abrir o vídeo pra editar.");
