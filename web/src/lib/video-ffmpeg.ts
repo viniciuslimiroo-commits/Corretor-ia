@@ -886,31 +886,52 @@ export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao:
   const linhas: string[] = [];
   const grande = Math.round(o.H * 0.042);
   const medio = Math.round(o.H * 0.028);
-  let y = o.logo ? 0.5 : 0.42;
   // A largura que sobra depois das margens. Texto mais largo que isto era CORTADO dos dois
   // lados, porque `x=(w-text_w)/2` fica negativo -- foi o que comeu "Vinicius Cardoso ·
   // Imobiliária J7" no 9:16. Agora cada linha é medida com a fonte real antes de sair.
   const util = o.W * 0.88;
-  const draw = (t: string, tam: number, yy: number, alpha = "1") =>
-    `drawtext=fontfile='${fonte}':text=${textoParaFiltro(t, true)}:fontsize=${tam}:fontcolor=white@${alpha}:x=(w-text_w)/2:y=${Math.round(o.H * yy)}:line_spacing=${Math.round(tam * 0.3)}`;
-  /** Escreve cabendo, e devolve quanto desceu (linha quebrada ocupa mais altura). */
-  const escrever = (t: string, tamIdeal: number, yy: number, alpha = "1") => {
+  const draw = (t: string, tam: number, topo: number, alpha = "1") =>
+    `drawtext=fontfile='${fonte}':text=${textoParaFiltro(t, true)}:fontsize=${tam}:fontcolor=white@${alpha}:x=(w-text_w)/2:y=${Math.round(topo)}:line_spacing=${Math.round(tam * 0.3)}`;
+
+  // ---- O BLOCO, MEDIDO ANTES DE SER DESENHADO ----
+  //
+  // Antes cada peça era posicionada numa fração fixa da altura (logo em 0,28; chamada em
+  // 0,42; nome em 0,50...), e as frações não conversavam com o TAMANHO real do logo. Com um
+  // logo quadrado -- o caso mais comum -- ele descia até 0,44 e a chamada começava em 0,42:
+  // 39 px de sobreposição, medidos em 10/10/2026, e foi o que ele viu ("logo em cima das
+  // letras"). Números escolhidos à mão só não colidem enquanto ninguém muda de logo.
+  //
+  // Agora as peças são medidas, somadas e CENTRADAS como um bloco só. Some a sobreposição
+  // por construção, e some também o vazio enorme embaixo que a tela tinha.
+  const ESPACO_LOGO = o.logo ? Math.round(o.H * 0.16) : 0;
+  const pecas: { texto: string; tam: number; alpha: string; alturaTotal: number; antes: number }[] = [];
+  const medir = (t: string, tamIdeal: number, antes: number, alpha = "1") => {
     const c = caberNaLargura(t, tamIdeal, util);
-    linhas.push(draw(c.texto, c.tam, yy, alpha));
-    return ((c.linhas - 1) * c.tam * 1.3) / o.H;
+    pecas.push({ texto: c.texto, tam: c.tam, alpha, alturaTotal: c.tam + (c.linhas - 1) * c.tam * 1.3, antes });
   };
   // A chamada fica logo acima do nome: é o pedido; o nome e o WhatsApp são o como.
-  if (o.chamada) escrever(o.chamada, Math.round(o.H * 0.034), y - 0.08);
-  if (o.nome) {
-    y += 0.07 + escrever(o.nome, grande, y);
+  if (o.chamada) medir(o.chamada, Math.round(o.H * 0.034), Math.round(o.H * 0.05));
+  if (o.nome) medir(o.nome, grande, Math.round(o.H * 0.035));
+  if (o.creci) medir(`CRECI ${o.creci}`, medio, Math.round(o.H * 0.028), "0.85");
+  if (o.whatsapp) medir(`WhatsApp ${formatarWhatsapp(o.whatsapp)}`, medio, Math.round(o.H * 0.028));
+
+  const alturaBloco = ESPACO_LOGO + pecas.reduce((s, p) => s + p.antes + p.alturaTotal, 0);
+  // Sobe 4% do centro: o rodapé "Imagens ilustrativas" ocupa o pé, e um bloco centrado no
+  // meio exato encosta visualmente nele.
+  let topo = Math.round((o.H - alturaBloco) / 2 - o.H * 0.04);
+  const topoDoLogo = topo;
+  topo += ESPACO_LOGO;
+  for (const p of pecas) {
+    topo += p.antes;
+    linhas.push(draw(p.texto, p.tam, topo, p.alpha));
+    topo += p.alturaTotal;
   }
-  if (o.creci) {
-    y += 0.055 + escrever(`CRECI ${o.creci}`, medio, y, "0.85");
-  }
-  if (o.whatsapp) {
-    escrever(`WhatsApp ${formatarWhatsapp(o.whatsapp)}`, medio, y);
-  }
-  linhas.push(draw("Imagens ilustrativas · feito com Encena", Math.round(o.H * 0.018), 0.93, "0.6"));
+  // EM PIXELS, como o resto. Quando `draw` passou a receber pixel em vez de fração (10/10/2026),
+  // esta linha ficou pra trás e o rodapé foi desenhado no pixel 0,93 -- no TOPO do quadro, onde
+  // aparecia como um resto de texto cortado. Mudar a unidade de um parâmetro sem mudar todas as
+  // chamadas não quebra o tipo: `number` continua `number`, e o compilador não tem como saber
+  // que 0,93 queria dizer 93% e agora quer dizer um pixel.
+  linhas.push(draw("Imagens ilustrativas · feito com Encena", Math.round(o.H * 0.018), Math.round(o.H * 0.93), "0.6"));
   // A TELA FINAL PARAVA DE VEZ. Medindo quadro a quadro, o vídeo inteiro se move entre 0,004
   // e 0,013 e os últimos quatro segundos davam 0,000 -- congelados. No vídeo do concorrente o
   // movimento continua até o último quadro, e até acelera no fim. Quatro segundos parados num
@@ -928,8 +949,12 @@ export function argsTelaFinal(o: { saida: string; W: number; H: number; duracao:
   if (o.logo) {
     args.push("-i", o.logo);
     const maxL = Math.round(o.W * 0.42);
-    const maxA = Math.round(o.H * 0.16);
-    filtro = `[1:v]scale=${maxL}:${maxA}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=(W-w)/2:${Math.round(o.H * 0.28)}[base];[base]${["format=yuv420p", ...linhas, respiro].join(",")}[v]`;
+    const maxA = ESPACO_LOGO;
+    // O logo é CENTRADO dentro do espaço que o bloco reservou pra ele: um logo deitado não
+    // ocupa os 16% inteiros, e encostá-lo no topo da faixa abriria um buraco entre ele e o
+    // texto. `(H-h)/2` dentro da faixa é o `overlay` resolvendo isso sem a gente saber a
+    // proporção do arquivo aqui.
+    filtro = `[1:v]scale=${maxL}:${maxA}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=(W-w)/2:${topoDoLogo}+(${ESPACO_LOGO}-h)/2[base];[base]${["format=yuv420p", ...linhas, respiro].join(",")}[v]`;
   } else {
     filtro = `[0:v]${["format=yuv420p", ...linhas, respiro].join(",")}[v]`;
   }

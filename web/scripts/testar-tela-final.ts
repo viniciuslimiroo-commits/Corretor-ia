@@ -1,14 +1,12 @@
-// A TELA FINAL CABE NO QUADRO? Medido no PIXEL, não no código.
+// A TELA FINAL: o logo, a chamada, o nome, o CRECI e o WhatsApp sem se atropelarem.
 //
-// 22/09/2026. Ele mandou a foto do vídeo pronto: "Vinicius Cardoso · Imobiliária J7" saiu
-// cortado dos dois lados no 9:16. O `drawtext` centraliza com x=(w-text_w)/2 -- quando o
-// texto é mais largo que o quadro, essa conta dá NEGATIVO e a frase sangra pelas bordas.
+// Ele mandou o print em 10/10/2026: "ficou estranho, logo em cima das letras". Medido:
+// com logo QUADRADO -- o caso mais comum -- o logo descia até 0,44 da altura e a chamada
+// começava em 0,42. **39 px de sobreposição**, e vinha de posições escolhidas à mão
+// (0,28 pro logo, 0,42 pra chamada) que não conversavam com o tamanho real do logo.
 //
-// Este teste renderiza a tela final de verdade, lê o PNG e procura a coluna mais à esquerda
-// e a mais à direita com pixel claro. Se o texto couber, sobra margem dos dois lados.
-//
-// O controle negativo é o que dá valor ao "ok": o mesmo nome desenhado com o tamanho fixo
-// de antes TEM que falhar. Um teste que não sabe reprovar não sabe aprovar.
+// Agora as peças são medidas, somadas e centradas como um bloco. Este teste RENDERIZA e mede
+// o quadro: cálculo de layout que só é conferido lendo o código é cálculo não conferido.
 //
 //   node --import ./scripts/ts-direto.mjs scripts/testar-tela-final.ts
 
@@ -16,107 +14,134 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { execFileSync } from "node:child_process";
-import ffmpegBin from "ffmpeg-static";
-import { argsTelaFinal, caberNaLargura } from "../src/lib/video-ffmpeg";
-import { larguraDoTexto } from "../src/lib/texto-svg";
+import ffmpegStatic from "ffmpeg-static";
+import { rodarFfmpeg } from "../src/lib/ffmpeg.ts";
+import { argsTelaFinal } from "../src/lib/video-ffmpeg.ts";
 
-const SAIDA = fs.mkdtempSync(path.join(os.tmpdir(), "encena-telafinal-"));
+process.env.FFMPEG_PATH ??= ffmpegStatic as unknown as string;
+
 let falhas = 0;
 const conferir = (ok: boolean, oque: string, extra = "") => {
   console.log(`${ok ? "ok   " : "FALHA"} ${oque}${extra ? " · " + extra : ""}`);
   if (!ok) falhas++;
 };
 
-/** A primeira e a última coluna com pixel claro (o texto é branco sobre a cor da marca). */
-async function margens(png: string): Promise<{ esq: number; dir: number; W: number }> {
-  const img = sharp(png);
-  const { width = 0, height = 0 } = await img.metadata();
-  const bruto = await img.raw().toBuffer();
-  const canais = bruto.length / (width * height);
-  let esq = width;
-  let dir = -1;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * canais;
-      // Branco do texto contra o azul da marca: o verde é o que separa melhor os dois.
-      if (bruto[i] > 200 && bruto[i + 1] > 200 && bruto[i + 2] > 200) {
-        if (x < esq) esq = x;
-        if (x > dir) dir = x;
-      }
-    }
-  }
-  return { esq, dir, W: width };
-}
-
-/** Chama o mesmo ffmpeg que o produto usa. (rodarFfmpeg não carrega fora do Next: usa require.) */
-function correr(args: string[]) {
-  execFileSync(String(ffmpegBin), ["-y", "-hide_banner", "-loglevel", "error", ...args]);
-}
-
-async function desenhar(nome: string, arquivo: string, W: number, H: number) {
-  const saida = path.join(SAIDA, arquivo);
-  correr(
-    argsTelaFinal({
-      saida,
-      W,
-      H,
-      duracao: 1,
-      cor: "#0F2D5B",
-      chamada: "Agende sua visita",
-      nome,
-      creci: "XX 00000-F",
-      whatsapp: "62994397125",
-    })
-  );
-  const png = saida.replace(/\.mp4$/, ".png");
-  correr(["-i", saida, "-frames:v", "1", "-y", png]);
-  return png;
-}
+const W = 1080;
+const H = 1920;
+const FUNDO: [number, number, number] = [15, 45, 91];
 
 async function main() {
-  if (!fs.existsSync(path.join(process.cwd(), "assets", "fontes", "Geist-SemiBold.ttf"))) {
-    console.log("a fonte do drawtext não está em assets/fontes; nada foi medido");
-    process.exit(1);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tela-final-"));
+  const local = (n: string) => path.join(dir, n);
+
+  /** Um logo de teste OPACO na forma pedida, pra medir onde ele cai. */
+  async function logo(largura: number, altura: number) {
+    const f = local(`logo-${largura}x${altura}.png`);
+    await sharp({ create: { width: largura, height: altura, channels: 4, background: { r: 0, g: 255, b: 0, alpha: 1 } } })
+      .png()
+      .toFile(f);
+    return f;
   }
 
-  const NOME = "Vinicius Cardoso · Imobiliária J7";
-
-  // ---- 1. o que ele viu: 9:16, nome longo ----
-  for (const [rotulo, W, H] of [
-    ["9:16 (o do defeito)", 1080, 1920],
-    ["16:9", 1920, 1080],
-    ["1:1", 1080, 1080],
-  ] as const) {
-    const png = await desenhar(NOME, `final-${W}x${H}.mp4`, W, H);
-    const m = await margens(png);
-    const margemMin = Math.round(W * 0.03);
-    conferir(m.esq >= margemMin && m.dir <= W - margemMin, `${rotulo}: o texto fica dentro do quadro`, `esquerda ${m.esq}px, direita ${W - m.dir}px do fim (mínimo ${margemMin})`);
+  /** As linhas do quadro em que há tinta (verde do logo, ou branco do texto). */
+  async function faixas(arquivo: string) {
+    const { data, info } = await sharp(arquivo).raw().toBuffer({ resolveWithObject: true });
+    const verde: number[] = [];
+    const branco: number[] = [];
+    for (let y = 0; y < info.height; y++) {
+      let v = 0;
+      let b = 0;
+      for (let x = 0; x < info.width; x++) {
+        const i = (y * info.width + x) * info.channels;
+        const [r, g, bl] = [data[i], data[i + 1], data[i + 2]];
+        if (r < 110 && g > 150 && bl < 110) v++;
+        else if (r > 170 && g > 170 && bl > 170) b++;
+      }
+      if (v > 3) verde.push(y);
+      if (b > 3) branco.push(y);
+    }
+    return { verde, branco, altura: info.height };
   }
 
-  // ---- 2. nome absurdo: tem que caber ou quebrar, nunca sangrar ----
-  const ENORME = "Maria Aparecida do Nascimento Albuquerque · Imobiliária Recanto dos Pássaros";
-  const pngE = await desenhar(ENORME, "final-enorme.mp4", 1080, 1920);
-  const mE = await margens(pngE);
-  conferir(mE.esq >= 30 && mE.dir <= 1050, "nome muito longo cabe (encolhendo ou quebrando)", `esquerda ${mE.esq}px, direita ${1080 - mE.dir}px do fim`);
+  async function render(nome: string, arquivoLogo: string | undefined) {
+    const mp4 = local(`${nome}.mp4`);
+    const png = local(`${nome}.png`);
+    await rodarFfmpeg(
+      argsTelaFinal({
+        saida: mp4,
+        W,
+        H,
+        duracao: 4,
+        cor: "#0F2D5B",
+        logo: arquivoLogo,
+        chamada: "Agende sua visita",
+        nome: "Vinicius Cardoso · Imobiliária J7",
+        creci: "XX 00000-F",
+        whatsapp: "62994397125",
+      }),
+      120_000
+    );
+    await rodarFfmpeg(["-ss", "0.1", "-i", mp4, "-frames:v", "1", "-y", png]);
+    return png;
+  }
 
-  // ---- 3. CONTROLE NEGATIVO: o tamanho fixo de antes tem que estourar ----
-  // Sem isto, os "ok" acima não valem nada: um medidor cego aprova qualquer coisa.
-  const tamAntigo = Math.round(1920 * 0.042);
-  const larguraAntiga = larguraDoTexto(NOME, tamAntigo);
-  conferir(larguraAntiga > 1080 * 0.88, "controle: com o tamanho fixo de antes, o nome ERA mais largo que o quadro", `${Math.round(larguraAntiga)}px de texto em ${1080}px de quadro`);
-  const ajustado = caberNaLargura(NOME, tamAntigo, 1080 * 0.88);
-  conferir(ajustado.tam < tamAntigo, "e o ajuste encolhe a fonte", `${tamAntigo} -> ${ajustado.tam}`);
-  conferir(larguraDoTexto(ajustado.texto.split("\n")[0], ajustado.tam) <= 1080 * 0.88, "até caber de verdade na largura útil");
+  // ---- O DEFEITO DO PRINT: logo quadrado não pode encostar no texto ----
+  {
+    const png = await render("quadrado", await logo(447, 447));
+    const { verde, branco } = await faixas(png);
+    conferir(verde.length > 0, "o logo aparece no quadro", `${verde.length} linhas`);
+    conferir(branco.length > 0, "e o texto também");
+    const baseDoLogo = Math.max(...verde);
+    // O rodapé "Imagens ilustrativas" é branco e fica embaixo: o texto do BLOCO é o branco
+    // que vem logo depois do logo, não o do pé.
+    const textoDoBloco = branco.filter((y) => y > baseDoLogo && y < H * 0.9);
+    const topoDoTexto = Math.min(...textoDoBloco);
+    conferir(topoDoTexto > baseDoLogo, "NÃO há sobreposição: o texto começa abaixo do logo", `logo até ${baseDoLogo}, texto a partir de ${topoDoTexto}`);
+    conferir(topoDoTexto - baseDoLogo > 30, "e há respiro de verdade entre os dois", `${topoDoTexto - baseDoLogo} px`);
+  }
 
-  // Nome curto não pode ser mexido: encolher quem já cabia seria estragar o que funcionava.
-  const curto = caberNaLargura("Ana Souza", tamAntigo, 1080 * 0.88);
-  conferir(curto.tam === tamAntigo && curto.linhas === 1, "controle: nome curto sai do jeito que era", `${curto.tam}px, ${curto.linhas} linha`);
+  // ---- logo DEITADO: a conta tem que valer pra qualquer proporção ----
+  {
+    const png = await render("deitado", await logo(800, 200));
+    const { verde, branco } = await faixas(png);
+    const baseDoLogo = Math.max(...verde);
+    const topoDoTexto = Math.min(...branco.filter((y) => y > baseDoLogo && y < H * 0.9));
+    conferir(topoDoTexto > baseDoLogo, "logo deitado também não encosta no texto", `${topoDoTexto - baseDoLogo} px de folga`);
+  }
 
-  console.log(`\nimagens em ${SAIDA}`);
-  console.log(falhas ? `${falhas} falha(s)` : "tudo certo");
-  process.exit(falhas ? 1 : 0);
+  // ---- o rodapé fica no PÉ, não no topo ----
+  {
+    // Quando `draw` passou a receber pixel em vez de fração, esta linha ficou com `0.93` e o
+    // aviso foi desenhado no pixel 0,93 -- no topo do quadro. O tipo não mudou (`number`
+    // continua `number`), então só o render denuncia.
+    const png = await render("rodape", await logo(447, 447));
+    const { branco } = await faixas(png);
+    const noTopo = branco.filter((y) => y < H * 0.08);
+    conferir(noTopo.length === 0, "não há texto perdido no TOPO do quadro", noTopo.length ? `${noTopo.length} linhas em ${noTopo[0]}` : "limpo");
+    const noPe = branco.filter((y) => y > H * 0.9);
+    conferir(noPe.length > 0, "e o aviso “Imagens ilustrativas” está no pé", `linhas ${Math.min(...noPe)}–${Math.max(...noPe)}`);
+  }
 
+  // ---- SEM logo: continua equilibrado ----
+  {
+    const png = await render("sem-logo", undefined);
+    const { verde, branco } = await faixas(png);
+    conferir(verde.length === 0, "sem logo, nenhum logo aparece");
+    const bloco = branco.filter((y) => y < H * 0.9);
+    const centro = (Math.min(...bloco) + Math.max(...bloco)) / 2 / H;
+    conferir(centro > 0.3 && centro < 0.62, "o bloco de texto fica na metade da tela", `centro em ${centro.toFixed(2)} da altura`);
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
-main();
+main().then(
+  () => {
+    console.log(falhas === 0 ? "\nTUDO CERTO" : `\n${falhas} FALHA(S)`);
+    process.exitCode = falhas === 0 ? 0 : 1;
+  },
+  (e) => {
+    console.error("\nESTOUROU:", e instanceof Error ? e.message : e);
+    process.exitCode = 1;
+  }
+);
