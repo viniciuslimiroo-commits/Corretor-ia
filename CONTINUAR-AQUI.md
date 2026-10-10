@@ -222,6 +222,28 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **10/10/2026 (fim da noite) — Claude Code (`90d82e9`, publicado e conferido no ar):**
+  Ele: "é onde está a parte de colocar marca d'água e etc nos vídeos e fotos, **não vejo!!**".
+  Conferido no banco: a conta dele tem nome, CRECI, WhatsApp e cor — e **nenhum logo**.
+  - As duas funções **se escondiam** nesse caso, por decisão minha do dia anterior: no vídeo
+    a seção virava um aviso sem botão (e com "Minha marca" em **negrito, não em link** — eu
+    dizia onde ir e não levava); na foto, `{temLogo && …}` não desenhava a caixa, então quem
+    nunca enviou logo concluía que o produto não carimba foto.
+  - **A regra que faltava:** recurso que se esconde quando falta um pré-requisito esconde
+    também a existência do pré-requisito, e aí ninguém o cumpre. Agora as duas telas dizem o
+    que falta e **levam** pra `/marca`.
+  - Prova: `scripts/conferir-caminho-do-logo.mjs` (5), rodando com conta SEM logo **de
+    propósito** — e conferindo essa premissa antes de medir. Abre a tela de baixar por
+    `?job=` (resultado já pronto), pra não gastar crédito provando questão de layout. Vai
+    até o fim: confirma que a `/marca` aceita logo, porque link pra lugar nenhum é pior que
+    link nenhum.
+  - **Armadilha (duas rodadas perdidas):** escrevi a espera do navegador como NEGAÇÃO
+    (`!/Entre para/.test(innerText)`). Página que ainda não renderizou tem texto `""`, a
+    negação dá verdadeiro, a espera acaba antes de existir qualquer coisa — e o teste
+    fotografa o quadro deslogado e **acusa a tela, que estava certa**. Cheguei a comparar
+    guardas de autenticação entre três páginas atrás de um defeito que não existia.
+    **Condição de espera só em forma positiva**; o nada satisfaz qualquer "não há".
+
 - **10/10/2026 (noite) — Claude Code (cores do texto, padrão do movimento, bancadas):**
   PUBLICADO: `89c0844` → `dca8388`, em três levas, cada uma conferida no ar.
   - **`a70dfa2`** junta o branch das bancadas `/dev` (sessão de 29/09): a trava sai de cada
