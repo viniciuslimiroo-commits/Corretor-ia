@@ -20,7 +20,16 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
 };
 
 type Olhada = Parameters<typeof efeitoDe>[0];
-const foto = (ambiente: string): Olhada => ({ chave: ambiente, ambiente, legenda: "", nota: 5 }) as Olhada;
+
+/**
+ * Uma Olhada COMPLETA. Sem `as`: a primeira versao deste teste montava objetos pela metade
+ * e os empurrava com `as Olhada`. Rodava (em JavaScript o campo que falta e' `undefined`),
+ * mas nao compilava -- e eu so' descobri no `next build`, depois de commitar, porque rodei
+ * o tsc ANTES de escrever o teste e nao de novo depois. O cast e' justamente o que apaga o
+ * aviso que teria me contado.
+ */
+const olhada = (extra: Partial<Olhada> = {}): Olhada => ({ chave: "c", ambiente: null, qualidade: 8, legenda: "", ...extra });
+const foto = (ambiente: string): Olhada => olhada({ chave: ambiente, ambiente });
 
 const LADOS = new Set(["esquerda", "direita"]);
 
@@ -35,7 +44,7 @@ const LADOS = new Set(["esquerda", "direita"]);
     conferir(LADOS.has(e), `“${a}” passeia pro lado`, e);
   }
   // Ambiente que a visão não reconheceu também: o padrão antigo era "aproximar".
-  conferir(LADOS.has(efeitoDe({ chave: "x", legenda: "", nota: 5 } as Olhada, 0)), "ambiente desconhecido também passeia pro lado");
+  conferir(LADOS.has(efeitoDe(olhada({ chave: "x" }), 0)), "ambiente desconhecido também passeia pro lado");
 }
 
 // ---- alterna, e alterna pela POSIÇÃO (não por sorteio) ----
@@ -55,11 +64,11 @@ const LADOS = new Set(["esquerda", "direita"]);
 
 // ---- 360 e clipe ficam parados ----
 {
-  conferir(efeitoDe({ chave: "a", legenda: "", nota: 5, eh360: true } as Olhada, 0) === "parado", "foto 360 continua PARADA", "já tem movimento próprio");
-  conferir(efeitoDe({ chave: "b", legenda: "", nota: 5, ehClipe: true } as Olhada, 1) === "parado", "clipe continua PARADO");
+  conferir(efeitoDe(olhada({ chave: "a", eh360: true }), 0) === "parado", "foto 360 continua PARADA", "já tem movimento próprio");
+  conferir(efeitoDe(olhada({ chave: "b", ehClipe: true }), 1) === "parado", "clipe continua PARADO");
   // A panorâmica ANTES tinha uma regra própria ("direita"); agora ela cai na regra geral,
   // que também é de lado -- então o resultado dela não piorou.
-  conferir(LADOS.has(efeitoDe({ chave: "c", legenda: "", nota: 5, ehPanoramica: true } as Olhada, 0)), "panorâmica passeia pro lado, como sempre fez");
+  conferir(LADOS.has(efeitoDe(olhada({ chave: "c", ehPanoramica: true }), 0)), "panorâmica passeia pro lado, como sempre fez");
 }
 
 // ---- o padrão da tela é "Movimento na foto" ----
