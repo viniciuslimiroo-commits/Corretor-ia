@@ -222,6 +222,38 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **10/10/2026 (noite) — Claude Code (cores do texto, padrão do movimento, bancadas):**
+  PUBLICADO: `89c0844` → `dca8388`, em três levas, cada uma conferida no ar.
+  - **`a70dfa2`** junta o branch das bancadas `/dev` (sessão de 29/09): a trava sai de cada
+    página e vai pro `layout.tsx`, pra bancada nova nascer fechada. **É reforço, não
+    conserto** — a premissa que eu dei ao abrir aquela tarefa era falsa (ver `e0e2084`).
+    Troca duas camadas por uma, de propósito: com as duas, o 404 não provava o layout.
+    Provado com `next start` + `conferir-bancadas-fechadas.mjs`, e de novo em produção.
+  - **`c595359` — cor, fundo, contorno, sombra e tamanho POR TEXTO.** Pedido dele: "adiciono
+    etiquetas e depois não é possível editar elas". Metade do relato era discoverability (o
+    campo de edição sempre existiu, mas fica acima das etiquetas na mesma coluna rolada); a
+    outra metade era real — o campo `visual` existia no espec e o montador já o lia, mas não
+    havia controle. Ligar não muda nada (`visualDoEstilo` semeia o que o estilo já fazia).
+    - **A PRÉVIA DO PALCO ESTAVA SURDA** a esse campo: `background` e `fontSize` escritos à
+      mão por estilo. Com os controles e a prévia surda, mudar a cor não moveria o palco.
+      Agora ela aplica a MESMA regra do montador, inclusive os três estados de `caixa`.
+    - Provas: `testar-visual-do-texto.ts` (23, com render real) + `conferir-cores-do-texto.mjs`
+      (13, tela real) — as duas pontas da corrente. **Fonte ainda não**: o `drawtext` usa só
+      a Geist; as 16 de `assets/fontes` só entram por modelo de arte.
+  - **`4284dcd` — "Movimento na foto" vira o padrão, e toda foto passeia pro lado.**
+    "tour" era o padrão desde 23/09 **a pedido dele**; ele viu o resultado por duas semanas e
+    pediu o contrário. O comentário guarda as duas datas. O Tour continua a um toque.
+    - `efeitoDe` alterna direita/esquerda **pela posição**, não por sorteio — montagem tem
+      que ser determinística. 360 e clipe seguem parados.
+    - **O que se perdeu, dito em voz alta:** o movimento deixa de comentar a foto (fachada
+      afastava pra revelar; cozinha aproximava pro acabamento). O mapa `MOVIMENTO` saiu; o
+      princípio dele ficou no comentário de `efeitoDe`.
+  - **`dca8388` — armadilha que o build pegou e eu não:** commitei um teste que RODAVA e não
+    COMPILAVA. Rodei o `tsc` **antes** de escrever o arquivo e não de novo depois, e usei
+    `as Olhada` sobre objetos pela metade — o `as` é justamente o que cala o aviso que teria
+    me contado. **Verificação só vale depois do último arquivo tocado**, e `as` em teste é
+    desligar a rede dentro do lugar feito pra ter rede.
+
 - **10/10/2026 — Claude Code (o Supabase estava pausado; e o "Editar", resolvido de verdade):**
   - **O projeto Supabase estava PAUSADO** (`INACTIVE`). Projeto gratuito dorme por
     inatividade, e **pausado também perde o DNS** — o host dava NXDOMAIN, o login não
