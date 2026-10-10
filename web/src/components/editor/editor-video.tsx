@@ -3260,9 +3260,22 @@ export default function EditorDeVideo() {
               {/* Sem logo cadastrado não há o que carimbar, e ligar o botão só produziria um
                   aviso depois de esperar o vídeo montar. Melhor dizer aqui. */}
               {!marca?.logo ? (
-                <Nota>
-                  Para usar marca d&apos;água, primeiro envie seu logo em <strong>Minha marca</strong>.
-                </Nota>
+                /* DIZER ONDE IR E LEVAR. A primeira versão disto (10/10/2026) escrevia
+                   "envie seu logo em Minha marca" com a frase em negrito e SEM link -- eu
+                   indicava o caminho e deixava a pessoa procurar a porta. No mesmo dia ele
+                   voltou dizendo "é onde está a parte de colocar marca d'água e etc nos
+                   vídeos e fotos, não vejo!!", e a conta dele não tinha logo: a seção
+                   inteira se resumia a esta frase, sem botão nenhum, no meio de um painel
+                   rolado. Instrução que não é clicável é obstáculo com cara de ajuda. */
+                <div className="flex flex-col gap-2 rounded-2xl bg-[var(--ed-elevado)] p-3.5">
+                  <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">
+                    A marca d&apos;água usa o <strong>seu logo</strong>, e ainda não há nenhum na sua marca. Envie um e ele passa a valer aqui, na capa, na tela final e nas fotos exportadas.
+                  </p>
+                  <Link href="/marca" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--ed-acento)] px-4 text-[14px] font-semibold text-white transition hover:bg-[var(--ed-acento-forte)]">
+                    <Icone nome="marca" className="h-4 w-4" />
+                    Enviar meu logo
+                  </Link>
+                </div>
               ) : (
                 <>
                   <Alternar

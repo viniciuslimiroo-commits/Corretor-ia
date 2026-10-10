@@ -585,7 +585,7 @@ export default function Editor() {
                         placeholder="Legenda opcional, ex.: Sala de estar · 32 m²"
                         className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-marca-indigo focus:outline-none"
                       />
-                      {temLogo && (
+                      {temLogo ? (
                         <label className="flex items-center gap-2 text-sm text-neutral-700">
                           <input
                             type="checkbox"
@@ -601,6 +601,17 @@ export default function Editor() {
                           />
                           Com meu logo
                         </label>
+                      ) : (
+                        /* SEM LOGO, A OPÇÃO SUMIA POR COMPLETO -- e com ela a notícia de que
+                           existe. Quem nunca enviou logo não descobria que dava: a tela de
+                           baixar não dizia nada, e a pessoa concluía que o produto não
+                           carimbava foto. Ele chegou exatamente assim em 10/10/2026 ("não
+                           vejo!!"), com a conta sem logo. Agora a opção continua no lugar,
+                           desligada, dizendo o que falta e levando lá. */
+                        <Link href="/marca" className="flex items-center gap-1.5 text-sm text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-marca-indigo">
+                          <Icone nome="marca" className="h-4 w-4 shrink-0" />
+                          Enviar meu logo pra carimbar
+                        </Link>
                       )}
                     </div>
                   </div>
