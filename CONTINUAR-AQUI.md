@@ -218,6 +218,35 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **10/10/2026 — Claude Code (o Supabase estava pausado; e o "Editar", resolvido de verdade):**
+  - **O projeto Supabase estava PAUSADO** (`INACTIVE`). Projeto gratuito dorme por
+    inatividade, e **pausado também perde o DNS** — o host dava NXDOMAIN, o login não
+    funcionava por nenhum método, e tudo atrás de login estava fora do ar. Religado pelo MCP
+    (`INACTIVE` → `COMING_UP` → `RESTORING` → `ACTIVE_HEALTHY`, uns 4 min). **Nada se
+    perdeu:** 6 usuários, 4 imóveis, 104 fotos, 26 vídeos, 1 cliente no CRM. Conferido com
+    `conferir-marca-dagua-na-tela.mjs` contra produção (22/22, com login e escrita reais).
+    - **Isso volta a acontecer.** Projeto gratuito pausa a cada poucos dias sem uso, e cada
+      pausa derruba o site inteiro. Decisão do dono: subir o plano, ou religar quando
+      acontecer (agora são 3 min, com o MCP conectado).
+    - **Armadilha:** eu li NXDOMAIN como "apagado" e falei em perda de dados. Pausado perde
+      o DNS do mesmo jeito. A medição estava certa; a causa inferida dela, não.
+  - **`088b8b3` — o "Editar" do cartão de vídeo. O botão NUNCA esteve quebrado.**
+    Olhando o vídeo do print direto no banco (92e16958): status concluído, espec com 10
+    cenas, os 10 jobs existem, mp4 e miniatura no storage, `precisaDoEditor()` false —
+    **todas as guardas de `editarVideo` passam**. A função funcionava; as cenas entravam no
+    formulário. O que não acontecia era o CARTÃO FECHAR: ele é derivado de duas origens
+    (`resultadoAberto ?? geracao.pronto`), e `setResultado(null)` apaga só a primeira. Em
+    vídeo recém-gerado o cartão vem da segunda. `gerar` e `retomarVideo` já limpavam as
+    duas; só `editarVideo` esquecia. Daí ser intermitente: abrindo da lista, fechava normal.
+    - Prova: `scripts/testar-fechar-cartao-do-video.ts` — teste de FONTE (a interação de
+      estado do React não cabe em teste de unidade), com **controle negativo** que remove a
+      linha e confirma que a regra reprova.
+    - **Fiquei 11 dias esperando uma mensagem de erro que nunca ia aparecer**, porque eu
+      tinha decidido que era falha da chamada. O que destravou foi o MCP do Supabase: três
+      consultas mostraram o dado íntegro e derrubaram todas as hipóteses de uma vez.
+  - **`e0e2084`** corrige um achado FALSO meu de 29/09 (ver a entrada daquele dia): as
+    bancadas `/dev` sempre tiveram trava.
+
 - **30/09/2026 — Claude Code (publicação da marca d'água e do logo na foto):**
   - **PUBLICADO** com o "sim" dele: `6b78aa9` → `af37055` no `main`. Seis commits: o motor e
     a tela da marca d'água, o logo na foto achável, o `.gitattributes`, a normalização do
