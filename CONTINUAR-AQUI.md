@@ -222,6 +222,30 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **10/10/2026 (madrugada, 2) — Claude Code (`a7471aa`, publicado e conferido no ar):**
+  Ele: "analise e se ficou algo errado ou sujeira, crie métodos... colocar cor branca nas
+  palavras se necessário sem mudar a logo". Analisei **medindo no logo dele**, e o resultado
+  contrariou o palpite — inclusive o meu.
+  - **Sujeira: existia.** 59 pedaços opacos sobravam do recorte, dos quais **42 eram ilhas
+    minúsculas somando 949 px** (5,8% do restante), visíveis acima do telhado.
+    `tirarIlhasPequenas` separa lixo de desenho pelo **tamanho relativo** à maior ilha —
+    número absoluto quebraria em logo de outro tamanho.
+  - **Contorno branco PIORA.** Montei as quatro variantes sobre parede clara e madeira
+    escura: vira mingau no claro e engole o "NEGÓCIOS IMOBILIÁRIOS" no escuro.
+  - **Mas o contorno não é inútil — a régua é outra.** Logo branco chapado sobre parede
+    clara mede faixa de luminância **15** na composição (invisível); com contorno escuro vai
+    a **255**. O que separa os casos **não é a cor**: o dourado dele tem média 183, quase
+    branco, e não precisa. É a **FAIXA INTERNA** — quanto o próprio logo varia entre seu
+    ponto mais claro e o mais escuro. Dourado: **139** (tem modelado). Branco chapado: **0**.
+    `contornoNecessario` decide por isso, e põe o contorno no tom OPOSTO. Desenha ATRÁS,
+    nunca por cima: é o "sem mudar a logo" do pedido.
+  - **Defeito que as imagens revelaram:** a limpeza contava desenho acima de alfa 120 e o
+    contorno acima de 90. Os restos no meio escapavam da limpeza **e** eram contornados —
+    sumiam na versão limpa e reapareciam na contornada. Agora há um `PISO_DESENHO` só.
+    **Dois limiares pra mesma pergunta são duas respostas esperando a hora de discordar.**
+  - No logo dele, pipeline completo: **92% transparente, zero sujeira, nenhum contorno**.
+  - `testar-fundo-do-logo.ts` foi de 13 pra 20 conferências. **130 no conjunto.**
+
 - **10/10/2026 (madrugada) — Claude Code (`b717aa7`, publicado e conferido no ar):**
   Ele subiu o logo da imobiliária (dourado sobre fundo escuro, quadrado, sem alfa). Montei a
   marca d'água com o logo DELE sobre uma foto DELE e mandei a imagem: saiu um **selo
