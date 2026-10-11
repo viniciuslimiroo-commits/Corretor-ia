@@ -269,6 +269,40 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
     sozinho não ensina o que se faz. Está em um botão só, no alto de `/videos`.
   - Tudo desta entrada foi publicado com o "sim" dele.
 
+- **10/10/2026 (noite) — Claude Code (`186b151`, `64cd296` — NÃO publicados ainda):**
+  - **Aparar arrastando a borda: o laudo antigo estava errado DUAS vezes.** Ele mandou
+    consertar "aquilo de arrastar a borda pra cortar a cena". Medindo antes de mexer:
+    arrastar a borda **já funcionava** (4 s → 3 s). Quem reprovava era o teste, por quatro
+    motivos somados — pegava a **tela final** (que também mora na faixa `cenas:` e não tem
+    alça de propósito), tirava o índice da posição no array em vez do `cenas:N`, não conferia
+    se a cena tinha de onde encolher (`LIMITES.duracaoMin` é 3 s: cena no piso responde
+    "3 s → 3 s" e isso é o **certo**), e juntava "sem alça" com "arrastei e nada mudou" no
+    mesmo `conferir`, de forma que a mensagem nunca dizia qual dos dois tinha sido.
+    Eu caí em dois desses montando o roteiro novo.
+  - **Mas havia um defeito de verdade, e é o mesmo de `2366189`:** os 450 ms do menu de
+    "segurar" valiam pra alça em **qualquer** ponteiro. A alça tem 12 px de desenho; quem
+    agarra, mira e pensa passa disso, e aí o menu abria, `segurou` virava `true` e o aparo
+    nunca acontecia. Provado nos dois sentidos: sem o conserto, hesitar 0,7 s dá 4 s → 4 s;
+    com ele, 4 s → 3 s. Agora segurar é só do dedo, e **no mouse o menu do bloco abre com
+    botão direito** (antes abria o menu do navegador, e o menu do bloco só existia segurando).
+  - **Demonstração ao passar o mouse** nos estilos (`64cd296`), pedido dele. O ponto fino:
+    a conta do movimento saiu de `video-ffmpeg.ts` pra `movimento-da-foto.ts`, que é puro e
+    roda nos dois lados — o `zoompan` e a animação do navegador leem a **mesma** amplitude,
+    curva e pouso. `testar-movimento-da-foto.ts` prova por inversão que os quadros-chave
+    recolocam a janela da receita (pior erro 5e-5 da largura). O **tour não dá pra imitar**
+    (é clipe de IA): a janelinha mostra a diferença de estrutura e **diz** de onde vem, com
+    etiqueta "câmera por IA". Dá pra trocar por um exemplo real se ele autorizar o crédito
+    de uma geração — vira arquivo estático e nunca mais custa.
+  - **Duas vezes o instrumento quase me fez "consertar" a tela certa:** um caso pulado em
+    silêncio (parece aprovado quando se lê a lista) e o caso do celular, que reprovava porque
+    encolher a janela **não muda `hover`** — quem muda é a emulação de toque. Perguntar
+    `matchMedia("(hover: none)")` antes de julgar foi o que salvou.
+  - **ACHADO SÉRIO, anterior a hoje, não investigado:** `testar-saneador-linha.ts` reprova
+    7 casos — a canonização de áudio não volta byte a byte (I3/I4, 303 fixtures). Se o espec
+    de áudio não faz ida-e-volta, **reabrir um vídeo antigo pode mudar a música/narração
+    dele sem avisar**. Confirmado que já reprovava antes do trabalho de hoje.
+    `testar-ferramentas-linha.ts` estoura no ffmpeg (ambiente).
+
 - **10/10/2026 (madrugada, 2) — Claude Code (`a7471aa`, publicado e conferido no ar):**
   Ele: "analise e se ficou algo errado ou sujeira, crie métodos... colocar cor branca nas
   palavras se necessário sem mudar a logo". Analisei **medindo no logo dele**, e o resultado
