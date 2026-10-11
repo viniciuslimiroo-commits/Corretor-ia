@@ -100,6 +100,8 @@ import CabecalhoEditor from "@/components/editor/cabecalho-editor";
 import TrilhoFerramentas from "@/components/editor/trilho-ferramentas";
 import ModalVideoPronto from "@/components/editor/modal-video-pronto";
 import PainelVideos, { type VideoDaLista } from "@/components/editor/painel-videos";
+import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
+import { usarSelecao } from "@/lib/usar-selecao";
 import VideoNoPalco from "@/components/editor/video-no-palco";
 import { useMidia } from "@/components/editor/usar-midia";
 import { continuaNaProxima, partesDoClipe } from "@/lib/clipes-do-editor";
@@ -606,6 +608,10 @@ export default function EditorDeVideo() {
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
+  const [apagandoVideos, setApagandoVideos] = useState(false);
+  const idsDosVideos = useMemo(() => (videos ?? []).map((v) => v.id), [videos]);
+  /** Marcar vários na aba Vídeos pra apagar de uma vez (pedido dele em 10/10/2026). */
+  const selecaoVideos = usarSelecao(idsDosVideos);
 
   /**
    * A narração SEM o tempo (o tempo está nos trechos de voz). A voz só entra quando está
@@ -1642,6 +1648,32 @@ export default function EditorDeVideo() {
     if (resultado?.videoId === id) setResultado(null);
   }
 
+  /**
+   * Apaga de uma vez os vídeos marcados.
+   *
+   * Tira da tela SÓ os que o servidor confirmou. Tirar os marcados e avisar "pronto" seria
+   * mais curto e mentiria: o que falhou voltaria na próxima carga, sem explicação.
+   */
+  async function apagarVideosMarcados() {
+    const ids = selecaoVideos.marcados;
+    if (ids.length === 0 || apagandoVideos) return;
+    setApagandoVideos(true);
+    try {
+      const r = await apagarVideosEmLote(ids, await token());
+      setVideos((lista) => (lista ?? []).filter((v) => !r.apagados.includes(v.id)));
+      if (resultado?.videoId && r.apagados.includes(resultado.videoId)) setResultado(null);
+      selecaoVideos.tirar(r.apagados);
+      const recado = recadoDoLote(r);
+      if (recado) setErro(recado);
+      else {
+        avisar(`${r.apagados.length} ${r.apagados.length === 1 ? "vídeo apagado" : "vídeos apagados"}`);
+        selecaoVideos.desligar();
+      }
+    } finally {
+      setApagandoVideos(false);
+    }
+  }
+
 
   /** Em que segundo cada cena começa. Serve pro cabeçote saber quem está no ar. */
   const iniciosDasCenas = useMemo(() => relogioDaLinha.clipes.slice(0, cenas.length).map((c) => c.inicio), [relogioDaLinha, cenas.length]);
@@ -2656,7 +2688,17 @@ export default function EditorDeVideo() {
             <p className="text-[12.5px] leading-relaxed text-[var(--ed-texto-2)]">
               {celular ? "Toque num vídeo pra pôr no fim da linha do tempo." : "Clique num vídeo pra pôr no fim da linha do tempo, ou arraste pro ponto certo."} Vídeo longo entra em partes de até 8s, emendadas sem corte.
             </p>
-            <PainelVideos videos={videos as VideoDaLista[] | null} entrando={videosEntrando} usados={usadosPorVideo} gerando={gerando} aoAdicionar={(v) => adicionarVideoPronto(v)} aoMais={abrirMaisDoVideo} />
+            <PainelVideos
+              videos={videos as VideoDaLista[] | null}
+              entrando={videosEntrando}
+              usados={usadosPorVideo}
+              gerando={gerando}
+              aoAdicionar={(v) => adicionarVideoPronto(v)}
+              aoMais={abrirMaisDoVideo}
+              selecao={selecaoVideos}
+              apagando={apagandoVideos}
+              aoApagarMarcados={apagarVideosMarcados}
+            />
           </div>
         );
 

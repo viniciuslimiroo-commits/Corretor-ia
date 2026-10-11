@@ -60,6 +60,8 @@ import OuvirMusica from "@/components/ouvir-musica";
 import { sugerirMontagem, type Olhada } from "@/lib/video-automatico";
 import { useArrastarLista } from "@/components/usar-arrastar-lista";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
+import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
+import { usarSelecao } from "@/lib/usar-selecao";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -341,6 +343,7 @@ export default function PaginaVideo() {
     resultadoAberto ?? (geracao.pronto ? { ...geracao.pronto, musica } : null);
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
+  const [apagandoVideos, setApagandoVideos] = useState(false);
 
   const espec: EspecVideo = useMemo(
     () => ({
@@ -1119,10 +1122,41 @@ export default function PaginaVideo() {
     setTelaFinal(true);
   }
 
+  // A MESMA ORDEM QUE A LISTA MOSTRA. O `sort` vivia dentro do JSX; marcar com Shift
+  // precisa saber quem vem antes de quem, e "antes" é o que está NA TELA, não no estado.
+  const videosOrdenados = useMemo(
+    () => [...(videos ?? [])].sort((a, b) => Number(b.imovel?.id === imovelId) - Number(a.imovel?.id === imovelId)),
+    [videos, imovelId]
+  );
+  const idsDosVideos = useMemo(() => videosOrdenados.map((v) => v.id), [videosOrdenados]);
+  const selecaoVideos = usarSelecao(idsDosVideos);
+
   async function apagarVideo(id: string) {
     await fetch(`/api/video/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
     setVideos((lista) => (lista ?? []).filter((v) => v.id !== id));
     if (resultado?.videoId === id) setResultado(null);
+  }
+
+  /**
+   * Apaga de uma vez os vídeos marcados -- e tira da tela SÓ os que o servidor confirmou.
+   * O recado do lote conta o que ficou; sem ele, o que falhou reapareceria sem explicação.
+   */
+  async function apagarVideosMarcados() {
+    const ids = selecaoVideos.marcados;
+    if (ids.length === 0 || apagandoVideos) return;
+    setApagandoVideos(true);
+    setErro(null);
+    try {
+      const r = await apagarVideosEmLote(ids, await token());
+      setVideos((lista) => (lista ?? []).filter((v) => !r.apagados.includes(v.id)));
+      if (resultado?.videoId && r.apagados.includes(resultado.videoId)) setResultado(null);
+      selecaoVideos.tirar(r.apagados);
+      const recado = recadoDoLote(r);
+      if (recado) setErro(recado);
+      else selecaoVideos.desligar();
+    } finally {
+      setApagandoVideos(false);
+    }
   }
 
   if (c.checando) return <main className="p-12 text-sm text-neutral-500">Carregando…</main>;
@@ -1990,16 +2024,64 @@ export default function PaginaVideo() {
                 </span>
               )}
             </div>
+            {/* MARCAR VÁRIOS PRA APAGAR (pedido dele em 10/10/2026). Fora do modo é um link
+                discreto; o botão vermelho só existe com algo marcado. */}
+            {(videos ?? []).length > 0 && (
+              <div className="mt-1 mb-2 flex items-center justify-between gap-2 text-xs">
+                {selecaoVideos.ligada ? (
+                  <>
+                    <span className="text-neutral-500">
+                      {selecaoVideos.marcados.length === 0 ? "Marque os vídeos" : `${selecaoVideos.marcados.length} marcado${selecaoVideos.marcados.length > 1 ? "s" : ""}`}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <button onClick={selecaoVideos.marcarTodos} className="text-marca-indigo underline">Todos</button>
+                      <button onClick={selecaoVideos.desligar} className="text-neutral-500 underline">Cancelar</button>
+                      {selecaoVideos.marcados.length > 0 && (
+                        <BotaoConfirma
+                          pergunta={`Apagar ${selecaoVideos.marcados.length} ${selecaoVideos.marcados.length === 1 ? "vídeo" : "vídeos"}?`}
+                          detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram neles continuam em Materiais."
+                          confirmar="Apagar"
+                          aoConfirmar={apagarVideosMarcados}
+                          disabled={apagandoVideos}
+                          className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                        >
+                          <Icone nome="lixeira" className="h-3.5 w-3.5" />
+                          {apagandoVideos ? "Apagando…" : `Apagar · ${selecaoVideos.marcados.length}`}
+                        </BotaoConfirma>
+                      )}
+                    </span>
+                  </>
+                ) : (
+                  <button onClick={selecaoVideos.ligar} className="ml-auto flex items-center gap-1.5 text-marca-indigo underline">
+                    <Icone nome="check" className="h-3.5 w-3.5" />
+                    Selecionar vários
+                  </button>
+                )}
+              </div>
+            )}
             {videos === null ? (
               <p className="text-sm text-neutral-500">Carregando…</p>
             ) : videos.length === 0 ? (
               <p className="text-sm text-neutral-500">Nenhum ainda.</p>
             ) : (
               <ul className="divide-y divide-neutral-100">
-                {[...videos]
-                  .sort((a, b) => Number(b.imovel?.id === imovelId) - Number(a.imovel?.id === imovelId))
-                  .map((v) => (
-                  <li key={v.id} className="flex items-center gap-3 py-2">
+                {videosOrdenados.map((v) => (
+                  <li key={v.id} className={"flex items-center gap-3 py-2 " + (selecaoVideos.marcado(v.id) ? "bg-red-50/60" : "")}>
+                    {selecaoVideos.ligada && (
+                      <button
+                        type="button"
+                        onClick={(e) => selecaoVideos.alternar(v.id, e.shiftKey)}
+                        aria-pressed={selecaoVideos.marcado(v.id)}
+                        aria-label={selecaoVideos.marcado(v.id) ? `Desmarcar ${v.titulo}` : `Marcar ${v.titulo}`}
+                        title="Com Shift, marca daqui até o último"
+                        className={
+                          "grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition " +
+                          (selecaoVideos.marcado(v.id) ? "border-red-600 bg-red-600 text-white" : "border-neutral-300 text-transparent hover:border-neutral-400")
+                        }
+                      >
+                        <Icone nome="check" className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     {/* O VÍDEO PARADO TEM QUE RESPONDER AO CLIQUE. Em 24/09/2026 ele
                         recarregou a página no meio de uma geração e o vídeo ficou aqui em
                         "gerando" pra sempre: "não é possível fazer nada, não abre e ao clicar
@@ -2009,10 +2091,10 @@ export default function PaginaVideo() {
                         por ele, e ninguém estava perguntando. Agora o clique retoma de onde
                         parou, e o texto diz isso em português antes de ele precisar descobrir. */}
                     <button
-                      onClick={() => (v.status === "gerando" ? retomarVideo(v) : abrirVideo(v))}
-                      disabled={gerando && v.status === "gerando"}
+                      onClick={(e) => (selecaoVideos.ligada ? selecaoVideos.alternar(v.id, e.shiftKey) : v.status === "gerando" ? retomarVideo(v) : abrirVideo(v))}
+                      disabled={!selecaoVideos.ligada && gerando && v.status === "gerando"}
                       className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100 disabled:opacity-50"
-                      title={v.status === "gerando" ? "Continuar de onde parou" : "Abrir"}
+                      title={selecaoVideos.ligada ? "Marcar ou desmarcar" : v.status === "gerando" ? "Continuar de onde parou" : "Abrir"}
                     >
                       {v.miniatura ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -2031,20 +2113,24 @@ export default function PaginaVideo() {
                         {imovelId && v.imovel?.id === imovelId && <span className="ml-1 rounded-full bg-marca-pessego/60 px-1.5 text-[10px] font-medium text-marca-indigo">deste imóvel</span>}
                       </p>
                     </div>
-                    {v.status === "concluido" && (
+                    {/* Marcando, os botões de UM somem: duas lixeiras na mesma linha ao
+                        mesmo tempo é onde o dedo erra. */}
+                    {!selecaoVideos.ligada && v.status === "concluido" && (
                       <button onClick={() => editarVideo(v.id)} disabled={gerando} className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-marca-indigo disabled:opacity-30" title="Editar: reabre as cenas e os ajustes">
                         <Icone nome="editar_prompt" className="h-4 w-4" />
                       </button>
                     )}
-                    <BotaoConfirma
-                      pergunta="Apagar este vídeo?"
-                      detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."
-                      aoConfirmar={() => apagarVideo(v.id)}
-                      className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                      title="Apagar"
-                    >
-                      <Icone nome="lixeira" className="h-4 w-4" />
-                    </BotaoConfirma>
+                    {!selecaoVideos.ligada && (
+                      <BotaoConfirma
+                        pergunta="Apagar este vídeo?"
+                        detalhe="Sai o arquivo montado e a miniatura. As fotos que entraram nele continuam em Materiais."
+                        aoConfirmar={() => apagarVideo(v.id)}
+                        className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                        title="Apagar"
+                      >
+                        <Icone nome="lixeira" className="h-4 w-4" />
+                      </BotaoConfirma>
+                    )}
                   </li>
                 ))}
               </ul>

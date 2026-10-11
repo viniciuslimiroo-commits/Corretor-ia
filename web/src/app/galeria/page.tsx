@@ -8,6 +8,7 @@ import AppShell from "@/components/app-shell";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { CATEGORIAS, type Categoria } from "@/lib/materiais";
 import { guardarSelecao } from "@/lib/selecao-material";
+import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
 import VisualizadorGaleria, { type ItemGaleria } from "@/components/visualizador-galeria";
 
 // Materiais: tudo que a pessoa já produziu num lugar só, pra escolher e virar material.
@@ -96,9 +97,15 @@ export default function Materiais() {
     return ordem === "antigos" ? [...lista].reverse() : lista;
   }, [itens, categoria, soFavoritos, imovelFiltro, busca, periodo, ordem]);
 
-  /** Só imagem entra em PDF -- vídeo fica de fora da seleção. */
-  const selecionaveis = useMemo(() => filtrados.filter((i) => i.categoria !== "video"), [filtrados]);
+  // VÍDEO TAMBÉM SE MARCA. A seleção servia só pro PDF, então vídeo ficava de fora dela --
+  // e, de carona, ficava de fora do APAGAR em lote: só saía um por um, pelo visualizador.
+  // Ele pediu em 10/10/2026 escolher vários de uma vez. Agora tudo se marca, e quem só
+  // aceita imagem (o material em PDF) filtra na hora de usar, não na hora de marcar.
+  const selecionaveis = filtrados;
   const selecionados = useMemo(() => marcados.filter((id) => (itens ?? []).some((i) => i.id === id)), [marcados, itens]);
+  const idsDeVideo = useMemo(() => new Set((itens ?? []).filter((i) => i.categoria === "video").map((i) => i.id)), [itens]);
+  const imagensMarcadas = useMemo(() => selecionados.filter((id) => !idsDeVideo.has(id)), [selecionados, idsDeVideo]);
+  const videosMarcados = useMemo(() => selecionados.filter((id) => idsDeVideo.has(id)), [selecionados, idsDeVideo]);
 
   function alternar(id: string) {
     setMarcados((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
@@ -132,11 +139,31 @@ export default function Materiais() {
     setApagando(true);
     setErro(null);
     try {
+      // Vídeo sai pela rota dele, imagem pela rota de materiais. Os dois podem estar
+      // marcados juntos, então o lote se divide aqui -- e o que falhar é DITO.
+      const videos = ids.filter((id) => idsDeVideo.has(id));
+      const imagens = ids.filter((id) => !idsDeVideo.has(id));
+      let recadoDosVideos: string | null = null;
+      if (videos.length > 0) {
+        const r = await apagarVideosEmLote(videos, await token());
+        setMarcados((m) => m.filter((id) => !r.apagados.includes(id)));
+        recadoDosVideos = recadoDoLote(r);
+      }
+      if (imagens.length === 0) {
+        setEmUso(null);
+        setAberto(null);
+        if (recadoDosVideos) setErro(recadoDosVideos);
+        const d = await buscar();
+        setItens(d.itens);
+        setImoveis(d.imoveis);
+        return;
+      }
+
       const pedir = async (forcar: boolean) => {
         const r = await fetch("/api/materiais/apagar", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-          body: JSON.stringify({ ids, forcar }),
+          body: JSON.stringify({ ids: imagens, forcar }),
         });
         const bruto = await r.text();
         let d: { error?: string; emUso?: boolean; apagados?: number } = {};
@@ -152,15 +179,21 @@ export default function Materiais() {
       // Em uso num book: em vez de perguntar de novo num diálogo, o aviso fica NA TELA,
       // dizendo em quais books, com o botão de confirmar ao lado.
       if (saida.status === 409 && saida.d.emUso) {
-        setEmUso({ texto: saida.d.error ?? "Estas imagens estão em algum book.", ids });
+        // Só as IMAGENS voltam na pergunta: os vídeos do lote já saíram, e repetir o id
+        // deles no "apagar assim mesmo" só renderia um 404 pra explicar depois.
+        setEmUso({ texto: saida.d.error ?? "Estas imagens estão em algum book.", ids: imagens });
         setApagando(false);
+        const d = await buscar();
+        setItens(d.itens);
+        setImoveis(d.imoveis);
         return;
       }
       if (!saida.ok) throw new Error(saida.d.error ?? "Não consegui apagar.");
 
       setEmUso(null);
-      setMarcados((m) => m.filter((id) => !ids.includes(id)));
+      setMarcados((m) => m.filter((id) => !imagens.includes(id)));
       setAberto(null);
+      if (recadoDosVideos) setErro(recadoDosVideos);
       const d = await buscar();
       setItens(d.itens);
       setImoveis(d.imoveis);
@@ -284,8 +317,24 @@ export default function Materiais() {
           {/* Só aparece com algo marcado: botão de apagar sempre à vista convida ao acidente. */}
           {selecionados.length > 0 && (
             <BotaoConfirma
-              pergunta={`Apagar ${selecionados.length} ${selecionados.length === 1 ? "imagem" : "imagens"}?`}
-              detalhe="Sai da sua galeria e do armazenamento. Não tem volta e não devolve crédito."
+              // A pergunta diz O QUE vai sair. Com vídeo e imagem juntos, "3 imagens"
+              // estaria errado -- e é na pergunta que a pessoa confere antes do sem-volta.
+              pergunta={`Apagar ${selecionados.length} ${
+                videosMarcados.length === 0
+                  ? selecionados.length === 1
+                    ? "imagem"
+                    : "imagens"
+                  : imagensMarcadas.length === 0
+                    ? selecionados.length === 1
+                      ? "vídeo"
+                      : "vídeos"
+                    : "itens"
+              }?`}
+              detalhe={
+                videosMarcados.length > 0 && imagensMarcadas.length > 0
+                  ? `${imagensMarcadas.length} imagem(ns) e ${videosMarcados.length} vídeo(s). Sai da galeria e do armazenamento. Não tem volta e não devolve crédito.`
+                  : "Sai da sua galeria e do armazenamento. Não tem volta e não devolve crédito."
+              }
               confirmar="Apagar"
               aoConfirmar={() => apagarMarcados(false)}
               disabled={apagando}
@@ -318,13 +367,21 @@ export default function Materiais() {
           {/* Diz o que carrega, e só age no que a pessoa marcou.
               Antes, sem nada marcado, ele pegava "as que estão à vista" -- que depende do
               filtro e de onde a rolagem parou. Comportamento que ninguém adivinha. */}
+          {/* Material em PDF é só de IMAGEM: vídeo pode estar marcado (pra apagar) e aqui
+              ele é ignorado, com o número dizendo quantas vão de verdade. */}
           <Botao
-            onClick={() => criarMaterial(selecionados)}
-            disabled={selecionados.length === 0}
-            title={selecionados.length ? `Leva ${selecionados.length} imagens pro criador` : "Marque as imagens primeiro"}
+            onClick={() => criarMaterial(imagensMarcadas)}
+            disabled={imagensMarcadas.length === 0}
+            title={
+              imagensMarcadas.length
+                ? `Leva ${imagensMarcadas.length} imagens pro criador${videosMarcados.length ? ` (os ${videosMarcados.length} vídeos marcados ficam de fora)` : ""}`
+                : videosMarcados.length
+                  ? "Material é feito de imagens — marque pelo menos uma"
+                  : "Marque as imagens primeiro"
+            }
           >
             <Icone nome="materiais" className="h-4 w-4" />
-            {selecionados.length ? `Criar material com ${selecionados.length}` : "Criar material"}
+            {imagensMarcadas.length ? `Criar material com ${imagensMarcadas.length}` : "Criar material"}
           </Botao>
         </div>
       </div>
@@ -450,8 +507,10 @@ export default function Materiais() {
                           <Icone nome={video ? "video" : "foto"} className="h-8 w-8" />
                         </div>
                       )}
+                      {/* A etiqueta desceu: o canto de cima à esquerda agora é da bolinha
+                          de marcar, que o vídeo também tem. */}
                       {video && (
-                        <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
+                        <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
                           <Icone nome="play" className="h-3 w-3" /> vídeo
                         </span>
                       )}
@@ -480,21 +539,21 @@ export default function Materiais() {
                       <Icone nome="estrela" className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  {!video && (
-                    <button
-                      type="button"
-                      onClick={() => alternar(i.id)}
-                      aria-pressed={marcado}
-                      aria-label={marcado ? "Desmarcar" : "Marcar pra usar em material"}
-                      title={marcado ? "Desmarcar" : "Marcar pra usar em material"}
-                      className={
-                        "absolute top-2 left-2 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-bold transition " +
-                        (marcado ? "border-marca-coral bg-marca-coral text-white" : "border-white bg-black/25 text-transparent hover:bg-black/40 hover:text-white/80")
-                      }
-                    >
-                      {marcado ? posicao : "✓"}
-                    </button>
-                  )}
+                  {/* O VÍDEO TAMBÉM SE MARCA -- pra apagar vários de uma vez. Ele não entra
+                      em material (PDF é de imagem), então a dica dele fala só de apagar. */}
+                  <button
+                    type="button"
+                    onClick={() => alternar(i.id)}
+                    aria-pressed={marcado}
+                    aria-label={marcado ? "Desmarcar" : video ? "Marcar pra apagar" : "Marcar pra usar em material"}
+                    title={marcado ? "Desmarcar" : video ? "Marcar pra apagar vários de uma vez" : "Marcar pra usar em material ou apagar"}
+                    className={
+                      "absolute top-2 left-2 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-bold transition " +
+                      (marcado ? "border-marca-coral bg-marca-coral text-white" : "border-white bg-black/25 text-transparent hover:bg-black/40 hover:text-white/80")
+                    }
+                  >
+                    {marcado ? (video ? "✓" : posicao) : "✓"}
+                  </button>
                 </li>
               );
             })}
@@ -523,12 +582,13 @@ export default function Materiais() {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-neutral-200 bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
             <p className="text-sm">
-              <strong>{selecionados.length}</strong> {selecionados.length === 1 ? "imagem marcada" : "imagens marcadas"}
+              <strong>{selecionados.length}</strong> {selecionados.length === 1 ? "marcado" : "marcados"}
+              {videosMarcados.length > 0 && <span className="ml-1 text-neutral-500">({videosMarcados.length} vídeo{videosMarcados.length > 1 ? "s" : ""})</span>}
               <span className="ml-2 hidden text-xs text-neutral-500 sm:inline">a primeira vira a capa · a ordem é a de marcação</span>
             </p>
             <div className="ml-auto flex items-center gap-2">
               <Botao variante="discreta" onClick={() => setMarcados([])}>Limpar</Botao>
-              <Botao onClick={() => criarMaterial(selecionados)}>
+              <Botao onClick={() => criarMaterial(imagensMarcadas)} disabled={imagensMarcadas.length === 0}>
                 <Icone nome="materiais" className="h-4 w-4" />
                 Criar material
               </Botao>
