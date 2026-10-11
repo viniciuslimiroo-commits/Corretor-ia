@@ -9,8 +9,8 @@
 // do Editor, não a de quem só quer o vídeo.
 //
 // Então aqui é a página de antes: 1) o que entra, 2) as cenas na ordem, o botão de gerar,
-// e os Ajustes FECHADOS. Quem quer mexer mais tem o botão "Editor completo" no alto, que
-// leva pra /editor/video com todas as ferramentas.
+// e os Ajustes FECHADOS. Quem quer mexer mais tem o botão "Mesa de edição" no alto (até
+// 10/10/2026 chamado "Editor completo"), que leva pra /editor/video com todas as ferramentas.
 //
 // As rotas de API que ela chama são as mesmas do Editor (conferido) e o saneador do
 // servidor aceita o espec antigo -- os campos novos são todos opcionais.
@@ -1190,13 +1190,21 @@ export default function PaginaVideo() {
           <p className="mt-1 text-sm text-neutral-500">Fotos viram um vídeo com movimento, música, seus textos e sua marca. Pronto pra Reels, Stories e WhatsApp.</p>
         </div>
         {/* A porta pro Editor: um botão, no alto, e só. Quem só quer o vídeo não precisa
-            ler nada sobre ele; quem quer mais sabe onde clicar. */}
+            ler nada sobre ele; quem quer mais sabe onde clicar.
+            Chamava-se "Editor completo". Ele em 10/10/2026: "esse nome estranho, queria que
+            as pessoas entendessem melhor". "Completo" não diz o que tem lá dentro e ainda
+            avisa que é coisa grande -- o contrário de convidar. "Mesa de edição" é termo de
+            vídeo que o brasileiro reconhece, e a linha de baixo diz o que se faz nela. */}
         <Link
           href={imovelId ? `/editor/video?imovel=${imovelId}` : "/editor/video"}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm hover:border-neutral-400"
+          title="Cortar, mover as cenas, pôr texto e som — a edição por inteiro"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm hover:border-neutral-400"
         >
-          <Icone nome="magica" className="h-4 w-4" />
-          Editor completo
+          <Icone nome="magica" className="h-4 w-4 shrink-0" />
+          <span className="leading-tight">
+            Mesa de edição
+            <span className="block text-[11px] text-neutral-500">cortar, mover, pôr texto</span>
+          </span>
         </Link>
       </div>
 

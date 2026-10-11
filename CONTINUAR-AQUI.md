@@ -263,8 +263,11 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
     de partida · 2 cenas". A primeira importa muito, porque aparar arrastando a borda é o
     gesto central do que ele chama de "estilo CapCut". Falta decidir, **medindo**, se o
     defeito é do app ou do roteiro.
-  - **Pendente:** publicar `864af83`, `2366189` e `dc3e491` (precisa do "sim" dele); e
-    responder o nome pra substituir "Editor completo".
+  - **"Editor completo" virou "Mesa de edição"** (ele escolheu entre quatro propostas).
+    "Completo" não diz o que tem lá dentro e ainda avisa que é coisa grande — o contrário de
+    convidar. O botão ganhou uma segunda linha, "cortar, mover, pôr texto", porque o nome
+    sozinho não ensina o que se faz. Está em um botão só, no alto de `/videos`.
+  - Tudo desta entrada foi publicado com o "sim" dele.
 
 - **10/10/2026 (madrugada, 2) — Claude Code (`a7471aa`, publicado e conferido no ar):**
   Ele: "analise e se ficou algo errado ou sujeira, crie métodos... colocar cor branca nas
