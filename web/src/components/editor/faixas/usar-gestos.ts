@@ -7,10 +7,11 @@ import type { MotorDeRolagem } from "./usar-rolagem";
 // GESTOS da linha do tempo (docs/planos/linha-do-tempo-spec.md, D4). Um ouvinte só, no
 // contêiner, lê o `data-alvo` do que foi tocado e decide:
 //
-//   toque (menos de 6px e de 450ms)  bloco -> seleciona (o cursor NÃO anda); grupo com
-//                                    mais de um item -> lista; faixa fina -> abre a faixa;
+//   toque (menos de 6px; no dedo,    bloco -> seleciona (o cursor NÃO anda); grupo com
+//   também menos de 450ms)           mais de um item -> lista; faixa fina -> abre a faixa;
 //                                    fundo vazio -> tira a seleção; régua -> leva o cursor.
-//   segurar 450ms parado             bloco -> menu (aoMenu).
+//   segurar 450ms parado (SÓ DEDO)   bloco -> menu (aoMenu).
+//   botão direito (mouse)            bloco ou alça -> o mesmo menu.
 //   arrastar                         SÓ o bloco selecionado (no dedo). Bloco não
 //                                    selecionado tem `touch-action: pan-x`: o navegador
 //                                    rola a linha e manda pointercancel pra cá. Mouse
@@ -231,7 +232,13 @@ export function criarMotorDeGestos(): MotorDeGestos {
       segurar: null,
       borda: 0,
     };
-    if ((alvo === "bloco" || alvo === "alca-inicio" || alvo === "alca-fim") && bloco) {
+    // SEGURAR PRA ABRIR O MENU É GESTO DE DEDO. No mouse ele só competia com o arraste:
+    // quem agarra a alça (que tem 12px de desenho), mira e pensa passa de 450ms com folga
+    // -- e aos 450ms o menu abria, `segurou` virava true e o aparo NUNCA acontecia. Medido
+    // em 10/10/2026: puxar a borda na hora encurtava 4s→3s; puxar depois de hesitar 0,7s
+    // não fazia nada. No mouse o menu agora é botão direito (ver o `contextmenu` em
+    // `ligar`), que é onde o dedo do computador procura.
+    if (!mouse && (alvo === "bloco" || alvo === "alca-inicio" || alvo === "alca-fim") && bloco) {
       a.segurar = setTimeout(() => {
         if (ativo !== a || a.moveu || !o || !a.bloco) return;
         a.segurou = true;
@@ -294,7 +301,11 @@ export function criarMotorDeGestos(): MotorDeGestos {
       if (g && ref && o) o.aoConfirmarGesto(ref, g);
       return;
     }
-    const toque = !a.moveu && !a.segurou && performance.now() - a.t0 < SEGURAR_MS;
+    // O limite de tempo pro "toque" também é coisa de dedo: no dedo ele separa tocar de
+    // segurar. No mouse não há segurar nenhum, então um clique pensado (acima de meio
+    // segundo) deixava de levar o cursor, de abrir a faixa e de tirar a seleção -- sem
+    // nada na tela explicando por quê.
+    const toque = !a.moveu && !a.segurou && (a.tipoPonteiro !== "touch" || performance.now() - a.t0 < SEGURAR_MS);
     encerrar();
     if (toque) tocar(a, e.clientX);
   }
@@ -317,8 +328,22 @@ export function criarMotorDeGestos(): MotorDeGestos {
       ouvir("pointercancel", (e) => {
         if (ativo && e.pointerId === ativo.id) encerrar();
       });
+      // BOTÃO DIREITO ABRE O MENU DO BLOCO -- é o gesto que o palco já usa ("botão direito
+      // pra mais") e o que o computador procura. Antes, o botão direito aqui abria o menu
+      // DO NAVEGADOR e o menu do bloco só existia segurando 450ms, que no mouse brigava
+      // com o arraste da alça.
       ouvir("contextmenu", (e) => {
-        if ((e as MouseEvent).button !== 2) e.preventDefault();
+        e.preventDefault();
+        if (!o || !conteudo) return;
+        const el = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-alvo]");
+        if (!el || !conteudo.contains(el)) return;
+        const alvo = el.dataset.alvo as Alvo;
+        const elBloco = alvo === "alca-inicio" || alvo === "alca-fim" ? el.closest<HTMLElement>('[data-alvo="bloco"]') : alvo === "bloco" ? el : null;
+        const bloco = blocoDaChave(elBloco?.dataset.chave ?? el.dataset.chave);
+        if (!bloco) return;
+        // Um arraste pela metade não fica pendurado atrás do menu.
+        encerrar();
+        o.aoMenu(bloco.ref, (e as MouseEvent).clientX, (e as MouseEvent).clientY);
       });
     },
     desligar() {

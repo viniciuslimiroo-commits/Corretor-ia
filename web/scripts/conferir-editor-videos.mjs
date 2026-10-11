@@ -219,17 +219,34 @@ try {
   conferir(!!vel && e6.cenas.some((x) => x.velocidade === 2), "barra da seleção: Velocidade > 2x muda a cena de vídeo", vel ? "" : "sem botão Velocidade na barra");
 
   // 7) arrastar a borda de trás de uma cena muda a duração
-  const blocos7 = await blocosCena();
-  const b7 = blocos7[1] ?? blocos7[0];
-  await clicar(b7.cx, b7.cy);
-  await esperar(250);
-  const idx7 = blocos7.indexOf(b7);
-  const d0 = (await espec()).cenas[idx7]?.duracao;
-  const alca = await medir('[data-alvo="bloco"][data-selecionado="1"] [data-alvo="alca-fim"]');
-  const zoom = await c.avaliar("parseFloat(getComputedStyle(document.querySelector('[data-area=\"linha\"]')).getPropertyValue('--pxs'))");
-  if (alca) await arrastar(b7.x + b7.w - 2, b7.cy, b7.x + b7.w - 2 - zoom * 1.6, b7.cy);
-  const d1 = (await espec()).cenas[idx7]?.duracao;
-  conferir(!!alca && d1 !== undefined && d0 !== undefined && d1 < d0, "arrastar a BORDA de trás da cena encolhe a duração (como no CapCut)", `${d0}s → ${d1}s`);
+  //
+  // Este passo reprovou por MESES com "3s → 3s", e o defeito era daqui, não do app:
+  //   a) `blocosCena()` inclui a TELA FINAL (ela também mora na faixa "cenas:", no fim) e
+  //      a tela final não tem alça nenhuma, de propósito;
+  //   b) o índice vinha da posição no array, não do "cenas:N" da chave;
+  //   c) cena no piso de duração (LIMITES.duracaoMin = 3s) responde "3s → 3s" a qualquer
+  //      arraste, e isso é o comportamento CERTO;
+  //   d) "sem alça" e "arrastei e nada mudou" caíam no MESMO `conferir`, então a mensagem
+  //      não dizia qual dos dois tinha acontecido.
+  // Agora cada um desses é uma pergunta separada, e a cena é escolhida por ter de onde
+  // encolher.
+  const MIN_CENA = 3;
+  const e7 = await espec();
+  const b7 = (await blocosCena()).filter((b) => Number(b.chave.split(":")[1]) < e7.cenas.length).map((b) => ({ ...b, i: Number(b.chave.split(":")[1]) })).find((b) => (e7.cenas[b.i]?.duracao ?? 0) > MIN_CENA);
+  conferir(!!b7, "achei uma cena com folga pra encolher", b7 ? `${b7.chave}, ${e7.cenas[b7.i].duracao}s` : `nenhuma acima de ${MIN_CENA}s`);
+  if (b7) {
+    await clicar(b7.cx, b7.cy);
+    await esperar(250);
+    const d0 = (await espec()).cenas[b7.i]?.duracao;
+    const alca = await medir('[data-alvo="bloco"][data-selecionado="1"] [data-alvo="alca-fim"]');
+    conferir(!!alca, "a cena selecionada mostra a alça de FIM", alca ? `${Math.round(alca.w)}px` : "não existe no DOM");
+    const zoom = await c.avaliar("parseFloat(getComputedStyle(document.querySelector('[data-area=\"linha\"]')).getPropertyValue('--pxs'))");
+    if (alca) {
+      await arrastar(b7.x + b7.w - 2, b7.cy, b7.x + b7.w - 2 - zoom * (d0 - MIN_CENA) * 0.8, b7.cy);
+      const d1 = (await espec()).cenas[b7.i]?.duracao;
+      conferir(d1 !== undefined && d0 !== undefined && d1 < d0, "arrastar a BORDA de trás da cena encolhe a duração (como no CapCut)", `${d0}s → ${d1}s`);
+    }
+  }
 
   // 8) arrastar o bloco muda a ordem
   const blocos8 = await blocosCena();
