@@ -316,3 +316,16 @@ body {
   --linha-guia: #f06b4f;
   --trilho-faixa: rgb(165 185 225 / 0.05);
 }
+
+/* ---------- A JANELINHA DE DEMONSTRACAO DO ESTILO (/videos) ----------
+   Ela existe pra quem PASSA O MOUSE. Onde nao ha mouse nao ha "passar por cima", e uma
+   janela que abrisse no toque roubaria o toque que escolhe o estilo.
+
+   A regra esta aqui, e nao numa variante do Tailwind, porque `[@media(hover:hover)]:block`
+   nao chegou a sair no CSS -- medido com `Emulation.setEmulatedMedia` em
+   `conferir-demo-do-estilo.mjs`: com `hover: none` a janelinha continuava visivel. */
+@media (hover: none) {
+  [data-demo-estilo] {
+    display: none;
+  }
+}

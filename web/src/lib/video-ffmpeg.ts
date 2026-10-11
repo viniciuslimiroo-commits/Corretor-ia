@@ -4,6 +4,7 @@ import { caminhoFonte } from "./ffmpeg";
 import { larguraDoTexto } from "./texto-svg";
 import { anguloDaVinheta } from "./filtros";
 import { ESTILO_TEXTO_POR_ID, FPS, LIMITES, MOVIMENTOS_360, fovDaPanoramica, type EfeitoId, type Movimento360Id, type Projecao360, type TextoCena, type Legendas, type Apresentador, type PosicaoMarcaDagua, TAMANHOS_APRESENTADOR } from "./video";
+import { amplitudeDoZoom, SEGUNDOS_DE_POUSO } from "./movimento-da-foto";
 
 // Monta as linhas de comando do ffmpeg pra cada pedaço do vídeo. Funções puras: recebem
 // caminhos locais e devolvem a lista de argumentos; quem roda é rodarFfmpeg (ffmpeg.ts),
@@ -517,7 +518,7 @@ export function pill(o: OpcoesPill): string {
  * A duração da cena NÃO muda: o movimento é que se completa mais cedo. Assim nada precisa
  * ser recalculado na montagem, na narração ou no custo.
  */
-const SEGUNDOS_DE_POUSO = 0.45;
+// O valor mora em `movimento-da-foto.ts`, junto com o resto da conta do movimento.
 
 /** Quantos quadros de movimento a cena tem, já descontado o pouso. */
 export function quadrosDeMovimento(duracao: number): number {
@@ -552,15 +553,10 @@ export function quadrosDeMovimento(duracao: number): number {
 //
 // O teto subiu junto porque ele existe pra cena LONGA não virar um zoom absurdo, e a conta de
 // absurdo mudou de escala. O piso também: 6% numa cena curta continuava sendo quase parado.
-const ZOOM_POR_SEGUNDO = 0.20 / 3.55;
-/** Teto e piso: cena de 10 s não pode virar um zoom que come metade da foto, nem a de 2 s ficar parada. */
-const ZOOM_MIN = 0.10;
-const ZOOM_MAX = 0.32;
-
-/** A amplitude que faz ESTA cena andar na mesma velocidade de todas as outras. */
-export function amplitudeDoZoom(segundosDeMovimento: number): number {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, ZOOM_POR_SEGUNDO * segundosDeMovimento));
-}
+// A amplitude mora em `movimento-da-foto.ts`, que é puro e roda também no navegador: a
+// janelinha de demonstração em /videos precisa da MESMA conta, e este arquivo importa
+// `node:fs`. Reexportada porque os testes de ritmo e de velocidade já a pegavam daqui.
+export { amplitudeDoZoom };
 
 function zoompan(efeito: EfeitoId, frames: number, W: number, H: number, opcoes: { porQuadro?: boolean; fracao?: number } = {}): string {
   // `d=1` quando a entrada e VIDEO: ali cada quadro que chega sai uma vez, e `on` conta o

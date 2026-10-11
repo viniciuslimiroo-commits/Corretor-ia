@@ -62,6 +62,7 @@ import { useArrastarLista } from "@/components/usar-arrastar-lista";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
 import { usarSelecao } from "@/lib/usar-selecao";
+import DemoEstilo, { type EstiloDemo } from "@/components/demo-estilo";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -344,6 +345,9 @@ export default function PaginaVideo() {
   const [erro, setErro] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoResumo[] | null>(null);
   const [apagandoVideos, setApagandoVideos] = useState(false);
+  /** Qual estilo está com a janelinha de demonstração aberta (pedido dele em 10/10/2026). */
+  const [demo, setDemo] = useState<EstiloDemo | null>(null);
+  const relogioDemo = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const espec: EspecVideo = useMemo(
     () => ({
@@ -1122,6 +1126,15 @@ export default function PaginaVideo() {
     setTelaFinal(true);
   }
 
+  // AS FOTOS QUE A JANELINHA DE DEMONSTRAÇÃO USA: as DELE, quando já escolheu alguma.
+  // "Como ficaria" com a foto do imóvel dele vale muito mais que com a nossa de exemplo --
+  // e o componente cai nas de exemplo sozinho quando a lista vem vazia. Clipe e 360 ficam
+  // de fora: o movimento demonstrado é o da FOTO.
+  const fotosDaDemo = useMemo(
+    () => cenas.filter((s) => !s.ehClipe && !s.eh360 && s.miniatura).map((s) => s.miniatura as string).slice(0, 2),
+    [cenas]
+  );
+
   // A MESMA ORDEM QUE A LISTA MOSTRA. O `sort` vivia dentro do JSX; marcar com Shift
   // precisa saber quem vem antes de quem, e "antes" é o que está NA TELA, não no estado.
   const videosOrdenados = useMemo(
@@ -1697,26 +1710,48 @@ export default function PaginaVideo() {
                   { id: "recomendado" as const, titulo: "Movimento na foto", dica: "Ordem da visita e um movimento leve em cada foto. Sem crédito." },
                   { id: "meu" as const, titulo: "Do meu jeito", dica: "Nada é mexido: a ordem e os ajustes são seus" },
                 ].map((o) => (
-                  <button
+                  // A janelinha é IRMÃ do botão, não filha: `<button>` só aceita conteúdo
+                  // de frase, e um painel inteiro dentro dele é HTML inválido (e o clique
+                  // dentro da janela voltaria pro botão).
+                  <div
                     key={o.id}
-                    type="button"
-                    onClick={() => aplicarEstilo(o.id)}
-                    disabled={gerando}
-                    aria-pressed={estilo === o.id}
-                    className={
-                      "rounded-xl border px-3 py-2 text-left transition disabled:opacity-50 " +
-                      (estilo === o.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
-                    }
+                    className="relative"
+                    // Ele pediu a demonstração "assim que o cursor ficar em cima". Com um
+                    // respiro de 180ms: sem ele, atravessar a coluna pra chegar no botão de
+                    // gerar abre e fecha três janelinhas no caminho.
+                    onMouseEnter={() => {
+                      if (relogioDemo.current) clearTimeout(relogioDemo.current);
+                      relogioDemo.current = setTimeout(() => setDemo(o.id), 180);
+                    }}
+                    onMouseLeave={() => {
+                      if (relogioDemo.current) clearTimeout(relogioDemo.current);
+                      setDemo((d) => (d === o.id ? null : d));
+                    }}
                   >
-                    <span className="block text-sm font-medium">
-                      {o.titulo}
-                      {/* O selo acompanha o padrão de verdade (o `useState` lá em cima). Em
-                          10/10/2026 o padrão passou de "tour" pra "recomendado"; o selo tem
-                          que ir junto, senão a tela anuncia um padrão e o código usa outro. */}
-                      {o.id === "recomendado" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] leading-tight text-neutral-500">{o.dica}</span>
-                  </button>
+                    {demo === o.id && <DemoEstilo estilo={o.id} fotos={fotosDaDemo} />}
+                    <button
+                      type="button"
+                      onClick={() => aplicarEstilo(o.id)}
+                      disabled={gerando}
+                      aria-pressed={estilo === o.id}
+                      // Pelo teclado também: quem chega no botão tabulando vê o mesmo exemplo.
+                      onFocus={() => setDemo(o.id)}
+                      onBlur={() => setDemo((d) => (d === o.id ? null : d))}
+                      className={
+                        "w-full rounded-xl border px-3 py-2 text-left transition disabled:opacity-50 " +
+                        (estilo === o.id ? "border-marca-indigo bg-marca-indigo/5 text-marca-indigo" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")
+                      }
+                    >
+                      <span className="block text-sm font-medium">
+                        {o.titulo}
+                        {/* O selo acompanha o padrão de verdade (o `useState` lá em cima). Em
+                            10/10/2026 o padrão passou de "tour" pra "recomendado"; o selo tem
+                            que ir junto, senão a tela anuncia um padrão e o código usa outro. */}
+                        {o.id === "recomendado" && <span className="ml-1 rounded-full bg-marca-teal/15 px-1.5 text-[10px] font-semibold text-marca-teal">padrão</span>}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-tight text-neutral-500">{o.dica}</span>
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
