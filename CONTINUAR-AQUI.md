@@ -222,6 +222,50 @@ projeto, e o diário diz o que mudou enquanto ele esteve fora.
 <!-- Uma entrada por sessão: data, ferramenta, o que fez (commits), o que ficou pela metade,
      o que descobriu. Mais nova em cima. -->
 
+- **10/10/2026 (tarde) — Claude Code (`2366189`, `dc3e491` — NÃO publicados ainda):**
+  - **"Clico e não acontece nada" era VELOCIDADE do clique, não código quebrado.** Ele:
+    "quando abro um vídeo no editor não consigo editar nome, lugar, legendas etc as que já
+    estavam no vídeo". Li o código três vezes e não achava: o espec guarda
+    `legenda/textos/elementos`, `editarVideo` devolve tudo, o palco tem `onClick`. Fui
+    clicar no navegador e a regra apareceu:
+    ```
+    if (!arrastou && !cancelado && performance.now() - t0 < 450) abrirEdicaoTexto(...)
+    ```
+    Os 450 ms existiam por causa do menu de toque longo — que é **só do dedo**
+    (`onTouchStart` em `menu-contexto.tsx`; no mouse o menu é botão direito). Valendo
+    também pro mouse, um clique pensado passava de meio segundo e **não fazia nada**: nem
+    editava, nem abria menu, nem avisava. Medido: clique de 90 ms aprovava, de 700 ms
+    reprovava. Agora o limite vale só pro dedo, nas duas cópias da regra (texto do palco e
+    `elementos-no-palco.tsx`). A legenda também mostrava mão de agarrar numa coisa que não
+    arrasta (`mover` sai cedo quando o índice é −1): virou mãozinha de clicar.
+    **A regra de 450 ms veio da sessão do Antigravity de 18/09** (entrada no fim deste
+    diário, "Menu de Contexto Completo (Botão Direito & Toque Longo 450ms)") — um valor
+    pensado pro dedo que foi aplicado também ao mouse.
+  - **Como eu quase errei de novo:** meu primeiro roteiro procurou o palco por aparência
+    ("o maior div vertical com `<img>`"), pegou o PAINEL da direita e reprovou 43 rótulos de
+    ajuste. O palco se identifica por `data-palco`. **Localizador por aparência reprova a
+    tela errada com cara de laudo.** E o meu primeiro "passou" foi falso: eu comparava
+    *quantidade* de campos abertos, o que aprova um campo que abre VAZIO em cima de um texto
+    que existe. Passei a olhar `document.activeElement.value`.
+  - **Apagar vários de uma vez** (`dc3e491`), pedido dele: Editor › aba Vídeos, lista de
+    `/videos` e Galeria. Na Galeria o vídeo nem se marcava — a seleção servia só pro PDF, e
+    de carona o vídeo só saía um por um. Agora tudo se marca e o PDF filtra na hora de
+    **usar**, não na de marcar. Shift marca daqui até o último.
+    O risco deste pedido não é falhar, é **ter sucesso por fora**: dez pedidos, nenhum
+    estouro, a tela diz "apagados" e três continuam lá. Por isso `src/lib/apagar-em-lote.ts`
+    devolve as duas listas (o que saiu e o que ficou, com motivo) e a tela só tira do que o
+    servidor confirmou. 22 casos em `testar-apagar-em-lote.ts`, 18 em
+    `conferir-apagar-varios.mjs` (que cria os próprios vídeos e apaga só pelos ids que criou
+    — os 5 dele foram contados antes e depois).
+  - **Duas falhas ANTIGAS encontradas, não causadas por mim** (confirmado rodando no commit
+    anterior): `conferir-editor-videos.mjs` reprova "arrastar a BORDA de trás da cena encolhe
+    a duração (como no CapCut) · 3s → 3s", e `conferir-editor-botoes.mjs` reprova "montagem
+    de partida · 2 cenas". A primeira importa muito, porque aparar arrastando a borda é o
+    gesto central do que ele chama de "estilo CapCut". Falta decidir, **medindo**, se o
+    defeito é do app ou do roteiro.
+  - **Pendente:** publicar `864af83`, `2366189` e `dc3e491` (precisa do "sim" dele); e
+    responder o nome pra substituir "Editor completo".
+
 - **10/10/2026 (madrugada, 2) — Claude Code (`a7471aa`, publicado e conferido no ar):**
   Ele: "analise e se ficou algo errado ou sujeira, crie métodos... colocar cor branca nas
   palavras se necessário sem mudar a logo". Analisei **medindo no logo dele**, e o resultado
