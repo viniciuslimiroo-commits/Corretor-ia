@@ -81,11 +81,22 @@ conferir(!comRuim.ordem.includes("x"), "foto escura fica de fora");
 conferir(!comRuim.ordem.includes("p"), "planta baixa não entra no passeio");
 conferir(comRuim.fora.length === 2 && comRuim.fora.every((f) => !!f.motivo), "e as duas saem COM MOTIVO, pra tela poder dizer", comRuim.fora.map((f) => `${f.chave}: ${f.motivo}`).join(" · "));
 
-// ---- 5. o movimento segue o ambiente ----
-conferir(efeitoDe(foto("_", "fachada")) === "afastar", "fachada abre o quadro (afastar)");
-conferir(efeitoDe(foto("_", "cozinha")) === "aproximar", "cozinha fecha no acabamento (aproximar)");
-conferir(efeitoDe(foto("_", "sala")) === "afastar", "sala abre");
-conferir(efeitoDe(foto("_", null)) === "aproximar", "ambiente desconhecido tem movimento mesmo assim");
+// ---- 5. o movimento é SEMPRE um passeio pro lado ----
+//
+// Estes quatro casos cobravam um movimento por ambiente (fachada→afastar, cozinha→aproximar)
+// e reprovavam desde que ele pediu, em 10/10/2026, "que todos os movimentos fossem passear
+// pro lado, não importa se direito ou esquerdo". Quem mudou foi o produto, de propósito: o
+// teste é que ficou cobrando o mundo antigo, e teste que reprova o comportamento CERTO vira
+// ruído que todo mundo aprende a ignorar.
+//
+// O que importa agora é: passeia pro lado em qualquer ambiente, e alterna o sentido pela
+// POSIÇÃO (não por sorteio), pra dez cenas seguidas não virarem esteira.
+for (const ambiente of ["fachada", "cozinha", "sala", null] as const) {
+  const e = efeitoDe(foto("_", ambiente));
+  conferir(e === "direita" || e === "esquerda", `${ambiente ?? "ambiente desconhecido"}: passeia pro lado`, e);
+}
+conferir(efeitoDe(foto("_", "sala"), 0) !== efeitoDe(foto("_", "sala"), 1), "cenas vizinhas alternam o sentido", `${efeitoDe(foto("_", "sala"), 0)} depois ${efeitoDe(foto("_", "sala"), 1)}`);
+conferir(efeitoDe(foto("_", "sala"), 4) === efeitoDe(foto("_", "sala"), 0), "e a alternância vem da POSIÇÃO, então repete igual toda vez");
 conferir(efeitoDe(foto("_", "sala", 8, { ehPanoramica: true })) === "direita", "panorâmica desliza em vez de aproximar (aproximar cortaria as pontas)");
 conferir(efeitoDe(foto("_", "sala", 8, { eh360: true })) === "parado", "360 não ganha movimento de cima: já tem o próprio");
 

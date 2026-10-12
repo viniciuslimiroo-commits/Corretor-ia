@@ -176,7 +176,12 @@ export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; pro
   {
     id: "caminhar",
     rotulo: "Entrar no ambiente",
-    descricao: "A câmera dá um passo pra dentro do cômodo, como quem entra. Não entra ninguém na cena.",
+    // "Não entra ninguém na cena" saiu daqui em 12/10/2026. Ele leu e disse: "isso parece
+    // explicação que fiz pra IA criar o recurso... não precisa disso pro usuário ler".
+    // Tinha razão: é uma garantia contra um erro do MODELO, escrita pra quem programa. Pro
+    // corretor ela só planta uma dúvida que ele não tinha -- e quem garante que ninguém
+    // entra é o `prompt` logo abaixo, não a frase na tela.
+    descricao: "A câmera dá um passo pra dentro do cômodo, como quem entra.",
     // "as if the camera operator were walking" e não "a person walking": a diferença entre
     // descrever o MOVIMENTO e pedir um PERSONAGEM.
     //
@@ -209,7 +214,8 @@ export const ANIMACOES: { id: AnimacaoId; rotulo: string; descricao: string; pro
   {
     id: "aproximar",
     rotulo: "Aproximar com profundidade",
-    descricao: "Zoom lento com parallax de verdade, como se a câmera avançasse.",
+    // "parallax" é palavra de quem faz vídeo, não de quem vende imóvel.
+    descricao: "Zoom lento, com profundidade, como se a câmera avançasse.",
     prompt: `Slow cinematic push-in towards the centre of the scene on a motorised slider, constant speed, with subtle natural parallax and real depth, no shake. ${REGRA_CAMERA}`,
   },
 ];

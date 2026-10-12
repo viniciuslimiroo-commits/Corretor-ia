@@ -3548,7 +3548,7 @@ export default function EditorDeVideo() {
                     Antes e depois
                   </Pilula>
                 )}
-                <Pilula ativo={cenaAtual.tipo === "animada"} onClick={() => mudarCena(k, { tipo: "animada" })} title={`+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`} icone="magica">
+                <Pilula ativo={cenaAtual.tipo === "animada"} onClick={() => mudarCena(k, { tipo: "animada" })} title={`+${CREDITOS.animada} créditos. A câmera se move pelo ambiente.`} icone="magica">
                   Mover a câmera · {CREDITOS.animada} cr
                 </Pilula>
               </>
@@ -3568,7 +3568,7 @@ export default function EditorDeVideo() {
                 <Pilula ativo={cenaAtual.tipo === "clipe"} onClick={() => mudarCena(k, { tipo: "clipe" })}>
                   Vídeo
                 </Pilula>
-                <Pilula ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(k, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">
+                <Pilula ativo={cenaAtual.tipo === "tour360"} onClick={() => mudarCena(k, { tipo: "tour360", duracao: Math.max(cenaAtual.duracao, 6) })} title="Só pra foto ou vídeo de câmera 360">
                   Passear na 360
                 </Pilula>
               </>
@@ -3576,7 +3576,9 @@ export default function EditorDeVideo() {
           </div>
           {cenaAtual.tipo === "animada" && (
             <p className="mt-2 text-[12px] leading-relaxed text-[var(--ed-texto-2)]">
-              {ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao} <strong className="font-medium text-[var(--ed-texto)]">Só a câmera se move</strong> — o imóvel fica como está. Leva <strong className="font-medium text-[var(--ed-texto)]">alguns minutos</strong>.
+              {/* "Só a câmera se move — o imóvel fica como está" saiu em 12/10/2026: é
+                  garantia contra erro do modelo, escrita pra quem programa. */}
+              {ANIMACOES.find((a) => a.id === cenaAtual.animacao)?.descricao} Leva <strong className="font-medium text-[var(--ed-texto)]">alguns minutos</strong>.
             </p>
           )}
         </div>

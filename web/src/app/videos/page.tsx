@@ -1606,7 +1606,7 @@ export default function PaginaVideo() {
                                 title={
                                   cenasProntas.has(i)
                                     ? "Esta cena já foi gerada com este movimento e esta duração: o clipe está guardado e não cobra de novo. Mudar o movimento ou o tempo faz ela gerar outra vez."
-                                    : `+${CREDITOS.animada} créditos. A IA move a CÂMERA pelo ambiente. Não entra pessoa, bicho nem móvel novo.`
+                                    : `+${CREDITOS.animada} créditos. A câmera se move pelo ambiente.`
                                 }
                               >
                                 ✨ Mover a câmera {s.tipo === "animada" && cenasProntas.has(i) ? "· pronta" : `(+${CREDITOS.animada})`}
@@ -1622,7 +1622,7 @@ export default function PaginaVideo() {
                           {s.ehClipe && (
                             <>
                               <Chip ativo={s.tipo === "clipe"} onClick={() => mudarCena(s.chave, { tipo: "clipe" })}>Clipe</Chip>
-                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Só se o vídeo foi gravado com câmera 360 (equirretangular)">🧭 Passear na sua 360</Chip>
+                              <Chip ativo={s.tipo === "tour360"} onClick={() => mudarCena(s.chave, { tipo: "tour360", duracao: Math.max(s.duracao, 6) })} title="Só pra foto ou vídeo de câmera 360">🧭 Passear na sua 360</Chip>
                               {s.tipo === "clipe" && (
                                 <label className="flex items-center gap-1.5 text-sm text-neutral-700">
                                   <input type="checkbox" checked={s.melhorar} onChange={(e) => mudarCena(s.chave, { melhorar: e.target.checked })} className="accent-marca-coral" />
@@ -1649,12 +1649,16 @@ export default function PaginaVideo() {
                           )}
                           {/* O que vai sair, escrito, antes de gastar crédito. O nome do
                               movimento sozinho não diz o resultado -- foi o que fez
-                              "Animar" e "Caminhar" serem entendidos errado. */}
+                              "Animar" e "Caminhar" serem entendidos errado.
+                              Daqui saiu, em 12/10/2026, "só a câmera se move — o imóvel fica
+                              como está, e não entra pessoa, bicho nem móvel novo; quanto
+                              maior a duração, mais demora". Ele: "parece explicação que fiz
+                              pra IA criar o recurso, não precisa disso pro usuário ler".
+                              Ficou o que ele decide com: QUAL movimento e QUANTO espera. */}
                           {s.tipo === "animada" && (
                             <span className="basis-full text-[11px] leading-relaxed text-neutral-500">
-                              {ANIMACOES.find((a) => a.id === s.animacao)?.descricao} <strong className="font-medium text-neutral-700">Só a câmera se move</strong> — o
-                              imóvel fica como está, e não entra pessoa, bicho nem móvel novo. Leva{" "}
-                              <strong className="font-medium text-neutral-700">alguns minutos</strong> pra ficar pronta: quanto maior a duração, mais demora.
+                              {ANIMACOES.find((a) => a.id === s.animacao)?.descricao} Leva{" "}
+                              <strong className="font-medium text-neutral-700">alguns minutos</strong>.
                             </span>
                           )}
                           {s.tipo === "tour360" && (
