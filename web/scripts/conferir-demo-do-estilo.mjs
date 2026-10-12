@@ -67,6 +67,7 @@ const janela = () =>
       selo: /câmera por IA/.test(d.innerText),
       legenda: (d.querySelector('p')?.innerText ?? '').slice(0, 60),
       transform: img ? getComputedStyle(img).transform : null,
+      video: (() => { const v = d.querySelector('video'); return v ? { src: v.getAttribute('src'), tempo: v.currentTime, pausado: v.paused, largura: v.videoWidth, altura: v.videoHeight } : null; })(),
     };
   })()`);
 
@@ -128,8 +129,20 @@ try {
   conferir(!!jt && jt.estilo === "tour", "o cartão “Tour pela casa” abre a janelinha dele");
   await shot("02-tour-pela-casa");
   if (jt) {
+    // O TOUR TEM QUE SER UM CLIPE DE VERDADE. Ele viu a primeira versão (foto com zoom) e
+    // disse "parece somente efeito aproximando" -- e tinha razão: aquilo fazia o recurso de
+    // 2 créditos parecer igual ao grátis. Foto animada aqui é reprovação.
+    conferir(!!jt.video, "o tour mostra um VÍDEO, não uma foto animada", jt.video ? jt.video.src : "não achei <video> na janelinha");
+    if (jt.video) {
+      conferir(jt.video.largura > 0, "o clipe carregou de verdade (tem quadro)", `${jt.video.largura}x${jt.video.altura}`);
+      conferir(!jt.video.pausado, "e ele toca sozinho, sem pedir clique");
+      const t0 = jt.video.tempo;
+      await esperar(900);
+      const t1 = (await janela())?.video?.tempo ?? t0;
+      conferir(t1 > t0, "o clipe ANDA (não é um quadro congelado)", `${t0.toFixed(2)}s → ${t1.toFixed(2)}s`);
+    }
     conferir(jt.selo, "o tour mostra a etiqueta “câmera por IA”");
-    conferir(/IA/.test(jt.legenda), "e a legenda diz de onde vem o movimento, sem prometer o que não entrega", jt.legenda);
+    conferir(/Encena|foto parada/.test(jt.legenda), "e a legenda diz de onde o tour sai", jt.legenda);
   }
 
   // ---- sair fecha ----
