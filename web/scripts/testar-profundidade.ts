@@ -36,15 +36,18 @@ conferir(animacaoDe(foto("sala", null)) === "caminhar", "profundidade explicitam
 conferir(daPraAndar(foto("sala")) === null, "e a tela sabe que ainda não foi perguntado", String(daPraAndar(foto("sala"))));
 
 // ---- COM profundidade: a foto manda ----
-conferir(animacaoDe(foto("sala", 9)) === "caminhar", "sala com fundo (9): a câmera anda", animacaoDe(foto("sala", 9)));
-conferir(animacaoDe(foto("sala", 2)) === "aproximar", "MESMA sala sem fundo (2): troca pro zoom com profundidade", animacaoDe(foto("sala", 2)));
-conferir(animacaoDe(foto("sala", 5)) === "aproximar", "cômodo fechado (5) também não avança", animacaoDe(foto("sala", 5)));
-conferir(animacaoDe(foto("sala", PROFUNDIDADE_PRA_AVANCAR)) === "caminhar", `na borda (${PROFUNDIDADE_PRA_AVANCAR}) já avança`);
-conferir(animacaoDe(foto("sala", PROFUNDIDADE_PRA_AVANCAR - 1)) === "aproximar", "e um abaixo da borda, não");
+// A NOTA NÃO MANDA NO MOVIMENTO, e isto aqui é o que guarda essa decisão.
+//
+// Medido em 12/10/2026, gerando de verdade: o quarto da cena 5 recebeu nota 4 e ANDOU 14,3;
+// o da cena 9 recebeu 3 e andou 1,0. A nota não separa o que precisa separar, e a mesma foto
+// recebeu 4 numa pergunta e 7 noutra. Deixar ela decidir tiraria a câmera de um quarto que
+// dá tour. Ela fica no aviso da tela, onde errar custa uma frase.
+for (const p of [0, 2, 4, 6, 9]) {
+  conferir(animacaoDe(foto("sala", p)) === "caminhar", `sala com nota ${p}: o movimento NÃO muda por causa da nota`, animacaoDe(foto("sala", p)));
+}
 
-// ---- o sobrevoo também avança, e também depende de fundo ----
-conferir(animacaoDe(foto("fachada", 8)) === "drone", "fachada com fundo continua sobrevoo");
-conferir(animacaoDe(foto("fachada", 1)) === "aproximar", "fachada colada na parede vira zoom", animacaoDe(foto("fachada", 1)));
+conferir(animacaoDe(foto("fachada", 8)) === "drone", "fachada continua sobrevoo, com nota alta");
+conferir(animacaoDe(foto("fachada", 1)) === "drone", "e com nota baixa também: a nota não decide", animacaoDe(foto("fachada", 1)));
 
 // ---- quem NÃO avança não é afetado: não há o que proteger ----
 for (const p of [0, 3, 5, 9]) {
@@ -55,11 +58,9 @@ for (const p of [0, 3, 5, 9]) {
 conferir(daPraAndar(foto("sala", 9)) === true, "a tela sabe que esta foto vira tour");
 conferir(daPraAndar(foto("sala", 2)) === false, "e que esta não vira");
 
-// ---- a borda é a mesma dos dois lados: regra e aviso não podem discordar ----
+// ---- o AVISO continua funcionando: é pra isso que a nota serve ----
 for (let p = 0; p <= 10; p++) {
-  const anda = daPraAndar(foto("sala", p));
-  const avanca = animacaoDe(foto("sala", p)) === "caminhar";
-  conferir(anda === avanca, `profundidade ${p}: o aviso e a escolha concordam`, `aviso=${anda} escolha=${avanca}`);
+  conferir(daPraAndar(foto("sala", p)) === p >= PROFUNDIDADE_PRA_AVANCAR, `nota ${p}: o aviso responde pela borda`, String(daPraAndar(foto("sala", p))));
 }
 
 console.log(falhas === 0 ? "\nTUDO CERTO" : `\n${falhas} FALHA(S)`);

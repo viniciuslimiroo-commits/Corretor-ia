@@ -529,8 +529,20 @@ export const PROFUNDIDADE_PRA_AVANCAR = 6;
 export function animacaoDe(o: Olhada): AnimacaoId {
   const a = o.ambiente ? ANIMACAO[o.ambiente] : null;
   const escolhido = a ?? "caminhar";
-  const avanca = escolhido === "caminhar" || escolhido === "drone";
-  if (avanca && typeof o.profundidade === "number" && o.profundidade < PROFUNDIDADE_PRA_AVANCAR) return "aproximar";
+  // DESLIGADO EM 12/10/2026, no mesmo dia em que entrou -- e desligado por medição.
+  //
+  // A ideia era: foto sem fundo não avança, então troca pro zoom. Fui conferir contra a
+  // realidade, gerando, e a nota não separa o que precisa separar:
+  //
+  //   quarto da cena 5  nota 4 ("cômodo fechado, pouco espaço à frente")  ANDOU 14,3
+  //   quarto da cena 9  nota 3 ("cômodo fechado, pouco espaço à frente")  ANDOU  1,0
+  //
+  // Três e quatro, pra coisas opostas. E a nota ainda muda com a forma de perguntar: a mesma
+  // foto da cena 5 recebeu 4 numa pergunta e 7 noutra. Com isso, o desvio automático tiraria
+  // a câmera de um quarto que dá tour -- estragando justo o que ele quer.
+  //
+  // A nota CONTINUA sendo medida e guardada, porque ela serve pro aviso na tela (lá o custo
+  // de errar é uma frase a mais, não uma cena pior). Decidir movimento com ela, não.
   return escolhido;
 }
 

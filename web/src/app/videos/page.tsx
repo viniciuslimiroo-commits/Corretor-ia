@@ -2088,15 +2088,19 @@ export default function PaginaVideo() {
                 fazer: a mesma foto tirada da porta vira tour. */}
             {estilo === "tour" && typeof semFundo === "number" && semFundo > 0 && !gerando && (
               <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2">
+                {/* O texto NÃO promete que a câmera vai parar nessas cenas -- ela tenta em
+                    todas. Diz só o que está medido: nestas fotos pode render pouco. A nota
+                    erra (quarto com nota 4 andou 14,3; outro com nota 3 andou 1,0), então
+                    ela avisa, não decide. */}
                 <p className="text-[12px] leading-tight text-amber-900">
                   <strong>
-                    {semFundo} {semFundo === 1 ? "foto não tem" : "fotos não têm"} fundo pra câmera andar
+                    {semFundo} {semFundo === 1 ? "foto pode render" : "fotos podem render"} pouco movimento
                   </strong>{" "}
-                  — são cômodos vistos de dentro, de frente pra parede. Nelas a câmera só aproxima; andar ali seria inventar
-                  espaço que a foto não mostra.
+                  — são cômodos vistos de perto, com pouco espaço à frente. A câmera tenta em todas, mas numa parede próxima não há
+                  o que revelar, e inventar não é opção.
                 </p>
                 <p className="mt-1 text-[11px] text-amber-800/80">
-                  Pra virarem tour: tire a mesma foto <strong>da porta</strong>, no comprimento do cômodo.
+                  O que mais ajuda: tirar a foto <strong>da porta</strong>, no comprimento do cômodo — foi assim que a área gourmet virou tour.
                 </p>
               </div>
             )}
