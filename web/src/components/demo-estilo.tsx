@@ -17,17 +17,23 @@ import type { EfeitoId } from "@/lib/video";
 //    movimento próprio ensina a coisa errada: a pessoa escolhe pelo que viu e recebe outra
 //    coisa. `testar-movimento-da-foto.ts` prova que as duas põem a janela no mesmo lugar.
 //
-// 2. O TOUR MOSTRA UM CLIPE DE VERDADE. A câmera do tour é vídeo gerado por IA: ela se
-//    desloca pelo espaço, então o que está perto sai do quadro, a parede recua e aparece
-//    o que a foto não mostrava. Nenhuma animação de navegador faz isso -- um zoom numa
-//    imagem chapada não inventa o que a foto não viu.
-//    A primeira versão disto animava a foto com `aproximar` e explicava por escrito. Ele
-//    olhou e disse: "os exemplos estão quase iguais, do tour e o padrão grátis; a tour
-//    realmente ande, parece somente efeito aproximando". Estava certo, e o problema era
-//    pior que estético: a janelinha fazia o recurso de 2 créditos parecer igual ao grátis,
-//    ou seja, argumentava contra ele. Agora `/exemplos/tour-camera.mp4` é um tour real,
-//    gerado uma vez pelo próprio produto a partir da nossa foto de exemplo
-//    (`scripts/gerar-exemplo-do-tour.mjs`), e nunca mais custa nada.
+// 2. O TOUR É UM VÍDEO DE VERDADE, FILMADO ANDANDO. Levou três tentativas até ele dizer o
+//    que queria, e cada "não" apontava mais longe:
+//      - foto com zoom: "os exemplos estão quase iguais, do tour e o padrão grátis";
+//      - clipe de IA sem o movimento do ffmpeg: "tour pela casa está parado";
+//      - clipe de IA completo: "tour não é assim não... não é pra criar coisa que não
+//        exista, então pegue uma forma que faça o vídeo tour real".
+//    Aí ele mandou um vídeo dele e disse "seria esse": uma filmagem andando pelo imóvel,
+//    montada no próprio Encena. É o que está em `/exemplos/tour-caminhando.mp4` (a tela
+//    final de contato dele foi cortada; corte medido em 3,70s, onde a dissolvência começa).
+//
+//    MEDIDO, porque "parece que anda" não é argumento: a foto com zoom muda 9,9 do começo
+//    ao fim; o clipe de IA com o ffmpeg por cima, 31,2; o 360 girando, 31,3; esta filmagem,
+//    68,2. É o dobro de tudo que tentei antes -- porque quem anda é a câmera inteira.
+//
+//    E NÃO INVENTA NADA, que era a exigência dele: é o imóvel filmado. A janelinha não diz
+//    que a IA fez isto; diz que a pessoa filma e o Encena monta, que é o caminho de verdade
+//    (o editor aceita clipe, `ehClipe`).
 //
 // Só aparece onde há mouse: `@media (hover: hover)`. No celular não existe "passar por
 // cima", e uma janela que abre no toque atrapalharia o toque que escolhe o estilo.
@@ -91,8 +97,8 @@ function FotoAnimada({ src, efeito, atrasoMs }: { src: string; efeito: EfeitoId;
   );
 }
 
-/** O clipe de tour de verdade, gerado uma vez pelo produto. Ver o cabeçalho deste arquivo. */
-const CLIPE_DO_TOUR = "/exemplos/tour-camera.mp4";
+/** O tour de verdade: filmagem andando pelo imóvel. Ver o cabeçalho deste arquivo. */
+const CLIPE_DO_TOUR = "/exemplos/tour-caminhando.mp4";
 
 export default function DemoEstilo({ estilo, fotos }: { estilo: EstiloDemo; fotos: string[] }) {
   const usadas = (fotos.length ? fotos : EXEMPLOS).slice(0, 2);
@@ -117,15 +123,18 @@ export default function DemoEstilo({ estilo, fotos }: { estilo: EstiloDemo; foto
           ) : (
             lista.map((src, i) => <FotoAnimada key={`${src}-${i}`} src={src} efeito={roteiro[i].efeito} atrasoMs={i * SEGUNDOS_POR_FOTO * 1000} />)
           )}
+          {/* A etiqueta diz a VERDADE sobre a origem. Dizia "câmera por IA" quando aqui
+              rodava um clipe de modelo; agora é filmagem, e chamar de IA seria a mesma
+              mentira com o sinal trocado. */}
           {temCamera && (
             <span className="absolute top-1.5 left-1.5 rounded-full bg-black/65 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-              câmera por IA
+              filmado no celular
             </span>
           )}
         </div>
         <p className="px-2 py-1.5 text-[10px] leading-tight text-neutral-500">
           {estilo === "tour"
-            ? "Um tour de verdade, feito pelo Encena a partir de uma foto parada. As fotos que não ganham câmera seguem com movimento na foto."
+            ? "Você filma andando pelo imóvel e manda o clipe; o Encena monta com título, legendas e música. As fotos soltas entram com movimento."
             : estilo === "recomendado"
               ? "É exatamente este movimento que sai no vídeo."
               : "As fotos ficam paradas: a ordem e os ajustes são seus."}

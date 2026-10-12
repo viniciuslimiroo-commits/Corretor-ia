@@ -1210,13 +1210,17 @@ export default function PaginaVideo() {
             vídeo que o brasileiro reconhece, e a linha de baixo diz o que se faz nela. */}
         <Link
           href={imovelId ? `/editor/video?imovel=${imovelId}` : "/editor/video"}
-          title="Cortar, mover as cenas, pôr texto e som — a edição por inteiro"
+          title="Cortar, mover as cenas, pôr texto, e usar os SEUS vídeos e a SUA voz ou música"
           className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm hover:border-neutral-400"
         >
           <Icone nome="magica" className="h-4 w-4 shrink-0" />
           <span className="leading-tight">
             Mesa de edição
-            <span className="block text-[11px] text-neutral-500">cortar, mover, pôr texto</span>
+            {/* A segunda linha falava só do que se MEXE. Ele em 12/10/2026: "algo pra pessoa
+                ver que pode pôr áudio dela, vídeo dela". Quem não sabe que pode mandar o
+                próprio clipe e a própria voz não entra aqui pra descobrir -- e são
+                justamente as duas coisas que fazem o vídeo deixar de ser slide. */}
+            <span className="block text-[11px] text-neutral-500">seus vídeos, sua voz ou música, cortar e pôr texto</span>
           </span>
         </Link>
       </div>
