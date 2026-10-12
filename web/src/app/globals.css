@@ -330,3 +330,20 @@ body {
     display: none;
   }
 }
+
+/* ---------- MAOZINHA NOS BOTOES ----------
+   O Tailwind v4 tirou do preflight o `cursor: pointer` que o v3 punha em <button>. O
+   resultado passou despercebido porque nada QUEBRA: tudo continua clicando, so' que o
+   cursor nao avisa mais. Medido em 12/10/2026, com o cursor computado de cada botao
+   visivel: /videos 24 de 24, /editar 35 de 35, /imoveis 3 de 3, /galeria 88 de 88 -- o app
+   inteiro.
+
+   Foi o que fez ele dizer "a parte de ajustes fica muito escondida, eu mesmo nao sabia que
+   podia clicar ali". Nao era so' aquele cartao: era todo botao do produto.
+
+   `:not(:disabled)` porque botao desligado ja' recebe `cursor-not-allowed` onde importa, e
+   prometer clique no que nao clica e' pior que nao prometer nada. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}

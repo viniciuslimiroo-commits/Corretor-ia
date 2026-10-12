@@ -1883,17 +1883,37 @@ export default function PaginaVideo() {
             )}
           </Cartao>
 
-          <Cartao className="p-0">
+          {/* ISTO NÃO PARECIA CLICÁVEL, e quem disse foi o dono: "a parte de ajustes abaixo
+              fica muito escondido, eu mesmo não sabia que podia clicar ali onde aparecia o
+              formato". Se ELE não sabia, ninguém sabe.
+
+              Eram quatro ausências somadas, e nenhuma delas sozinha resolve:
+                1. nenhum VERBO -- "Vertical · Elegante · transição suave" se lê como
+                   status, igual a um rodapé que informa, não como menu que abre;
+                2. nenhuma reação ao passar o mouse, então o cursor não descobria sozinho;
+                3. a setinha era cinza-claro no canto, do tamanho de um enfeite;
+                4. nada dizia o que havia ATRÁS, e ninguém abre o que não sabe que existe.
+              Agora: pílula "Abrir"/"Fechar" com a seta dentro, fundo que responde ao mouse,
+              e, fechado, a lista do que tem lá. */}
+          <Cartao className="overflow-hidden p-0">
             <button
               type="button"
               onClick={() => setAjustesAbertos((v) => !v)}
-              className="flex w-full items-center gap-3 px-5 py-4 text-left"
+              aria-expanded={ajustesAbertos}
+              title={ajustesAbertos ? "Fechar os ajustes" : "Abrir: formato, música, textos, tela final e sua marca"}
+              className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-neutral-50"
             >
               <span className="min-w-0 flex-1">
-                <span className="block text-xs font-semibold uppercase tracking-wider text-neutral-500">Ajustes</span>
-                <span className="mt-0.5 block truncate text-sm text-neutral-600">{resumoDosAjustes}</span>
+                <span className="block text-xs font-semibold tracking-wider text-neutral-500 uppercase">Ajustes</span>
+                <span className="mt-0.5 block truncate text-sm text-neutral-700">{resumoDosAjustes}</span>
+                {!ajustesAbertos && (
+                  <span className="mt-0.5 block truncate text-[11px] text-neutral-400">formato, música, textos, tela final e sua marca</span>
+                )}
               </span>
-              <Icone nome={ajustesAbertos ? "cima" : "baixo"} className="h-4 w-4 shrink-0 text-neutral-400" />
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-700">
+                {ajustesAbertos ? "Fechar" : "Abrir"}
+                <Icone nome={ajustesAbertos ? "cima" : "baixo"} className="h-3.5 w-3.5" />
+              </span>
             </button>
           </Cartao>
 
