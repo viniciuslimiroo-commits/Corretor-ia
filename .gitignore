@@ -36,3 +36,6 @@ projeto-para-analise.zip
 
 # Config local do preview do Claude Code, nao do produto.
 web/.claude/
+
+# Projeto de outra pessoa que mora nesta pasta (tem .git proprio). Nao e deste repositorio.
+app-aluno-aurora/

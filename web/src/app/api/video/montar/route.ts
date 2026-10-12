@@ -46,6 +46,6 @@ export async function POST(req: NextRequest) {
     olhadas: jobIds
       .map((id) => vistos.get(id))
       .filter(Boolean)
-      .map((o) => ({ jobId: o!.jobId, ambiente: o!.ambiente, qualidade: o!.qualidade, legenda: o!.legenda })),
+      .map((o) => ({ jobId: o!.jobId, ambiente: o!.ambiente, qualidade: o!.qualidade, legenda: o!.legenda, profundidade: o!.profundidade })),
   });
 }

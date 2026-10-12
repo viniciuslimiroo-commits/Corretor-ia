@@ -45,9 +45,16 @@ export type Olhar = {
   qualidade: number;
   /** Legenda curta do que aparece. Nunca traz número -- isso é conferido. */
   legenda: string;
+  /**
+   * 0 a 10: quanto a câmera pode AVANÇAR nesta foto antes de bater em algo.
+   *
+   * `null` = ainda não perguntado (foto vista antes da migração 19). Nulo NÃO é zero:
+   * quem lê trata nulo como o comportamento antigo, pra nenhum vídeo mudar sozinho.
+   */
+  profundidade: number | null;
 };
 
-type LinhaJob = { id: string; output_path: string | null; thumb_path?: string | null; ambiente_ia?: string | null; qualidade_ia?: number | null; legenda_ia?: string | null; visto_em?: string | null };
+type LinhaJob = { id: string; output_path: string | null; thumb_path?: string | null; ambiente_ia?: string | null; qualidade_ia?: number | null; legenda_ia?: string | null; profundidade_ia?: number | null; visto_em?: string | null };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -73,7 +80,7 @@ async function emLotes<T, R>(itens: T[], tamanho: number, fn: (x: T) => Promise<
 
 const PROMPT_OLHAR = [
   "Você está catalogando a foto de um imóvel. Responda SÓ com um JSON, sem markdown:",
-  '{"ambiente":"<um valor da lista>","qualidade":<0 a 10>,"legenda":"<até 5 palavras>"}',
+  '{"ambiente":"<um valor da lista>","qualidade":<0 a 10>,"legenda":"<até 5 palavras>","profundidade":<0 a 10>}',
   `Valores possíveis de ambiente: ${AMBIENTES.join(", ")}.`,
   "Use 'fachada' para a vista externa do prédio ou da casa; 'planta' para planta baixa ou desenho técnico; 'outro' quando não der pra dizer.",
   "qualidade é a foto em si: nitidez, enquadramento e luz. 10 é foto de catálogo, 3 é escura ou torta.",
@@ -97,8 +104,14 @@ export async function verFotos(db: Db, userId: string, jobIds: string[], falKey:
   const ordem = new Map(jobIds.map((id, i) => [id, i]));
   let porVer: LinhaJob[] = [];
   for (const j of linhas) {
-    if (j.visto_em) {
-      vistos.set(j.id, { jobId: j.id, ambiente: j.ambiente_ia ?? null, qualidade: Number(j.qualidade_ia ?? 5), legenda: j.legenda_ia ?? "" });
+    // VISTA ANTES DA PERGUNTA NOVA conta como não vista.
+    //
+    // A profundidade (migração 19) só existe desde 12/10/2026. Sem esta linha, toda foto já
+    // catalogada ficaria para sempre sem nota -- e o recurso só valeria pra quem subisse
+    // fotos novas, o que é o mesmo que não valer. A re-pergunta acontece UMA vez por foto, é
+    // o modelo barato de visão, e depois disso a foto está completa pra sempre.
+    if (j.visto_em && typeof j.profundidade_ia === "number") {
+      vistos.set(j.id, { jobId: j.id, ambiente: j.ambiente_ia ?? null, qualidade: Number(j.qualidade_ia ?? 5), legenda: j.legenda_ia ?? "", profundidade: typeof j.profundidade_ia === "number" ? j.profundidade_ia : null });
     } else {
       porVer.push(j);
     }
@@ -124,7 +137,11 @@ export async function verFotos(db: Db, userId: string, jobIds: string[], falKey:
       // Legenda com número é legenda que afirma -- corta na origem, não vale o risco.
       const bruta = String(j2.legenda ?? "").replace(/\s+/g, " ").trim().replace(/\.+$/, "").slice(0, 60);
       const legenda = /\d/.test(bruta) ? "" : bruta;
-      return { jobId: j.id, ambiente, qualidade, legenda } satisfies Olhar;
+      // Resposta fora da escala (ou ausente, em modelo que ignorou o campo) vira `null`, e
+      // não 0: dizer "sem profundidade" sem ter perguntado tiraria a câmera de fotos boas.
+      const p = Number(j2.profundidade);
+      const profundidade = Number.isFinite(p) ? Math.max(0, Math.min(10, Math.round(p))) : null;
+      return { jobId: j.id, ambiente, qualidade, legenda, profundidade } satisfies Olhar;
     } catch {
       return null;
     }
@@ -136,7 +153,7 @@ export async function verFotos(db: Db, userId: string, jobIds: string[], falKey:
       vistos.set(o.jobId, o);
       await db
         .from("jobs")
-        .update({ ambiente_ia: o.ambiente, qualidade_ia: o.qualidade, legenda_ia: o.legenda, visto_em: new Date().toISOString() })
+        .update({ ambiente_ia: o.ambiente, qualidade_ia: o.qualidade, legenda_ia: o.legenda, profundidade_ia: o.profundidade, visto_em: new Date().toISOString() })
         .eq("id", o.jobId)
         .eq("user_id", userId)
         .then(undefined, () => {});

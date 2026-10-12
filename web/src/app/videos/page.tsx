@@ -58,7 +58,7 @@ import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
 import OuvirMusica from "@/components/ouvir-musica";
-import { sugerirMontagem, type Olhada } from "@/lib/video-automatico";
+import { PROFUNDIDADE_PRA_AVANCAR, sugerirMontagem, type Olhada } from "@/lib/video-automatico";
 import { useArrastarLista } from "@/components/usar-arrastar-lista";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
@@ -285,6 +285,15 @@ export default function PaginaVideo() {
   const relogioDaMontagem = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** O que o "Montar sozinho" fez da última vez, pra poder contar e desfazer. */
   const [montagem, setMontagem] = useState<{ antes: CenaUI[]; quantas: number; fora: string[]; semOlhar: boolean } | null>(null);
+  /**
+   * Quantas fotos NÃO têm fundo pra a câmera andar (migração 19).
+   *
+   * Existe pra avisar ANTES de gastar. Ele em 12/10/2026, sobre um tour de 11 cenas: "só a
+   * primeira ficou boa". Medido depois: 5 das 11 eram quarto ou banheiro vistos de dentro,
+   * onde avançar não revela nada -- e o produto cobrou por todas sem dizer nada.
+   * `null` = a visão ainda não olhou; aí não há aviso a dar.
+   */
+  const [semFundo, setSemFundo] = useState<number | null>(null);
 
   /** O pedido POST esta em voo. Dura um instante; o resto da espera e do provedor. */
   const [pedindo, setPedindo] = useState(false);
@@ -907,7 +916,7 @@ export default function PaginaVideo() {
     const antes = cenasAgora;
     try {
       const comId = cenasAgora.filter((s) => s.jobId);
-      let olhadas: { jobId: string; ambiente: string | null; qualidade: number; legenda: string }[] = [];
+      let olhadas: { jobId: string; ambiente: string | null; qualidade: number; legenda: string; profundidade?: number | null }[] = [];
       if (comId.length > 0) {
         const r = await fetch("/api/video/montar", {
           method: "POST",
@@ -919,6 +928,8 @@ export default function PaginaVideo() {
         olhadas = d.olhadas ?? [];
       }
       const porJob = new Map(olhadas.map((o) => [o.jobId, o]));
+      const medidas = olhadas.filter((o) => typeof o.profundidade === "number");
+      setSemFundo(medidas.length ? medidas.filter((o) => (o.profundidade as number) < PROFUNDIDADE_PRA_AVANCAR).length : null);
       // Cena sem análise (clipe, ou foto que a visão não alcançou) entra do mesmo jeito: fica
       // no meio da ordem e mantém o movimento que já tinha.
       const entrada: Olhada[] = cenasAgora.map((s) => {
@@ -928,6 +939,7 @@ export default function PaginaVideo() {
           ambiente: o?.ambiente ?? null,
           qualidade: o?.qualidade ?? 5,
           legenda: o?.legenda ?? "",
+          profundidade: o?.profundidade ?? null,
           ehPanoramica: s.ehPanoramica,
           eh360: s.eh360,
           ehClipe: s.ehClipe,
@@ -2067,6 +2079,26 @@ export default function PaginaVideo() {
                 a ser "o começo" -- é a inversão que ele pediu. */}
             {montagem && !gerando && (
               <p className="mb-2 text-center text-sm font-medium text-marca-teal">Sugestão pronta. É só gerar.</p>
+            )}
+
+            {/* QUAIS FOTOS NÃO VIRAM TOUR -- dito ANTES de gastar.
+                Ele gerou um tour de 11 cenas e só a primeira ficou boa; 5 eram quarto ou
+                banheiro vistos de dentro, onde avançar não revela nada que já esteja na
+                foto. O produto cobrou pelas 11 e não disse nada. Agora diz, e diz o que
+                fazer: a mesma foto tirada da porta vira tour. */}
+            {estilo === "tour" && typeof semFundo === "number" && semFundo > 0 && !gerando && (
+              <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2">
+                <p className="text-[12px] leading-tight text-amber-900">
+                  <strong>
+                    {semFundo} {semFundo === 1 ? "foto não tem" : "fotos não têm"} fundo pra câmera andar
+                  </strong>{" "}
+                  — são cômodos vistos de dentro, de frente pra parede. Nelas a câmera só aproxima; andar ali seria inventar
+                  espaço que a foto não mostra.
+                </p>
+                <p className="mt-1 text-[11px] text-amber-800/80">
+                  Pra virarem tour: tire a mesma foto <strong>da porta</strong>, no comprimento do cômodo.
+                </p>
+              </div>
             )}
             <Botao onClick={gerar} disabled={gerando || cenas.length === 0 || semSaldo || enviando > 0} className="w-full py-3 text-base">
               {gerando ? geracao.andamento?.mensagem ?? "Gerando…" : custo === 0 ? "Gerar vídeo · grátis" : `Gerar vídeo · ${custo} ${custo === 1 ? "crédito" : "créditos"}`}

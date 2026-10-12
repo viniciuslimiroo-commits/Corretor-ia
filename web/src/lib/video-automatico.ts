@@ -111,6 +111,11 @@ export type Olhada = {
   /** 0 a 10: nitidez, enquadramento e luz. */
   qualidade: number;
   legenda: string;
+  /**
+   * 0 a 10: quanto a câmera pode AVANÇAR nesta foto antes de bater em algo (migração 19).
+   * `null`/ausente = ainda não perguntado; aí vale a regra antiga, por ambiente.
+   */
+  profundidade?: number | null;
   /** Panorâmica e 360 têm movimento próprio e não entram na regra de ambiente. */
   ehPanoramica?: boolean;
   eh360?: boolean;
@@ -496,10 +501,43 @@ export function efeitoDe(o: Olhada, indice = 0): EfeitoId {
   return indice % 2 === 0 ? "direita" : "esquerda";
 }
 
-/** O movimento de câmera da cena animada. Ambiente desconhecido entra andando pra frente. */
+/**
+ * QUANTA PROFUNDIDADE A FOTO PRECISA TER pra a câmera avançar de verdade.
+ *
+ * Abaixo disto, avançar não revela nada que já esteja na foto -- e um modelo que "avança"
+ * ali inventa cômodo, que é o que está proibido desde 24/09/2026.
+ *
+ * 6 é a borda que a própria escala do prompt desenha: 0-2 é parede de perto, 3-5 é cômodo
+ * fechado com pouco espaço à frente, 6-10 é corredor, porta aberta pro fundo, vista que
+ * continua. Avançar só vale a partir do 6.
+ */
+export const PROFUNDIDADE_PRA_AVANCAR = 6;
+
+/**
+ * O movimento de câmera da cena animada.
+ *
+ * A regra por AMBIENTE existe desde o começo e acerta no geral -- fachada pede sobrevoo,
+ * banheiro pede aproximação. Mas ela erra no caso que ele reclamou em 12/10/2026: duas
+ * fotos da MESMA sala, uma tirada da porta e outra de frente pra parede, recebiam o mesmo
+ * "caminhar", e só a primeira tinha para onde caminhar. Medido: a área gourmet dele andou
+ * 72,8 e uma sala larga, 31,2, com o mesmo ajuste e o mesmo modelo.
+ *
+ * Profundidade não é ambiente. Quando a visão respondeu (migração 19), ela manda: foto sem
+ * fundo troca o avanço pelo zoom com profundidade, que não precisa de espaço à frente.
+ * Quando não respondeu (`null`), nada muda -- vale a regra de ambiente, como antes.
+ */
 export function animacaoDe(o: Olhada): AnimacaoId {
   const a = o.ambiente ? ANIMACAO[o.ambiente] : null;
-  return a ?? "caminhar";
+  const escolhido = a ?? "caminhar";
+  const avanca = escolhido === "caminhar" || escolhido === "drone";
+  if (avanca && typeof o.profundidade === "number" && o.profundidade < PROFUNDIDADE_PRA_AVANCAR) return "aproximar";
+  return escolhido;
+}
+
+/** A foto tem fundo pra câmera andar? `null` quando a visão ainda não olhou. */
+export function daPraAndar(o: Olhada): boolean | null {
+  if (typeof o.profundidade !== "number") return null;
+  return o.profundidade >= PROFUNDIDADE_PRA_AVANCAR;
 }
 
 /** Só pra tela: quantas fotos a visão ainda não viu (cada uma custa uma chamada). */
