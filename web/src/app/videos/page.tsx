@@ -63,6 +63,7 @@ import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/comp
 import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
 import { usarSelecao } from "@/lib/usar-selecao";
 import DemoEstilo, { type EstiloDemo } from "@/components/demo-estilo";
+import MesaRecursos from "@/components/mesa-recursos";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -348,6 +349,9 @@ export default function PaginaVideo() {
   /** Qual estilo está com a janelinha de demonstração aberta (pedido dele em 10/10/2026). */
   const [demo, setDemo] = useState<EstiloDemo | null>(null);
   const relogioDemo = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A janelinha com os recursos da Mesa de edição (pedido dele em 12/10/2026). */
+  const [mostrarMesa, setMostrarMesa] = useState(false);
+  const relogioMesa = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const espec: EspecVideo = useMemo(
     () => ({
@@ -1208,21 +1212,40 @@ export default function PaginaVideo() {
             as pessoas entendessem melhor". "Completo" não diz o que tem lá dentro e ainda
             avisa que é coisa grande -- o contrário de convidar. "Mesa de edição" é termo de
             vídeo que o brasileiro reconhece, e a linha de baixo diz o que se faz nela. */}
-        <Link
-          href={imovelId ? `/editor/video?imovel=${imovelId}` : "/editor/video"}
-          title="Cortar, mover as cenas, pôr texto, e usar os SEUS vídeos e a SUA voz ou música"
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm hover:border-neutral-400"
+        {/* A janelinha com os recursos é IRMÃ do link (o `<a>` não aceita painel dentro), e
+            o invólucro é quem escuta o mouse: entrando no link ou na janelinha, ela fica. */}
+        <div
+          className="relative shrink-0"
+          onMouseEnter={() => {
+            if (relogioMesa.current) clearTimeout(relogioMesa.current);
+            relogioMesa.current = setTimeout(() => setMostrarMesa(true), 180);
+          }}
+          onMouseLeave={() => {
+            if (relogioMesa.current) clearTimeout(relogioMesa.current);
+            setMostrarMesa(false);
+          }}
         >
-          <Icone nome="magica" className="h-4 w-4 shrink-0" />
-          <span className="leading-tight">
-            Mesa de edição
-            {/* A segunda linha falava só do que se MEXE. Ele em 12/10/2026: "algo pra pessoa
-                ver que pode pôr áudio dela, vídeo dela". Quem não sabe que pode mandar o
-                próprio clipe e a própria voz não entra aqui pra descobrir -- e são
-                justamente as duas coisas que fazem o vídeo deixar de ser slide. */}
-            <span className="block text-[11px] text-neutral-500">seus vídeos, sua voz ou música, cortar e pôr texto</span>
-          </span>
-        </Link>
+          <Link
+            href={imovelId ? `/editor/video?imovel=${imovelId}` : "/editor/video"}
+            title="Você narrando ou aparecendo, legenda automática, seus clipes, música, ficha do imóvel e corte fino"
+            onFocus={() => setMostrarMesa(true)}
+            onBlur={() => setMostrarMesa(false)}
+            className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm hover:border-neutral-400"
+          >
+            <Icone nome="magica" className="h-4 w-4 shrink-0" />
+            <span className="leading-tight">
+              Mesa de edição
+              {/* A linha dizia "seus vídeos, sua voz ou música, cortar e pôr texto". Ele:
+                  "a pessoa pode gravar vídeo dela falando também, queria que mostrasse ali
+                  os principais recursos". "Sua voz" se lia como MANDAR um áudio, e o que
+                  mais convence -- você narrando ou aparecendo, gravado ali mesmo, sem
+                  crédito -- não estava escrito. A lista inteira vai na janelinha; aqui fica
+                  o que diferencia, porque no celular esta linha é tudo que a pessoa lê. */}
+              <span className="block text-[11px] text-neutral-500">você narra ou aparece · corte, texto e música</span>
+            </span>
+          </Link>
+          {mostrarMesa && <MesaRecursos />}
+        </div>
       </div>
 
       {erro && (
@@ -1727,7 +1750,12 @@ export default function PaginaVideo() {
                     // Ele pediu a demonstração "assim que o cursor ficar em cima". Com um
                     // respiro de 180ms: sem ele, atravessar a coluna pra chegar no botão de
                     // gerar abre e fecha três janelinhas no caminho.
+                    // "Do meu jeito" NÃO abre janelinha. Ele em 12/10/2026: "do meu jeito —
+                    // não precisa ter janelinha de exemplo". É o estilo que não mexe em
+                    // nada, então o exemplo seria a foto parada: uma janela que abre pra
+                    // não mostrar nada ensina a ignorar as outras duas.
                     onMouseEnter={() => {
+                      if (o.id === "meu") return;
                       if (relogioDemo.current) clearTimeout(relogioDemo.current);
                       relogioDemo.current = setTimeout(() => setDemo(o.id), 180);
                     }}
@@ -1736,14 +1764,14 @@ export default function PaginaVideo() {
                       setDemo((d) => (d === o.id ? null : d));
                     }}
                   >
-                    {demo === o.id && <DemoEstilo estilo={o.id} fotos={fotosDaDemo} />}
+                    {demo === o.id && o.id !== "meu" && <DemoEstilo estilo={o.id} fotos={fotosDaDemo} />}
                     <button
                       type="button"
                       onClick={() => aplicarEstilo(o.id)}
                       disabled={gerando}
                       aria-pressed={estilo === o.id}
                       // Pelo teclado também: quem chega no botão tabulando vê o mesmo exemplo.
-                      onFocus={() => setDemo(o.id)}
+                      onFocus={() => o.id !== "meu" && setDemo(o.id)}
                       onBlur={() => setDemo((d) => (d === o.id ? null : d))}
                       className={
                         "w-full rounded-xl border px-3 py-2 text-left transition disabled:opacity-50 " +

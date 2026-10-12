@@ -325,7 +325,8 @@ body {
    nao chegou a sair no CSS -- medido com `Emulation.setEmulatedMedia` em
    `conferir-demo-do-estilo.mjs`: com `hover: none` a janelinha continuava visivel. */
 @media (hover: none) {
-  [data-demo-estilo] {
+  [data-demo-estilo],
+  [data-mesa-recursos] {
     display: none;
   }
 }

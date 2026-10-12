@@ -52,8 +52,8 @@ const shot = async (n) => {
   fs.writeFileSync(path.join(SAIDA, `${n}.png`), Buffer.from(data, "base64"));
 };
 const mover = (x, y) => c.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(x), y: Math.round(y), buttons: 0, pointerType: "mouse" });
-const caixaDoTexto = (t) =>
-  c.avaliar(`(() => { const b = [...document.querySelectorAll('button')].filter(e => e.offsetParent).find(e => e.innerText.includes(${JSON.stringify(t)})); if (!b) return null; b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width/2, cy: r.top + r.height/2 }; })()`);
+const caixaDoTexto = (t, sel = "button") =>
+  c.avaliar(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(sel)})].filter(e => e.offsetParent).find(e => e.innerText.includes(${JSON.stringify(t)})); if (!b) return null; b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width/2, cy: r.top + r.height/2 }; })()`);
 const janela = () =>
   c.avaliar(`(() => {
     const d = document.querySelector('[data-demo-estilo]');
@@ -149,6 +149,41 @@ try {
   await mover(40, 500);
   await esperar(700);
   conferir(!(await janela()), "tirar o mouse FECHA a janelinha");
+
+  // ---- "Do meu jeito" NÃO abre janelinha (12/10/2026) ----
+  const bmeu = await caixaDoTexto("Do meu jeito");
+  conferir(!!bmeu, "achei o cartão “Do meu jeito”");
+  if (bmeu) {
+    await mover(bmeu.cx, bmeu.cy);
+    await esperar(900);
+    conferir(!(await janela()), "“Do meu jeito” não abre janelinha — não há exemplo a dar");
+  }
+
+  // ---- A MESA DE EDIÇÃO mostra os recursos ao passar o mouse ----
+  const bmesa = await caixaDoTexto("Mesa de edição", "a");
+  conferir(!!bmesa, "achei o botão “Mesa de edição”");
+  if (bmesa) {
+    await mover(bmesa.cx, bmesa.cy);
+    await esperar(900);
+    const recursos = await c.avaliar(`(() => {
+      const d = document.querySelector('[data-mesa-recursos]');
+      if (!d) return null;
+      const r = d.getBoundingClientRect();
+      return { itens: [...d.querySelectorAll('li')].map(li => li.innerText.replace(/\s+/g, ' ').trim()), x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), direita: Math.round(r.right) };
+    })()`);
+    conferir(!!recursos, "passar o mouse na Mesa abre a lista de recursos");
+    if (recursos) {
+      conferir(recursos.itens.length >= 5, "a lista tem os principais recursos", `${recursos.itens.length} itens`);
+      // O PEDIDO DELE ERA ESTE: que a pessoa veja que pode gravar vídeo dela falando.
+      const gravar = recursos.itens.find((i) => /grave sua voz|apareça/i.test(i));
+      conferir(!!gravar, "e o primeiro item é VOCÊ no vídeo, gravando", gravar ?? recursos.itens[0]);
+      conferir(recursos.x >= 0 && recursos.direita <= 1400, "a lista não vaza pra fora da tela", `x=${recursos.x} até ${recursos.direita}`);
+      await shot("04-mesa-recursos");
+    }
+    await mover(40, 500);
+    await esperar(600);
+  }
+
 
   // ---- onde NÃO HÁ MOUSE a janelinha não aparece: no dedo não existe "passar por cima" ----
   // Encolher a tela NÃO basta: `hover` é característica do PONTEIRO, não do tamanho.

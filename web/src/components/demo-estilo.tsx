@@ -61,6 +61,8 @@ const EXEMPLOS = ["/exemplos/sala-depois.jpg", "/exemplos/cozinha-depois.jpg"];
  * a etiqueta, e o que a linha de baixo explica.
  */
 function roteiroDoEstilo(estilo: EstiloDemo): { efeito: EfeitoId; camera: boolean }[] {
+  // "meu" não chega aqui: a página não abre janelinha pra ele (12/10/2026). Fica o caso
+  // defensivo, sem movimento, pra um chamador novo não ganhar um exemplo que mente.
   if (estilo === "meu") return [{ efeito: "parado", camera: false }, { efeito: "parado", camera: false }];
   // "Movimento na foto": passeio pro lado, alternando o sentido a cada cena -- a mesma
   // regra de `efeitoDe` em video-automatico.ts.
