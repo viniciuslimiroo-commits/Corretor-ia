@@ -25,6 +25,7 @@ import {
   animacoesOferecidas,
   BUCKET_UPLOADS,
   CHAMADAS,
+  CORES_TELA_FINAL,
   CREDITOS,
   EFEITOS,
   FORMATOS,
@@ -64,6 +65,7 @@ import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
 import { usarSelecao } from "@/lib/usar-selecao";
 import DemoEstilo, { type EstiloDemo } from "@/components/demo-estilo";
 import MesaRecursos from "@/components/mesa-recursos";
+import TelaFinalPrevia from "@/components/tela-final-previa";
 
 // Vídeo: escolhe as fotos (do imóvel ou enviadas), ordena as cenas, ajusta efeito,
 // legenda e duração de cada uma, escolhe formato, música, textos, narração e gera. O
@@ -352,6 +354,15 @@ export default function PaginaVideo() {
   /** A janelinha com os recursos da Mesa de edição (pedido dele em 12/10/2026). */
   const [mostrarMesa, setMostrarMesa] = useState(false);
   const relogioMesa = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A cor que a tela final vai ter de fato: a escolhida, ou a da marca, ou o índigo. */
+  // (definida logo abaixo de `marca`, que é de onde vem o padrão)
+  /** Personalizar a tela final (pedido dele em 12/10/2026): cor e frase, com prévia. */
+  const [personalizarFim, setPersonalizarFim] = useState(false);
+  /** `null` = usar a cor da MARCA. Guardar null em vez de copiar a cor mantém o vídeo
+   *  acompanhando a marca se ela mudar depois. */
+  const [telaFinalCor, setTelaFinalCor] = useState<string | null>(null);
+  const [marca, setMarca] = useState<{ logoUrl: string | null; cor: string | null; nome: string; creci: string; whatsapp: string } | null>(null);
+  const corDaTelaFinal = telaFinalCor ?? marca?.cor ?? "#0F2D5B";
 
   const espec: EspecVideo = useMemo(
     () => ({
@@ -375,10 +386,11 @@ export default function PaginaVideo() {
       local,
       telaFinal,
       chamada: telaFinal ? chamada : "",
+      telaFinalCor: telaFinal && telaFinalCor ? telaFinalCor : undefined,
       transicao,
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, transicao, capa]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, telaFinalCor, transicao, capa]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   const resumoDosAjustes = [
@@ -478,6 +490,25 @@ export default function PaginaVideo() {
       .then(setVideos)
       .catch(() => setVideos([]));
   }, [user, carregarVideos]);
+
+  // A MARCA, pra prévia da tela final poder mostrar o logo e o contato DE VERDADE.
+  // Falhar aqui não atrapalha nada: sem marca a prévia usa o índigo e some o que não tem.
+  useEffect(() => {
+    if (!user) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/marca", { headers: { Authorization: `Bearer ${await token()}` } });
+        const d = await r.json();
+        if (vivo && r.ok) setMarca({ logoUrl: d.logoUrl ?? null, cor: d.cor ?? null, nome: d.nome ?? "", creci: d.creci ?? "", whatsapp: d.whatsapp ?? "" });
+      } catch {
+        // sem marca a tela final sai no padrão, como sempre saiu
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [user, token]);
 
   // Chegou com `?job=`: uma imagem da Encena querendo virar cena. É o caminho "Animar esta
   // imagem" / "Usar em vídeo" do editor -- sem baixar e subir de novo. Roda uma vez por
@@ -1082,6 +1113,7 @@ export default function PaginaVideo() {
       setLocal(e.local ?? "");
       setTelaFinal(e.telaFinal !== false);
       setChamada(e.chamada ?? "");
+      setTelaFinalCor(e.telaFinalCor ?? null);
       setMusicaVolume(e.musicaVolume ?? LIMITES.musicaVolumePadrao);
       setNarrar(!!e.narracao);
       setOrigemVoz(e.narracao?.origem ?? "ia");
@@ -1127,6 +1159,7 @@ export default function PaginaVideo() {
     setVozInicio(0.7);
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setChamada(CHAMADAS[0]);
+    setTelaFinalCor(null);
     setTelaFinal(true);
   }
 
@@ -1818,6 +1851,106 @@ export default function PaginaVideo() {
                 </button>
               ))}
             </div>
+
+            {/* PERSONALIZAR A TELA FINAL, aqui e não dentro dos Ajustes.
+                Ele: "ali no 'Com meu contato' e 'Sem tela final' poderia ter uma opção de
+                personalizar esta tela? cores, logo, texto e etc".
+                A frase JÁ dava pra trocar -- só que dentro dos Ajustes, o painel que ele
+                mesmo não sabia que abria. A cor não dava de jeito nenhum: saía sempre a da
+                marca. E faltava o principal: VER antes de gastar uma geração. */}
+            {telaFinal && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => setPersonalizarFim((v) => !v)}
+                  aria-expanded={personalizarFim}
+                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 px-3 py-2 text-left transition hover:bg-neutral-50"
+                >
+                  <span className="text-[12.5px] font-medium text-neutral-700">Personalizar a tela final</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-marca-indigo">
+                    {personalizarFim ? "Fechar" : "Cor, frase e logo"}
+                    <Icone nome={personalizarFim ? "cima" : "baixo"} className="h-3.5 w-3.5" />
+                  </span>
+                </button>
+
+                {personalizarFim && (
+                  <div className="mt-2 flex gap-3 rounded-xl border border-neutral-200 p-3">
+                    <TelaFinalPrevia
+                      cor={corDaTelaFinal}
+                      logoUrl={marca?.logoUrl ?? null}
+                      chamada={chamada}
+                      nome={marca?.nome ?? ""}
+                      creci={marca?.creci ?? ""}
+                      whatsapp={marca?.whatsapp ?? ""}
+                      altura={230}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <Rotulo>Frase</Rotulo>
+                      <div className="mb-1 flex flex-wrap gap-1.5">
+                        {CHAMADAS.map((f) => (
+                          <Chip key={f} ativo={chamada === f} onClick={() => setChamada(f)}>{f}</Chip>
+                        ))}
+                        <Chip ativo={chamada === ""} onClick={() => setChamada("")}>Sem frase</Chip>
+                      </div>
+                      <input
+                        value={chamada}
+                        onChange={(e) => setChamada(e.target.value)}
+                        maxLength={LIMITES.chamadaMax}
+                        placeholder="Ou escreva a sua"
+                        aria-label="Frase da tela final"
+                        className={campo}
+                      />
+
+                      <div className="mt-3">
+                        <Rotulo>Cor do fundo</Rotulo>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* A cor da marca é a PRIMEIRA e é o padrão: quem não quiser
+                              escolher nada continua recebendo o que sempre recebeu. */}
+                          <button
+                            type="button"
+                            onClick={() => setTelaFinalCor(null)}
+                            aria-pressed={telaFinalCor === null}
+                            title="A cor da sua marca"
+                            className={"h-7 w-7 rounded-full ring-2 ring-offset-2 transition " + (telaFinalCor === null ? "ring-marca-indigo" : "ring-transparent hover:ring-neutral-300")}
+                            style={{ background: marca?.cor ?? "#0F2D5B" }}
+                          />
+                          <span className="mr-1 text-[10px] text-neutral-400">sua marca</span>
+                          {CORES_TELA_FINAL.filter((x) => x.hex.toLowerCase() !== (marca?.cor ?? "").toLowerCase()).map((x) => (
+                            <button
+                              key={x.id}
+                              type="button"
+                              onClick={() => setTelaFinalCor(x.hex)}
+                              aria-pressed={telaFinalCor === x.hex}
+                              title={x.rotulo}
+                              className={"h-7 w-7 rounded-full ring-2 ring-offset-2 transition " + (telaFinalCor === x.hex ? "ring-marca-indigo" : "ring-transparent hover:ring-neutral-300")}
+                              style={{ background: x.hex }}
+                            />
+                          ))}
+                          <label className="ml-1 inline-flex cursor-pointer items-center gap-1 text-[11px] text-neutral-500">
+                            <input
+                              type="color"
+                              value={corDaTelaFinal}
+                              onChange={(e) => setTelaFinalCor(e.target.value)}
+                              aria-label="Escolher outra cor"
+                              className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                            />
+                            outra
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* O LOGO NÃO SE TROCA AQUI. Ele é da marca e sai em todo material; um
+                          logo "só deste vídeo" viraria duas marcas e nenhuma identidade. */}
+                      <p className="mt-3 text-[11px] leading-tight text-neutral-500">
+                        O logo e o contato vêm de{" "}
+                        <Link href="/marca" className="text-marca-indigo underline">Minha marca</Link>
+                        {marca && !marca.logoUrl ? " — você ainda não enviou um logo." : "."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {/* A sugestão está pronta: o botão deixa de ser "o fim de um trabalho" e passa
                 a ser "o começo" -- é a inversão que ele pediu. */}
             {montagem && !gerando && (

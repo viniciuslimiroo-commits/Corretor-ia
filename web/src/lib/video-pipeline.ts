@@ -564,7 +564,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
         }
         const saida = local("final.mp4");
         const r = await rodarFfmpeg(
-          argsTelaFinal({ saida, W, H, duracao: LIMITES.telaFinalSegundos, cor: u.cor_marca ?? "#0F2D5B", logo, chamada: espec.chamada || undefined, nome: u.nome ?? "", creci: u.creci ?? undefined, whatsapp: u.whatsapp ?? undefined })
+          // A cor escolhida PRA ESTE VÍDEO vence a da marca; sem escolha, nada muda pra quem
+          // já usava (o saneador só deixa passar hex de 6 dígitos).
+          argsTelaFinal({ saida, W, H, duracao: LIMITES.telaFinalSegundos, cor: espec.telaFinalCor ?? u.cor_marca ?? "#0F2D5B", logo, chamada: espec.chamada || undefined, nome: u.nome ?? "", creci: u.creci ?? undefined, whatsapp: u.whatsapp ?? undefined })
         );
         await guardarClipe(saida, "telafinal.mp4", LIMITES.telaFinalSegundos, r.segundos);
         p.telaFinalRenderizada = true;

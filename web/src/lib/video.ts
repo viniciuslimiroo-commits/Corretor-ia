@@ -796,6 +796,44 @@ export const VOZES: { id: VozId; rotulo: string; genero: "feminina" | "masculina
 export const CHAMADAS = ["Agende sua visita", "Chame no WhatsApp", "Quero saber mais"];
 
 /**
+ * Cores oferecidas pra tela final, além da cor da marca.
+ *
+ * São poucas e escolhidas, não uma roda de cores: a tela final é fundo chapado com letra
+ * BRANCA por cima, e metade das cores que alguém escolheria à mão deixa o texto ilegível.
+ * Todas estas foram medidas contra branco e passam de 4,5:1, o mínimo pra texto.
+ */
+export const CORES_TELA_FINAL: { id: string; rotulo: string; hex: string }[] = [
+  { id: "indigo", rotulo: "Índigo", hex: "#0F2D5B" },
+  { id: "preto", rotulo: "Grafite", hex: "#1C1C1E" },
+  { id: "verde", rotulo: "Verde escuro", hex: "#14532D" },
+  { id: "vinho", rotulo: "Vinho", hex: "#6B1D2B" },
+  { id: "terra", rotulo: "Terracota", hex: "#8A3B12" },
+  { id: "azul", rotulo: "Azul petróleo", hex: "#134E5A" },
+];
+
+/** Hex de 6 dígitos, o único formato que entra no espec e no `color=c=` do ffmpeg. */
+export function ehCorDeFundo(v: unknown): v is string {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
+/**
+ * O contraste de uma cor contra o BRANCO, pela fórmula do WCAG.
+ *
+ * A tela final escreve em branco. Com fundo claro o texto some, e quem escolhe a cor não
+ * tem como saber disso de antemão -- então a tela avisa, em vez de deixar sair um vídeo
+ * com o telefone ilegível.
+ */
+export function contrasteComBranco(hex: string): number {
+  const canal = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const n = parseInt(hex.slice(1), 16);
+  const l = 0.2126 * canal((n >> 16) & 255) + 0.7152 * canal((n >> 8) & 255) + 0.0722 * canal(n & 255);
+  return 1.05 / (l + 0.05);
+}
+
+/**
  * De onde vem a voz do vídeo.
  *
  * "ia" é a narração do ElevenLabs e custa crédito. "gravada" (microfone do navegador) e
@@ -1009,6 +1047,15 @@ export type EspecVideo = {
   telaFinal: boolean;
   /** Frase da tela final ("Agende sua visita"). Vazia = sem frase. Ausente em vídeos antigos. */
   chamada?: string;
+  /**
+   * Cor de fundo da tela final, só deste vídeo.
+   *
+   * Ausente = a cor da marca (o que todo vídeo anterior fez, e continua fazendo). Existe
+   * porque ele pediu em 12/10/2026 personalizar a tela final: a cor da marca serve pro
+   * normal, mas um lançamento, um "vendido" ou um imóvel de outro padrão pedem outra --
+   * e trocar a cor da MARCA pra isso mudaria todo material já pronto.
+   */
+  telaFinalCor?: string;
   transicao: TransicaoId;
   /** Índice da cena que vira a miniatura (capa). Ausente ou inválido = a primeira. */
   capa?: number;
@@ -1840,6 +1887,10 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null; av
       local: texto(b.local, 50),
       telaFinal: b.telaFinal !== false,
       chamada: texto(b.chamada, LIMITES.chamadaMax),
+      // Cor só entra se for hex de 6 dígitos. Qualquer outra coisa some e a tela final volta
+      // pra cor da marca -- o `color=c=` do ffmpeg aceita nome ("red") e expressão, e deixar
+      // passar o que veio do navegador seria mandar texto de fora pra dentro do filtro.
+      telaFinalCor: ehCorDeFundo(b.telaFinalCor) ? b.telaFinalCor : undefined,
       transicao: ehTransicao(b.transicao),
       capa,
       legendas: limparLegendas(b.legendas),
