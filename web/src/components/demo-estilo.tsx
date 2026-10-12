@@ -23,17 +23,25 @@ import type { EfeitoId } from "@/lib/video";
 //      - clipe de IA sem o movimento do ffmpeg: "tour pela casa está parado";
 //      - clipe de IA completo: "tour não é assim não... não é pra criar coisa que não
 //        exista, então pegue uma forma que faça o vídeo tour real".
-//    Aí ele mandou um vídeo dele e disse "seria esse": uma filmagem andando pelo imóvel,
-//    montada no próprio Encena. É o que está em `/exemplos/tour-caminhando.mp4` (a tela
-//    final de contato dele foi cortada; corte medido em 3,70s, onde a dissolvência começa).
+//    Aí ele mandou um vídeo dele e disse "seria esse". Eu li como filmagem e quase escrevi
+//    isso na tela -- mas fui procurar o arquivo de origem no banco e o vídeo era
+//    `5a14fcfe`, cuja cena 0 é:
 //
-//    MEDIDO, porque "parece que anda" não é argumento: a foto com zoom muda 9,9 do começo
-//    ao fim; o clipe de IA com o ffmpeg por cima, 31,2; o 360 girando, 31,3; esta filmagem,
-//    68,2. É o dobro de tudo que tentei antes -- porque quem anda é a câmera inteira.
+//        tipo: "animada" · jobId: <uma FOTO> · animacao: "caminhar" · efeito: "direita"
 //
-//    E NÃO INVENTA NADA, que era a exigência dele: é o imóvel filmado. A janelinha não diz
-//    que a IA fez isto; diz que a pessoa filma e o Encena monta, que é o caminho de verdade
-//    (o editor aceita clipe, `ehClipe`).
+//    OU SEJA: é a câmera de IA do próprio produto, na MESMA combinação que eu já tinha
+//    gerado. O que mudou foi a FOTO. A minha era uma sala larga, onde avançar desliza; a
+//    dele é uma área gourmet que se estende em corredor, e aí o mesmo movimento lê como
+//    quem anda. O que decide não é o ajuste -- é a profundidade da foto.
+//
+//    MEDIDO, porque "parece que anda" não é argumento -- quanto a imagem muda do primeiro
+//    ao último quadro: foto com zoom 9,9 · a minha sala com a câmera de IA 31,2 · o 360
+//    girando 31,3 · esta foto dele com a MESMA câmera de IA 72,8.
+//
+//    O arquivo é gerado sem título, sem legenda e sem tela final ("tire legendas e textos
+//    da janelinha do exemplo"): a janelinha mostra o movimento, e texto queimado ali vira
+//    promessa de layout. Refazer não custa crédito -- o clipe fica guardado por
+//    foto|movimento|quadros|proporção, e texto é desenho por cima.
 //
 // Só aparece onde há mouse: `@media (hover: hover)`. No celular não existe "passar por
 // cima", e uma janela que abre no toque atrapalharia o toque que escolhe o estilo.
@@ -123,18 +131,18 @@ export default function DemoEstilo({ estilo, fotos }: { estilo: EstiloDemo; foto
           ) : (
             lista.map((src, i) => <FotoAnimada key={`${src}-${i}`} src={src} efeito={roteiro[i].efeito} atrasoMs={i * SEGUNDOS_POR_FOTO * 1000} />)
           )}
-          {/* A etiqueta diz a VERDADE sobre a origem. Dizia "câmera por IA" quando aqui
-              rodava um clipe de modelo; agora é filmagem, e chamar de IA seria a mesma
-              mentira com o sinal trocado. */}
+          {/* A etiqueta diz a VERDADE sobre a origem. Cheguei a escrever "filmado no
+              celular" aqui, porque li o vídeo que ele mandou como filmagem -- e era a
+              câmera de IA do próprio produto. Corrigido depois de achar a cena no banco. */}
           {temCamera && (
             <span className="absolute top-1.5 left-1.5 rounded-full bg-black/65 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-              filmado no celular
+              câmera por IA
             </span>
           )}
         </div>
         <p className="px-2 py-1.5 text-[10px] leading-tight text-neutral-500">
           {estilo === "tour"
-            ? "Você filma andando pelo imóvel e manda o clipe; o Encena monta com título, legendas e música. As fotos soltas entram com movimento."
+            ? "Cena de verdade do Encena: a câmera anda pelo cômodo, a partir de uma foto parada. Vale a pena na foto que tem fundo pra avançar."
             : estilo === "recomendado"
               ? "É exatamente este movimento que sai no vídeo."
               : "As fotos ficam paradas: a ordem e os ajustes são seus."}

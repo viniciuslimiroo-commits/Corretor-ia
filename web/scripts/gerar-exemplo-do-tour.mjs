@@ -19,20 +19,29 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import ffmpegStatic from "ffmpeg-static";
 
 const RAIZ = path.resolve(import.meta.dirname, "..");
-const ORIGEM = path.join(RAIZ, "public/exemplos/sala-depois.jpg");
-const SAIDA = path.join(RAIZ, "public/exemplos/tour-camera.mp4");
+const SAIDA = path.join(RAIZ, "public/exemplos/tour-caminhando.mp4");
+// A FOTO É A DELE, e foi ele quem escolheu: mandou o vídeo pronto da "Área gourmet" do
+// Parque dos Buritis e disse "pode usar este como exemplo". Aqui a cena é refeita a partir
+// do mesmo job de foto, SEM título, legenda nem tela final -- "tire legendas e textos da
+// janelinha do exemplo" (12/10/2026).
+//
+// Uma foto de exemplo nossa (sala-depois.jpg) foi o que eu tentei antes, e o resultado
+// pareceu parado: ali o movimento desliza por uma sala larga. Na foto dele a câmera avança
+// por um corredor, e aí o mesmo movimento lê como quem anda. O que decide não é o ajuste,
+// é a PROFUNDIDADE da foto.
+const JOB_DA_FOTO = process.env.JOB ?? "62116cfd-25fe-4711-a8f6-ffa67f3381ce";
 const BASE = process.env.BASE ?? "http://localhost:3000";
 // NÃO é a conta de teste de sempre (`limiro.cardoso@outlook.com`): ela é dona da org
 // "Limiro Imoveis", e quem paga a cena animada de quem está numa organização é a ORG, que
 // está zerada -- o pedido voltou com "a imobiliária não tem saldo suficiente". Esta aqui é
 // uma conta descartável, sem organização, que paga do saldo pessoal dela. A org de verdade
 // dele (Imobiliária J7, 38 créditos) é dinheiro do negócio e fica fora disto.
-const CONTA = process.env.CONTA ?? "novo-1789325410@teste.encena.app.br";
+const CONTA = process.env.CONTA ?? "viniciuslimiroo@gmail.com";
 const env = Object.fromEntries(
   fs
     .readFileSync(path.join(RAIZ, ".env.local"), "utf8")
@@ -48,10 +57,6 @@ if (fs.existsSync(SAIDA)) {
   console.log(`${path.relative(RAIZ, SAIDA)} já existe — não gero de novo (custaria 2 créditos).`);
   console.log("Pra refazer de propósito, apague o arquivo e rode outra vez.");
   process.exit(0);
-}
-if (!fs.existsSync(ORIGEM)) {
-  console.error(`não achei a foto de origem: ${ORIGEM}`);
-  process.exit(1);
 }
 
 const saldo = async (userId) =>
@@ -77,30 +82,25 @@ const cab = { Authorization: `Bearer ${token}` };
 const json = { ...cab, "Content-Type": "application/json" };
 
 const antes = await saldo(user.id);
-console.log(`conta ${CONTA} · ${antes} crédito(s) antes`);
-if (antes !== null && antes < 2) {
-  console.error("menos de 2 créditos: não dá pra gerar a cena animada.");
-  process.exit(1);
-}
 const animadasAntes = new Set(await listarAnimadas(user.id));
 
-// ---- a foto de exemplo entra como upload da conta ----
-// CAMINHO FIXO, de propósito. A chave que guarda o clipe da IA é um sha1 de
-// [arquivo, animação, quadros, proporção] (`chaveDaAnimacao`): com um UUID novo a cada
-// corrida, refazer o arquivo cobraria 2 créditos de novo. Com o caminho fixo, o clipe é
-// REAPROVEITADO e refazer sai de graça -- o que muda por cima (o movimento do ffmpeg) não
-// entra na chave justamente porque não passa por modelo nenhum.
-const caminhoFoto = `uploads/${user.id}/exemplo-tour-sala.jpg`;
-const subiu = await fetch(`${SUPA}/storage/v1/object/resultados/${caminhoFoto}`, {
-  method: "POST",
-  headers: { ...admin, "Content-Type": "image/jpeg" },
-  body: fs.readFileSync(ORIGEM),
-});
-if (!subiu.ok) {
-  console.error(`não consegui subir a foto: ${subiu.status} ${await subiu.text()}`);
+// JÁ ESTÁ GUARDADO? Então refazer é só ffmpeg e não custa nada.
+//
+// A chave é a mesma de `chaveDaAnimacao` (video-pipeline.ts): sha1 de
+// foto|movimento|quadros|proporção. Título, legenda e tela final NÃO entram -- são desenho
+// por cima, de graça --, que é justamente o que permite tirar os textos sem pagar de novo.
+const chave = createHash("sha1").update([JOB_DA_FOTO, "caminhar", Math.min(121, Math.max(17, Math.round(4 * 24) + 1)), "9:16"].join("|")).digest("hex").slice(0, 24);
+const jaGuardado = animadasAntes.has(`${chave}.mp4`);
+console.log(`conta ${CONTA} · ${antes} crédito(s) pessoais · clipe ${jaGuardado ? "JÁ GUARDADO (custo 0)" : "ainda não gerado (custa 2)"}`);
+
+// A trava olha o CUSTO, não o saldo pessoal: quem está numa imobiliária paga pela
+// organização, e checar `creditos_saldo` da pessoa barrava uma geração que custa zero.
+if (!jaGuardado && antes !== null && antes < 2) {
+  console.error("o clipe não está guardado e a conta não tem 2 créditos pessoais.");
+  console.error("Rode com CONTA=<outra conta> ou gere a cena uma vez pela tela.");
   process.exit(1);
 }
-console.log(`foto de exemplo em ${caminhoFoto}`);
+
 
 // ---- uma cena só, animada: é o que custa e é o que eu quero mostrar ----
 const espec = {
@@ -113,9 +113,11 @@ const espec = {
   // cima dá 16,7. Na primeira geração eu mandei `parado`, desliguei o ffmpeg e gravei só o
   // clipe cru -- ele olhou e disse "tour pela casa está parado", com razão: era metade.
   // `aproximar` soma pouco (12,6: é redundante com o avanço da IA) e `afastar` CANCELA (8,1).
-  cenas: [{ tipo: "animada", arquivo: caminhoFoto, animacao: "caminhar", duracao: 4, efeito: "direita" }],
+  cenas: [{ tipo: "animada", jobId: JOB_DA_FOTO, animacao: "caminhar", duracao: 4, efeito: "direita" }],
   musica: "nenhuma",
   narracao: null,
+  // Sem título, sem legenda e sem tela final: a janelinha mostra o MOVIMENTO, e qualquer
+  // texto queimado ali vira promessa de layout que o vídeo dele não vai ter.
   titulo: "",
   preco: "",
   local: "",
@@ -158,9 +160,7 @@ try {
   const novos = animadasDepois.filter((n) => !animadasAntes.has(n));
   console.log(`clipe cru guardado como: ${novos.join(", ") || "(nenhum novo — reaproveitou um existente)"}`);
 } finally {
-  // O vídeo montado sai; a FOTO FICA. Ela é a chave do clipe guardado: apagando-a, a
-  // próxima corrida subiria outra e pagaria a IA de novo. São poucos kB numa conta
-  // descartável -- barato perto de 2 créditos.
+  // O vídeo montado sai. A foto de origem é um job da conta dele e NÃO se mexe nela.
   if (videoId) await fetch(`${BASE}/api/video/${videoId}`, { method: "DELETE", headers: cab }).catch(() => {});
   const depois = await saldo(user.id);
   console.log(`\nsaldo: ${antes} → ${depois} crédito(s)${antes === depois ? " (reaproveitou o clipe guardado — não custou nada)" : ""}`);

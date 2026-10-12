@@ -64,7 +64,7 @@ const janela = () =>
       estilo: d.dataset.demoEstilo,
       x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
       fotos: [...d.querySelectorAll('img')].map(i => i.getAttribute('src')),
-      selo: /filmado no celular/.test(d.innerText),
+      selo: /câmera por IA/.test(d.innerText),
       legenda: (d.querySelector('p')?.innerText ?? '').slice(0, 60),
       transform: img ? getComputedStyle(img).transform : null,
       video: (() => { const v = d.querySelector('video'); return v ? { src: v.getAttribute('src'), tempo: v.currentTime, pausado: v.paused, largura: v.videoWidth, altura: v.videoHeight } : null; })(),
@@ -117,7 +117,7 @@ try {
     if (temImovel) conferir(jm.fotos.some((f) => f && !f.startsWith("/exemplos/")), "usa as fotos DELE, não as de exemplo", jm.fotos.map((f) => String(f).slice(0, 38)).join(" · "));
     else console.log("pulei  usa as fotos DELE · a conta não tinha imóvel com foto pra escolher");
     conferir(jm.fotos.length >= 1, "a janelinha tem foto pra mostrar", `${jm.fotos.length}`);
-    conferir(!jm.selo, "“Movimento na foto” não promete filmagem nenhuma");
+    conferir(!jm.selo, "“Movimento na foto” não promete câmera de IA");
     conferir(/exatamente este movimento/.test(jm.legenda), "e diz que o movimento é o mesmo do vídeo", jm.legenda);
   }
 
@@ -141,8 +141,8 @@ try {
       const t1 = (await janela())?.video?.tempo ?? t0;
       conferir(t1 > t0, "o clipe ANDA (não é um quadro congelado)", `${t0.toFixed(2)}s → ${t1.toFixed(2)}s`);
     }
-    conferir(jt.selo, "o tour diz de onde o clipe veio (“filmado no celular”)");
-    conferir(/filma|Encena/.test(jt.legenda), "e a legenda explica que a pessoa filma e o Encena monta", jt.legenda);
+    conferir(jt.selo, "o tour diz de onde o clipe veio (“câmera por IA”)");
+    conferir(/Encena|câmera anda/.test(jt.legenda), "e a legenda explica o que a cena é", jt.legenda);
   }
 
   // ---- sair fecha ----
