@@ -719,11 +719,22 @@ const FRACAO_DO_ZOOM_NO_CLIPE = 1;
 /**
  * O movimento que faz sentido POR CIMA de um clipe que ja se move.
  *
- * `afastar` sai de cena: medido, ele derruba o movimento total de 16,7 pra 8,1, porque a
- * janela abrindo cancela a camera da IA avancando. Vira passeio lateral, que soma.
+ * A medicao que manda aqui esta' algumas linhas abaixo, em FRACAO_DO_ZOOM_NO_CLIPE:
+ *
+ *   direita   16,7   <- soma limpo (o alvo e' 16,4)
+ *   cima      17,4   <- soma limpo
+ *   aproximar 12,6   <- soma pouco: e' redundante com o avanco da IA
+ *   afastar    8,1   <- CANCELA: a janela abrindo briga com a camera entrando
+ *
+ * `afastar` saia de cena desde entao. `aproximar` passou a sair tambem em 12/10/2026: ele
+ * gerou um tour de onze cenas em que as animadas alternavam `afastar` e `aproximar`, e
+ * disse "as outras so' parece que a imagem esta' passando de lado". As de `afastar` ja'
+ * viravam `direita` aqui; as de `aproximar` ficavam nos 12,6 -- empurrando na MESMA direcao
+ * em que a IA ja' empurra, que e' justamente onde um clipe de IA tem menos a dar. O lateral
+ * soma porque anda num eixo que o modelo nao estava usando.
  */
 function efeitoNoClipe(efeito: EfeitoId): EfeitoId {
-  return efeito === "afastar" ? "direita" : efeito;
+  return efeito === "afastar" || efeito === "aproximar" ? "direita" : efeito;
 }
 
 export function argsCenaClipe(o: { clipe: string; saida: string; W: number; H: number; duracao: number; textos?: TextoCena[]; melhorar?: boolean; inicio?: number; topoOcupado?: boolean; cor?: CorDaCena; giro?: number; espelho?: boolean; velocidade?: number; artes?: ArteNaCena[]; pecas?: PecaNaCena[]; semPouso?: boolean; efeito?: EfeitoId; fracaoDoZoom?: number }): string[] {

@@ -74,6 +74,11 @@ export const EFEITOS: { id: EfeitoId; rotulo: string; dica: string }[] = [
  */
 export const NEGATIVO_VIDEO = [
   "people, person, human, man, woman, child, family, realtor, agent, crowd, silhouette, reflection of a person",
+  // SOMBRA TAMBEM E' GENTE. O negativo ja' barrava silhueta e reflexo, mas nao sombra -- e
+  // sombra de pessoa foi o que sobrou: ele olhou o primeiro take de 12/10/2026, aprovou o
+  // movimento e emendou "so' a sombra que nao parece uma pessoa". O modelo nao desenhou
+  // ninguem; desenhou o que uma pessoa PROJETA, que pro anuncio da no mesmo.
+  "shadow of a person, human shadow, cast shadow of a figure, moving shadow, walking shadow",
   "animals, pets, dog, cat",
   "new furniture, furniture appearing or disappearing, moving furniture, new doors, new windows, new walls",
   "changing architecture, morphing walls, warping geometry, distorted perspective, floating objects",
