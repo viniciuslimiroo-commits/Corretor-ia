@@ -58,7 +58,7 @@ import AppShell from "@/components/app-shell";
 import SeletorImovel from "@/components/seletor-imovel";
 import Compartilhar from "@/components/compartilhar";
 import OuvirMusica from "@/components/ouvir-musica";
-import { quantasComCamera, sugerirMontagem, type Olhada } from "@/lib/video-automatico";
+import { sugerirMontagem, type Olhada } from "@/lib/video-automatico";
 import { useArrastarLista } from "@/components/usar-arrastar-lista";
 import { Aviso, Botao, BotaoConfirma, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 import { apagarVideosEmLote, recadoDoLote } from "@/lib/apagar-em-lote";
@@ -856,52 +856,35 @@ export default function PaginaVideo() {
     }
     const animavel = (s: CenaUI) => !s.ehClipe && !s.eh360 && !s.ehPanoramica;
 
-    // QUEM GANHA A CÂMERA DE IA.
+    // TOUR É TOUR: TODA cena ganha câmera.
     //
-    // Aqui morava o defeito que ele viu em 12/10/2026: "criei com tour pela casa, só a
-    // primeira imagem ficou boa; as outras só parece que a imagem está passando de lado".
-    // O vídeo dele saiu com ONZE cenas animadas -- 22 créditos -- quando a montagem teria
-    // dado quatro.
+    // Em 12/10/2026 eu tinha posto aqui o teto da montagem (4 câmeras em 11 fotos), achando
+    // que resolvia a queixa dele -- "só a primeira imagem ficou boa, as outras só parece que
+    // a imagem está passando de lado" -- e de quebra baixava o custo de 22 pra 8 créditos.
     //
-    // A linha era `s.camera ?? true`, e o `?? true` existia pra UM caso: a foto única, que é
-    // a capa e sempre merece câmera. Com onze fotos que nunca passaram pela montagem, aquele
-    // "true" virou "todas". E aí a câmera de IA cai em banheiro, em parede de azulejo, em
-    // quarto vazio -- fotos sem fundo pra onde andar. O modelo não anda (e está certo em não
-    // andar: andar ali seria inventar cômodo), então o que sobra na tela é o deslize do
-    // ffmpeg por cima. Era isso que ele estava vendo.
+    // Gerei o vídeo pra mostrar e ele respondeu: "isso não é tour, é opção padrão; tour é
+    // igual o primeiro take". Tem razão, e a régua é simples: se 7 de 11 cenas usam o
+    // movimento grátis, aquilo É a opção padrão com quatro exceções. Baratear um produto
+    // tirando o que ele promete não é melhorar o produto.
     //
-    // O teto agora é o MESMO da montagem (`quantasComCamera`), e a escolha segue a mesma
-    // ideia: a capa abre, a última fecha, e o resto se espalha. Quando a montagem já julgou
-    // (`camera` definido), a opinião dela vence -- ela olhou o ambiente, isto aqui só conta
-    // posição.
-    const indicesComCamera = (lista: CenaUI[]): Set<number> => {
-      const podem = lista.map((s, i) => ({ s, i })).filter(({ s }) => animavel(s));
-      const julgadas = podem.filter(({ s }) => s.camera !== undefined);
-      if (julgadas.length > 0) return new Set(julgadas.filter(({ s }) => s.camera).map(({ i }) => i));
-      const teto = quantasComCamera(podem.length);
-      if (podem.length <= teto) return new Set(podem.map(({ i }) => i));
-      // Capa, fecho e o miolo espalhado: os lugares onde a pessoa decide se assiste e o que
-      // ela leva na cabeça. Cena de miolo custa o mesmo e é vista por quem já ficou.
-      const escolhidos = new Set<number>([podem[0].i, podem[podem.length - 1].i]);
-      for (let k = 1; escolhidos.size < teto && k < podem.length - 1; k++) {
-        escolhidos.add(podem[Math.round((k * (podem.length - 1)) / teto)].i);
-      }
-      return escolhidos;
-    };
-
-    setCenas((lista) => {
-      const comCamera = novo === "tour" ? indicesComCamera(lista) : new Set<number>();
-      return lista.map((s, i) =>
+    // O teto continua valendo onde nasceu: na montagem automática, que MISTURA de propósito.
+    // Este botão é escolha explícita de quem quer o passeio inteiro, e custa o que custa.
+    //
+    // O defeito que ele viu continua de pé e NÃO era quantidade de cenas: é que o clipe da
+    // IA quase não anda em foto sem profundidade. Isso se resolve escolhendo o movimento
+    // pela foto -- não cortando cenas.
+    setCenas((lista) =>
+      lista.map((s) =>
         !animavel(s)
           ? s
-          : novo === "tour" && comCamera.has(i)
+          : novo === "tour"
             // Só o TIPO muda. `animacao` e `duracao` não entram aqui de propósito: quem
             // escolheu a direção foi a montagem, olhando o ambiente, e quem escolheu o tempo
             // foi a posição. Fixar valores aqui desfazia as duas coisas a cada toque.
             ? { ...s, tipo: "animada" as const, duracao: Math.min(5, Math.max(3, s.duracao)) }
             : { ...s, tipo: "foto" as const }
-      );
-    });
+      )
+    );
   }
 
   /**
@@ -1847,7 +1830,10 @@ export default function PaginaVideo() {
               <p className="mb-1.5 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Estilo</p>
               <div className="grid gap-2">
                 {[
-                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A câmera anda pelo cômodo nas fotos que vendem; o resto ganha movimento na foto. ${CREDITOS.animada} créditos por cena com câmera.` },
+                  // O cartão prometia a MISTURA ("nas fotos que vendem; o resto ganha movimento na
+                  // foto") -- e foi exatamente isso que ele recusou em 12/10/2026: "isso não é
+                  // tour, é opção padrão". O texto agora diz o que o botão faz: anda em todas.
+                  { id: "tour" as const, titulo: "Tour pela casa", dica: `A câmera anda pelo cômodo em TODAS as cenas. ${CREDITOS.animada} créditos por cena.` },
                   { id: "recomendado" as const, titulo: "Movimento na foto", dica: "Ordem da visita e um movimento leve em cada foto. Sem crédito." },
                   { id: "meu" as const, titulo: "Do meu jeito", dica: "Nada é mexido: a ordem e os ajustes são seus" },
                 ].map((o) => (

@@ -1,21 +1,19 @@
-// O "TOUR PELA CASA" NÃO PODE ANIMAR TUDO.
+// QUANTAS CENAS GANHAM A CÂMERA DE IA -- e por que o TOUR não usa este teto.
 //
-// Ele em 12/10/2026, sobre um vídeo que gerou: "criei com tour pela casa, só a primeira
-// imagem ficou boa; as outras só parece que a imagem está passando de lado, algumas estão
-// iguais à criação padrão".
+// Esta regra existe pra MONTAGEM AUTOMÁTICA, que mistura de propósito: "pegaram as imagens
+// mais importantes e gastaram o tour mais caro, outras fizeram aproximação", como ele mesmo
+// descreveu olhando o concorrente. Quatro é o teto, e cai junto em vídeo pequeno.
 //
-// O espec daquele vídeo tinha ONZE cenas `animada` -- 22 créditos. A montagem teria dado
-// quatro. A diferença saía de uma linha: `s.camera ?? true`, em que o `?? true` existia pra
-// UM caso (a foto única, que é a capa) e, com onze fotos nunca julgadas, virava "todas".
+// EM 12/10/2026 EU APLIQUEI ESTE TETO TAMBÉM AO BOTÃO "Tour pela casa", e foi erro.
+// O raciocínio parecia bom: o tour dele saiu com 11 cenas animadas (22 créditos) e a maioria
+// "só parece que a imagem está passando de lado", então cortar pra 4 baratearia e tiraria as
+// cenas fracas. Gerei o vídeo pra mostrar e ele respondeu:
 //
-// E o estrago não é só o preço. A câmera de IA caindo em banheiro, parede de azulejo e
-// quarto vazio não anda -- e está CERTA em não andar, porque andar ali seria inventar
-// cômodo (a regra do prompt). O que sobra na tela é o deslize do ffmpeg por cima, que é
-// exatamente "a imagem passando de lado".
+//     "isso não é tour, é opção padrão; tour é igual o primeiro take do vídeo"
 //
-// Este teste é da REGRA DE ESCOLHA, que é pura e dá pra provar sem navegador. A regra em si
-// vive em `aplicarEstilo`, na página; aqui se prova `quantasComCamera`, que é o teto que ela
-// passou a respeitar, e o espalhamento que ela usa.
+// A régua é simples e eu não tinha enxergado: se 7 de 11 cenas usam o movimento grátis,
+// aquilo É a opção padrão com quatro exceções. Baratear um produto tirando o que ele promete
+// não é melhorar o produto -- é vender outro. O teto voltou pro lugar onde nasceu.
 //
 //   node --import ./scripts/ts-direto.mjs scripts/testar-tour-quantas-cameras.ts
 
@@ -27,48 +25,34 @@ const conferir = (ok: boolean, oque: string, extra = "") => {
   if (!ok) falhas++;
 };
 
-/** A MESMA escolha de `aplicarEstilo` quando nenhuma cena foi julgada pela montagem. */
-function escolhidas(total: number): number[] {
-  const teto = quantasComCamera(total);
-  if (total <= teto) return [...Array(total).keys()];
-  const set = new Set<number>([0, total - 1]);
-  for (let k = 1; set.size < teto && k < total - 1; k++) set.add(Math.round((k * (total - 1)) / teto));
-  return [...set].sort((a, b) => a - b);
+// ---- o teto da MONTAGEM ----
+conferir(quantasComCamera(11) === 4, "a montagem gasta 4 câmeras em 11 fotos", String(quantasComCamera(11)));
+for (const n of [12, 20, 40]) conferir(quantasComCamera(n) === 4, `e continua em 4 com ${n} fotos`, String(quantasComCamera(n)));
+conferir(quantasComCamera(1) === 1, "foto única ganha câmera: ela É a capa");
+conferir(quantasComCamera(2) === 2, "duas fotos, as duas ganham");
+conferir(quantasComCamera(5) === 2, "cinco fotos dão 2", String(quantasComCamera(5)));
+conferir(quantasComCamera(8) === 3, "oito dão 3", String(quantasComCamera(8)));
+conferir(quantasComCamera(0) === 0, "nenhuma foto, nenhuma câmera");
+
+// ---- o teto nunca passa do que existe ----
+for (const n of [0, 1, 2, 3, 5, 7, 11, 25]) {
+  conferir(quantasComCamera(n) <= n, `${n} fotos: o teto não promete mais câmeras que fotos`, String(quantasComCamera(n)));
 }
 
-// ---- O CASO DELE: onze fotos ----
+// ---- e nunca é zero quando há foto: um vídeo todo parado não é produto ----
+for (const n of [1, 2, 3, 7, 30]) {
+  conferir(quantasComCamera(n) >= 1, `${n} fotos: pelo menos uma cena ganha câmera`, String(quantasComCamera(n)));
+}
+
+// ---- O QUE O TOUR FAZ, que é outra coisa ----
+//
+// Aqui não há função a chamar: o botão de estilo marca TODAS as cenas animáveis. O que este
+// caso guarda é a DECISÃO, pra ninguém reintroduzir o teto achando que economiza.
 {
-  const e = escolhidas(11);
-  conferir(e.length === 4, "onze fotos dão QUATRO câmeras, não onze", `${e.length}: ${e.join(", ")}`);
-  conferir(e.includes(0), "a capa abre com câmera");
-  conferir(e.includes(10), "e a última fecha com câmera");
-  conferir(4 * 2 === 8, "custo: 8 créditos em vez de 22", "economia de 14");
-}
-
-// ---- o teto não explode em vídeo grande ----
-for (const n of [12, 20, 40]) {
-  conferir(escolhidas(n).length === 4, `${n} fotos continuam em 4 câmeras`, `${escolhidas(n).length}`);
-}
-
-// ---- vídeo pequeno não fica todo animado nem todo parado ----
-conferir(escolhidas(1).length === 1, "foto única ganha câmera: ela É a capa");
-conferir(escolhidas(2).length === 2, "duas fotos, as duas ganham");
-conferir(escolhidas(5).length === 2, "cinco fotos dão 2 câmeras", `${escolhidas(5).join(", ")}`);
-conferir(escolhidas(8).length === 3, "oito fotos dão 3", `${escolhidas(8).join(", ")}`);
-
-// ---- nunca repete índice nem estoura a lista ----
-for (const n of [1, 2, 3, 5, 7, 11, 13, 25]) {
-  const e = escolhidas(n);
-  conferir(new Set(e).size === e.length, `${n} fotos: nenhum índice repetido`);
-  conferir(e.every((i) => i >= 0 && i < n), `${n} fotos: nenhum índice fora da lista`, e.join(","));
-  conferir(e.length <= Math.min(4, n), `${n} fotos: nunca passa do teto`, `${e.length}`);
-}
-
-// ---- espalha pelo vídeo, não amontoa no começo ----
-{
-  const e = escolhidas(11);
-  const vaos = e.slice(1).map((v, i) => v - e[i]);
-  conferir(Math.max(...vaos) - Math.min(...vaos) <= 3, "as câmeras ficam espalhadas pelo vídeo", `posições ${e.join(", ")}`);
+  const cenasDoTour = (total: number) => total; // o tour anima todas
+  conferir(cenasDoTour(11) === 11, "o TOUR anima as 11, não 4 — é o que o botão promete", `${cenasDoTour(11)}`);
+  conferir(cenasDoTour(11) !== quantasComCamera(11), "e por isso ele NÃO usa o teto da montagem", `tour ${cenasDoTour(11)} · montagem ${quantasComCamera(11)}`);
+  conferir(cenasDoTour(11) * 2 === 22, "o custo é o que é: 22 créditos em 11 fotos", "2 por cena");
 }
 
 console.log(falhas === 0 ? "\nTUDO CERTO" : `\n${falhas} FALHA(S)`);
