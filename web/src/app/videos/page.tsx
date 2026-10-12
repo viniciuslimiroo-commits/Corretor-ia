@@ -361,7 +361,8 @@ export default function PaginaVideo() {
   /** `null` = usar a cor da MARCA. Guardar null em vez de copiar a cor mantém o vídeo
    *  acompanhando a marca se ela mudar depois. */
   const [telaFinalCor, setTelaFinalCor] = useState<string | null>(null);
-  const [marca, setMarca] = useState<{ logoUrl: string | null; cor: string | null; nome: string; creci: string; whatsapp: string } | null>(null);
+  const [marca, setMarca] = useState<{ logoUrl: string | null; cor: string | null; nome: string; creci: string; whatsapp: string; fundoVale: boolean } | null>(null);
+  const [limpandoLogo, setLimpandoLogo] = useState(false);
   const corDaTelaFinal = telaFinalCor ?? marca?.cor ?? "#0F2D5B";
 
   const espec: EspecVideo = useMemo(
@@ -500,7 +501,7 @@ export default function PaginaVideo() {
       try {
         const r = await fetch("/api/marca", { headers: { Authorization: `Bearer ${await token()}` } });
         const d = await r.json();
-        if (vivo && r.ok) setMarca({ logoUrl: d.logoUrl ?? null, cor: d.cor ?? null, nome: d.nome ?? "", creci: d.creci ?? "", whatsapp: d.whatsapp ?? "" });
+        if (vivo && r.ok) setMarca({ logoUrl: d.logoUrl ?? null, cor: d.cor ?? null, nome: d.nome ?? "", creci: d.creci ?? "", whatsapp: d.whatsapp ?? "", fundoVale: !!d.fundo?.vale });
       } catch {
         // sem marca a tela final sai no padrão, como sempre saiu
       }
@@ -1180,6 +1181,35 @@ export default function PaginaVideo() {
   );
   const idsDosVideos = useMemo(() => videosOrdenados.map((v) => v.id), [videosOrdenados]);
   const selecaoVideos = usarSelecao(idsDosVideos);
+
+  /**
+   * Tira o fundo do logo GUARDADO (a mesma chamada de Minha marca) e recarrega a marca,
+   * pra prévia da tela final mostrar o resultado na hora.
+   *
+   * Muda o logo, não este vídeo -- é o que o aviso ao lado do botão diz. A URL assinada é
+   * a mesma de antes do corte, então o navegador serviria a imagem velha do cache: por isso
+   * a resposta da própria chamada é que alimenta o estado, e não uma leitura nova.
+   */
+  async function tirarFundoDoLogo() {
+    if (limpandoLogo) return;
+    setLimpandoLogo(true);
+    setErro(null);
+    try {
+      const form = new FormData();
+      form.append("tirarFundo", "1");
+      const r = await fetch("/api/marca", { method: "POST", headers: { Authorization: `Bearer ${await token()}` }, body: form });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Não consegui tirar o fundo do logo.");
+      // `fundoVale: false` de propósito, e não `!!d.fundo?.vale`: a resposta deste caminho
+      // não traz veredito, e o logo que acabou de sair daqui está transparente -- oferecer
+      // "tirar o fundo" de novo seria oferecer o que já foi feito.
+      setMarca({ logoUrl: d.logoUrl ?? null, cor: d.cor ?? null, nome: d.nome ?? "", creci: d.creci ?? "", whatsapp: d.whatsapp ?? "", fundoVale: false });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui tirar o fundo do logo.");
+    } finally {
+      setLimpandoLogo(false);
+    }
+  }
 
   async function apagarVideo(id: string) {
     await fetch(`/api/video/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${await token()}` } });
@@ -1939,6 +1969,34 @@ export default function PaginaVideo() {
                         </div>
                       </div>
 
+                      {/* TIRAR O FUNDO DO LOGO, AQUI -- porque é aqui que o problema aparece.
+                          Ele olhou a prévia e disse: "poderia ter algo para tirar o fundo da
+                          imagem nesta parte e não naquela primeira parte da logo".
+                          A ferramenta já existia em Minha marca, e o logo dele precisava dela
+                          (medido: 447x447, 0% transparente, fundo rgb(30,34,43) em 92% do
+                          quadro) -- só que nada nunca o avisou disso. O erro não era o lugar
+                          do botão: era ninguém contar que havia fundo pra tirar.
+
+                          Mas o que ele aperta aqui muda o LOGO, não este vídeo. O mesmo
+                          arquivo vai pra tela final, pra marca d'água das fotos e pros
+                          materiais; um "sem fundo só neste vídeo" seriam duas versões da
+                          marca dele circulando. Por isso o texto diz onde vale. */}
+                      {marca?.fundoVale && (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5">
+                          <p className="text-[11px] leading-tight text-amber-900">
+                            O seu logo tem fundo, e ele vira esse quadrado na tela final e nas fotos. Dá pra tirar.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={tirarFundoDoLogo}
+                            disabled={limpandoLogo}
+                            className="mt-1.5 rounded-lg bg-amber-600 px-2.5 py-1 text-[11.5px] font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {limpandoLogo ? "Tirando…" : "Tirar o fundo do logo"}
+                          </button>
+                          <p className="mt-1 text-[10px] text-amber-800/80">Vale pra todos os seus materiais, não só pra este vídeo.</p>
+                        </div>
+                      )}
                       {/* O LOGO NÃO SE TROCA AQUI. Ele é da marca e sai em todo material; um
                           logo "só deste vídeo" viraria duas marcas e nenhuma identidade. */}
                       <p className="mt-3 text-[11px] leading-tight text-neutral-500">
