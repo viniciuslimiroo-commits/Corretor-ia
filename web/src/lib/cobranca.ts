@@ -150,7 +150,35 @@ export type Marca = {
  * A marca que vai pra foto, pro vídeo e pra página compartilhada: a da pessoa, e o que
  * ela não preencheu vem da imobiliária (logo, cor, WhatsApp da casa).
  */
-export async function marcaEfetiva(db: Db, userId: string): Promise<Marca> {
+/**
+ * De quem é a marca que vai sair na peça.
+ *
+ * Ausente = a regra de sempre: a da pessoa, e a da imobiliária como rede de proteção.
+ * É o padrão porque é o que todo material já produzido fez.
+ */
+export type QualMarca = "pessoa" | "imobiliaria";
+
+export function ehQualMarca(v: unknown): v is QualMarca {
+  return v === "pessoa" || v === "imobiliaria";
+}
+
+/**
+ * A marca que a peça leva: logo, cor, CRECI, WhatsApp e nome.
+ *
+ * `qual` responde a uma pergunta que o produto não deixava fazer. Ele em 12/10/2026: "e se
+ * o corretor tiver a logo pessoal dele e a imobiliária outra, e a pessoa querer usar uma ou
+ * outra nos materiais?". A regra antiga era `pessoa ?? imobiliária` em cada campo -- ótima
+ * como rede de proteção (quem não tem logo herda o da equipe) e impossível de contrariar:
+ * com logo pessoal, o da imobiliária NUNCA saía, nem quando o anúncio era dela.
+ *
+ * Três situações reais que isso trava: anúncio da imobiliária, que muitas exigem com a marca
+ * dela; conteúdo do corretor, que ele quer com a dele; e quem atende duas.
+ *
+ * O NOME continua juntando os dois ("Fulano · Imobiliária J7") quando a peça é da
+ * imobiliária: quem vê o anúncio precisa saber com quem falar, e o corretor não some da
+ * própria peça. Escolhendo "pessoa", sai só ele.
+ */
+export async function marcaEfetiva(db: Db, userId: string, qual?: QualMarca): Promise<Marca> {
   const { data: u } = await db.from("users").select("nome, creci, whatsapp, logo_path, cor_marca").eq("id", userId).maybeSingle();
   const membro = await membroDe(db, userId);
   let org: { nome: string; creci: string | null; whatsapp: string | null; logo_path: string | null; cor_marca: string | null } | null = null;
@@ -158,15 +186,26 @@ export async function marcaEfetiva(db: Db, userId: string): Promise<Marca> {
     const { data } = await db.from("organizations").select("nome, creci, whatsapp, logo_path, cor_marca").eq("id", membro.orgId).maybeSingle();
     org = data;
   }
+  // Pedir a marca da imobiliária sem estar em uma, ou numa que não tem logo, volta pro
+  // padrão em vez de sair sem marca nenhuma: a peça tem que sair.
+  const daOrg = qual === "imobiliaria" && !!org;
+  const primeiro = <T>(a: T | null | undefined, b: T | null | undefined) => (daOrg ? (b ?? a ?? null) : (a ?? b ?? null));
+
   const pessoa = u?.nome ?? null;
-  const nome = pessoa && org ? `${pessoa} · ${org.nome}` : (pessoa ?? org?.nome ?? null);
+  const nome =
+    qual === "pessoa"
+      ? (pessoa ?? org?.nome ?? null)
+      : pessoa && org
+        ? `${pessoa} · ${org.nome}`
+        : (pessoa ?? org?.nome ?? null);
+  const logo = primeiro(u?.logo_path, org?.logo_path);
   return {
     nome,
-    creci: u?.creci ?? org?.creci ?? null,
-    whatsapp: u?.whatsapp ?? org?.whatsapp ?? null,
-    logo_path: u?.logo_path ?? org?.logo_path ?? null,
-    cor_marca: u?.cor_marca ?? org?.cor_marca ?? null,
-    deImobiliaria: !u?.logo_path && !!org?.logo_path,
+    creci: primeiro(u?.creci, org?.creci),
+    whatsapp: primeiro(u?.whatsapp, org?.whatsapp),
+    logo_path: logo,
+    cor_marca: primeiro(u?.cor_marca, org?.cor_marca),
+    deImobiliaria: !!logo && logo === org?.logo_path && logo !== u?.logo_path,
     org: org ? { nome: org.nome, creci: org.creci, whatsapp: org.whatsapp, temLogo: !!org.logo_path, cor: org.cor_marca } : null,
   };
 }

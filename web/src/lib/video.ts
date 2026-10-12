@@ -1061,6 +1061,15 @@ export type EspecVideo = {
    * e trocar a cor da MARCA pra isso mudaria todo material já pronto.
    */
   telaFinalCor?: string;
+  /**
+   * De quem é a marca deste vídeo: a do corretor ou a da imobiliária.
+   *
+   * Ausente = a regra de sempre (a da pessoa, com a da imobiliária como rede de proteção).
+   * Pedido dele em 12/10/2026: "e se o corretor tiver a logo pessoal dele e a imobiliária
+   * outra, e a pessoa querer usar uma ou outra?". Vale pro logo, pra cor, pro CRECI e pro
+   * WhatsApp juntos -- marca pela metade não é marca.
+   */
+  marca?: "pessoa" | "imobiliaria";
   transicao: TransicaoId;
   /** Índice da cena que vira a miniatura (capa). Ausente ou inválido = a primeira. */
   capa?: number;
@@ -1896,6 +1905,7 @@ export function limparEspec(bruto: unknown): { espec: EspecVideo; erro: null; av
       // pra cor da marca -- o `color=c=` do ffmpeg aceita nome ("red") e expressão, e deixar
       // passar o que veio do navegador seria mandar texto de fora pra dentro do filtro.
       telaFinalCor: ehCorDeFundo(b.telaFinalCor) ? b.telaFinalCor : undefined,
+      marca: b.marca === "pessoa" || b.marca === "imobiliaria" ? b.marca : undefined,
       transicao: ehTransicao(b.transicao),
       capa,
       legendas: limparLegendas(b.legendas),

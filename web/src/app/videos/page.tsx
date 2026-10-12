@@ -362,8 +362,22 @@ export default function PaginaVideo() {
    *  acompanhando a marca se ela mudar depois. */
   const [telaFinalCor, setTelaFinalCor] = useState<string | null>(null);
   const [marca, setMarca] = useState<{ logoUrl: string | null; cor: string | null; nome: string; creci: string; whatsapp: string; fundoVale: boolean } | null>(null);
+  /** A marca da imobiliária, quando existe e é diferente da dele. `null` = não há escolha. */
+  const [marcaDaEquipe, setMarcaDaEquipe] = useState<{ nome: string; logoUrl: string | null; cor: string | null; creci: string; whatsapp: string; nomeNaPeca: string } | null>(null);
+  /** De quem é a marca DESTE vídeo. `null` = a regra de sempre (a dele). */
+  const [qualMarca, setQualMarca] = useState<"pessoa" | "imobiliaria" | null>(null);
   const [limpandoLogo, setLimpandoLogo] = useState(false);
-  const corDaTelaFinal = telaFinalCor ?? marca?.cor ?? "#0F2D5B";
+  /**
+   * A marca que a PEÇA leva, do jeito que o servidor vai montar.
+   *
+   * A prévia tem que mostrar a escolha, não a marca que está salva na conta -- senão ela
+   * diz uma coisa e o vídeo sai outra, que é o erro que a prévia existe pra evitar.
+   */
+  const marcaNaPeca =
+    qualMarca === "imobiliaria" && marcaDaEquipe
+      ? { logoUrl: marcaDaEquipe.logoUrl, cor: marcaDaEquipe.cor, nome: marcaDaEquipe.nomeNaPeca, creci: marcaDaEquipe.creci, whatsapp: marcaDaEquipe.whatsapp }
+      : { logoUrl: marca?.logoUrl ?? null, cor: marca?.cor ?? null, nome: marca?.nome ?? "", creci: marca?.creci ?? "", whatsapp: marca?.whatsapp ?? "" };
+  const corDaTelaFinal = telaFinalCor ?? marcaNaPeca.cor ?? "#0F2D5B";
 
   const espec: EspecVideo = useMemo(
     () => ({
@@ -388,10 +402,11 @@ export default function PaginaVideo() {
       telaFinal,
       chamada: telaFinal ? chamada : "",
       telaFinalCor: telaFinal && telaFinalCor ? telaFinalCor : undefined,
+      marca: qualMarca ?? undefined,
       transicao,
       capa: Math.max(0, cenas.findIndex((s) => s.chave === capa)),
     }),
-    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, telaFinalCor, transicao, capa]
+    [formato, cenas, musica, musicaVolume, narrar, origemVoz, roteiro, voz, vozArquivo, vozVolume, vozInicio, titulo, preco, local, telaFinal, chamada, telaFinalCor, qualMarca, transicao, capa]
   );
   // Resumo dos ajustes em uma linha: quem não abriu ainda vê o que está valendo.
   const resumoDosAjustes = [
@@ -502,6 +517,7 @@ export default function PaginaVideo() {
         const r = await fetch("/api/marca", { headers: { Authorization: `Bearer ${await token()}` } });
         const d = await r.json();
         if (vivo && r.ok) setMarca({ logoUrl: d.logoUrl ?? null, cor: d.cor ?? null, nome: d.nome ?? "", creci: d.creci ?? "", whatsapp: d.whatsapp ?? "", fundoVale: !!d.fundo?.vale });
+        if (vivo && r.ok) setMarcaDaEquipe(d.marcaDaImobiliaria ?? null);
       } catch {
         // sem marca a tela final sai no padrão, como sempre saiu
       }
@@ -1144,6 +1160,7 @@ export default function PaginaVideo() {
       setTelaFinal(e.telaFinal !== false);
       setChamada(e.chamada ?? "");
       setTelaFinalCor(e.telaFinalCor ?? null);
+      setQualMarca(e.marca ?? null);
       setMusicaVolume(e.musicaVolume ?? LIMITES.musicaVolumePadrao);
       setNarrar(!!e.narracao);
       setOrigemVoz(e.narracao?.origem ?? "ia");
@@ -1190,6 +1207,7 @@ export default function PaginaVideo() {
     setMusicaVolume(LIMITES.musicaVolumePadrao);
     setChamada(CHAMADAS[0]);
     setTelaFinalCor(null);
+    setQualMarca(null);
     setTelaFinal(true);
   }
 
@@ -1936,14 +1954,31 @@ export default function PaginaVideo() {
                   <div className="mt-2 flex gap-3 rounded-xl border border-neutral-200 p-3">
                     <TelaFinalPrevia
                       cor={corDaTelaFinal}
-                      logoUrl={marca?.logoUrl ?? null}
+                      logoUrl={marcaNaPeca.logoUrl}
                       chamada={chamada}
-                      nome={marca?.nome ?? ""}
-                      creci={marca?.creci ?? ""}
-                      whatsapp={marca?.whatsapp ?? ""}
+                      nome={marcaNaPeca.nome}
+                      creci={marcaNaPeca.creci}
+                      whatsapp={marcaNaPeca.whatsapp}
                       altura={230}
                     />
                     <div className="min-w-0 flex-1">
+                      {/* DE QUEM É A MARCA. Ele em 12/10/2026: "e se o corretor tiver a logo
+                          pessoal dele e a imobiliária outra, e a pessoa querer usar uma ou
+                          outra?". A regra antiga era `pessoa ?? imobiliária` em cada campo:
+                          ótima como rede (quem não tem logo herda o da equipe) e impossível
+                          de contrariar -- com logo pessoal, o da imobiliária nunca saía, nem
+                          quando o anúncio era dela.
+                          Só aparece quando há DUAS marcas de verdade; senão seria uma
+                          escolha falsa. */}
+                      {marcaDaEquipe && (
+                        <div className="mb-3">
+                          <Rotulo>Marca deste vídeo</Rotulo>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Chip ativo={qualMarca !== "imobiliaria"} onClick={() => setQualMarca("pessoa")}>Minha marca</Chip>
+                            <Chip ativo={qualMarca === "imobiliaria"} onClick={() => setQualMarca("imobiliaria")}>{marcaDaEquipe.nome}</Chip>
+                          </div>
+                        </div>
+                      )}
                       <Rotulo>Frase</Rotulo>
                       <div className="mb-1 flex flex-wrap gap-1.5">
                         {CHAMADAS.map((f) => (
@@ -1971,10 +2006,10 @@ export default function PaginaVideo() {
                             aria-pressed={telaFinalCor === null}
                             title="A cor da sua marca"
                             className={"h-7 w-7 rounded-full ring-2 ring-offset-2 transition " + (telaFinalCor === null ? "ring-marca-indigo" : "ring-transparent hover:ring-neutral-300")}
-                            style={{ background: marca?.cor ?? "#0F2D5B" }}
+                            style={{ background: marcaNaPeca.cor ?? "#0F2D5B" }}
                           />
                           <span className="mr-1 text-[10px] text-neutral-400">sua marca</span>
-                          {CORES_TELA_FINAL.filter((x) => x.hex.toLowerCase() !== (marca?.cor ?? "").toLowerCase()).map((x) => (
+                          {CORES_TELA_FINAL.filter((x) => x.hex.toLowerCase() !== (marcaNaPeca.cor ?? "").toLowerCase()).map((x) => (
                             <button
                               key={x.id}
                               type="button"
@@ -2010,7 +2045,11 @@ export default function PaginaVideo() {
                           arquivo vai pra tela final, pra marca d'água das fotos e pros
                           materiais; um "sem fundo só neste vídeo" seriam duas versões da
                           marca dele circulando. Por isso o texto diz onde vale. */}
-                      {marca?.fundoVale && (
+                      {/* Só quando a peça usa o logo DELE: `fundoVale` foi medido no logo
+                          dele, e oferecer limpeza enquanto a tela final mostra o logo da
+                          imobiliária seria oferecer conserto pra uma imagem que não está
+                          ali. */}
+                      {marca?.fundoVale && qualMarca !== "imobiliaria" && (
                         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5">
                           <p className="text-[11px] leading-tight text-amber-900">
                             O seu logo tem fundo, e ele vira esse quadrado na tela final e nas fotos. Dá pra tirar.

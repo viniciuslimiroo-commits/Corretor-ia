@@ -45,6 +45,24 @@ export async function GET(req: NextRequest) {
   // arquivo de novo pra destravar um recurso que existe. É o mesmo erro de esconder que a
   // marca d'água tinha. Custa uma varredura por abertura de uma tela de ajustes, que
   // ninguém abre em laço.
+  // A MARCA DA IMOBILIÁRIA, pra tela poder OFERECER a escolha.
+  //
+  // Sem isto só dava pra mostrar a marca que está valendo, e a pergunta dele em 12/10/2026
+  // ("e se o corretor tiver a logo dele e a imobiliária outra?") não tem resposta possível
+  // numa tela que nem sabe que a outra existe.
+  const daEquipe = await marcaEfetiva(db, userId, "imobiliaria").catch(() => null);
+  const marcaDaImobiliaria =
+    daEquipe?.org && daEquipe.logo_path !== (data as Perfil | null)?.logo_path
+      ? {
+          nome: daEquipe.org.nome,
+          logoUrl: daEquipe.logo_path ? await assinar(db, daEquipe.logo_path).catch(() => null) : null,
+          cor: daEquipe.cor_marca,
+          creci: daEquipe.creci ?? "",
+          whatsapp: daEquipe.whatsapp ?? "",
+          nomeNaPeca: daEquipe.nome ?? "",
+        }
+      : null;
+
   const caminhoLogo = (data as Perfil | null)?.logo_path ?? null;
   let fundo: Veredito | null = null;
   if (caminhoLogo) {
@@ -62,6 +80,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ...corpo,
     ...(fundo ? { fundo } : {}),
+    // A outra marca, quando existe e é DIFERENTE da que está valendo. `null` quando a
+    // pessoa não está em equipe, ou quando a equipe não tem logo próprio: aí não há
+    // escolha a oferecer, e oferecer uma escolha falsa é pior que não oferecer.
+    // Nome `marcaDaImobiliaria` porque `imobiliaria` já é usada logo abaixo, e são coisas
+    // diferentes: aquela é a equipe (nome, CRECI); esta é a MARCA pronta pra desenhar.
+    marcaDaImobiliaria,
     telaFinalPossivel: efetiva ? !!(efetiva.nome || efetiva.whatsapp || efetiva.logo_path) : true,
     // O QUE JÁ VEM DA IMOBILIÁRIA, pra tela poder dizer. Sem isto ela pedia logo pra todo
     // mundo como se cada um estivesse sozinho -- e quem entrou numa equipe que já tem logo

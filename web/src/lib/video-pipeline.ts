@@ -552,8 +552,9 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
 
     // ---------- tela final ----------
     if (p.etapa === "marca") {
-      // A marca da pessoa, completada pela da imobiliária (logo e WhatsApp da casa).
-      const u = await marcaEfetiva(db, userId);
+      // A marca ESCOLHIDA pra este vídeo (`espec.marca`), completada pela outra. Sem
+      // escolha, a regra de sempre: a da pessoa com a da imobiliária como rede.
+      const u = await marcaEfetiva(db, userId, espec.marca);
       if (u.nome || u.whatsapp || u.logo_path) {
         let logo: string | undefined;
         if (u.logo_path) {
@@ -701,7 +702,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
       // devia perder o vídeo por isso.
       let marcaDagua: { arquivo: string; canto: PosicaoMarcaDagua; fracao: number; opacidade: number } | null = null;
       if (espec.marcaDagua) {
-        const m = await marcaEfetiva(db, userId).catch(() => null);
+        const m = await marcaEfetiva(db, userId, espec.marca).catch(() => null);
         if (m?.logo_path) {
           const arquivo = local("marca-dagua.png");
           try {
@@ -824,7 +825,7 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
           const fotoCapa = local(`capa-fonte${path.extname(fonteCapa) || ".jpg"}`);
           await baixar(db, fonteCapa, fotoCapa);
 
-          const marcaCapa = await marcaEfetiva(db, userId).catch(() => null);
+          const marcaCapa = await marcaEfetiva(db, userId, espec.marca).catch(() => null);
           let logoCapa: string | undefined;
           if (marcaCapa?.logo_path) {
             logoCapa = local("logo-capa.png");
