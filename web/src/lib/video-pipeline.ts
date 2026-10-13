@@ -189,6 +189,16 @@ function emVooAgora(p: PipelineVideo): number {
   return p.animadas ? Object.keys(p.animadas).length : 0;
 }
 
+/**
+ * A cena de agora esta' na SEGUNDA tentativa, por ter sido reprovada na conferencia?
+ *
+ * Olha a cena atual, nao o video: um vídeo onde a cena 2 foi refeita e ja' passou nao pode
+ * ficar dizendo "refazendo" enquanto anima a cena 7.
+ */
+function refazendoAgora(p: PipelineVideo): boolean {
+  return (p.refeitas?.[String(p.cenaAtual)] ?? 0) > 0 && (emVooAgora(p) > 0 || !!p.animada);
+}
+
 export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
   const n = espec.cenas.length;
   const tf = espec.telaFinal ? 1 : 0;
@@ -201,11 +211,19 @@ export function progressoDe(espec: EspecVideo, p: PipelineVideo): Progresso {
       ? // QUANTAS ESTAO NA FILA DA IA AGORA. Com o despacho em lote, "Animando a cena 1" seria
         // mentira: as quatro estao sendo feitas ao mesmo tempo, e dizer isso e o que explica
         // por que a barra fica parada um tempo e depois anda varias casas de uma vez.
-        emVooAgora(p) > 1
-        ? `Animando ${emVooAgora(p)} cenas com IA ao mesmo tempo…`
-        : emVooAgora(p) === 1 || p.animada
-          ? `Animando a cena ${p.cenaAtual + 1} com IA…`
-          : `Montando a cena ${p.cenaAtual + 1} de ${n}…`
+        // A CENA QUE ESTA SENDO REFEITA DIZ QUE ESTA SENDO REFEITA.
+        //
+        // Sem isto a pessoa ve "Animando a cena 2 com IA…" de novo, espera mais uma rodada
+        // inteira da fila do fal (30 s a 11 minutos, medido) e nao tem como saber por que.
+        // Parece travamento, que foi a queixa dele sobre o contador em outro lugar do fluxo.
+        // Dizendo o motivo, a mesma espera vira o produto trabalhando a favor dela.
+        refazendoAgora(p)
+        ? `A cena ${p.cenaAtual + 1} saiu com defeito; refazendo…`
+        : emVooAgora(p) > 1
+          ? `Animando ${emVooAgora(p)} cenas com IA ao mesmo tempo…`
+          : emVooAgora(p) === 1 || p.animada
+            ? `Animando a cena ${p.cenaAtual + 1} com IA…`
+            : `Montando a cena ${p.cenaAtual + 1} de ${n}…`
       : p.etapa === "marca"
         ? "Criando a tela final com sua marca…"
         : p.etapa === "narracao"

@@ -50,6 +50,27 @@ conferir(/Montando a cena/.test(nenhuma.mensagem), "sem animação em voo, a men
 const semCampo = progressoDe(espec, base);
 conferir(/Montando a cena/.test(semCampo.mensagem), "e um vídeo sem o campo (dos antigos) também", semCampo.mensagem);
 
+// ---- 2b. a cena que está sendo REFEITA diz isso ----
+//
+// Quando a conferência reprova um clipe (lib/conferir-clipe.ts), a cena é refeita uma vez. Isso
+// custa outra rodada da fila do fal -- 30 s a 11 minutos, medido. Repetir "Animando a cena 2 com
+// IA…" faria essa espera parecer travamento, que é exatamente a queixa dele sobre o contador em
+// outro lugar do fluxo. Dizendo o motivo, a mesma espera vira o produto trabalhando a favor dela.
+const refazendo = progressoDe(espec, { ...base, cenaAtual: 1, animadas: { "1": { statusUrl: "s", responseUrl: "r" } }, refeitas: { "1": 1 } });
+conferir(/A cena 2 saiu com defeito; refazendo/.test(refazendo.mensagem), "a cena refeita avisa que está sendo refeita", refazendo.mensagem);
+
+// e NÃO contamina as outras cenas do mesmo vídeo
+const outraCena = progressoDe(espec, { ...base, cenaAtual: 3, animadas: { "3": { statusUrl: "s", responseUrl: "r" } }, refeitas: { "1": 1 } });
+conferir(/Animando a cena 4 com IA/.test(outraCena.mensagem), "a cena 4 do mesmo vídeo volta à frase normal", outraCena.mensagem);
+
+// nem fica pendurada depois que a refeita voltou e saiu da fila
+const jaVoltou = progressoDe(espec, { ...base, cenaAtual: 1, animadas: {}, refeitas: { "1": 1 } });
+conferir(/Montando a cena 2/.test(jaVoltou.mensagem), "com a refeita já na mão, a frase é de montar", jaVoltou.mensagem);
+
+// vídeo sem refeita nenhuma (o caso comum) não muda nada
+const semRefeita = progressoDe(espec, { ...base, cenaAtual: 1, animadas: { "1": { statusUrl: "s", responseUrl: "r" } } });
+conferir(/Animando a cena 2 com IA/.test(semRefeita.mensagem), "vídeo sem reprovação segue como antes", semRefeita.mensagem);
+
 // ---- 3. o vídeo que começou no modelo antigo continua entendido ----
 //
 // `animada` (uma só) ainda existe pra isso: um vídeo que já estava rodando quando o código
