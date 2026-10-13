@@ -15,6 +15,7 @@ import { animarPecas } from "./movimento-servidor";
 import { ajustesNeutros, gradeNeutra, lutCube, vinhetaDaGrade } from "./filtros";
 import { creditar, marcaEfetiva } from "./cobranca";
 import type { ResumoEdicao } from "./resumo-edicao";
+import { avisoDeReprovado, conferirClipe, destinoDoReprovado, refeitasJaFeitas } from "./conferir-clipe";
 import { ANIMACOES, CREDITOS, EFEITOS_SONOROS, FORMATOS_POR_ID, LIMITES, MUSICAS, MUSICA_POR_ID, NEGATIVO_VIDEO, TAMANHOS_MARCA_DAGUA, VOZES, clipeContinua, duracaoDaCena, emendasDoVideo, gradeDaCena, relogioDoEspec, textosDaCena, projecaoPelaProporcao, type Cena, type PosicaoMarcaDagua, type EfeitoId, type EspecVideo, type Projecao360 } from "./video";
 import { resolverAudiosDaMontagem } from "./audio-montagem";
 import { estornoDaNarracao } from "./pedido-video";
@@ -43,6 +44,16 @@ import {
 // tráfego, mas é o que faz o vídeo caber em funções de até 300s sem servidor próprio.
 
 export const MODELO_ANIMACAO = "fal-ai/wan/v2.2-5b/image-to-video";
+
+/**
+ * Quantas vezes uma cena reprovada na conferência é refeita antes de virar foto.
+ *
+ * UM, e o teto é de dinheiro. A cena cobra 2 créditos (R$ 1,73) e cada clipe custa US$ 0,15
+ * (~R$ 0,83): com uma refeita a margem some no pior caso, com duas o vídeo dá prejuízo. E
+ * quem reprova duas vezes seguidas quase sempre é a FOTO, não o sorteio -- parede de perto
+ * não tem para onde a câmera andar, e insistir só paga de novo pelo mesmo erro.
+ */
+export const REFAZER_NO_MAXIMO = 1;
 export const MODELO_NARRACAO = "fal-ai/elevenlabs/tts/multilingual-v2";
 
 export type Etapa = "cena" | "marca" | "narracao" | "montar" | "finalizar" | "concluido";
@@ -96,6 +107,15 @@ export type PipelineVideo = {
   resumoEdicao?: ResumoEdicao | null;
   /** O crédito da narração já voltou uma vez. Guarda pra etapa repetida não estornar de novo. */
   narracaoEstornada?: boolean;
+  /**
+   * Quantas vezes cada cena animada foi REFEITA por ter sido reprovada na conferência
+   * (lib/conferir-clipe.ts). Chave em texto porque isto vira JSON, como `animadas`.
+   *
+   * Mora no pipeline e não numa variável porque a etapa volta: despacha a refeita, devolve o
+   * progresso e o servidor chama de novo. Sem isto, a cena reprovaria, refaria, reprovaria e
+   * refaria pra sempre -- cada volta pagando outro clipe.
+   */
+  refeitas?: Record<string, number> | null;
 };
 
 export type LinhaVideo = {
@@ -455,9 +475,44 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
               const url = saida?.video?.url ?? extrairImagem(saida).url;
               clipeLocal = local(`animada${i}.mp4`);
               await baixarUrl(url, clipeLocal);
-              // Guarda o clipe cru pra próxima edição deste vídeo não pagar de novo.
-              // Se não conseguir guardar, o vídeo sai igual; só a próxima vez cobra.
-              await subir(db, clipeLocal, guardado, "video/mp4").catch(() => null);
+
+              // O CLIPE É CONFERIDO ANTES DE ENTRAR NO VÍDEO (lib/conferir-clipe.ts).
+              //
+              // Pedido dele em 12/10/2026, depois de ver uma churrasqueira se desmanchar no
+              // meio da cena: "independente do imóvel, quero que vc tente evitar possíveis
+              // erros que podem vir a acontecer". Medido no mesmo dia: não existe modelo nem
+              // negativo que não erre -- o barato solta um banco da parede e deixa ele
+              // flutuando, o caro põe tripé e equipamento no chão, e o caro com o negativo
+              // reforçado inventa do mesmo jeito. O negativo é um PEDIDO. Isto é conferência.
+              const veredito = await conferirClipe({ clipe: clipeLocal, duracao: dur, falKey, pasta: dir });
+              if (!veredito.aprovado) {
+                clipeLocal = null;
+                const jaRefeitas = refeitasJaFeitas(p.refeitas?.[String(i)]);
+                if (destinoDoReprovado(jaRefeitas, REFAZER_NO_MAXIMO) === "refazer") {
+                  // MAIS UMA RODADA ANTES DE DESISTIR. O modelo é aleatório: a mesma foto com
+                  // o mesmo pedido volta diferente, e quase sempre volta limpa. Vale uma
+                  // geração a mais (US$0,15) pra não entregar foto parada em cena que a
+                  // pessoa pediu animada -- que é a queixa de onde tudo isto nasceu.
+                  const urlImagem = await assinar(db, fontes[0]);
+                  const d = await despachar(MODELO_ANIMACAO, corpoDaAnimacao(cena, dur, urlImagem), falKey);
+                  await salvar({
+                    animadas: { ...(p.animadas ?? {}), [String(i)]: { statusUrl: d.status_url, responseUrl: d.response_url } },
+                    refeitas: { ...(p.refeitas ?? {}), [String(i)]: jaRefeitas + 1 },
+                  });
+                  return progressoDe(espec, p);
+                }
+                // Duas vezes seguidas: esta foto não vai render clipe bom. Vira foto, com o
+                // crédito de volta (o estorno mora no `else` lá embaixo, junto com o da
+                // animação que nem voltou -- pra pessoa é o mesmo caso).
+                p.avisos.push(avisoDeReprovado(i, veredito.achado));
+              } else {
+                // Guarda o clipe cru pra próxima edição deste vídeo não pagar de novo.
+                // Se não conseguir guardar, o vídeo sai igual; só a próxima vez cobra.
+                //
+                // SÓ O APROVADO É GUARDADO: clipe reprovado que entrasse no cache seria
+                // reusado de graça pra sempre, e a conferência viraria enfeite.
+                await subir(db, clipeLocal, guardado, "video/mp4").catch(() => null);
+              }
             } catch (e) {
               p.avisos.push(`Cena ${i + 1}: a animação não voltou (${e instanceof Error ? e.message.slice(0, 80) : "erro"}); ficou como foto.`);
               clipeLocal = null;

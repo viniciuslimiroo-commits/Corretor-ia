@@ -96,6 +96,15 @@ export const NEGATIVO_VIDEO = [
   // do imovel sendo criado ou modificado durante o video."
   "door opening, door closing, window opening, window closing, curtain moving, blinds opening, gate opening, drawer opening, cabinet opening",
   "objects animating, appliances turning on, lights turning on or off, water moving, fire, smoke",
+  // EQUIPAMENTO DE FILMAGEM, que o modelo põe quando "entende" que está fazendo um vídeo.
+  // Visto em duas gerações de 12/10/2026: um tripé com celular no meio de um quarto e um
+  // vulto de equipamento no chão de um quintal. Vai aqui porque é de graça -- mas o que
+  // segura isto de verdade é a conferência (lib/conferir-clipe.ts), já que o mesmo modelo
+  // inventou outro objeto DEPOIS de eu reforçar este negativo.
+  "camera, tripod, photography equipment, light stand, microphone, boom pole, gym equipment",
+  // E a parte que SE SOLTA da parede. O banco de madeira preso no tijolo virou laje
+  // flutuando no meio do quintal -- a "churrasqueira que anda" que ele relatou.
+  "furniture detaching from a wall, floating furniture, object separating from the wall, levitating bench or table",
   // A CAMERA E DE TRIPE, NAO DE MAO. "Gerei um video de aproximacao e o resultado parecia uma
   // pessoa segurando uma camera na mao, com tremores e movimentos instaveis."
   "handheld camera, camera shake, shaky footage, unstable camera, wobble, bounce, vibration, micro-jitter",
