@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { usuarioDaRota } from "@/lib/auth-rota";
 import { assinar, apagarEntradas } from "@/lib/armazenamento";
-import { animacoesGuardadas, avancarVideo, limparTemporarios, progressoDe, type LinhaVideo, type PipelineVideo } from "@/lib/video-pipeline";
+import { animacoesGuardadas, avancarVideo, desistirDoVideo, limparTemporarios, MINUTOS_ATE_DESISTIR, MINUTOS_DE_TRAVA, progressoDe, type LinhaVideo, type PipelineVideo } from "@/lib/video-pipeline";
 import { duracaoDaCena, type EspecVideo } from "@/lib/video";
-import { creditar } from "@/lib/cobranca";
 import { rotuloDoTipo } from "@/lib/acoes";
 
 // Acompanha (e faz andar) um vídeo. Cada GET avança no máximo uma etapa. A etapa pode
@@ -12,10 +11,9 @@ import { rotuloDoTipo } from "@/lib/acoes";
 // Sem a trava, a tela consultando a cada 3s dispararia a mesma etapa várias vezes.
 export const maxDuration = 300;
 
-// Maior que o teto da função (300s): uma trava que vence no meio da montagem deixa uma
-// segunda chamada rodar a mesma montagem junto.
-const MINUTOS_DE_TRAVA = 6;
-const MINUTOS_ATE_DESISTIR = 25;
+// MINUTOS_DE_TRAVA e MINUTOS_ATE_DESISTIR moram em lib/video-pipeline.ts: o cron que
+// desencalha vídeo abandonado (api/cron/videos-parados) usa os MESMOS números, e dois
+// lugares com cópias próprias acabariam discordando sobre quando desistir.
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -111,17 +109,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ videoId: id, status: "falhou", error: video.erro ?? "Este vídeo não foi concluído." }, { status: 409 });
   }
 
-  const contaDoVideo = video.org_id ? { tipo: "org" as const, id: video.org_id as string } : { tipo: "user" as const, id: userId };
 
   async function falhar(mensagem: string) {
-    // Só quem ainda está "gerando" vira falha: se outra chamada acabou de gravar o vídeo
-    // como pronto, ele não é estornado nem tem o arquivo apagado.
-    const { data: marcado } = await db.from("videos").update({ status: "falhou", erro: mensagem, lock_ate: null }).eq("id", id).eq("status", "gerando").select("id");
-    if (!marcado || marcado.length === 0) {
+    const cancelou = await desistirDoVideo(db, { id, user_id: userId, org_id: (video!.org_id as string | null) ?? null, creditos_cobrados: video!.creditos_cobrados }, pipeline, mensagem);
+    if (!cancelou) {
       return NextResponse.json({ videoId: id, status: "gerando", mensagem: "Conferindo o vídeo…", trabalhando: true });
     }
-    if (video!.creditos_cobrados > 0) await creditar(db, contaDoVideo, userId, video!.creditos_cobrados, "estorno_video", id).catch(() => null);
-    await limparTemporarios(db, pipeline);
     return NextResponse.json({ videoId: id, status: "falhou", error: mensagem }, { status: 502 });
   }
 

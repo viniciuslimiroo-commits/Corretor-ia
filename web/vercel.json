@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/liberacoes", "schedule": "0 9 * * *" }
+    { "path": "/api/cron/liberacoes", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/videos-parados", "schedule": "*/5 * * * *" }
   ]
 }

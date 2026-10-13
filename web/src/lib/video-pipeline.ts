@@ -966,6 +966,46 @@ export async function avancarVideo(db: Db, falKey: string, video: LinhaVideo): P
   }
 }
 
+/**
+ * Quanto tempo uma chamada segura o vídeo pra ela.
+ *
+ * Maior que o teto da função (300 s) de propósito: uma trava que vence no meio da montagem
+ * deixaria uma segunda chamada rodar a mesma montagem junto.
+ */
+export const MINUTOS_DE_TRAVA = 6;
+
+/** Depois disto o vídeo é cancelado e o crédito volta. */
+export const MINUTOS_ATE_DESISTIR = 25;
+
+/**
+ * Cancela um vídeo que não vai terminar e DEVOLVE o crédito.
+ *
+ * Mora aqui, e não na rota, porque agora tem dois donos: a tela, que chama quando a pessoa
+ * está olhando, e o cron, que chama quando ninguém está. Escrito duas vezes, um dos dois ia
+ * acabar estornando diferente do outro -- e o lado que erra pra menos tira crédito de quem
+ * pagou por um vídeo que não saiu.
+ *
+ * Devolve false quando NÃO foi este quem cancelou: outra chamada pode ter acabado de gravar
+ * o vídeo como pronto, e aí ele não é estornado nem tem o arquivo apagado.
+ */
+export async function desistirDoVideo(
+  db: Db,
+  video: { id: string; user_id: string; org_id: string | null; creditos_cobrados: number | null },
+  pipeline: PipelineVideo | null,
+  mensagem: string
+): Promise<boolean> {
+  // Só quem ainda está "gerando" vira falha. O `.eq("status", "gerando")` é a trava: quem
+  // chegou depois do fim não desfaz o que já ficou pronto.
+  const { data: marcado } = await db.from("videos").update({ status: "falhou", erro: mensagem, lock_ate: null }).eq("id", video.id).eq("status", "gerando").select("id");
+  if (!marcado || marcado.length === 0) return false;
+  const conta = video.org_id ? { tipo: "org" as const, id: video.org_id } : { tipo: "user" as const, id: video.user_id };
+  if ((video.creditos_cobrados ?? 0) > 0) {
+    await creditar(db, conta, video.user_id, video.creditos_cobrados as number, "estorno_video", video.id).catch(() => null);
+  }
+  await limparTemporarios(db, pipeline);
+  return true;
+}
+
 /** Limpa os temporários de um vídeo que falhou ou foi apagado. */
 export async function limparTemporarios(db: Db, p: PipelineVideo | null) {
   // O mp4 que subiu na montagem e não chegou a ser gravado como pronto também é sobra.
