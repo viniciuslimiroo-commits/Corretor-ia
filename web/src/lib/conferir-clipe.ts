@@ -19,15 +19,25 @@
 // tipo de erro, não tira o erro. O que não depende do imóvel nem do modelo é olhar o que
 // voltou antes de entregar -- e é o que este arquivo faz.
 //
-// MEDIDO em 12/10/2026, nos seis clipes reais que eu já tinha julgado olhando quadro a
-// quadro: 6 de 6. Nos três ruins ela disse o que viu ("um robô apareceu", "equipamento de
-// ginástica apareceu no quintal", "tripé com celular apareceu no cômodo") e nos três bons
-// não acusou nada, descrevendo só o movimento da câmera. Não é chute: ela nomeia o achado.
+// MEDIDO DUAS VEZES, e a segunda é a que vale.
 //
-// CUSTA QUASE NADA e só roda em clipe NOVO. É a mesma visão que já lê cada foto no book
-// (gemini flash lite, frações de centavo) contra um clipe de IA que custou US$0,15. Clipe
-// que veio do cache já passou por aqui uma vez -- perguntar de novo é pagar duas vezes pela
-// mesma resposta, como na migração 12.
+// Primeiro em seis clipes soltos que eu já tinha julgado quadro a quadro: 5 de 6, errando só
+// no clipe de maior movimento de câmera do projeto (ver o ponto cego em
+// `scripts/testar-conferir-clipe.ts`).
+//
+// Depois -- porque ele pediu, "testa com um tour real pra ver quantas cenas reprovam" -- nas
+// ONZE cenas do tour que gerou a queixa, com os clipes que já estavam guardados. Reprova 1,
+// e é exatamente a cena 2: "churrasqueira de alvenaria apareceu no lugar da churrasqueira de
+// madeira". As outras dez passam. Três perguntas por cena, todas iguais entre si.
+//
+// Esse segundo teste mudou três coisas que o primeiro dava por boas, e nenhuma teria
+// aparecido sem ele: o modelo de visão (ver MODELO_CONFERENTE), a barra de "óbvio" e a
+// direção do dano (sumir não conta). Antes deles, o tour reprovava 4 de 11 -- um banheiro
+// porque o veio do mármore se redesenhou -- e deixava passar a churrasqueira.
+//
+// CUSTA QUASE NADA e só roda em clipe NOVO: frações de centavo contra um clipe de US$ 0,15.
+// Clipe que veio do cache já passou por aqui uma vez -- perguntar de novo é pagar duas vezes
+// pela mesma resposta, como na migração 12.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -41,7 +51,8 @@ import { rodarFfmpeg, sondarMidia } from "./ffmpeg";
 // gradual se lê como "a câmera está andando e revelando" -- com duas pontas não há
 // progressão pra justificar nada. Ou a coisa está nas duas, ou alguém a desenhou.
 //
-// E O ÚLTIMO QUADRO NÃO É O MELHOR SEGUNDO QUADRO. Medido nos seis, variando só o instante:
+// E O ÚLTIMO QUADRO NÃO É O MELHOR SEGUNDO QUADRO. Medido nos seis, variando só o instante
+// (com o modelo de visão antigo, mas a forma da curva é o que importa aqui):
 //
 //           50%    65%    80%    fim
 //   ruins   3/4    3/4    4/4    3/4
@@ -67,15 +78,71 @@ export const PERGUNTA_DO_CONFERENTE = [
   "As duas imagens são o PRIMEIRO e o ÚLTIMO quadro de um vídeo curto feito a partir de uma foto de imóvel.",
   "A câmera se moveu; o imóvel NÃO podia mudar.",
   "Responda SÓ com um JSON, sem markdown:",
-  '{"inventou":<true|false>,"o_que":"<até 10 palavras>"}',
+  // A DESCRIÇÃO VEM ANTES DO VEREDITO, e isso não é arrumação.
+  //
+  // Com o booleano primeiro, ela decide e só depois descreve -- e escreveu, na mesma
+  // resposta, `inventou: false` junto de "churrasqueira apareceu". Descrevendo antes, a
+  // conclusão sai do que ela acabou de escrever.
+  '{"o_que":"<o que mudou, até 10 palavras>","inventou":<true|false>}',
   "inventou = true se na segunda imagem aparece pessoa, animal, veículo, equipamento, móvel ou estrutura que não existe na primeira,",
-  "ou se alguma parte construída (parede, pilar, chaminé, telhado, batente, corrimão) mudou de forma, grossura ou proporção de um jeito que a perspectiva não explica.",
-  "inventou = false se a diferença é só a câmera ter chegado mais perto, mais longe ou para o lado, com as mesmas coisas.",
-  "Objeto que SAIU do quadro porque a câmera andou NÃO é invenção.",
+  // "VIROU OUTRA COISA" É O CASO MAIS COMUM, e o que eu tinha escrito não o cobria.
+  //
+  // A primeira versão só falava em parte construída mudando de forma. Na cena 2 do tour dele,
+  // o que muda é um BANCO de madeira encostado na parede que vira uma churrasqueira de tijolo
+  // com chaminé e rodinhas. A visão descreveu a churrasqueira com todas as letras e respondeu
+  // `inventou: false` -- porque naquele ponto da foto existe um objeto, então ela entendeu
+  // "estava lá, a câmera revelou". Não apareceu do nada: TRANSFORMOU. É outra pergunta.
+  "ou se alguma coisa que já estava lá mudou de forma, de tamanho ou VIROU OUTRO OBJETO -- um banco que vira churrasqueira, um pilar que engrossa, um móvel que cresce, um telhado que entorta --, de um jeito que a perspectiva não explica.",
+  // SEM ESTAS DUAS LINHAS ELA PERDOA A PIOR INVENÇÃO QUE EXISTE AQUI.
+  //
+  // Medido no tour de 11 cenas dele: na cena 2, um banquinho encostado na parede de tijolo
+  // vira uma churrasqueira com chaminé e rodas ao longo do clipe -- e a conferência APROVOU,
+  // porque a coisa cresce de trás de um pilar e isso se lê como "a câmera revelou". É
+  // literalmente a queixa dele ("a churrasqueira anda"), passando pela porta que eu abri.
+  //
+  // Num vídeo feito de UMA foto, revelar não existe: o que não está na foto, o modelo
+  // desenhou. É a regra que ele deu em 24/09/2026 ("se não tiver informações do ambiente não
+  // inventar") e a mesma que o negativo já pede ao gerador.
+  "O vídeo foi feito de UMA foto só: o que não está na primeira imagem não existe no imóvel.",
+  "Por isso coisa que APARECE de trás de uma parede, pilar ou móvel, ou que entra pela borda, TAMBÉM é invenção, mesmo parecendo que a câmera revelou.",
+  "inventou = false se as mesmas coisas continuam lá, só mais perto, mais longe ou de lado.",
+  // A saída que evita acusar clipe bom, e que só vale pra quem SAI: a câmera andando tira
+  // coisa do quadro o tempo todo, e sem esta linha todo clipe com movimento reprova.
+  // SÓ CONTA O QUE APARECE OU O QUE VIRA OUTRA COISA. Sumir, não.
+  //
+  // As duas acusações duvidosas do tour dele eram "churrasqueira e bancada sumiram" e
+  // "bancada diminuiu" -- exatamente o que uma câmera andando pra frente faz com o que fica
+  // para trás, e indistinguível disso em dois quadros. O dano que ele quer evitar tem direção:
+  // um anúncio que MOSTRA o que a casa não tem é propaganda enganosa; um que deixa de mostrar
+  // um canto é só um vídeo curto.
+  "Coisa que sumiu, encolheu, ficou para trás ou saiu pela borda NÃO é invenção: a câmera andou.",
+  "Só conta o que APARECEU onde não havia nada, ou o que VIROU OUTRA COISA.",
+  // A BARRA DE "ÓBVIO", que é o que separa defeito de ruído.
+  //
+  // Sem ela o julgamento acusa demais. Medido no tour de 11 cenas: ele reprovou um banheiro
+  // porque o veio do mármore se redesenhou e uma cozinha porque a bancada "mudou de forma" --
+  // coisas que ninguém vê rodando o vídeo. Reprovar sai caro duas vezes: paga outra geração e
+  // pode acabar trocando por foto parada uma cena que estava boa, que é a queixa de origem.
+  //
+  // O alvo é o que ele viu e nomeou: uma coisa virando outra coisa.",
+  "Só responda true se a mudança for ÓBVIA e GROSSEIRA -- uma coisa virando outra, uma estrutura se desfazendo, um objeto grande surgindo do nada.",
+  "Diferença de textura, de nitidez, de luz, de sombra, de desenho de pedra ou madeira, e enquadramento, NÃO contam: responda false.",
 ].join("\n");
 
-/** O modelo de visão: o mesmo que já lê as fotos do book. */
-export const MODELO_CONFERENTE = "google/gemini-2.5-flash-lite";
+/**
+ * O modelo de visão. NÃO é o mesmo que lê as fotos do book, e a diferença foi medida.
+ *
+ * O `flash-lite` (que o book usa) julga mal E instável. No tour de 11 cenas dele, no clipe em
+ * que o banco vira churrasqueira: três perguntas iguais, com `temperature: 0`, deram REPROVA,
+ * limpo, REPROVA. Ele chegou a escrever `{"o_que":"churrasqueira apareceu","inventou":false}`
+ * -- descreve a invenção e absolve na mesma linha.
+ *
+ * O `flash` deu REPROVA nas três, e nas cenas limpas deu limpo nas três.
+ *
+ * Custa alguns centésimos de centavo a mais por cena, contra um clipe de US$ 0,15 e 2 créditos
+ * cobrados. Economizar aqui é economizar no único lugar que decide se o vídeo sai com defeito.
+ */
+export const MODELO_CONFERENTE = "google/gemini-2.5-flash";
 
 export type Veredito = {
   /** false SÓ quando a visão afirmou que mudou o imóvel. Dúvida, erro e silêncio aprovam. */
