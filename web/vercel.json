@@ -1,6 +1,15 @@
 {
+  "$comentario": [
+    "videos-parados roda UMA VEZ POR DIA, e não é a frequência certa: o certo é */5.",
+    "A conta é Hobby, e o plano Hobby recusa o deploy inteiro com cron mais frequente que",
+    "diário ('Hobby accounts are limited to daily cron jobs'). Medido em 13/10/2026, tentando",
+    "publicar. Com uma passada por dia, o vídeo abandonado às 10h só termina na manhã seguinte",
+    "-- e o crédito só volta nessa hora. É pouco, e é melhor que o de antes, que era NUNCA.",
+    "Ao migrar pro Pro: trocar por */5 * * * * e apagar este comentário.",
+    "O endereço continua podendo ser chamado à mão com o CRON_SECRET, a qualquer momento."
+  ],
   "crons": [
     { "path": "/api/cron/liberacoes", "schedule": "0 9 * * *" },
-    { "path": "/api/cron/videos-parados", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/videos-parados", "schedule": "0 10 * * *" }
   ]
 }
