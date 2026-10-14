@@ -145,5 +145,33 @@ conferir(limparLeitura({ comodos: [{ nome: "Sala", x: 0, y: 0, largura: 4, altur
   conferir(!/palpite/.test(sem ?? ""), "sem aberturas, o aviso não fala delas", String(sem).slice(0, 55));
 }
 
+// ---- o aviso conta que todo cômodo vem FECHADO ----
+//
+// Ele em 14/10/2026: "tem cômodos que a parede vai até certo ponto e não fecha tudo, é
+// aberta, o software não está identificando". É verdade e é por desenho -- a leitura devolve
+// retângulos. Tentei ensinar o modelo a enxergar a parede que para, medi a bancada inteira e
+// PIOROU (áreas 93% -> 87%, o caso-alvo continuou invisível, invenções de 7 pra 17). Está
+// revertido, com os números, em SISTEMA_LEITURA.
+//
+// Já que o produto não resolve, ele CONTA. Quem sabe que o ambiente é aberto abre o vão em
+// dois toques; quem não sabe publica um anúncio dizendo que a cozinha é separada.
+{
+  const dois = avisoDaLeitura(
+    limparLeitura({
+      comodos: [
+        { nome: "Sala", x: 0, y: 0, largura: 4, altura: 3, medida_lida: true },
+        { nome: "Cozinha", x: 4, y: 0, largura: 2, altura: 3, medida_lida: true },
+      ],
+      tem_cotas: true,
+    })
+  );
+  conferir(/FECHADO/.test(dois ?? ""), "com mais de um cômodo, o aviso diz que todos vêm fechados", String(dois).slice(-80));
+  conferir(/ferramenta Vão/.test(dois ?? ""), "e aponta a ferramenta que resolve");
+  conferir(/sala com cozinha|sala em L|varanda/.test(dois ?? ""), "com os casos que a pessoa reconhece, não em abstrato");
+
+  const um = avisoDaLeitura(limparLeitura({ comodos: [{ nome: "Sala", x: 0, y: 0, largura: 4, altura: 3, medida_lida: true }], tem_cotas: true }));
+  conferir(!/FECHADO/.test(um ?? ""), "com um cômodo só, não fala em parede entre ambientes", "não existe parede entre ambientes ali");
+}
+
 console.log(falhas === 0 ? "\nTUDO CERTO" : `\n${falhas} FALHA(S)`);
 process.exitCode = falhas === 0 ? 0 : 1;

@@ -51,7 +51,7 @@ const SAIDA = fs.mkdtempSync(path.join(os.tmpdir(), "bancada-planta-"));
 
 type Peca = { nome: string; x: number; y: number; l: number; a: number };
 /** Porta ou janela desenhada na bancada: `eixo` diz se a parede é horizontal ou vertical. */
-type Vao = { tipo: "porta" | "janela"; x: number; y: number; larg: number; eixo: "h" | "v" };
+type Vao = { tipo: "porta" | "janela" | "vao"; x: number; y: number; larg: number; eixo: "h" | "v" };
 type Caso = { rotulo: string; pecas: Peca[]; vaos?: Vao[]; bytes?: Buffer };
 
 /** Quanto a área lida pode errar e ainda contar como acerto. 5% é o erro de digitação. */
@@ -99,6 +99,12 @@ function desenhar(pecas: Peca[], vaos: Vao[] = [], escala = 110): string {
       const y2 = v.eixo === "h" ? y1 : px(v.y + v.larg);
       // o vão: apaga a parede naquele trecho
       const apaga = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#ffffff" stroke-width="11" stroke-linecap="butt"/>`;
+      // PAREDE QUE PARA NO MEIO: só o rasgo, sem símbolo nenhum.
+      //
+      // É o caso que ele descreveu em 14/10/2026: "tem cômodos que a parede vai até certo
+      // ponto e não fecha tudo, é aberta". Sala conjugada com cozinha, sala em L, varanda
+      // integrada. No desenho técnico isso é exatamente isto -- a parede simplesmente acaba.
+      if (v.tipo === "vao") return apaga;
       if (v.tipo === "porta") {
         const r = v.larg * escala;
         const fim = v.eixo === "h" ? `${x1} ${y1 + r}` : `${x1 + r} ${y1}`;
@@ -145,6 +151,23 @@ const CASOS: Caso[] = [
       { tipo: "janela", x: 0, y: 6.2, larg: 1.5, eixo: "v" },
       { tipo: "janela", x: 5.0, y: 2.5, larg: 1.2, eixo: "v" },
       { tipo: "janela", x: 0.4, y: 0, larg: 1.0, eixo: "h" },
+    ],
+  },
+  {
+    // O CASO DELE: a parede entre sala e cozinha para no meio -- os dois ambientes são um só
+    // espaço. O desenho mostra 1,8 m de parede e 2,2 m de nada.
+    rotulo: "sala e cozinha CONJUGADAS (parede que para)",
+    pecas: [
+      { nome: "Sala", x: 0, y: 0, l: 4.0, a: 4.0 },
+      { nome: "Cozinha", x: 4.0, y: 0, l: 2.6, a: 4.0 },
+      { nome: "Quarto", x: 0, y: 4.0, l: 3.3, a: 3.0 },
+      { nome: "Banheiro", x: 3.3, y: 4.0, l: 1.7, a: 3.0 },
+    ],
+    vaos: [
+      { tipo: "vao", x: 4.0, y: 1.8, larg: 2.2, eixo: "v" },
+      { tipo: "porta", x: 0.6, y: 4.0, larg: 0.8, eixo: "h" },
+      { tipo: "porta", x: 3.6, y: 4.0, larg: 0.7, eixo: "h" },
+      { tipo: "janela", x: 0, y: 1.0, larg: 1.5, eixo: "v" },
     ],
   },
   {

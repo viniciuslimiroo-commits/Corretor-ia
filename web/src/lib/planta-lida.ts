@@ -40,7 +40,7 @@ export type ComodoLido = {
  * acerte qual parede é qual, e ele erra. O centro é um ponto solto, e quem encosta ele na
  * parede é `encaixarAbertura` -- código, com a geometria que a tela já usa.
  */
-export type AberturaLida = { tipo: "porta" | "janela"; x: number; y: number; largura: number };
+export type AberturaLida = { tipo: "porta" | "janela" | "vao"; x: number; y: number; largura: number };
 
 export type LeituraDaPlanta = {
   comodos: ComodoLido[];
@@ -128,6 +128,28 @@ export const SISTEMA_LEITURA = [
   "- Also return the DOORS and WINDOWS drawn on the walls, in an \"aberturas\" array: {\"tipo\":\"porta\"|\"janela\",\"x\":..,\"y\":..,\"largura\":..}.",
   "- x,y is the CENTRE of the opening in metres, in the same coordinate system as the rooms. largura is how wide the opening is, in metres (a door is usually 0.7-1.0, a window 0.8-2.0).",
   "- A DOOR is drawn as a gap in the wall plus a quarter-circle swing arc. A WINDOW is a gap crossed by thin parallel lines, or a double line. Judge by the symbol, not by which room it serves.",
+  // A PAREDE QUE PARA NO MEIO: TENTEI ENSINAR E PIOROU. NAO REPETIR SEM MEDIR.
+  //
+  // Ele em 14/10/2026: "tem comodos que a parede vai ate certo ponto e nao fecha tudo, e'
+  // aberta, o software nao esta' identificando". Esta' certo: todo comodo volta como
+  // RETANGULO FECHADO, entao sala conjugada com cozinha vira duas caixas com parede inteira.
+  //
+  // Acrescentei duas regras explicando o `vao` (abertura sem folha nem vidro, mais larga que
+  // porta, comum entre sala e cozinha) e medi a bancada inteira, 5 plantas:
+  //
+  //                        antes      depois
+  //   areas certas         93%        87%
+  //   a planta real dele   4/6        2/6
+  //   o caso-alvo          nao via    CONTINUA NAO VENDO
+  //   invencoes            7          17
+  //
+  // Nao resolveu o que foi feito pra resolver E derrubou o resto. Revertido no mesmo dia.
+  //
+  // O `tipo: "vao"` FICA no formato e no saneador: a pessoa cria vao na mao (ferramenta Vao,
+  // 14/10/2026) e o desenho sabe desenhar. O que nao funciona e' pedir pro modelo achar.
+  // Quem for tentar de novo: a bancada e' `scripts/bancada-area-escrita.ts`, o caso e'
+  // "sala e cozinha CONJUGADAS", e o numero que precisa subir sem derrubar os outros e' o
+  // dos VAOS. Frase melhor nao basta -- isto aqui ja' foi uma frase melhor.
   "- Return only openings that are DRAWN. Never add an opening because a room ought to have one: an invented door becomes a door in the advert. If none are drawn, return \"aberturas\":[].",
   "- If the image is not a floor plan, or is unreadable, return {\"comodos\":[],\"aberturas\":[],\"tem_cotas\":false,\"escala\":null,\"observacao\":\"<why, in Portuguese>\"}.",
   "- observacao: one short sentence IN PORTUGUESE when something is doubtful; null when everything is clear.",
@@ -224,7 +246,7 @@ export function limparLeitura(bruto: unknown): LeituraDaPlanta {
     if (x === null || y === null) continue;
     if (Math.abs(x) > LIMITES_LEITURA.ladoMax * 2 || Math.abs(y) > LIMITES_LEITURA.ladoMax * 2) continue;
     aberturas.push({
-      tipo: a.tipo === "janela" ? "janela" : "porta",
+      tipo: a.tipo === "janela" ? "janela" : a.tipo === "vao" ? "vao" : "porta",
       x,
       y,
       largura: largura !== null && largura >= 0.4 && largura <= 4 ? largura : a.tipo === "janela" ? LARGURA_JANELA : LARGURA_PORTA,
@@ -310,11 +332,28 @@ export function avisoDaLeitura(l: LeituraDaPlanta): string | null {
   const vaos = l.aberturas?.length ?? 0;
   const sobreVaos = vaos ? ` As ${vaos} portas e janelas são um palpite pelo desenho: confira o lugar de cada uma e arraste o que estiver fora.` : "";
 
+  // TODO CÔMODO VOLTA FECHADO, E ISSO PRECISA SER DITO.
+  //
+  // Ele em 14/10/2026: "tem cômodos que a parede vai até certo ponto e não fecha tudo, é
+  // aberta, o software não está identificando". É verdade e é por desenho: a leitura devolve
+  // retângulos fechados, então sala conjugada com cozinha volta como duas caixas com parede
+  // inteira entre elas. Tentei ensinar o modelo a ver a parede que para, medi, piorou tudo e
+  // reverti (ver SISTEMA_LEITURA).
+  //
+  // O que sobra é contar. Quem sabe que o ambiente é aberto abre o vão em dois toques com a
+  // ferramenta Vão; quem NÃO sabe publica um anúncio dizendo que a cozinha é separada.
+  // A frase só aparece quando há mais de um cômodo -- numa planta de um cômodo só não existe
+  // parede entre ambientes pra estar aberta.
+  const sobreFechado =
+    l.comodos.length > 1
+      ? " Todo cômodo vem FECHADO: se no seu imóvel a parede para no meio (sala com cozinha, sala em L, varanda integrada), abra a passagem com a ferramenta Vão."
+      : "";
+
   if (!l.tem_cotas) {
-    return `Esta planta não tem medidas escritas: o que veio é o LAYOUT, com tamanhos aproximados pela proporção. Ajuste as medidas antes de usar.${sobreVaos}`;
+    return `Esta planta não tem medidas escritas: o que veio é o LAYOUT, com tamanhos aproximados pela proporção. Ajuste as medidas antes de usar.${sobreVaos}${sobreFechado}`;
   }
   if (lidas < l.comodos.length) {
-    return `${lidas} de ${l.comodos.length} cômodos vieram com a medida escrita na planta; o resto é aproximado. Confira antes de usar.${sobreVaos}`;
+    return `${lidas} de ${l.comodos.length} cômodos vieram com a medida escrita na planta; o resto é aproximado. Confira antes de usar.${sobreVaos}${sobreFechado}`;
   }
-  return `Medidas lidas das cotas da planta. Confira cômodo a cômodo antes de usar: quem responde pelo anúncio é você.${sobreVaos}`;
+  return `Medidas lidas das cotas da planta. Confira cômodo a cômodo antes de usar: quem responde pelo anúncio é você.${sobreVaos}${sobreFechado}`;
 }
