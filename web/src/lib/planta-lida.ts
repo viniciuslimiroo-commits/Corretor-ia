@@ -68,8 +68,23 @@ export const SISTEMA_LEITURA = [
   "- Every room is an axis-aligned RECTANGLE in METRES. x,y is its top-left corner, with the plan's top-left as origin (0,0).",
   "- Rooms must not overlap. Lay them out as they appear in the drawing, side by side, sharing walls.",
   "- PREFER THE WRITTEN DIMENSIONS. If the plan prints a room's size (e.g. \"3.20 x 2.80\" or a dimension line), use those numbers and set medida_lida=true for that room.",
-  "- Only if a room has no written dimension, estimate it from the drawing's proportions and set medida_lida=false.",
-  "- If the plan has no written dimensions anywhere and no scale, set tem_cotas=false and still return the layout with medida_lida=false everywhere.",
+  // O RÓTULO DE ÁREA É MEDIDA ESCRITA, e esta é a convenção brasileira.
+  //
+  // Medido em 13/10/2026 numa bancada de 5 plantas (scripts/bancada-area-escrita.ts): o modelo
+  // LIA as áreas certas -- escreveu "as dimensões foram estimadas a partir das áreas
+  // fornecidas" -- e mesmo assim devolvia `medida_lida=false` e `tem_cotas=false` nos 27
+  // cômodos. A planta técnica que ele mandou traz as seis áreas (`a=4.50 m²`), e o produto
+  // respondia "esta planta não tem medidas escritas". Dizer que a planta é incompleta quando
+  // ela não é é pior do que não ler: o corretor desconfia e redigita tudo na mão.
+  //
+  // A causa estava nas duas regras acima: elas falam em DIMENSION e dimension line -- o
+  // "3.20 x 2.80" e a linha de cota do desenho técnico. Área escrita não entrava nessa
+  // definição, e o modelo obedeceu ao pé da letra.
+  "- AN AREA LABEL IS ALSO A WRITTEN MEASUREMENT. Brazilian plans normally print each room's AREA under its name (\"a=4.50 m²\", \"A=16,54 m2\", \"12.76m²\") instead of side dimensions.",
+  "- When a room prints its area, pick largura and altura so that largura*altura equals that printed area to two decimals, keeping the proportions you see in the drawing, and set medida_lida=true for that room.",
+  "- tem_cotas=true when the plan prints side dimensions OR room areas. Only set tem_cotas=false when the drawing shows no measurement of any kind.",
+  "- Only if a room has neither a written dimension nor a written area, estimate it from the drawing's proportions and set medida_lida=false.",
+  "- If the plan has no written dimensions, no written areas and no scale, set tem_cotas=false and still return the layout with medida_lida=false everywhere.",
   '- nome: the room label in Portuguese, short ("Sala", "Cozinha", "Quarto 1", "Banheiro", "Varanda"). If the room is unlabelled, use "Cômodo".',
   "- Ignore furniture, hatching, north arrows, title blocks, logos and text that is not a room name or a dimension.",
   // Medido numa planta de lançamento de verdade: o balão "Laje técnica", que aponta pra
@@ -106,6 +121,19 @@ const limpar = (t: unknown, max: number) =>
  */
 const NAO_E_COMODO = /^(laje|[aá]rea|ponto|infra|espa[çc]o|shaft|duto|prumada|po[çc]o|proje[çc][ãa]o|acesso|entrada de|tomada|guarda|piso|churrasqueira)\b/i;
 
+/**
+ * O que PARECE balão técnico e é cômodo de verdade.
+ *
+ * A lista de cima começa em "área", "espaço" e "churrasqueira" pra barrar "Laje técnica" e
+ * "Ponto de ar condicionado" -- e levava junto **Área de serviço**, que está em quase todo
+ * apartamento brasileiro, além de Área gourmet, Área de lazer e Churrasqueira. Achado em
+ * 13/10/2026 pela bancada de leitura: numa planta de 7 cômodos, a Área de serviço
+ * simplesmente não voltava, e o descarte é silencioso -- some um cômodo e ninguém sabe por quê.
+ *
+ * Vem ANTES do bloqueio porque exceção que vem depois não é exceção.
+ */
+const E_COMODO_MESMO = /^([aá]rea (de )?(servi[çc]o|gourmet|lazer|festas?|externa|comum|de luz)|espa[çc]o (gourmet|lazer)|churrasqueira)\b/i;
+
 const numero = (v: unknown): number | null => {
   const n = typeof v === "number" ? v : Number(String(v ?? "").replace(",", "."));
   return Number.isFinite(n) ? n : null;
@@ -136,7 +164,7 @@ export function limparLeitura(bruto: unknown): LeituraDaPlanta {
     const y = numero(c.y) ?? 0;
     if (largura === null || altura === null || largura <= 0 || altura <= 0) continue;
     const nome = limpar(c.nome, LIMITES_LEITURA.nomeMax) || "Cômodo";
-    if (NAO_E_COMODO.test(nome)) continue;
+    if (!E_COMODO_MESMO.test(nome) && NAO_E_COMODO.test(nome)) continue;
     cru.push({ nome, x, y, largura, altura, medida_lida: c.medida_lida === true });
   }
 
