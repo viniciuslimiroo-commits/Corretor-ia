@@ -159,6 +159,19 @@ export function plantaParaSvg(planta: Planta, o: OpcoesSvg = {}): { svg: string;
           `<line x1="${dobradica}" y1="0" x2="${dobradica}" y2="${aberta}" stroke="#0f2d5b" stroke-width="${Math.max(1.5, parede / 2)}"/>` +
           `</g>`
       );
+    } else if (a.tipo === "vao") {
+      // VÃO DE PASSAGEM: a parede acaba e recomeça, e no meio não há nada.
+      //
+      // O retângulo branco lá em cima já apagou o trecho; aqui só ficam os dois batentes,
+      // os risquinhos que o arquiteto desenha pra dizer "a parede termina aqui". Sem eles o
+      // vão parece erro de desenho em vez de passagem.
+      const b = Math.max(1.5, parede / 2);
+      partes.push(
+        `<g ${g}>` +
+          `<line x1="${-meia}" y1="${-parede / 2}" x2="${-meia}" y2="${parede / 2}" stroke="#0f2d5b" stroke-width="${b}"/>` +
+          `<line x1="${meia}" y1="${-parede / 2}" x2="${meia}" y2="${parede / 2}" stroke="#0f2d5b" stroke-width="${b}"/>` +
+          `</g>`
+      );
     } else {
       partes.push(
         `<g ${g}>` +

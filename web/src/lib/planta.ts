@@ -24,7 +24,14 @@ export type Comodo = {
 
 export type Abertura = {
   id: string;
-  tipo: "porta" | "janela";
+  /**
+   * `vao` é passagem sem folha: a parede é interrompida e nada é desenhado no lugar.
+   *
+   * Pedido dele em 14/10/2026 -- "como faço pra cortar uma parte da parede?". Em planta de
+   * arquiteto isso é um vão de passagem, e é comum entre sala e cozinha. Não dava pra
+   * representar: toda abertura vinha com folha ou com vidro.
+   */
+  tipo: "porta" | "janela" | "vao";
   /** Centro da abertura, em metros. */
   p: Ponto;
   /** Rotação em graus: 0 = horizontal. */
@@ -66,6 +73,8 @@ export type Planta = {
 export const PASSO_PADRAO = 0.5;
 export const LARGURA_PORTA = 0.8;
 export const LARGURA_JANELA = 1.2;
+/** Vão de passagem: mais largo que porta, que é o que ele é na obra. */
+export const LARGURA_VAO = 1.2;
 
 // Cores suaves, pra planta continuar legível impressa em preto e branco.
 export const CORES_COMODO = ["#dbeafe", "#dcfce7", "#fef3c7", "#fae8d7", "#ede9fe", "#fee2e2", "#e0f2fe", "#f1f5f9"];
@@ -252,7 +261,7 @@ export function limparPlanta(bruto: unknown): { planta: Planta; erro: null } | {
     const largura = Number(a.largura);
     aberturas.push({
       id: typeof a.id === "string" ? a.id.slice(0, 40) : `a${aberturas.length}`,
-      tipo: a.tipo === "janela" ? "janela" : "porta",
+      tipo: a.tipo === "janela" ? "janela" : a.tipo === "vao" ? "vao" : "porta",
       p: a.p as Ponto,
       angulo: Number.isFinite(Number(a.angulo)) ? ((Number(a.angulo) % 360) + 360) % 360 : 0,
       largura: Number.isFinite(largura) ? Math.min(4, Math.max(0.4, largura)) : LARGURA_PORTA,
@@ -428,5 +437,47 @@ export function recolarAberturas(aberturas: Abertura[], comodos: Comodo[], alcan
   return aberturas.map((a) => {
     const e = encaixarAbertura(a.p, comodos, alcance);
     return e ? { ...a, p: e.p, angulo: e.angulo } : a;
+  });
+}
+
+/**
+ * Põe um canto NO MEIO de uma parede, partindo ela em duas.
+ *
+ * Ele em 14/10/2026, usando a ferramenta nova: "quando tento tirar uma parte da parede, move
+ * tudo". Está certo e não era ele que não achava o jeito: a parede é uma aresta com duas
+ * pontas, então arrastar qualquer ponta move o trecho inteiro. Pra mexer só num pedaço é
+ * preciso que exista um canto ali -- e até aqui não havia como criar um.
+ *
+ * O canto entra em TODOS os cômodos que compartilham essa parede, pelo mesmo motivo de
+ * `moverCanto`: se entrar só num, os dois deixam de dividir a parede e o próximo arrasto
+ * abre um vão entre eles.
+ */
+export function dividirParede(comodos: Comodo[], a: Ponto, b: Ponto, em: Ponto, tol = TOLERANCIA_CANTO): Comodo[] {
+  // O ponto entra exatamente em cima da parede, não onde o dedo caiu: um canto fora da linha
+  // entorta a parede no ato de dividir, que é o oposto do que a pessoa pediu.
+  const sobre = projetarNaParede(em, a, b);
+  if (!sobre) return comodos;
+  // Dividir rente a uma das pontas não cria canto nenhum -- cria dois cantos no mesmo lugar,
+  // e uma parede de comprimento zero que ninguém consegue pegar depois.
+  if (distancia(sobre, a) <= tol || distancia(sobre, b) <= tol) return comodos;
+
+  return comodos.map((c) => {
+    const pontos: Ponto[] = [];
+    let achou = false;
+    for (let i = 0; i < c.pontos.length; i++) {
+      const p = c.pontos[i];
+      const q = c.pontos[(i + 1) % c.pontos.length];
+      pontos.push(p);
+      // A MESMA parede, nos dois sentidos: o cômodo vizinho descreve a parede dividida de
+      // trás pra frente (o polígono dele gira pro outro lado), e sem aceitar os dois sentidos
+      // o canto entraria só num deles.
+      const mesmaParede =
+        (distancia(p, a) <= tol && distancia(q, b) <= tol) || (distancia(p, b) <= tol && distancia(q, a) <= tol);
+      if (mesmaParede && !achou) {
+        pontos.push({ ...sobre });
+        achou = true;
+      }
+    }
+    return achou ? { ...c, pontos } : c;
   });
 }

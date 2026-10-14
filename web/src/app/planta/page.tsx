@@ -6,6 +6,7 @@ import { useConta } from "@/lib/use-conta";
 import {
   CORES_COMODO,
   LARGURA_JANELA,
+  LARGURA_VAO,
   LARGURA_PORTA,
   NOMES_SUGERIDOS,
   PASSO_PADRAO,
@@ -13,6 +14,7 @@ import {
   area,
   areaTotal,
   cantoEm,
+  dividirParede,
   distancia,
   encaixar,
   encaixarAbertura,
@@ -64,7 +66,7 @@ import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 // A prévia e a camada de toque usam a MESMA janela (`vista`), passada pro plantaParaSvg.
 // Sem isso o SVG se centraliza sozinho dentro da caixa e o ponto não cai onde se tocou.
 
-type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "parede" | "movel" | "mover" | "apagar";
+type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "vao" | "parede" | "movel" | "mover" | "apagar";
 
 /**
  * O que o ponteiro está fazendo com alguma coisa que já existe.
@@ -83,7 +85,7 @@ type Manuseio =
   /** Arrastando um canto da planta (e os cantos colados nele). */
   | { modo: "canto"; de: Ponto }
   /** Arrastando uma parede inteira. `origem` é onde o dedo encostou, pra medir o quanto andou. */
-  | { modo: "parede"; a: Ponto; b: Ponto; origem: Ponto };
+  | { modo: "parede"; a: Ponto; b: Ponto; origem: Ponto; moveu: boolean };
 
 /** A caixa de desenho tem proporção fixa: assim o zoom não muda o formato dela. */
 const PROPORCAO = 4 / 3;
@@ -264,7 +266,7 @@ export default function PaginaPlanta() {
       abrirEspacoPara([p]);
       return;
     }
-    if (ferramenta === "porta" || ferramenta === "janela") {
+    if (ferramenta === "porta" || ferramenta === "janela" || ferramenta === "vao") {
       // tocar de novo numa porta que já existe gira ela em vez de criar outra:
       // são as quatro formas de abrir (dois lados da parede × duas mãos)
       const jaTem = planta.aberturas.find((a) => distancia(a.p, p) < 0.6);
@@ -288,7 +290,7 @@ export default function PaginaPlanta() {
         tipo: ferramenta,
         p: encaixe?.p ?? cru ?? p,
         angulo: encaixe?.angulo ?? 0,
-        largura: ferramenta === "porta" ? LARGURA_PORTA : LARGURA_JANELA,
+        largura: ferramenta === "porta" ? LARGURA_PORTA : ferramenta === "vao" ? LARGURA_VAO : LARGURA_JANELA,
         lado: 1,
         giro: 1,
       };
@@ -409,13 +411,13 @@ export default function PaginaPlanta() {
       const parede = paredeEm(planta.comodos, cru, alcance);
       if (parede) {
         e.currentTarget.setPointerCapture(e.pointerId);
-        setManuseio({ modo: "parede", a: parede.a, b: parede.b, origem: cru });
+        setManuseio({ modo: "parede", a: parede.a, b: parede.b, origem: cru, moveu: false });
       }
       return;
     }
     // Porta e janela: encostar numa que JÁ existe arrasta ela pela parede, em vez de criar
     // outra em cima. Antes só dava pra apagar e pôr de novo -- a "movimentação ruim".
-    if (ferramenta === "porta" || ferramenta === "janela") {
+    if (ferramenta === "porta" || ferramenta === "janela" || ferramenta === "vao") {
       const cru = posicao(e);
       const jaTem = cru ? planta.aberturas.find((a) => distancia(a.p, cru) < Math.max(a.largura / 2, 0.35)) : null;
       if (jaTem) {
@@ -499,6 +501,7 @@ export default function PaginaPlanta() {
           a: { x: manuseio.a.x + delta.x, y: manuseio.a.y + delta.y },
           b: { x: manuseio.b.x + delta.x, y: manuseio.b.y + delta.y },
           origem: destino,
+          moveu: true,
         });
         setResultado(null);
         return;
@@ -607,6 +610,17 @@ export default function PaginaPlanta() {
 
   function aoSoltar(e: ReactPointerEvent) {
     if (manuseio) {
+      // TOCAR NA PAREDE SEM ARRASTAR = PÔR UM CANTO ALI.
+      //
+      // É o que faltava pro "move tudo" dele parar de acontecer: com um canto no meio, cada
+      // metade da parede anda sozinha. Mora no SOLTAR e não no apertar porque o mesmo gesto
+      // começa um arrasto -- só no fim dá pra saber que ele não virou arrasto nenhum.
+      if (manuseio.modo === "parede" && !manuseio.moveu) {
+        const meio = { x: (manuseio.a.x + manuseio.b.x) / 2, y: (manuseio.a.y + manuseio.b.y) / 2 };
+        const onde = manuseio.origem ?? meio;
+        setPlanta((pl) => ({ ...pl, comodos: dividirParede(pl.comodos, manuseio.a, manuseio.b, onde) }));
+        setResultado(null);
+      }
       setManuseio(null);
       setGuias([]);
       return;
@@ -913,6 +927,7 @@ export default function PaginaPlanta() {
               <Chip ativo={ferramenta === "movel"} onClick={() => setFerramenta("movel")}>Móveis</Chip>
               <Chip ativo={ferramenta === "porta"} onClick={() => setFerramenta("porta")}>Porta</Chip>
               <Chip ativo={ferramenta === "janela"} onClick={() => setFerramenta("janela")}>Janela</Chip>
+              <Chip ativo={ferramenta === "vao"} onClick={() => setFerramenta("vao")}>Vão</Chip>
               <Chip ativo={ferramenta === "parede"} onClick={() => setFerramenta("parede")}>Parede</Chip>
               <Chip ativo={ferramenta === "mover"} onClick={() => setFerramenta("mover")}>Mover</Chip>
               <Chip ativo={ferramenta === "apagar"} onClick={() => setFerramenta("apagar")}>Apagar</Chip>
@@ -1164,7 +1179,9 @@ export default function PaginaPlanta() {
                       : ferramenta === "apagar"
                         ? "Toque no que quer tirar: móvel, porta, janela, ou o cômodo (por dentro ou na parede)."
                         : ferramenta === "parede"
-                          ? "Arraste um CANTO (bolinha) pra esticar, ou o meio de uma parede pra empurrar ela inteira. Parede dividida leva o cômodo vizinho junto. Botão direito desfaz."
+                          ? "TOQUE na parede pra pôr um canto ali (aí cada metade anda sozinha). ARRASTE a bolinha pra esticar, ou o meio da parede pra empurrar ela inteira. Botão direito desfaz."
+                        : ferramenta === "vao"
+                          ? "Toque na parede pra abrir uma passagem sem porta. Arraste pra deslizar."
                         : ferramenta === "porta"
                           ? "Toque na parede pra colocar, no ponto exato. Arraste uma porta pra deslizar pela parede; toque nela pra virar o lado que abre."
                           : "Toque na parede pra colocar, no ponto exato. Arraste a janela pra deslizar pela parede."}

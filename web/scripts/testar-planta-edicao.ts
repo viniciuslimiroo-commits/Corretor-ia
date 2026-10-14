@@ -16,6 +16,7 @@
 import {
   area,
   cantoEm,
+  dividirParede,
   cantosJuntos,
   encaixarAbertura,
   moverCanto,
@@ -115,6 +116,38 @@ conferir(moverCanto(dois(), { x: 99, y: 99 }, { x: 0, y: 0 })[0].pontos.length =
   const ys = depois[0].pontos.map((p) => p.y).sort();
   conferir(perto(ys[0], -1) && perto(ys[1], -1), "parede mais curta que a tolerância move as DUAS pontas", ys.join(" · "));
 }
+
+// ---- DIVIDIR A PAREDE: o que faltava pra não "mover tudo" ----
+//
+// Ele em 14/10/2026: "quando tento tirar uma parte da parede, move tudo". A parede é uma
+// aresta com duas pontas -- arrastar qualquer uma move o trecho inteiro. Pra mexer só num
+// pedaço tem que existir um canto ali, e não havia como criar.
+{
+  const depois = dividirParede(dois(), { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 0.05 });
+  conferir(depois[0].pontos.length === 5, "a sala ganhou um canto: 4 vira 5", String(depois[0].pontos.length));
+  const novo = depois[0].pontos.find((p) => perto(p.x, 2) && perto(p.y, 0));
+  conferir(!!novo, "e ele está em cima da parede, não onde o dedo caiu", "o dedo estava 5 cm pra dentro");
+  conferir(perto(area(depois[0].pontos), 12), "a área não mudou: dividir não deforma", `${area(depois[0].pontos).toFixed(2)} m²`);
+}
+
+// a parede DIVIDIDA entre dois cômodos ganha o canto NOS DOIS
+{
+  const depois = dividirParede(dois(), { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 4, y: 1.5 });
+  conferir(depois[0].pontos.length === 5, "a sala ganhou o canto", String(depois[0].pontos.length));
+  conferir(depois[1].pontos.length === 5, "E A COZINHA TAMBÉM -- senão os dois deixam de dividir a parede", String(depois[1].pontos.length));
+  // e depois de dividir, mover o canto novo mexe só nele
+  const movido = moverCanto(depois, { x: 4, y: 1.5 }, { x: 4.8, y: 1.5 });
+  conferir(perto(area(movido[0].pontos), 12 + 0.8 * 1.5), "movendo só o canto novo, a sala ganha um bico -- não a parede inteira", `${area(movido[0].pontos).toFixed(2)} m²`);
+  conferir(movido[0].pontos.filter((p) => perto(p.x, 4)).length === 2, "as duas pontas originais ficaram onde estavam", "é isto que 'mover tudo' deixa de acontecer");
+}
+
+// dividir rente à ponta não cria canto nenhum: criaria dois no mesmo lugar e uma parede de
+// comprimento zero, que ninguém consegue pegar depois
+for (const quase of [{ x: 0.02, y: 0 }, { x: 3.98, y: 0 }]) {
+  conferir(dividirParede(dois(), { x: 0, y: 0 }, { x: 4, y: 0 }, quase)[0].pontos.length === 4, `dividir rente à ponta (${quase.x}) não faz nada`);
+}
+conferir(dividirParede(dois(), { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 9 })[0].pontos.length === 5, "o ponto longe da parede ainda divide, projetado nela", "é o dedo errando, não intenção diferente");
+conferir(dividirParede(dois(), { x: 9, y: 9 }, { x: 9, y: 8 }, { x: 9, y: 8.5 })[0].pontos.length === 4, "parede que não existe não divide nada");
 
 // ---- A PORTA FICA ONDE EU CLIQUEI ----
 //
