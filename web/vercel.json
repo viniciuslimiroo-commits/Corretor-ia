@@ -22,8 +22,19 @@
     "A FUNÇÃO RODA EM SÃO PAULO (gru1), e não é preferência: é onde o banco está.",
     "O projeto nasceu em iad1 (Washington) com o Supabase em sa-east-1 (São Paulo), então cada",
     "consulta ao banco atravessava o hemisfério e voltava -- e uma tela como /videos faz várias.",
-    "Medido em 13/10/2026, na rota que consulta o banco: mediana 0,870 s em iad1.",
-    "No plano Hobby só se escolhe UMA região; esta é a certa enquanto o banco estiver no Brasil."
+    "Ninguém escolheu isso: foi o padrão da Vercel somado ao padrão do Supabase.",
+    "",
+    "ATENÇÃO: o `regions` ABAIXO NÃO FOI O QUE RESOLVEU. Publiquei com ele e a função continuou",
+    "em iad1 (o cabeçalho x-vercel-id respondia `gru1::iad1`: borda em SP, função nos EUA).",
+    "Quem manda é o ajuste do PROJETO, `serverlessFunctionRegion`, trocado pela API da Vercel:",
+    "  PATCH https://api.vercel.com/v9/projects/<projectId>?teamId=<teamId>",
+    "  body {\"serverlessFunctionRegion\":\"gru1\"}   (e depois republicar)",
+    "O `regions` fica aqui porque documenta a intenção e vale em plano com multi-região.",
+    "",
+    "MEDIDO em 14/10/2026, 12 chamadas do Brasil na rota que consulta o banco:",
+    "  iad1  mediana 0,870 s · média 1,313 s · pior 3,305 s",
+    "  gru1  mediana 0,197 s · média 0,199 s · pior 0,307 s",
+    "Como conferir: curl -D - na rota e ler x-vercel-id. `gru1::gru1` é o certo."
   ],
   "regions": [
     "gru1"
