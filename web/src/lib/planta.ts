@@ -292,3 +292,141 @@ export function limparPlanta(bruto: unknown): { planta: Planta; erro: null } | {
     erro: null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// EDITAR O QUE JÁ ESTÁ DESENHADO
+//
+// Ele em 13/10/2026, depois de ler uma planta pela IA: "não é possível, caso erre na leitura
+// automática, arrumar -- ter opção de editar paredes e etc", "quando escolho o lugar da porta
+// não é possível pôr certinho a porta onde eu escolhi", "a movimentação é muito difícil".
+//
+// As três queixas têm a mesma raiz: até aqui o editor sabia CRIAR e APAGAR, não CORRIGIR. Dava
+// pra desenhar um cômodo e apagá-lo inteiro, e nada no meio. Numa planta desenhada do zero isso
+// passa; numa planta LIDA por IA, que chega quase certa e precisa de ajuste, é o que decide se
+// a leitura serve pra alguma coisa.
+// ---------------------------------------------------------------------------
+
+/** Tolerância padrão pra dizer que dois cantos são "o mesmo canto", em metros. */
+export const TOLERANCIA_CANTO = 0.08;
+
+/**
+ * Onde cada cômodo tem um canto neste lugar.
+ *
+ * O coração da edição: num imóvel de verdade os cômodos DIVIDEM parede, e a leitura da IA
+ * entrega isso -- o canto da cozinha é o mesmo canto da sala. Mover só o do cômodo que a
+ * pessoa tocou rasgaria a planta, abrindo um vão entre dois cômodos que eram colados.
+ */
+export function cantosJuntos(comodos: Comodo[], p: Ponto, tol = TOLERANCIA_CANTO): { comodo: number; canto: number }[] {
+  const achados: { comodo: number; canto: number }[] = [];
+  comodos.forEach((c, ci) =>
+    c.pontos.forEach((q, qi) => {
+      if (distancia(q, p) <= tol) achados.push({ comodo: ci, canto: qi });
+    })
+  );
+  return achados;
+}
+
+/** O canto que está debaixo do dedo, ou null. Devolve a posição exata do canto, não a do dedo. */
+export function cantoEm(comodos: Comodo[], p: Ponto, alcance: number): Ponto | null {
+  let melhor: { q: Ponto; d: number } | null = null;
+  for (const c of comodos) {
+    for (const q of c.pontos) {
+      const d = distancia(q, p);
+      if (d <= alcance && (!melhor || d < melhor.d)) melhor = { q, d };
+    }
+  }
+  return melhor ? { ...melhor.q } : null;
+}
+
+/** A parede que está debaixo do dedo, com as duas pontas. */
+export function paredeEm(comodos: Comodo[], p: Ponto, alcance: number): { comodo: number; i: number; a: Ponto; b: Ponto } | null {
+  let melhor: { r: { comodo: number; i: number; a: Ponto; b: Ponto }; d: number } | null = null;
+  comodos.forEach((c, ci) => {
+    for (let i = 0; i < c.pontos.length; i++) {
+      const a = c.pontos[i];
+      const b = c.pontos[(i + 1) % c.pontos.length];
+      const q = projetarNaParede(p, a, b);
+      if (!q) continue;
+      const d = distancia(p, q);
+      if (d <= alcance && (!melhor || d < melhor.d)) melhor = { r: { comodo: ci, i, a: { ...a }, b: { ...b } }, d };
+    }
+  });
+  return melhor ? (melhor as { r: { comodo: number; i: number; a: Ponto; b: Ponto }; d: number }).r : null;
+}
+
+/**
+ * Move um canto, levando junto TODOS os cantos colados nele.
+ *
+ * É o que mantém a planta inteira: mexer no canto da sala arrasta o canto da cozinha que
+ * estava no mesmo lugar, e a parede dividida continua dividida.
+ */
+export function moverCanto(comodos: Comodo[], de: Ponto, para: Ponto, tol = TOLERANCIA_CANTO): Comodo[] {
+  const juntos = cantosJuntos(comodos, de, tol);
+  if (juntos.length === 0) return comodos;
+  return comodos.map((c, ci) => {
+    const meus = juntos.filter((j) => j.comodo === ci);
+    if (meus.length === 0) return c;
+    const pontos = c.pontos.map((q, qi) => (meus.some((m) => m.canto === qi) ? { ...para } : q));
+    return { ...c, pontos };
+  });
+}
+
+/**
+ * Move uma parede inteira, pelas duas pontas, levando junto quem compartilha.
+ *
+ * Mover parede é mover os dois cantos dela com o mesmo deslocamento -- e, como cada canto
+ * arrasta os colados, a parede vizinha estica em vez de descolar.
+ */
+export function moverParede(comodos: Comodo[], a: Ponto, b: Ponto, delta: Ponto, tol = TOLERANCIA_CANTO): Comodo[] {
+  const destinoA = { x: a.x + delta.x, y: a.y + delta.y };
+  const destinoB = { x: b.x + delta.x, y: b.y + delta.y };
+  // As duas pontas de uma vez: mover a primeira e DEPOIS procurar a segunda acharia o canto
+  // já deslocado quando a parede é curta (as duas pontas dentro da tolerância uma da outra).
+  const juntosA = cantosJuntos(comodos, a, tol);
+  const juntosB = cantosJuntos(comodos, b, tol);
+  return comodos.map((c, ci) => {
+    const meusA = juntosA.filter((j) => j.comodo === ci).map((j) => j.canto);
+    const meusB = juntosB.filter((j) => j.comodo === ci).map((j) => j.canto);
+    if (meusA.length === 0 && meusB.length === 0) return c;
+    const pontos = c.pontos.map((q, qi) => (meusA.includes(qi) ? { ...destinoA } : meusB.includes(qi) ? { ...destinoB } : q));
+    return { ...c, pontos };
+  });
+}
+
+/**
+ * Encaixa uma porta ou janela na parede mais próxima, COM precisão.
+ *
+ * O que estava errado: a abertura era posicionada pelo ponto de DESENHO, que gruda no canto
+ * mais próximo (até 0,42 m) e depois arredonda de 25 em 25 cm ao longo da parede. Resultado:
+ * a porta pulava pro canto do cômodo e não parava onde a pessoa tocou -- exatamente a queixa.
+ *
+ * Aqui não existe grude em canto nem passo grosso: projeta no segmento e arredonda em 1 cm,
+ * que é mais fino do que qualquer dedo e mantém o número redondo na cota.
+ */
+export function encaixarAbertura(p: Ponto, comodos: Comodo[], alcance = 1.2): { p: Ponto; angulo: number } | null {
+  const parede = paredeEm(comodos, p, alcance);
+  if (!parede) return null;
+  const q = projetarNaParede(p, parede.a, parede.b);
+  if (!q) return null;
+  return {
+    p: { x: Math.round(q.x * 100) / 100, y: Math.round(q.y * 100) / 100 },
+    angulo: (Math.atan2(parede.b.y - parede.a.y, parede.b.x - parede.a.x) * 180) / Math.PI,
+  };
+}
+
+/**
+ * Depois de mexer em parede, as aberturas voltam pra parede.
+ *
+ * Sem isto, corrigir uma parede deixa as portas dela flutuando no vazio -- e quem acabou de
+ * consertar a planta vê o conserto estragar outra coisa, que é o jeito mais rápido de a
+ * pessoa parar de confiar na ferramenta.
+ *
+ * `alcance` generoso de propósito: a parede andou, e a abertura precisa alcançá-la de volta.
+ * Abertura que ficou longe de TUDO fica onde está, em vez de saltar pra uma parede alheia.
+ */
+export function recolarAberturas(aberturas: Abertura[], comodos: Comodo[], alcance = 1.5): Abertura[] {
+  return aberturas.map((a) => {
+    const e = encaixarAbertura(a.p, comodos, alcance);
+    return e ? { ...a, p: e.p, angulo: e.angulo } : a;
+  });
+}

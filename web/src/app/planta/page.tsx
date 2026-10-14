@@ -12,9 +12,15 @@ import {
   alinhar,
   area,
   areaTotal,
+  cantoEm,
   distancia,
   encaixar,
+  encaixarAbertura,
   grudarNoDesenho,
+  moverCanto,
+  moverParede,
+  paredeEm,
+  recolarAberturas,
   limites,
   metros,
   metrosQuadrados,
@@ -58,13 +64,26 @@ import { Aviso, Botao, Cartao, Chip, Icone, Rotulo } from "@/components/ui";
 // A prévia e a camada de toque usam a MESMA janela (`vista`), passada pro plantaParaSvg.
 // Sem isso o SVG se centraliza sozinho dentro da caixa e o ponto não cai onde se tocou.
 
-type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "movel" | "mover" | "apagar";
+type Ferramenta = "comodo" | "retangulo" | "porta" | "janela" | "parede" | "movel" | "mover" | "apagar";
 
-/** O que o ponteiro está fazendo com um móvel. */
+/**
+ * O que o ponteiro está fazendo com alguma coisa que já existe.
+ *
+ * Nasceu só pra MÓVEL. Em 13/10/2026 ele reclamou de não conseguir corrigir o que a leitura
+ * da IA entregou -- "não é possível editar paredes", "a porta não fica onde eu escolhi", "a
+ * movimentação é ruim" --, e a causa era esta: móvel tinha arrastar, girar e redimensionar;
+ * parede e porta não tinham nada. Dava pra criar e apagar, e nada no meio.
+ */
 type Manuseio =
   | { modo: "arrastar"; id: string; dx: number; dy: number }
   | { modo: "girar"; id: string }
-  | { modo: "redimensionar"; id: string; larg0: number; alt0: number; d0: number };
+  | { modo: "redimensionar"; id: string; larg0: number; alt0: number; d0: number }
+  /** Arrastando uma porta ou janela ao longo da parede. */
+  | { modo: "abertura"; id: string }
+  /** Arrastando um canto da planta (e os cantos colados nele). */
+  | { modo: "canto"; de: Ponto }
+  /** Arrastando uma parede inteira. `origem` é onde o dedo encostou, pra medir o quanto andou. */
+  | { modo: "parede"; a: Ponto; b: Ponto; origem: Ponto };
 
 /** A caixa de desenho tem proporção fixa: assim o zoom não muda o formato dela. */
 const PROPORCAO = 4 / 3;
@@ -233,6 +252,7 @@ export default function PaginaPlanta() {
     // A borracha vem ANTES do ponto de trabalho: ela não desenha, ela escolhe o que já
     // está na tela, e por isso usa o ponto cru (veja `apagarNoPonto`).
     if (ferramenta === "apagar") return apagarNoPonto(e);
+    const cru = posicao(e);
     const p = pontoDeTrabalho(e);
     if (!p) return;
     if (ferramenta === "comodo") {
@@ -256,11 +276,17 @@ export default function PaginaPlanta() {
         }
         return;
       }
-      const encaixe = encaixarNaParede(p);
+      // A PORTA FICA ONDE A PESSOA TOCOU.
+      //
+      // Aqui usava `p`, que é o ponto de DESENHO: ele gruda no canto mais próximo (até 0,42 m)
+      // e depois arredonda de 25 em 25 cm ao longo da parede. Era a queixa literal dele --
+      // "quando escolho o lugar da porta não é possível pôr certinho onde eu escolhi": a porta
+      // pulava pro canto do cômodo. `cru` é o dedo, e `encaixarAbertura` só projeta na parede.
+      const encaixe = encaixarAbertura(cru ?? p, planta.comodos);
       const nova: Abertura = {
         id: novoId("a"),
         tipo: ferramenta,
-        p: encaixe?.p ?? p,
+        p: encaixe?.p ?? cru ?? p,
         angulo: encaixe?.angulo ?? 0,
         largura: ferramenta === "porta" ? LARGURA_PORTA : LARGURA_JANELA,
         lado: 1,
@@ -312,20 +338,6 @@ export default function PaginaPlanta() {
   }
 
   /** Gruda a abertura na parede mais próxima e copia o ângulo dela. */
-  function encaixarNaParede(p: Ponto): { p: Ponto; angulo: number } | null {
-    let melhor: { p: Ponto; angulo: number; d: number } | null = null;
-    for (const cm of planta.comodos) {
-      for (let i = 0; i < cm.pontos.length; i++) {
-        const a = cm.pontos[i];
-        const b = cm.pontos[(i + 1) % cm.pontos.length];
-        const q = projetarNaParede(p, a, b);
-        if (!q) continue;
-        const d = distancia(p, q);
-        if (!melhor || d < melhor.d) melhor = { p: q, angulo: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI, d };
-      }
-    }
-    return melhor && melhor.d < 1.2 ? { p: melhor.p, angulo: melhor.angulo } : null;
-  }
 
   /** Fecha o retângulo arrastado. Quase todo cômodo é retângulo: um gesto em vez de 5 toques. */
   function fecharRetangulo(fim: Ponto) {
@@ -379,6 +391,39 @@ export default function PaginaPlanta() {
   }
 
   function aoApertar(e: ReactPointerEvent) {
+    // ---- CORRIGIR O QUE JÁ ESTÁ DESENHADO ----
+    //
+    // A ferramenta Parede pega o CANTO primeiro e a parede depois, nessa ordem, porque canto
+    // é a informação mais forte: quem mira no encontro de duas paredes quer o canto, e se a
+    // parede ganhasse, mexer num canto seria impossível (ele está sempre em cima de duas).
+    if (ferramenta === "parede") {
+      const cru = posicao(e);
+      if (!cru) return;
+      const alcance = Math.max(planta.passo * 0.6, 0.25);
+      const canto = cantoEm(planta.comodos, cru, alcance);
+      if (canto) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setManuseio({ modo: "canto", de: canto });
+        return;
+      }
+      const parede = paredeEm(planta.comodos, cru, alcance);
+      if (parede) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setManuseio({ modo: "parede", a: parede.a, b: parede.b, origem: cru });
+      }
+      return;
+    }
+    // Porta e janela: encostar numa que JÁ existe arrasta ela pela parede, em vez de criar
+    // outra em cima. Antes só dava pra apagar e pôr de novo -- a "movimentação ruim".
+    if (ferramenta === "porta" || ferramenta === "janela") {
+      const cru = posicao(e);
+      const jaTem = cru ? planta.aberturas.find((a) => distancia(a.p, cru) < Math.max(a.largura / 2, 0.35)) : null;
+      if (jaTem) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setManuseio({ modo: "abertura", id: jaTem.id });
+        return;
+      }
+    }
     if (ferramenta === "movel") {
       const cru = posicao(e);
       if (!cru) return;
@@ -410,6 +455,55 @@ export default function PaginaPlanta() {
     if (manuseio) {
       const cru = posicao(e);
       if (!cru) return;
+
+      // ---- arrastar porta/janela: ela desliza PELA parede, nunca sai dela ----
+      if (manuseio.modo === "abertura") {
+        const e2 = encaixarAbertura(cru, planta.comodos, 2);
+        if (!e2) return;
+        setPlanta(
+          (pl) => ({ ...pl, aberturas: pl.aberturas.map((a) => (a.id === manuseio.id ? { ...a, p: e2.p, angulo: e2.angulo } : a)) }),
+          `abertura:${manuseio.id}`
+        );
+        setResultado(null);
+        return;
+      }
+
+      // ---- arrastar canto ----
+      //
+      // O destino passa pela grade (`encaixar`) pra parede continuar reta e a medida sair
+      // redonda; o passo/2 é o mesmo que o desenho usa. E as aberturas voltam pras paredes,
+      // senão consertar uma parede deixa as portas dela boiando no vazio.
+      if (manuseio.modo === "canto") {
+        const destino = encaixar(cru, planta.passo / 2);
+        if (distancia(destino, manuseio.de) < 1e-6) return;
+        setPlanta((pl) => {
+          const comodos = moverCanto(pl.comodos, manuseio.de, destino);
+          return { ...pl, comodos, aberturas: recolarAberturas(pl.aberturas, comodos) };
+        }, "canto");
+        setManuseio({ modo: "canto", de: destino });
+        setResultado(null);
+        return;
+      }
+
+      // ---- arrastar parede inteira ----
+      if (manuseio.modo === "parede") {
+        const destino = encaixar(cru, planta.passo / 2);
+        const delta = { x: destino.x - manuseio.origem.x, y: destino.y - manuseio.origem.y };
+        if (Math.abs(delta.x) < 1e-6 && Math.abs(delta.y) < 1e-6) return;
+        setPlanta((pl) => {
+          const comodos = moverParede(pl.comodos, manuseio.a, manuseio.b, delta);
+          return { ...pl, comodos, aberturas: recolarAberturas(pl.aberturas, comodos) };
+        }, "parede");
+        setManuseio({
+          modo: "parede",
+          a: { x: manuseio.a.x + delta.x, y: manuseio.a.y + delta.y },
+          b: { x: manuseio.b.x + delta.x, y: manuseio.b.y + delta.y },
+          origem: destino,
+        });
+        setResultado(null);
+        return;
+      }
+
       const alvo = planta.moveis.find((m) => m.id === manuseio.id);
       if (!alvo) return;
       if (manuseio.modo === "arrastar") {
@@ -819,6 +913,7 @@ export default function PaginaPlanta() {
               <Chip ativo={ferramenta === "movel"} onClick={() => setFerramenta("movel")}>Móveis</Chip>
               <Chip ativo={ferramenta === "porta"} onClick={() => setFerramenta("porta")}>Porta</Chip>
               <Chip ativo={ferramenta === "janela"} onClick={() => setFerramenta("janela")}>Janela</Chip>
+              <Chip ativo={ferramenta === "parede"} onClick={() => setFerramenta("parede")}>Parede</Chip>
               <Chip ativo={ferramenta === "mover"} onClick={() => setFerramenta("mover")}>Mover</Chip>
               <Chip ativo={ferramenta === "apagar"} onClick={() => setFerramenta("apagar")}>Apagar</Chip>
               <span className="ml-auto flex items-center gap-1">
@@ -934,6 +1029,20 @@ export default function PaginaPlanta() {
                   {metros(distancia(rascunho[rascunho.length - 1], cursor))}
                 </span>
               )}
+              {/* OS CANTOS APARECEM quando a ferramenta Parede está na mão.
+                  Sem isto a edição existe e ninguém acha: a pessoa não tem como adivinhar que
+                  o canto é pegável. São só marcas -- quem trata o toque é `aoApertar`, pelo
+                  ponto, pra o alvo não ficar menor que o dedo em planta afastada. */}
+              {ferramenta === "parede" &&
+                planta.comodos.flatMap((cm, ci) =>
+                  cm.pontos.map((q, qi) => (
+                    <span
+                      key={`canto-${ci}-${qi}`}
+                      className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-marca-indigo bg-white"
+                      style={{ left: `${px(q.x)}%`, top: `${py(q.y)}%` }}
+                    />
+                  ))
+                )}
               {/* Alças do móvel selecionado. Em HTML e não no SVG: o alvo de toque fica do
                   tamanho certo pro dedo sem depender da escala do desenho. */}
               {ferramenta === "movel" && movelSelecionado && (() => {
@@ -1054,9 +1163,11 @@ export default function PaginaPlanta() {
                       ? "Arraste pra andar pela planta. Use − e + pra afastar e aproximar."
                       : ferramenta === "apagar"
                         ? "Toque no que quer tirar: móvel, porta, janela, ou o cômodo (por dentro ou na parede)."
+                        : ferramenta === "parede"
+                          ? "Arraste um CANTO (bolinha) pra esticar, ou o meio de uma parede pra empurrar ela inteira. Parede dividida leva o cômodo vizinho junto. Botão direito desfaz."
                         : ferramenta === "porta"
-                          ? "Toque perto da parede pra colocar. Toque de novo numa porta pra virar o lado que ela abre."
-                          : "Toque perto da parede: a janela gruda nela sozinha."}
+                          ? "Toque na parede pra colocar, no ponto exato. Arraste uma porta pra deslizar pela parede; toque nela pra virar o lado que abre."
+                          : "Toque na parede pra colocar, no ponto exato. Arraste a janela pra deslizar pela parede."}
               </p>
               <span className="flex shrink-0 items-center gap-3">
                 {rascunho.length >= 3 && (
