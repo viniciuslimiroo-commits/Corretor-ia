@@ -9,7 +9,23 @@
     "O endereço continua podendo ser chamado à mão com o CRON_SECRET, a qualquer momento."
   ],
   "crons": [
-    { "path": "/api/cron/liberacoes", "schedule": "0 9 * * *" },
-    { "path": "/api/cron/videos-parados", "schedule": "0 10 * * *" }
+    {
+      "path": "/api/cron/liberacoes",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/videos-parados",
+      "schedule": "0 10 * * *"
+    }
+  ],
+  "$comentario-regiao": [
+    "A FUNÇÃO RODA EM SÃO PAULO (gru1), e não é preferência: é onde o banco está.",
+    "O projeto nasceu em iad1 (Washington) com o Supabase em sa-east-1 (São Paulo), então cada",
+    "consulta ao banco atravessava o hemisfério e voltava -- e uma tela como /videos faz várias.",
+    "Medido em 13/10/2026, na rota que consulta o banco: mediana 0,870 s em iad1.",
+    "No plano Hobby só se escolhe UMA região; esta é a certa enquanto o banco estiver no Brasil."
+  ],
+  "regions": [
+    "gru1"
   ]
 }
