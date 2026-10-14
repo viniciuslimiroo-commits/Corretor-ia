@@ -1,4 +1,4 @@
-import { CORES_COMODO, PASSO_PADRAO, type Comodo, type Planta, type Ponto } from "./planta";
+import { CORES_COMODO, LARGURA_JANELA, LARGURA_PORTA, PASSO_PADRAO, encaixarAbertura, type Abertura, type Comodo, type Planta, type Ponto } from "./planta";
 
 // LER UMA PLANTA PRONTA: a imagem do arquiteto virando rascunho editável.
 //
@@ -32,8 +32,20 @@ export type ComodoLido = {
   medida_lida?: boolean;
 };
 
+/**
+ * Uma porta ou janela como o modelo devolve: o CENTRO do vão, em metros, no mesmo sistema
+ * de coordenadas dos cômodos.
+ *
+ * Centro e não "parede tal, a tantos metros do canto": a segunda forma exige que o modelo
+ * acerte qual parede é qual, e ele erra. O centro é um ponto solto, e quem encosta ele na
+ * parede é `encaixarAbertura` -- código, com a geometria que a tela já usa.
+ */
+export type AberturaLida = { tipo: "porta" | "janela"; x: number; y: number; largura: number };
+
 export type LeituraDaPlanta = {
   comodos: ComodoLido[];
+  /** Portas e janelas desenhadas. Vazio quando a planta não mostra nenhuma. */
+  aberturas: AberturaLida[];
   /** A planta tinha cotas escritas? É o que separa "medida" de "layout aproximado". */
   tem_cotas: boolean;
   /** "1:50", "1:100"… quando aparece na prancha. */
@@ -62,7 +74,7 @@ export const SISTEMA_LEITURA = [
   "You read architectural floor plans and return ONLY JSON. No prose, no markdown fence.",
   "",
   "Return this exact shape:",
-  '{"comodos":[{"nome":"Sala","x":0,"y":0,"largura":4.2,"altura":3.5,"medida_lida":true}],"tem_cotas":true,"escala":"1:50","observacao":null}',
+  '{"comodos":[{"nome":"Sala","x":0,"y":0,"largura":4.2,"altura":3.5,"medida_lida":true}],"aberturas":[{"tipo":"porta","x":2.1,"y":0,"largura":0.8}],"tem_cotas":true,"escala":"1:50","observacao":null}',
   "",
   "Rules:",
   "- Every room is an axis-aligned RECTANGLE in METRES. x,y is its top-left corner, with the plan's top-left as origin (0,0).",
@@ -104,7 +116,20 @@ export const SISTEMA_LEITURA = [
   // acerto conhecido por outro desconhecido. A próxima pessoa que sentir vontade de melhorar
   // isto precisa primeiro da bancada, não de uma frase melhor.
   "- If the sheet prints a TOTAL area (e.g. \"98 M²\"), use it as a sanity check: the sum of your rooms should land near it, a bit below. If your sum is far off, your dimensions are wrong -- re-read them.",
-  "- If the image is not a floor plan, or is unreadable, return {\"comodos\":[],\"tem_cotas\":false,\"escala\":null,\"observacao\":\"<why, in Portuguese>\"}.",
+  // PORTA E JANELA, que o desenho mostra e a leitura ignorava.
+  //
+  // Pedido dele em 13/10/2026: "ao ler a planta, ele não consegue diferenciar onde acaba a
+  // parede, tem portas janelas". O rascunho voltava com os cômodos e NENHUMA abertura, e a
+  // pessoa tinha que repor uma por uma -- numa planta de 6 cômodos são umas dez.
+  //
+  // Pede-se o CENTRO do vão, e não "na parede norte a 1,2 m do canto": a segunda forma exige
+  // que o modelo acerte qual parede é qual, e ele erra. O centro é um ponto solto, e quem
+  // encosta na parede certa, com o ângulo certo, é o código (`encaixarAbertura`).
+  "- Also return the DOORS and WINDOWS drawn on the walls, in an \"aberturas\" array: {\"tipo\":\"porta\"|\"janela\",\"x\":..,\"y\":..,\"largura\":..}.",
+  "- x,y is the CENTRE of the opening in metres, in the same coordinate system as the rooms. largura is how wide the opening is, in metres (a door is usually 0.7-1.0, a window 0.8-2.0).",
+  "- A DOOR is drawn as a gap in the wall plus a quarter-circle swing arc. A WINDOW is a gap crossed by thin parallel lines, or a double line. Judge by the symbol, not by which room it serves.",
+  "- Return only openings that are DRAWN. Never add an opening because a room ought to have one: an invented door becomes a door in the advert. If none are drawn, return \"aberturas\":[].",
+  "- If the image is not a floor plan, or is unreadable, return {\"comodos\":[],\"aberturas\":[],\"tem_cotas\":false,\"escala\":null,\"observacao\":\"<why, in Portuguese>\"}.",
   "- observacao: one short sentence IN PORTUGUESE when something is doubtful; null when everything is clear.",
 ].join("\n");
 
@@ -185,6 +210,27 @@ export function limparLeitura(bruto: unknown): LeituraDaPlanta {
       Math.abs(c.y) <= LIMITES_LEITURA.ladoMax * 2
   );
 
+  // ---- as aberturas ----
+  //
+  // Mesmo rigor dos cômodos: o que não dá pra usar sai aqui, calado, em vez de virar uma
+  // porta de 12 metros no rascunho. `largura` fora da faixa humana é erro de leitura, não
+  // porta exótica -- o saneador da planta (limparPlanta) corta em 0,4-4 m, e aqui é o mesmo.
+  const aberturas: AberturaLida[] = [];
+  for (const item of (Array.isArray(o.aberturas) ? o.aberturas : []).slice(0, 80)) {
+    const a = (item ?? {}) as Record<string, unknown>;
+    const x = numero(a.x);
+    const y = numero(a.y);
+    const largura = numero(a.largura);
+    if (x === null || y === null) continue;
+    if (Math.abs(x) > LIMITES_LEITURA.ladoMax * 2 || Math.abs(y) > LIMITES_LEITURA.ladoMax * 2) continue;
+    aberturas.push({
+      tipo: a.tipo === "janela" ? "janela" : "porta",
+      x,
+      y,
+      largura: largura !== null && largura >= 0.4 && largura <= 4 ? largura : a.tipo === "janela" ? LARGURA_JANELA : LARGURA_PORTA,
+    });
+  }
+
   const descartados = cru.length - comodos.length;
   const observacao =
     [limpar(o.observacao, 200), avisoUnidade, descartados > 0 ? `${descartados} ${descartados === 1 ? "cômodo saiu" : "cômodos saíram"} por medida fora do possível.` : ""]
@@ -193,6 +239,7 @@ export function limparLeitura(bruto: unknown): LeituraDaPlanta {
 
   return {
     comodos,
+    aberturas,
     tem_cotas: o.tem_cotas === true && comodos.some((c) => c.medida_lida),
     escala: limpar(o.escala, 12) || null,
     observacao,
@@ -228,18 +275,46 @@ export function plantaDaLeitura(l: LeituraDaPlanta, nome = ""): Planta {
       cor: CORES_COMODO[i % CORES_COMODO.length],
     };
   });
-  return { nome, passo: PASSO_PADRAO, comodos, aberturas: [], moveis: [], cotas: true };
+  // AS ABERTURAS ENCOSTAM NA PAREDE, e é o código que faz isso -- não o modelo.
+  //
+  // Ele devolve um ponto aproximado; aqui esse ponto é projetado na parede mais próxima e
+  // ganha o ângulo dela, pela mesma função que a tela usa quando a pessoa põe uma porta com
+  // o dedo (lib/planta.ts). Assim um erro de 20 cm na leitura vira zero, e a porta nasce
+  // alinhada em vez de atravessada.
+  //
+  // Abertura que não acha parede nenhuma por perto é DESCARTADA: porta boiando no meio do
+  // cômodo é pior que porta faltando -- a pessoa tem que achar e apagar antes de usar.
+  const aberturas: Abertura[] = [];
+  for (const a of l.aberturas ?? []) {
+    const e = encaixarAbertura({ x: a.x - x0, y: a.y - y0 }, comodos, 1.0);
+    if (!e) continue;
+    aberturas.push({ id: novoId(), tipo: a.tipo, p: e.p, angulo: e.angulo, largura: a.largura, lado: 1, giro: 1 });
+  }
+  return { nome, passo: PASSO_PADRAO, comodos, aberturas, moveis: [], cotas: true };
 }
 
 /** O aviso que a tela mostra enquanto a pessoa não conferiu. Null quando não há o que ler. */
 export function avisoDaLeitura(l: LeituraDaPlanta): string | null {
   if (!l.comodos.length) return l.observacao ?? "Não consegui ler esta planta. Tente uma imagem mais nítida, ou desenhe à mão.";
   const lidas = quantasMedidasLidas(l);
+
+  // AS ABERTURAS SÃO PALPITE, E O AVISO DIZ ISSO.
+  //
+  // Medido em 13/10/2026 na bancada (scripts/bancada-area-escrita.ts): das 21 portas e janelas
+  // desenhadas, 10 chegaram a menos de 80 cm do lugar certo. As outras caem numa parede -- o
+  // código encosta elas --, mas às vezes na parede errada. É muito melhor que o que havia
+  // antes, que era NENHUMA abertura e dez pra pôr na mão, e está longe de exato.
+  //
+  // Prometer menos do que se entrega é barato; prometer mais custa a confiança no produto
+  // inteiro, porque quem descobre o erro sozinho passa a conferir tudo.
+  const vaos = l.aberturas?.length ?? 0;
+  const sobreVaos = vaos ? ` As ${vaos} portas e janelas são um palpite pelo desenho: confira o lugar de cada uma e arraste o que estiver fora.` : "";
+
   if (!l.tem_cotas) {
-    return "Esta planta não tem medidas escritas: o que veio é o LAYOUT, com tamanhos aproximados pela proporção. Ajuste as medidas antes de usar.";
+    return `Esta planta não tem medidas escritas: o que veio é o LAYOUT, com tamanhos aproximados pela proporção. Ajuste as medidas antes de usar.${sobreVaos}`;
   }
   if (lidas < l.comodos.length) {
-    return `${lidas} de ${l.comodos.length} cômodos vieram com a medida escrita na planta; o resto é aproximado. Confira antes de usar.`;
+    return `${lidas} de ${l.comodos.length} cômodos vieram com a medida escrita na planta; o resto é aproximado. Confira antes de usar.${sobreVaos}`;
   }
-  return "Medidas lidas das cotas da planta. Confira cômodo a cômodo antes de usar: quem responde pelo anúncio é você.";
+  return `Medidas lidas das cotas da planta. Confira cômodo a cômodo antes de usar: quem responde pelo anúncio é você.${sobreVaos}`;
 }
