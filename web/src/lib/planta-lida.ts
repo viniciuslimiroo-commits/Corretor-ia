@@ -74,7 +74,7 @@ export const SISTEMA_LEITURA = [
   "You read architectural floor plans and return ONLY JSON. No prose, no markdown fence.",
   "",
   "Return this exact shape:",
-  '{"comodos":[{"nome":"Sala","x":0,"y":0,"largura":4.2,"altura":3.5,"medida_lida":true}],"aberturas":[{"tipo":"porta","x":2.1,"y":0,"largura":0.8}],"tem_cotas":true,"escala":"1:50","observacao":null}',
+  '{"comodos":[{"nome":"Sala","x":0,"y":0,"largura":4.2,"altura":3.5,"medida_lida":true}],"aberturas":[{"tipo":"porta","x":2.1,"y":0,"largura":0.8}],"integrados":"tem_cotas":true,"escala":"1:50","observacao":null}',
   "",
   "Rules:",
   "- Every room is an axis-aligned RECTANGLE in METRES. x,y is its top-left corner, with the plan's top-left as origin (0,0).",
@@ -150,6 +150,25 @@ export const SISTEMA_LEITURA = [
   // Quem for tentar de novo: a bancada e' `scripts/bancada-area-escrita.ts`, o caso e'
   // "sala e cozinha CONJUGADAS", e o numero que precisa subir sem derrubar os outros e' o
   // dos VAOS. Frase melhor nao basta -- isto aqui ja' foi uma frase melhor.
+  // AMBIENTES INTEGRADOS: TENTEI DE DUAS FORMAS E NENHUMA PRESTA. NAO PEDIR PRO MODELO.
+  //
+  // O caso e' o dele, dito duas vezes: "tem comodos que a parede vai ate certo ponto e nao
+  // fecha tudo, e' aberta". Medido em 14-15/10/2026, na bancada de 5 plantas:
+  //
+  //   1. pedir o VAO com coordenada -> areas de 93% pra 87%, o caso-alvo continuou invisivel,
+  //      invencoes de 7 pra 17;
+  //   2. pedir so' os NOMES dos pares integrados (a pergunta facil, sem coordenada) ->
+  //      `integrados` voltou VAZIO nas cinco.
+  //
+  // Depois perguntei SOZINHO, numa chamada so' pra isso, com a planta onde a parede para na
+  // metade -- e aqui esta' o motivo de nao insistir: ele achou o caso certo E respondeu
+  // "Sala + Cozinha" em TRES plantas onde a parede vai de ponta a ponta. Nao esta' olhando o
+  // desenho: esta' repetindo o estereotipo "sala conjugada com cozinha".
+  //
+  // Abrir parede que EXISTE e' inventar comodo, que e' o que ele proibiu em 24/09 e o que
+  // vira propaganda enganosa. Entre errar pra mais e errar pra menos, aqui se erra pra menos:
+  // a planta sai fechada, o aviso conta isso, e quem abre e' a pessoa -- dois toques na
+  // ferramenta Vao, que sabe abrir a parede inteira entre dois comodos.
   "- Return only openings that are DRAWN. Never add an opening because a room ought to have one: an invented door becomes a door in the advert. If none are drawn, return \"aberturas\":[].",
   "- If the image is not a floor plan, or is unreadable, return {\"comodos\":[],\"aberturas\":[],\"tem_cotas\":false,\"escala\":null,\"observacao\":\"<why, in Portuguese>\"}.",
   "- observacao: one short sentence IN PORTUGUESE when something is doubtful; null when everything is clear.",

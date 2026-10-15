@@ -22,6 +22,11 @@ import {
   moverCanto,
   moverParede,
   paredeEm,
+  paredeEntre,
+  proximaLarguraDoVao,
+  vaoMaximoEm,
+  LARGURA_VAO,
+  TOCO_DE_PAREDE,
   recolarAberturas,
   retangulo,
   TOLERANCIA_CANTO,
@@ -195,6 +200,99 @@ conferir(TOLERANCIA_CANTO < 0.1, "a tolerância de canto é centimétrica", `${T
   // fundir os dois esconderia o erro em vez de deixar a pessoa corrigir
   const quase: Comodo[] = [sala(), { id: "c2", nome: "", pontos: retangulo({ x: 4.2, y: 0 }, { x: 6, y: 3 }) }];
   conferir(cantosJuntos(quase, { x: 4, y: 0 }).length === 1, "canto a 20 cm não é o mesmo canto", "é erro de leitura pra pessoa consertar, não pra gente fundir");
+}
+
+// ---- A PAREDE ENTRE DOIS CÔMODOS ----
+//
+// Serve pro caso que ele apontou duas vezes: "tem cômodos que a parede vai até certo ponto e
+// não fecha tudo, é aberta". A leitura devolve retângulos fechados, e pedir pro MODELO achar
+// o vão e devolver a coordenada já foi medido: piorou tudo e não achou. Aqui a divisão de
+// trabalho é outra -- o modelo diz QUAIS cômodos são o mesmo espaço (nome, que ele acerta em
+// 100%) e o código acha ONDE fica a parede.
+{
+  const pr = paredeEntre(sala(), cozinha());
+  conferir(!!pr, "sala e cozinha dividem parede");
+  conferir(!!pr && perto(pr.p.x, 4) && perto(pr.p.y, 1.5), "o centro dela é (4 · 1,5)", pr ? `(${pr.p.x}, ${pr.p.y})` : "");
+  conferir(!!pr && perto(pr.comprimento, 3), "e ela mede 3 m, a altura em comum", pr ? `${pr.comprimento} m` : "");
+  conferir(!!pr && perto(pr.angulo, 90), "em pé, porque a parede é vertical", pr ? `${pr.angulo}°` : "");
+}
+{
+  // encostados em cima/embaixo: o ângulo tem de virar
+  const baixo: Comodo = { id: "b", nome: "Quarto", pontos: retangulo({ x: 0, y: 3 }, { x: 4, y: 6 }) };
+  const pr = paredeEntre(sala(), baixo);
+  conferir(!!pr && perto(pr.angulo, 0) && perto(pr.p.y, 3), "cômodo embaixo: a parede é deitada, em y=3", pr ? `${pr.angulo}° em y=${pr.p.y}` : "");
+  conferir(!!pr && perto(pr.comprimento, 4), "e mede a largura em comum", pr ? `${pr.comprimento} m` : "");
+}
+{
+  // só o trecho que os DOIS ocupam, não a parede inteira do maior
+  const curto: Comodo = { id: "c", nome: "Lavabo", pontos: retangulo({ x: 4, y: 0.5 }, { x: 6, y: 2 }) };
+  const pr = paredeEntre(sala(), curto);
+  conferir(!!pr && perto(pr.comprimento, 1.5), "cômodo menor: a parede comum é só o trecho dele", pr ? `${pr.comprimento} m` : "");
+  conferir(!!pr && perto(pr.p.y, 1.25), "centrada no trecho comum, não no cômodo grande", pr ? `y=${pr.p.y}` : "");
+}
+
+// quem NÃO se toca não tem parede comum
+conferir(paredeEntre(sala(), { id: "x", nome: "", pontos: retangulo({ x: 9, y: 9 }, { x: 11, y: 11 }) }) === null, "cômodos separados não dividem parede");
+// e quem se toca só num CANTO também não -- parede de comprimento zero não é parede
+conferir(paredeEntre(sala(), { id: "y", nome: "", pontos: retangulo({ x: 4, y: 3 }, { x: 6, y: 5 }) }) === null, "encostar só no canto não é dividir parede", "senão nasce um vão de 0 m");
+
+// ---- ABRIR A PAREDE INTEIRA ENTRE DOIS CÔMODOS ----
+//
+// É o que ele pediu: "tem lugares em que a parede acaba, fica um espaço, e continua linha
+// inteira como se fosse parede". Perguntar isso pro modelo foi medido duas vezes e ele
+// responde pelo estereótipo "sala conjugada com cozinha" -- acertou um caso e acusou três
+// paredes inteiras (ver lib/planta-lida.ts). Então quem diz é a pessoa, em dois toques.
+{
+  // vão no meio da parede DIVIDIDA entre sala e cozinha (3 m de trecho comum)
+  const maximo = vaoMaximoEm(dois(), { x: 4, y: 1.5 });
+  conferir(perto(maximo, 3 - TOCO_DE_PAREDE * 2), "o vão máximo é o trecho comum menos um toco em cada ponta", `${maximo.toFixed(2)} m de 3 m`);
+  conferir(maximo < 3, "nunca a parede inteira: some o toco e os cômodos ficam boiando", `${maximo.toFixed(2)} m`);
+}
+{
+  // parede EXTERNA: não divide com ninguém, então vale o comprimento dela
+  const maximo = vaoMaximoEm(dois(), { x: 2, y: 0 });
+  conferir(maximo > 2.5, "na parede externa o limite é a parede toda, menos os tocos", `${maximo.toFixed(2)} m`);
+}
+conferir(vaoMaximoEm(dois(), { x: 20, y: 20 }) === LARGURA_VAO, "longe de parede nenhuma, fica o vão padrão");
+
+// ---- o ciclo do toque: cresce e volta ----
+{
+  // parede larga: cabem os três tamanhos (padrão, meio, tudo)
+  const max = 3.0;
+  const a = proximaLarguraDoVao(LARGURA_VAO, max);
+  conferir(a > LARGURA_VAO, "segundo toque alarga", `${LARGURA_VAO} -> ${a}`);
+  const b = proximaLarguraDoVao(a, max);
+  conferir(perto(b, max), "terceiro toque abre no máximo", `${a} -> ${b}`);
+  const c = proximaLarguraDoVao(b, max);
+  conferir(perto(c, LARGURA_VAO), "e o seguinte volta ao começo -- dá pra desfazer sem desfazer", `${b} -> ${c}`);
+}
+{
+  // parede média: o passo do meio NÃO cabe, então o ciclo tem dois tamanhos e não três.
+  // Minha primeira versão deste teste exigia três aqui e estava errada -- o passo fixo de
+  // 2,4 m não entra numa parede de 2,2 m, e forçá-lo abriria vão maior que a parede.
+  const max = 2.2;
+  const a = proximaLarguraDoVao(LARGURA_VAO, max);
+  conferir(perto(a, max), "parede de 2,2 m: do padrão vai direto ao máximo", `${LARGURA_VAO} -> ${a}`);
+  conferir(perto(proximaLarguraDoVao(a, max), LARGURA_VAO), "e volta, sem passar por 2,4 (que não cabe)");
+}
+{
+  // parede curta: não existe passo intermediário, então vai direto ao máximo e volta
+  const max = 1.4;
+  const a = proximaLarguraDoVao(LARGURA_VAO, max);
+  conferir(perto(a, max), "parede curta: pula o passo do meio", `${LARGURA_VAO} -> ${a}`);
+  conferir(perto(proximaLarguraDoVao(a, max), LARGURA_VAO), "e volta");
+}
+{
+  // o ciclo nunca trava nem devolve coisa fora da parede
+  let larg = LARGURA_VAO;
+  const max = 3.0;
+  const vistos = new Set<number>();
+  for (let i = 0; i < 12; i++) {
+    larg = proximaLarguraDoVao(larg, max);
+    conferir(larg > 0 && larg <= max + 0.01, `volta ${i + 1}: a largura cabe na parede`, `${larg} m`);
+    vistos.add(larg);
+  }
+  conferir(vistos.size >= 2, "e o ciclo tem mais de um tamanho: não trava num só", `${vistos.size} tamanhos`);
 }
 
 console.log(falhas === 0 ? "\nTUDO CERTO" : `\n${falhas} FALHA(S)`);

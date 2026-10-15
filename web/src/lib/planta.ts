@@ -481,3 +481,95 @@ export function dividirParede(comodos: Comodo[], a: Ponto, b: Ponto, em: Ponto, 
     return achou ? { ...c, pontos } : c;
   });
 }
+
+/**
+ * O trecho de parede que dois cômodos DIVIDEM, se dividirem algum.
+ *
+ * Existe pra resolver o que a leitura não resolvia: "tem cômodos que a parede vai até certo
+ * ponto e não fecha tudo, é aberta" (ele, 14/10/2026). Sala conjugada com cozinha voltava
+ * como duas caixas com parede inteira no meio.
+ *
+ * A primeira tentativa foi pedir pro MODELO achar o vão e devolver a coordenada -- e ele já
+ * erra coordenada de porta em metade dos casos. Medido: piorou tudo e não achou o vão. Aqui
+ * a divisão de trabalho é outra: o modelo responde a pergunta fácil ("a sala e a cozinha são
+ * o mesmo espaço?"), que é texto e nome de cômodo, e esta função acha a parede.
+ *
+ * Devolve o centro do trecho comum, o ângulo da parede e quanto ela mede.
+ */
+export function paredeEntre(a: Comodo, b: Comodo, tol = 0.25): { p: Ponto; angulo: number; comprimento: number } | null {
+  const caixa = (c: Comodo) => ({
+    x0: Math.min(...c.pontos.map((p) => p.x)),
+    x1: Math.max(...c.pontos.map((p) => p.x)),
+    y0: Math.min(...c.pontos.map((p) => p.y)),
+    y1: Math.max(...c.pontos.map((p) => p.y)),
+  });
+  const A = caixa(a);
+  const B = caixa(b);
+
+  // Encostados de lado: um termina onde o outro começa, em x. O trecho comum é a parte de y
+  // que os dois ocupam ao mesmo tempo -- sem isso, dois cômodos que só se tocam num canto
+  // ganhariam uma "parede" de comprimento zero.
+  for (const [x, ok] of [
+    [A.x1, Math.abs(A.x1 - B.x0) <= tol],
+    [A.x0, Math.abs(A.x0 - B.x1) <= tol],
+  ] as const) {
+    if (!ok) continue;
+    const y0 = Math.max(A.y0, B.y0);
+    const y1 = Math.min(A.y1, B.y1);
+    if (y1 - y0 > tol) return { p: { x, y: (y0 + y1) / 2 }, angulo: 90, comprimento: y1 - y0 };
+  }
+
+  // Encostados em cima/embaixo.
+  for (const [y, ok] of [
+    [A.y1, Math.abs(A.y1 - B.y0) <= tol],
+    [A.y0, Math.abs(A.y0 - B.y1) <= tol],
+  ] as const) {
+    if (!ok) continue;
+    const x0 = Math.max(A.x0, B.x0);
+    const x1 = Math.min(A.x1, B.x1);
+    if (x1 - x0 > tol) return { p: { x: (x0 + x1) / 2, y }, angulo: 0, comprimento: x1 - x0 };
+  }
+
+  return null;
+}
+
+/** Quanto de parede fica de pé em cada ponta quando o vão abre no máximo. */
+export const TOCO_DE_PAREDE = 0.4;
+
+/**
+ * O maior vão que cabe na parede onde este ponto está.
+ *
+ * Quando a parede é DIVIDIDA com outro cômodo, o limite é o trecho comum -- é o que faz
+ * "abrir a parede inteira" querer dizer "juntar os dois ambientes", e não comer parede de
+ * fora. Sobra um toco em cada ponta de propósito: parede que some inteira deixa os dois
+ * cômodos boiando e parece erro de desenho em vez de ambiente integrado.
+ */
+export function vaoMaximoEm(comodos: Comodo[], p: Ponto, alcance = 0.5): number {
+  const parede = paredeEm(comodos, p, alcance);
+  if (!parede) return LARGURA_VAO;
+  const dono = comodos[parede.comodo];
+  let comprimento = distancia(parede.a, parede.b);
+  for (const outro of comodos) {
+    if (outro === dono) continue;
+    const comum = paredeEntre(dono, outro);
+    if (comum && distancia(comum.p, p) <= Math.max(comum.comprimento / 2, alcance)) {
+      comprimento = comum.comprimento;
+      break;
+    }
+  }
+  return Math.max(LARGURA_VAO, Math.min(4, comprimento - TOCO_DE_PAREDE * 2));
+}
+
+/**
+ * A próxima largura quando se toca de novo no mesmo vão.
+ *
+ * Gesto emprestado da porta, que já gira ao segundo toque: aqui o segundo toque ALARGA, até
+ * a parede inteira, e o seguinte volta ao começo. É o jeito de dizer "estes dois ambientes
+ * são um só" sem telinha nova -- e quem diz é a pessoa, que sabe. Perguntar isso pro modelo
+ * foi medido duas vezes e ele responde pelo estereótipo (ver lib/planta-lida.ts).
+ */
+export function proximaLarguraDoVao(atual: number, maximo: number): number {
+  const passos = [LARGURA_VAO, 2.4, maximo].filter((v) => v > 0 && v <= Math.max(maximo, LARGURA_VAO));
+  const limpos = [...new Set(passos.map((v) => Math.round(v * 100) / 100))].sort((a, b) => a - b);
+  return limpos.find((v) => v > atual + 0.05) ?? limpos[0];
+}

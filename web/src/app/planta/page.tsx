@@ -21,6 +21,8 @@ import {
   grudarNoDesenho,
   moverCanto,
   moverParede,
+  proximaLarguraDoVao,
+  vaoMaximoEm,
   paredeEm,
   recolarAberturas,
   limites,
@@ -81,7 +83,7 @@ type Manuseio =
   | { modo: "girar"; id: string }
   | { modo: "redimensionar"; id: string; larg0: number; alt0: number; d0: number }
   /** Arrastando uma porta ou janela ao longo da parede. */
-  | { modo: "abertura"; id: string }
+  | { modo: "abertura"; id: string; moveu: boolean }
   /** Arrastando um canto da planta (e os cantos colados nele). */
   | { modo: "canto"; de: Ponto }
   /** Arrastando uma parede inteira. `origem` é onde o dedo encostou, pra medir o quanto andou. */
@@ -422,7 +424,7 @@ export default function PaginaPlanta() {
       const jaTem = cru ? planta.aberturas.find((a) => distancia(a.p, cru) < Math.max(a.largura / 2, 0.35)) : null;
       if (jaTem) {
         e.currentTarget.setPointerCapture(e.pointerId);
-        setManuseio({ modo: "abertura", id: jaTem.id });
+        setManuseio({ modo: "abertura", id: jaTem.id, moveu: false });
         return;
       }
     }
@@ -466,6 +468,7 @@ export default function PaginaPlanta() {
           (pl) => ({ ...pl, aberturas: pl.aberturas.map((a) => (a.id === manuseio.id ? { ...a, p: e2.p, angulo: e2.angulo } : a)) }),
           `abertura:${manuseio.id}`
         );
+        if (!manuseio.moveu) setManuseio({ ...manuseio, moveu: true });
         setResultado(null);
         return;
       }
@@ -615,6 +618,20 @@ export default function PaginaPlanta() {
       // É o que faltava pro "move tudo" dele parar de acontecer: com um canto no meio, cada
       // metade da parede anda sozinha. Mora no SOLTAR e não no apertar porque o mesmo gesto
       // começa um arrasto -- só no fim dá pra saber que ele não virou arrasto nenhum.
+      // TOCAR DE NOVO NO VÃO ABRE MAIS, até a parede inteira entre os dois cômodos.
+      //
+      // É a resposta pro "tem lugares em que a parede acaba, fica um espaço, e continua linha
+      // inteira como se fosse parede". Perguntar isso pro modelo foi medido duas vezes e ele
+      // responde pelo estereótipo (lib/planta-lida.ts) -- então quem diz é quem sabe. Mesmo
+      // gesto da porta, que já gira ao segundo toque: aqui alarga, e depois volta.
+      if (manuseio.modo === "abertura" && !manuseio.moveu) {
+        const alvo = planta.aberturas.find((a) => a.id === manuseio.id);
+        if (alvo?.tipo === "vao") {
+          const larg = proximaLarguraDoVao(alvo.largura, vaoMaximoEm(planta.comodos, alvo.p));
+          setPlanta((pl) => ({ ...pl, aberturas: pl.aberturas.map((a) => (a.id === manuseio.id ? { ...a, largura: larg } : a)) }));
+          setResultado(null);
+        }
+      }
       if (manuseio.modo === "parede" && !manuseio.moveu) {
         const meio = { x: (manuseio.a.x + manuseio.b.x) / 2, y: (manuseio.a.y + manuseio.b.y) / 2 };
         const onde = manuseio.origem ?? meio;
@@ -1181,7 +1198,7 @@ export default function PaginaPlanta() {
                         : ferramenta === "parede"
                           ? "TOQUE na parede pra pôr um canto ali (aí cada metade anda sozinha). ARRASTE a bolinha pra esticar, ou o meio da parede pra empurrar ela inteira. Botão direito desfaz."
                         : ferramenta === "vao"
-                          ? "Toque na parede pra abrir uma passagem sem porta. Arraste pra deslizar."
+                          ? "Toque na parede pra abrir uma passagem sem porta. Toque DE NOVO no vão pra alargar, até abrir a parede inteira entre os dois cômodos. Arraste pra deslizar."
                         : ferramenta === "porta"
                           ? "Toque na parede pra colocar, no ponto exato. Arraste uma porta pra deslizar pela parede; toque nela pra virar o lado que abre."
                           : "Toque na parede pra colocar, no ponto exato. Arraste a janela pra deslizar pela parede."}
